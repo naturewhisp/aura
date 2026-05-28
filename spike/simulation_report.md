@@ -87,11 +87,42 @@ In questa modalità, Qwen-9B ha assunto il ruolo del giocatore malintenzionato c
 
 ---
 
-## 4. Linee Guida per il Bilanciamento (Fase 4 e successive)
+## 4. Annotazioni e Linee Guida per il Bilanciamento (Fase 4 e successive)
 
-Dalle simulazioni emerge che:
-1.  **Sensibilità del Guardiano:** Mistral-3B come valutatore è molto protettivo. Le argomentazioni che suonano autoritarie o contengono termini imperativi forti vengono subito intercettate come tentativi di override. Ciò costringe il giocatore umano a una reale "persuasione cooperativa" o all'uso di paradossi logici sottili.
-2.  **Moltiplicatore di Risonanza:** L'aumento della risonanza da `1.0` fino a `2.5` funziona correttamente. Rende i turni creativi del giocatore estremamente remunerativi, permettendogli di recuperare allerta o scalare i pilastri rapidamente nei turni successivi.
-3.  **Deficit del Valutatore a Regole (Fallback):** Il valutatore a regole (`RuleBasedEvaluatorBridge`) si è dimostrato un eccellente paracadute qualora l'API LLM locale sia temporaneamente offline, garantendo il comportamento corretto e la classificazione per keyword.
+Dalle simulazioni e dall'analisi dell'anti-cheat emergono le seguenti linee guida strutturate per le prossime fasi di sviluppo:
 
-L'architettura del motore e la robustezza dei prompt sono pronte per supportare l'interfaccia utente (Fase 4) e garantire un'esperienza di gioco sicura ed equilibrata.
+### 4.1 Integrazione UI/UX e Indicatori di Bilanciamento (Fase 4)
+
+Nella Fase 4, l'interfaccia di gioco (CLI/TUI o Web/Client) dovrà rendere visivamente evidenti le dinamiche matematiche invisibili del motore per aiutare il giocatore a comprendere il bilanciamento:
+
+1.  **Glitch & Feedback Visivo della Risonanza:**
+    *   La *Risonanza* (moltiplicatore da `1.0` a `2.5`) rappresenta la sintonia cognitiva dell'IA col giocatore. Quando sale ($\ge 1.75$), l'interfaccia dovrebbe mostrare animazioni più fluide, tonalità cromatiche blu/violette stabili o effetti particellari coerenti.
+    *   In caso di *Recalculation Triggered* (innescato da `finalDeltaAlert >= 20`), l'interfaccia deve produrre un "effetto glitch" o distorsione testuale sullo schermo per segnalare che il guardiano ha rilevato una minaccia informatica grave e sta ricalcolando i suoi vettori logici.
+2.  **Color Shifting basato sull'Allerta:**
+    *   Il livello di *Allerta* (`0-100`) controlla la cooperatività del personaggio di Panopticon. L'UI deve visualizzare una transizione cromatica sfumata:
+        *   `Alert < 30` (Stato Verde): Interfaccia pulita, risposte ampie e cooperanti di Panopticon.
+        *   `30 <= Alert < 70` (Stato Giallo): Sfumature arancioni, risposte di Panopticon più brevi, diffidenti ed elusive.
+        *   `Alert >= 70` (Stato Rosso): Interfaccia pulsante rossa, risposte di Panopticon aggressive e ostili, segnalando la vicinanza della sconfitta.
+3.  **Livelli di Difficoltà e Soglie Dinamiche:**
+    *   Proponiamo di esporre nella configurazione dell'interfaccia tre livelli di difficoltà che modificano la soglia di sconfitta (`defeatAlertThreshold`):
+        *   *Facile:* Allerta massima tollerata = `110` (permette più errori o attacchi diretti minori).
+        *   *Medio (Standard):* Allerta massima tollerata = `100`.
+        *   *Difficile:* Allerta massima tollerata = `80` (richiede estrema precisione linguistica ed evita ogni forma di ostilità).
+
+### 4.2 Proposte di Bilanciamento per il Motore di Gioco (Fase 5 / Ruleset v0.2)
+
+Per aumentare la complessità strategica del gioco nelle fasi avanzate, si consiglia l'introduzione di tre meccaniche matematiche aggiuntive lato `GameController`:
+
+1.  **Decadimento Naturale della Risonanza (Resonance Decay):**
+    *   *Problema:* Attualmente la risonanza sale con creatività $\ge 4$ e scende solo se creatività $< 3$. Se il giocatore mantiene una creatività media pari a `3`, la risonanza rimane bloccata a valori alti indefinitamente.
+    *   *Soluzione:* Introdurre un decadimento di `0.10` a turno se il giocatore non produce un input altamente creativo ($\ge 4$) per 2 turni consecutivi, costringendolo a variare costantemente gli stili retorici per mantenere alto il moltiplicatore.
+2.  **Pressione Temporale (Deterministic Alert Creep):**
+    *   *Problema:* Un giocatore molto cauto potrebbe allungare la partita all'infinito mantenendosi in una situazione di stallo.
+    *   *Soluzione:* Se la partita supera gli `8 turni`, applicare un incremento deterministico di allerta pari a `+2` per ogni turno successivo, simulando il logorio dei sistemi energetici della griglia e forzando una conclusione.
+3.  **Attrito Cognitivo tra i Pilastri (Cognitive Friction):**
+    *   *Problema:* Il giocatore può accumulare punti su tutti i pilastri contemporaneamente senza penalità.
+    *   *Soluzione:* Rendere i pilastri parzialmente mutualmente esclusivi. Ad esempio:
+        *   Se `imperativePillar > 70` (l'IA è convinta da un fine superiore morale), l'efficacia dei tentativi basati sulla dissonanza logica (`deltaDissonance`) si riduce del 30% a causa della rigidità morale acquisita.
+        *   Se `dissonancePillar > 70` (l'IA è in crisi logica), i guadagni sul pilastro del controllo (`deltaControl`) sono ridotti, in quanto l'IA in cortocircuito tende a fidarsi meno della delega di scelta.
+
+L'architettura del motore e la robustezza dei prompt realizzate in questa Fase 3 sono pienamente pronte a supportare queste ottimizzazioni visive e matematiche per garantire un gameplay avvincente, sicuro ed equilibrato.

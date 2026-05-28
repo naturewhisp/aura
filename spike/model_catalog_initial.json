@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "last_updated": "2026-05-28",
+  "models": [
+    {
+      "model_id": "mistralai/ministral-3-3b",
+      "name": "Ministral 3B Instruct (Q4_K_M)",
+      "source": "lmstudio-community",
+      "format": "gguf",
+      "platforms": ["windows", "linux", "macos"],
+      "parameter_class": "3b",
+      "quantization": "q4_k_m",
+      "min_ram_gb": 8,
+      "min_vram_gb": 4,
+      "recommended_agents": ["evaluator"],
+      "capabilities": ["score_user_input", "produce_json_delta", "detect_injection_attempt"],
+      "supports_grammar": true,
+      "supports_structured_output": true,
+      "preferred_backend": "llama_cpp"
+    },
+    {
+      "model_id": "qwen/qwen3.5-9b",
+      "name": "Qwen 3.5 9B Instruct (Q4_K_M)",
+      "source": "lmstudio-community",
+      "format": "gguf",
+      "platforms": ["windows", "linux", "macos"],
+      "parameter_class": "9b",
+      "quantization": "q4_k_m",
+      "min_ram_gb": 16,
+      "min_vram_gb": 8,
+      "recommended_agents": ["actor"],
+      "capabilities": ["generate_character_response", "adapt_tone_to_alert_level", "reference_narrative_memory"],
+      "supports_grammar": true,
+      "supports_structured_output": true,
+      "preferred_backend": "llama_cpp"
+    }
+  ]
+}

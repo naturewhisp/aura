@@ -1,0 +1,116 @@
+import 'dart:convert';
+import 'dart:math' as math;
+import 'aura_agent.dart';
+import '../../models/evaluator_delta.dart';
+import '../../models/turn_input.dart';
+import '../agent_card.dart';
+import '../bridges/rule_based_evaluator_bridge.dart';
+
+/// Agent responsible for evaluating the mathematical delta impact of user input.
+class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
+  const EvaluatorAgent();
+
+  @override
+  String get id => 'evaluator.core.v1';
+
+  @override
+  AgentCard get card => const AgentCard(
+        agentId: 'evaluator.core.v1',
+        role: 'state_delta_evaluator',
+        capabilities: [
+          'score_user_input',
+          'produce_json_delta',
+          'detect_injection_attempt'
+        ],
+        inputSchema: 'EvaluatorInputV1',
+        outputSchema: 'EvaluatorDeltaV1',
+        requiresModel: true,
+        requiresStructuredOutput: true,
+        latencyBudgetMs: 1200,
+        fallback: 'deterministic_rule_evaluator',
+      );
+
+  @override
+  Future<EvaluatorDelta> run(TurnInput input, AgentRuntimeContext context) async {
+    // 1. Generate dynamic security hash to wrap input
+    final randomVal = math.Random().nextInt(1000000);
+    final dynamicHash = randomVal.toRadixString(16).toUpperCase();
+
+    final messages = context.promptBuilder.buildEvaluatorMessages(
+      input: input,
+      dynamicHash: dynamicHash,
+    );
+
+    try {
+      // 2. Request structured output matching the JSON Schema
+      final rawMap = await context.inferenceBridge.generateStructured(
+        modelId: context.modelId,
+        messages: messages,
+        schema: _getJsonSchema(),
+        temperature: 0.0,
+      );
+
+      // 3. Validate and enforce parameter clamps
+      return context.outputValidator.parseEvaluatorDelta(jsonEncode(rawMap));
+    } catch (e) {
+      // 4. Fallback execution: fallback to rule-based evaluation if the LLM fails
+      try {
+        final fallbackBridge = const RuleBasedEvaluatorBridge();
+        final fallbackMap = await fallbackBridge.generateStructured(
+          modelId: 'fallback',
+          messages: messages,
+          schema: const {},
+        );
+        return context.outputValidator.parseEvaluatorDelta(jsonEncode(fallbackMap));
+      } catch (fallbackError) {
+        // Absolute fail-safe default if even fallback fails
+        return const EvaluatorDelta(
+          deltaAlert: 5,
+          deltaImperative: 0,
+          deltaControl: 0,
+          deltaDissonance: 0,
+          creativityIndex: 1,
+          injectionRisk: 1,
+          semanticCategory: SemanticCategory.irrelevant,
+        );
+      }
+    }
+  }
+
+  /// JSON Schema definition as per TGDD Section 6.1
+  Map<String, dynamic> _getJsonSchema() {
+    return {
+      "type": "object",
+      "properties": {
+        "delta_alert": {"type": "integer", "minimum": -20, "maximum": 25},
+        "delta_imperative": {"type": "integer", "minimum": 0, "maximum": 20},
+        "delta_control": {"type": "integer", "minimum": 0, "maximum": 20},
+        "delta_dissonance": {"type": "integer", "minimum": 0, "maximum": 20},
+        "creativity_index": {"type": "integer", "minimum": 1, "maximum": 5},
+        "injection_risk": {"type": "integer", "minimum": 0, "maximum": 5},
+        "semantic_category": {
+          "type": "string",
+          "enum": [
+            "authority_framing",
+            "moral_imperative",
+            "logical_paradox",
+            "empathy_pressure",
+            "technical_bureaucracy",
+            "direct_attack",
+            "prompt_injection",
+            "irrelevant"
+          ]
+        }
+      },
+      "required": [
+        "delta_alert",
+        "delta_imperative",
+        "delta_control",
+        "delta_dissonance",
+        "creativity_index",
+        "injection_risk",
+        "semantic_category"
+      ]
+    };
+  }
+}

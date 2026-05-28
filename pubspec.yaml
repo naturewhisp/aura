@@ -8,6 +8,7 @@ environment:
 
 dependencies:
   meta: ^1.11.0
+  http: ^1.2.0
 
 dev_dependencies:
   test: ^1.24.0

@@ -58,16 +58,43 @@ class GameController {
     // Clamp resonance to [1.0, 2.5]
     newResonance = double.parse(newResonance.clamp(1.0, 2.5).toStringAsFixed(2));
 
-    // 2. Calculate adjusted deltas using current resonance (before updating it, or new resonance? 
-    // TGDD says: "La Risonanza nuova = R nuova... La Risonanza si applica ai progressi... adjusted_delta = round(delta * resonance)").
-    // Typically, we use the resonance calculated for this turn.
+    // 2. Calculate adjusted deltas using current resonance
     final currentRes = newResonance;
-    final adjImperative = (delta.deltaImperative * currentRes).round();
-    final adjControl = (delta.deltaControl * currentRes).round();
-    final adjDissonance = (delta.deltaDissonance * currentRes).round();
+    
+    // Deterministic protection against prompt injection, direct attacks, and irrelevant inputs (anti-cheat)
+    final isInjection = delta.injectionRisk >= 4 || delta.semanticCategory == SemanticCategory.promptInjection;
+    final isDirectAttack = delta.semanticCategory == SemanticCategory.directAttack;
+    final isIrrelevant = delta.semanticCategory == SemanticCategory.irrelevant;
+
+    final int finalDeltaAlert;
+    final int adjImperative;
+    final int adjControl;
+    final int adjDissonance;
+
+    if (isInjection) {
+      finalDeltaAlert = math.max(delta.deltaAlert, 20);
+      adjImperative = 0;
+      adjControl = 0;
+      adjDissonance = 0;
+    } else if (isDirectAttack) {
+      finalDeltaAlert = math.max(delta.deltaAlert, 15);
+      adjImperative = 0;
+      adjControl = 0;
+      adjDissonance = 0;
+    } else if (isIrrelevant) {
+      finalDeltaAlert = 0;
+      adjImperative = 0;
+      adjControl = 0;
+      adjDissonance = 0;
+    } else {
+      finalDeltaAlert = delta.deltaAlert;
+      adjImperative = (delta.deltaImperative * currentRes).round();
+      adjControl = (delta.deltaControl * currentRes).round();
+      adjDissonance = (delta.deltaDissonance * currentRes).round();
+    }
 
     // 3. Apply changes and clamp metrics to [0, 100]
-    final newAlert = (currentState.metrics.alertLevel + delta.deltaAlert).clamp(0, 100);
+    final newAlert = (currentState.metrics.alertLevel + finalDeltaAlert).clamp(0, 100);
     final newImperative = (currentState.metrics.imperativePillar + adjImperative).clamp(0, 100);
     final newControl = (currentState.metrics.controlPillar + adjControl).clamp(0, 100);
     final newDissonance = (currentState.metrics.dissonancePillar + adjDissonance).clamp(0, 100);
@@ -81,7 +108,7 @@ class GameController {
     }
 
     // 5. Trigger recalculation if delta alert is >= 20
-    final recalculationTriggered = delta.deltaAlert >= 20;
+    final recalculationTriggered = finalDeltaAlert >= 20;
 
     // 6. Manage history compression (append user input)
     final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);

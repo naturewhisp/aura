@@ -1343,6 +1343,8 @@ Obiettivi:
 - test strategie ripetitive;
 - bilanciamento difficoltà.
 
+Per i risultati dettagliati delle simulazioni e del bilanciamento della difficoltà, fare riferimento a [simulation_report.md](file:///c:/Users/dendo/Documents/GitHub/aura/spike/simulation_report.md).
+
 ### Fase 4 — Flutter UI
 
 Obiettivi:

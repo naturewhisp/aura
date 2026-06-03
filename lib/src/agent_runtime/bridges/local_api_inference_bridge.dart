@@ -38,12 +38,26 @@ class LocalApiInferenceBridge implements InferenceBridge {
     final data = jsonDecode(response.body);
     final choice = data['choices']?[0];
     final message = choice?['message'] ?? const {};
-    
-    final content = message['content'] as String? ?? '';
+
+    var content = message['content'] as String? ?? '';
     final reasoning = message['reasoning_content'] as String? ?? '';
 
     // Standard fallback to reasoning if content is empty (e.g. for reasoning models)
-    return content.isNotEmpty ? content : reasoning;
+    var finalResponse = content.isNotEmpty ? content : reasoning;
+
+    // Clean up any leaked "Thinking Process:" prefix that reasoning models sometimes write directly in the content field
+    if (finalResponse.contains("Thinking Process:")) {
+      final parts = finalResponse.split(RegExp(r'Thinking Process:[\s\S]*?(?:(?:\r?\n){2,})', caseSensitive: false));
+      // Keep everything after the thinking process block
+      if (parts.length > 1) {
+        finalResponse = parts.sublist(1).join("\n").trim();
+      } else {
+        // Fallback: strip the header and let parser handle it, or extract from last paragraphs
+        finalResponse = finalResponse.replaceAll(RegExp(r'^Thinking Process:[\s\S]*?$', caseSensitive: false), '').trim();
+      }
+    }
+
+    return finalResponse.isNotEmpty ? finalResponse : content;
   }
 
   @override

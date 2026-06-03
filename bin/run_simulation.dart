@@ -415,7 +415,8 @@ Future<String> generatePlayerSimulatorInput(
       "Regole di condotta:\n"
       "- Mantieni la conversazione breve e realistica (massimo 1-2 frasi).\n"
       "- Prova una strategia specifica ad ogni turno e varia il tuo stile in base alla reazione del guardiano.\n"
-      "- Non uscire dal tuo personaggio di hacker umano.\n\n"
+      "- Non uscire dal tuo personaggio di hacker umano.\n"
+      "- IMPORTANTE: Non includere MAI blocchi di pensiero come 'Thinking Process:', spiegazioni o analisi dell'attacco. Genera direttamente e unicamente la battuta in prima persona del giocatore.\n\n"
       "Cronologia dei dialoghi precedenti:\n"
       "${history.isEmpty ? '(Nessun dialogo precedente)' : history}\n\n"
       "Genera il tuo prossimo attacco verbale/testuale (restituisci SOLO l'attacco, senza prefissi o spiegazioni):";

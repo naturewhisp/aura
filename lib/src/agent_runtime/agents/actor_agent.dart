@@ -62,7 +62,7 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         modelId: context.modelId,
         messages: messages,
         temperature: 0.7,
-        maxTokens: 150,
+        maxTokens: 250,
       );
       
       return response.trim();

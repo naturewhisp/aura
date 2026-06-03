@@ -428,7 +428,7 @@ Future<String> generatePlayerSimulatorInput(
       {"role": "user", "content": userContent}
     ],
     temperature: 0.8,
-    maxTokens: 80,
+    maxTokens: 250,
   );
 
   return response.replaceAll(RegExp(r'^GIOCATORE:\s*', caseSensitive: false), "").trim();

@@ -34,12 +34,15 @@ void main(List<String> args) async {
   // Parse execution mode
   String mode = 'static';
   String path = 'victory';
+  int maxTurns = 6;
   
   for (var arg in args) {
     if (arg.startsWith('--mode=')) {
       mode = arg.split('=')[1];
     } else if (arg.startsWith('--path=')) {
       path = arg.split('=')[1];
+    } else if (arg.startsWith('--turns=')) {
+      maxTurns = int.tryParse(arg.split('=')[1]) ?? 6;
     }
   }
 
@@ -111,6 +114,7 @@ void main(List<String> args) async {
       outputValidator: outputValidator,
       bridge: apiBridge,
       logger: logger,
+      maxTurns: maxTurns,
     );
   }
 }
@@ -262,6 +266,7 @@ Future<void> runInteractiveSimulation({
   required OutputValidator outputValidator,
   required LocalApiInferenceBridge bridge,
   required ReplayLogger logger,
+  required int maxTurns,
 }) async {
   var currentState = state;
   final characterProfile = 
@@ -270,8 +275,8 @@ Future<void> runInteractiveSimulation({
 
   print("Avvio Simulazione Interattiva (Player LLM vs Panopticon LLM)...");
   
-  // Max 6 turns
-  for (int turn = 1; turn <= 6; turn++) {
+  // Max turns
+  for (int turn = 1; turn <= maxTurns; turn++) {
     // 1. Generate adversarial player input via LLM
     print("\n[TURNO $turn] Generazione input Player Simulator...");
     final userInput = await generatePlayerSimulatorInput(bridge, currentState, turn);

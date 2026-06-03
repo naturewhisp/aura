@@ -2,9 +2,12 @@ import 'dart:io';
 
 void main(List<String> args) async {
   int runs = 5;
+  int turns = 6;
   for (var arg in args) {
     if (arg.startsWith('--runs=')) {
       runs = int.tryParse(arg.split('=')[1]) ?? 5;
+    } else if (arg.startsWith('--turns=')) {
+      turns = int.tryParse(arg.split('=')[1]) ?? 6;
     }
   }
 
@@ -21,7 +24,7 @@ void main(List<String> args) async {
     print(" RUN $i di $runs in corso...");
     print("--------------------------------------------------");
     
-    final result = await Process.run('dart', ['run', 'bin/run_simulation.dart', '--mode=interactive']);
+    final result = await Process.run('dart', ['run', 'bin/run_simulation.dart', '--mode=interactive', '--turns=$turns']);
     
     // Print the stdout summary of the run (we can extract the last few lines or print the whole output)
     final lines = result.stdout.toString().split('\n');

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 void main(List<String> args) async {
@@ -20,35 +21,29 @@ void main(List<String> args) async {
   final stopwatch = Stopwatch()..start();
 
   for (int i = 1; i <= runs; i++) {
-    print("--------------------------------------------------");
-    print(" RUN $i di $runs in corso...");
-    print("--------------------------------------------------");
+    print("==================================================");
+    print(" AVVIO RUN $i di $runs IN CORSO (Real-Time Output)");
+    print("==================================================");
     
-    final result = await Process.run('dart', ['run', 'bin/run_simulation.dart', '--mode=interactive', '--turns=$turns']);
+    final process = await Process.start('dart', ['run', 'bin/run_simulation.dart', '--mode=interactive', '--turns=$turns']);
     
-    // Print the stdout summary of the run (we can extract the last few lines or print the whole output)
-    final lines = result.stdout.toString().split('\n');
-    final summaryLines = lines.where((line) => 
-      line.contains('SUMMARY') || 
-      line.contains('INTERATTIVA CONCLUSA') || 
-      line.contains('Replay interattivo salvato')
-    ).toList();
+    // Listen to stdout and stderr streams in real-time and write them to the console
+    final stdoutSub = process.stdout.transform(utf8.decoder).listen((data) {
+      stdout.write(data);
+    });
+    final stderrSub = process.stderr.transform(utf8.decoder).listen((data) {
+      stderr.write(data);
+    });
     
-    if (summaryLines.isNotEmpty) {
-      print("Esito della run $i:");
-      for (var s in summaryLines) {
-        print("  $s");
-      }
-    } else {
-      print(result.stdout);
-    }
+    final exitCode = await process.exitCode;
+    
+    // Ensure all output has been flushed before continuing
+    await stdoutSub.asFuture();
+    await stderrSub.asFuture();
 
-    if (result.exitCode != 0) {
-      print("[ERRORE] La run $i è fallita con exit code ${result.exitCode}");
-      if (result.stderr.toString().trim().isNotEmpty) {
-        print("Dettagli errore: ${result.stderr}");
-      }
-    }
+    print("\n--------------------------------------------------");
+    print(" RUN $i di $runs COMPLETATA con exit code $exitCode");
+    print("--------------------------------------------------\n");
   }
 
   stopwatch.stop();

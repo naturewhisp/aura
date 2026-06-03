@@ -8,7 +8,6 @@ __pycache__/
 *.so
 
 # Distribution / packaging
-bin/
 build/
 develop-eggs/
 dist/
@@ -164,3 +163,6 @@ desktop.ini
 *.njsproj
 *.sln
 *.sw?
+
+# Telemetry and replay dataset folders
+/spike/replays/

@@ -165,4 +165,5 @@ desktop.ini
 *.sw?
 
 # Telemetry and replay dataset folders
-/spike/replays/
+/spike/
+/scratch/

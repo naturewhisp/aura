@@ -62,11 +62,12 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         modelId: context.modelId,
         messages: messages,
         temperature: 0.7,
-        maxTokens: 250,
+        maxTokens: 4096,
       );
       
       return response.trim();
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print("[ActorAgent ERROR] Error during inference: $e\n$stackTrace");
       // Return a random diegetic message from the fallback pool
       final index = math.Random().nextInt(fallbackPool.length);
       return fallbackPool[index];

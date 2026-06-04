@@ -16,6 +16,7 @@ class MockInferenceBridge implements InferenceBridge {
     required List<Map<String, String>> messages,
     double temperature = 0.7,
     int maxTokens = 150,
+    bool? thinking,
   }) async {
     return mockTextResponse;
   }

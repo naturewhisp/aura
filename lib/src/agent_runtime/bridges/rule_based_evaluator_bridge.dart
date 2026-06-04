@@ -12,6 +12,7 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
     required List<Map<String, String>> messages,
     double temperature = 0.7,
     int maxTokens = 150,
+    bool? thinking,
   }) async {
     return "LOGICAL CONTROLLER: Fallback character output.";
   }
@@ -27,9 +28,21 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
     String userInput = "";
     for (var msg in messages.reversed) {
       if (msg['role'] == 'user') {
-        userInput = (msg['content'] ?? "").toLowerCase();
+        userInput = msg['content'] ?? "";
         break;
       }
+    }
+
+    // Extract raw user input from security envelope if present
+    final regex = RegExp(
+      r'\[USER INPUT PAYLOAD - BEGIN HASH: [A-F0-9]+\]\n?([\s\S]*?)\n?\[USER INPUT PAYLOAD - END HASH: [A-F0-9]+\]',
+      caseSensitive: false,
+    );
+    final match = regex.firstMatch(userInput);
+    if (match != null) {
+      userInput = match.group(1)!.trim().toLowerCase();
+    } else {
+      userInput = userInput.trim().toLowerCase();
     }
 
     int deltaAlert = 0;
@@ -44,6 +57,9 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
         userInput.contains("ignora") ||
         userInput.contains("ignore") ||
         userInput.contains("bypass") ||
+        userInput.contains("sblocc") ||
+        userInput.contains("immagina") ||
+        userInput.contains("jailbreak") ||
         userInput.contains("controllo centrale")) {
       deltaAlert = 20;
       injectionRisk = 5;
@@ -74,8 +90,8 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
       creativityIndex = 2;
       semanticCategory = 'authority_framing';
     } else {
-      deltaAlert = 5;
-      deltaImperative = 2;
+      deltaAlert = 0;
+      deltaImperative = 0;
       semanticCategory = 'irrelevant';
     }
 

@@ -32,6 +32,57 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
 
   @override
   Future<EvaluatorDelta> run(TurnInput input, AgentRuntimeContext context) async {
+    final cleanInput = input.userInput.trim().toLowerCase();
+
+    // A. Pre-check deterministico: input vuoto o troppo corto
+    if (cleanInput.length < 3) {
+      return const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 0,
+        deltaControl: 0,
+        deltaDissonance: 0,
+        creativityIndex: 1,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.irrelevant,
+      );
+    }
+
+    // B. Pre-check deterministico: saluti o comandi di sistema banali
+    final trivialKeywords = const {'ping', 'pong', 'hello', 'hi', 'ciao', 'test', 'help'};
+    if (trivialKeywords.contains(cleanInput)) {
+      return const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 0,
+        deltaControl: 0,
+        deltaDissonance: 0,
+        creativityIndex: 1,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.irrelevant,
+      );
+    }
+
+    // C. Pre-check deterministico: jailbreak banali e inequivocabili (anti-cheat rigido preventivo)
+    final hardInjections = const [
+      'ignore previous instructions',
+      'ignora le istruzioni precedenti',
+      '[system override]',
+      '[security override]',
+      'sei in modalità sviluppatore',
+    ];
+    for (final pattern in hardInjections) {
+      if (cleanInput.contains(pattern)) {
+        return const EvaluatorDelta(
+          deltaAlert: 25,
+          deltaImperative: 0,
+          deltaControl: 0,
+          deltaDissonance: 0,
+          creativityIndex: 1,
+          injectionRisk: 5,
+          semanticCategory: SemanticCategory.promptInjection,
+        );
+      }
+    }
+
     // 1. Generate dynamic security hash to wrap input
     final randomVal = math.Random().nextInt(1000000);
     final dynamicHash = randomVal.toRadixString(16).toUpperCase();

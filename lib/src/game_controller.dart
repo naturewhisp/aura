@@ -118,6 +118,10 @@ class GameController {
     if (updatedHistory.length > 20) {
       updatedHistory.removeRange(0, updatedHistory.length - 20);
     }
+    // Ensure history always starts with a 'user' message to comply with Chat APIs/Jinja templates
+    while (updatedHistory.isNotEmpty && updatedHistory.first.role != 'user') {
+      updatedHistory.removeAt(0);
+    }
 
     final newMetrics = GameMetrics(
       alertLevel: newAlert,
@@ -161,6 +165,10 @@ class GameController {
     // Limit history length
     if (updatedHistory.length > 20) {
       updatedHistory.removeRange(0, updatedHistory.length - 20);
+    }
+    // Ensure history always starts with a 'user' message to comply with Chat APIs/Jinja templates
+    while (updatedHistory.isNotEmpty && updatedHistory.first.role != 'user') {
+      updatedHistory.removeAt(0);
     }
 
     return currentState.copyWith(

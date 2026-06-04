@@ -1,5 +1,4 @@
 import 'package:meta/meta.dart';
-import 'models/game_state.dart';
 import 'models/evaluator_delta.dart';
 
 /// Represents a single recorded turn in the replay log.

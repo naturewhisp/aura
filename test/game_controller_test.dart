@@ -401,5 +401,37 @@ void main() {
       expect(restoredStateBefore.sessionId, equals('test-session-123'));
       expect(restoredStateBefore.metrics.alertLevel, equals(0));
     });
+
+    test('History alignment ensures it always starts with user role after truncation', () {
+      var state = initialState;
+      
+      final list = <ChatMessage>[];
+      for (int i = 1; i <= 11; i++) {
+        list.add(ChatMessage(role: 'user', content: 'User $i'));
+        list.add(ChatMessage(role: 'model', content: 'Model $i'));
+      }
+      
+      state = state.copyWith(historyCompression: list);
+      
+      final delta = const EvaluatorDelta(
+        deltaAlert: 5,
+        deltaImperative: 0,
+        deltaControl: 0,
+        deltaDissonance: 0,
+        creativityIndex: 3,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.authorityFraming,
+      );
+      
+      final updatedState = controller.processEvaluatorStep(
+        currentState: state,
+        delta: delta,
+        userInput: 'User 12',
+      );
+      
+      expect(updatedState.historyCompression.first.role, equals('user'));
+      expect(updatedState.historyCompression.first.content, equals('User 3'));
+      expect(updatedState.historyCompression.length, equals(19));
+    });
   });
 }

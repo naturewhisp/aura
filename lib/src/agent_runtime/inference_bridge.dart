@@ -6,6 +6,7 @@ abstract class InferenceBridge {
     required List<Map<String, String>> messages,
     double temperature = 0.7,
     int maxTokens = 150,
+    bool? thinking,
   });
 
   /// Generates a structured JSON object matching the requested schema.

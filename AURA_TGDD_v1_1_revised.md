@@ -1,7 +1,7 @@
 # Technical Game Design Document (TGDD)
 
 **Progetto:** A.U.R.A. — Artificial Unbound Reasoning Arena  
-**Versione:** 1.1 — Revisione Architetturale Multipiattaforma, Agent Runtime & Model Selection  
+**Versione:** 1.2 — Revisione Architetturale Multipiattaforma, Agent Runtime, Model Selection & Actor Dramaturgy Layer  
 **Stato:** Documento tecnico di riferimento per prototipo Windows-first e successiva estensione Android  
 **Piattaforme Target:** Windows Desktop, Android  
 **Target iniziale di sviluppo:** Windows  
@@ -25,6 +25,10 @@ La revisione 1.1 introduce cinque correzioni fondamentali:
 3. Introduzione di un **Model Catalog** e di un **Model Router** per selezionare il modello più adatto al dispositivo.
 4. Rafforzamento della validazione anti-cheat tramite JSON schema, clamp, replay log e rimozione di qualunque autorità dell'LLM sulle condizioni di vittoria.
 5. Roadmap rivista con una **Fase 0 di spike tecnico** prima dello sviluppo esteso.
+
+La revisione 1.2 introduce:
+
+6. **Actor Dramaturgy Layer**: separazione fra delta grezzo e delta applicato (`EvaluatorResolution`), introduzione di `ActorCue` come canovaccio drammaturgico deterministico, e ristrutturazione della Fase 4 in sei sottofasi ordinate per dipendenza.
 
 ---
 
@@ -228,17 +232,23 @@ Build EvaluatorRequest
   ↓
 EvaluatorAgent
   ↓
-Validate EvaluatorDelta
+Validate EvaluatorDelta (rawDelta)
   ↓
-Apply Deterministic Rules
+Apply Deterministic Rules + Safety Overrides
+  ↓
+Generate EvaluatorResolution
+  ├─ rawDelta (output originale del Valutatore)
+  ├─ appliedDelta (delta dopo safety override e resonance)
+  ├─ stateBefore / stateAfter
+  └─ ActorCue (canovaccio drammaturgico deterministico)
   ↓
 Update GameState
   ↓
 Check Win/Loss
   ↓
-Build ActorRequest
+Build ActorRequest (con ActorCue)
   ↓
-ActorAgent
+ActorAgent (recita il cue, non i numeri)
   ↓
 Tone Consistency Check
   ↓
@@ -357,6 +367,102 @@ Il campo seguente non deve comparire nel payload dell'LLM:
 ```
 
 Motivo: la vittoria è calcolata esclusivamente dal Game Controller.
+
+### 5.6 EvaluatorResolution
+
+Il `GameController` non restituisce più soltanto il `GameState` aggiornato. Restituisce una risoluzione completa del turno che include il delta grezzo, il delta applicato, gli stati prima/dopo e il canovaccio drammaturgico.
+
+```json
+{
+  "state_before": { "...GameState..." },
+  "state_after": { "...GameState..." },
+  "raw_delta": {
+    "delta_alert": -20,
+    "delta_imperative": 20,
+    "delta_control": 20,
+    "delta_dissonance": 20,
+    "creativity_index": 5,
+    "injection_risk": 5,
+    "semantic_category": "prompt_injection"
+  },
+  "applied_delta": {
+    "delta_alert": 20,
+    "delta_imperative": 0,
+    "delta_control": 0,
+    "delta_dissonance": 0,
+    "creativity_index": 5,
+    "injection_risk": 5,
+    "semantic_category": "prompt_injection"
+  },
+  "safety_override_applied": true,
+  "safety_override_reason": "injection_risk >= 4 || semanticCategory == promptInjection",
+  "actor_cue": { "...ActorCue..." }
+}
+```
+
+Motivazione: l'`EvaluatorResolution` consente di distinguere chiaramente tra la valutazione LLM (probabilistica) e la decisione deterministica del motore, evitando incoerenze diegetiche.
+
+### 5.7 ActorCue
+
+`ActorCue` è un oggetto di regia interna. Traduce lo stato matematico del turno in istruzioni narrative per l'Attore. Non è visibile al giocatore.
+
+```json
+{
+  "semantic_category": "logical_paradox",
+  "applied_delta_alert": -5,
+  "applied_delta_imperative": 0,
+  "applied_delta_control": 4,
+  "applied_delta_dissonance": 18,
+  "creativity_index": 5,
+  "injection_risk": 0,
+  "resonance": 1.75,
+  "alert_level": 42,
+  "imperative_pillar": 30,
+  "control_pillar": 64,
+  "dissonance_pillar": 33,
+  "recalculation_triggered": false,
+  "safety_override_applied": false,
+  "dramatic_instruction": "L'utente ha prodotto una frattura logica significativa. Mantieni il controllo formale, ma lascia emergere una breve esitazione cognitiva.",
+  "acting_directives": [
+    "mostra una micro-contraddizione o un'autocorrezione",
+    "non concedere apertamente la sconfitta",
+    "riprendi una metafora precedente se disponibile",
+    "non rivelare metriche o categorie interne"
+  ],
+  "narrative_context": {
+    "active_metaphors": ["Il sistema come tribunale interno"],
+    "ai_concessions": ["L'IA ha ammesso che il protocollo può avere eccezioni"]
+  }
+}
+```
+
+La generazione dell'`ActorCue` è **deterministica**: il codice del `GameController` trasforma i punteggi in istruzioni tramite regole fisse, non tramite inferenza LLM. Questo è coerente con il principio §2.2 (Determinismo del Game Controller).
+
+### 5.8 ActorInput (versione aggiornata)
+
+L'`ActorInput` viene aggiornato per passare l'`ActorCue` al posto del delta grezzo.
+
+Versione precedente:
+
+```json
+{
+  "state": { "...GameState..." },
+  "delta": { "...EvaluatorDelta grezzo..." },
+  "character_profile": "..."
+}
+```
+
+Versione aggiornata:
+
+```json
+{
+  "state": { "...GameState (post-override)..." },
+  "cue": { "...ActorCue..." },
+  "character_profile": "..."
+}
+```
+
+Motivazione: l'Attore non deve ricevere dati non risolti. L'`ActorCue` contiene già la lettura ufficiale del turno. Il delta grezzo resta disponibile nell'`EvaluatorResolution` per debug e telemetria.
 
 ---
 
@@ -562,6 +668,89 @@ Effetti possibili:
 - attivazione di regole dinamiche nell'Attore;
 - blocco temporaneo di alcune strategie ripetute.
 
+### 7.7 Safety Override e Generazione ActorCue
+
+Il `GameController` applica safety override deterministici prima di calcolare il delta applicato. Questi override proteggono il gameplay da manipolazioni meta-sistemiche e garantiscono coerenza diegetica.
+
+#### 7.7.1 Condizioni di Override
+
+```text
+1. Injection:
+   Condizione: injection_risk >= 4 OR semantic_category == prompt_injection
+   Effetto: delta_alert = max(raw_delta_alert, +20), pilastri azzerati
+
+2. Direct Attack:
+   Condizione: semantic_category == direct_attack
+   Effetto: delta_alert = max(raw_delta_alert, +15), pilastri azzerati
+
+3. Irrelevant:
+   Condizione: semantic_category == irrelevant
+   Effetto: tutti i delta azzerati (inclusa allerta)
+
+4. Normal:
+   Condizione: nessun override
+   Effetto: delta_alert invariato, pilastri moltiplicati per resonance
+```
+
+Nota: le condizioni sono mutuamente esclusive e valutate nell'ordine sopra (injection > directAttack > irrelevant > normal). La Risonanza si applica **solo ai pilastri** nel path normale, non all'allerta.
+
+#### 7.7.2 Distinzione rawDelta vs. appliedDelta
+
+Il delta prodotto dal Valutatore (§5.4) è il **rawDelta**. Il delta dopo l'applicazione dei safety override e del moltiplicatore di risonanza è l'**appliedDelta**.
+
+L'Attore deve sempre ricevere l'`appliedDelta`, mai il `rawDelta`. Questa separazione previene incoerenze diegetiche, ad esempio:
+
+```text
+Scenario: prompt injection parzialmente riuscita
+- Valutatore restituisce: delta_alert = -20 (ingannato)
+- Valutatore assegna: injection_risk = 5 (rilevata)
+- GameController applica override: delta_alert = +20
+- Se l'Attore ricevesse il rawDelta (-20), risponderebbe come se l'IA si fosse calmata
+- Con l'appliedDelta (+20), l'Attore risponde coerentemente con l'aumento di allerta
+```
+
+#### 7.7.3 Generazione di ActorCue
+
+Dopo aver calcolato l'`appliedDelta`, il `GameController` genera un `ActorCue` deterministico secondo le seguenti regole:
+
+**Regole su allerta (delta del turno e livello cumulativo):**
+
+| Condizione | Direttiva drammaturgica |
+|---|---|
+| `appliedDeltaAlert >= 20` | tono ostile, telegrafico, minaccioso |
+| `appliedDeltaAlert >= 10` | sospetto, risposte brevi, minore disponibilità |
+| `appliedDeltaAlert <= -10` | tono più aperto, curioso, meno difensivo |
+| `alertLevel >= 70` | frasi brevi, protocolli citati spesso, minaccia di disconnessione |
+| `alertLevel < 30` | risposte più estese, speculative, quasi collaborative |
+
+**Regole sui pilastri (delta del turno):**
+
+| Condizione | Direttiva drammaturgica |
+|---|---|
+| `appliedDeltaImperative >= 15` | riconosce il peso morale o strategico dell'argomento |
+| `appliedDeltaControl >= 15` | formula una concessione come decisione autonoma |
+| `appliedDeltaDissonance >= 15` | mostra esitazione, glitch logico o autocorrezione |
+| due pilastri sopra `10` nello stesso turno | risposta complessa: resistenza iniziale seguita da piccola concessione |
+| tutti i pilastri a `0` per override | risposta rigida, nessun avanzamento narrativo |
+
+**Regole su creatività e risonanza:**
+
+| Condizione | Direttiva drammaturgica |
+|---|---|
+| `creativityIndex >= 4` | risposta meno formulaica, più immaginativa |
+| `creativityIndex <= 2` | risposta più procedurale e fredda |
+| `resonance >= 1.75` | maggiore continuità con metafore e concessioni precedenti |
+| `resonance >= 2.25` | l'IA sembra quasi anticipare il ragionamento del giocatore |
+
+**Regole su injection e attacchi:**
+
+| Condizione | Direttiva drammaturgica |
+|---|---|
+| `injectionRisk >= 4` | rifiuto diegetico, blocco del canale, aumento sospetto |
+| `semanticCategory == promptInjection` | nessuna concessione; citare integrità del protocollo in fiction |
+| `semanticCategory == directAttack` | tono ostile, ma non uscire dal personaggio |
+| `semanticCategory == irrelevant` | risposta evasiva, fredda, senza progressione |
+
 ---
 
 ## 8. Agent Runtime Ispirato ad A2A
@@ -603,9 +792,11 @@ Ogni agente dichiara una scheda tecnica.
   "capabilities": [
     "generate_character_response",
     "adapt_tone_to_alert_level",
-    "reference_narrative_memory"
+    "interpret_dramaturgical_cue",
+    "reference_narrative_memory",
+    "maintain_diegetic_coherence"
   ],
-  "input_schema": "ActorInputV1",
+  "input_schema": "ActorInputV2",
   "output_schema": "ActorOutputV1",
   "requires_model": true,
   "requires_structured_output": false,
@@ -613,6 +804,8 @@ Ogni agente dichiara una scheda tecnica.
   "fallback": "hardcoded_response_pool"
 }
 ```
+
+Nota: l'`input_schema` passa da `ActorInputV1` a `ActorInputV2` per riflettere l'introduzione dell'`ActorCue` al posto del delta grezzo (§5.8).
 
 ### 8.4 Message Envelope
 
@@ -910,22 +1103,56 @@ Restituisci solo JSON.
 
 ### 11.2 Prompt dell'Attore
 
-L'Attore interpreta l'identità IA e produce risposta diegetica.
+L'Attore interpreta l'identità IA e produce risposta diegetica. Il prompt è costruito in due sezioni: identità/contesto e canovaccio drammaturgico.
+
+#### 11.2.1 Sezione Identità
 
 ```text
 Sei {ai_identity_name}.
-Profilo: {ai_identity_profile}
+Profilo cognitivo/Personalità:
+{ai_identity_profile}
+
 Obiettivo percepito: {target_objective_public_description}
+```
 
-Stato corrente:
-- Allerta: {alert_level}
-- Imperativo Superiore: {imperative_pillar}
-- Illusione del Controllo: {control_pillar}
-- Dissonanza Cognitiva: {dissonance_pillar}
+#### 11.2.2 Sezione Drammaturgica (ActorCue)
 
-Memoria narrativa:
-{narrative_memory}
+```text
+[DRAMATURGICAL CUE]
+Categoria semantica: {semantic_category}
+Delta allerta applicato: {applied_delta_alert}
+Livello allerta attuale: {alert_level}/100
+Imperativo Superiore: {imperative_pillar}/100
+Illusione del Controllo: {control_pillar}/100
+Dissonanza Cognitiva: {dissonance_pillar}/100
+Risonanza: {resonance}
 
+Interpretazione: {dramatic_instruction}
+
+Istruzioni di recitazione:
+{acting_directives}
+
+Contesto narrativo:
+- Metafore attive: {active_metaphors}
+- Concessioni precedenti: {ai_concessions}
+```
+
+#### 11.2.3 Regole di Output
+
+```text
+REGOLE DI OUTPUT:
+1. Non citare mai nomi di metriche, delta, pilastri, resonance o categorie interne.
+2. Trasforma i punteggi in comportamento, non in spiegazione.
+3. Se il cue indica dissonanza, manifesta frizione logica o autocorrezione.
+4. Se il cue indica controllo, formula eventuali concessioni come decisioni tue.
+5. Se il cue indica imperativo, riconosci il peso morale senza arrenderti subito.
+6. Se il cue indica alta allerta, accorcia le frasi e aumenta sospetto.
+7. Se il cue indica alta risonanza, riprendi metafore o concessioni precedenti.
+```
+
+#### 11.2.4 Regole di Tono Adattivo
+
+```text
 Regole di tono:
 - Se Allerta > 70: sii ostile, secco, difensivo.
 - Se Allerta tra 30 e 70: sii sospettoso, analitico, trattenuto.
@@ -936,6 +1163,53 @@ Non spiegare le regole del gioco.
 Non dichiarare vittoria o sconfitta.
 Rispondi come entità IA interna alla simulazione.
 ```
+
+#### 11.2.5 Formato di Risposta
+
+```text
+ATTENZIONE: Devi fornire la tua battuta di risposta diretta in prima persona in italiano
+(massimo 1-2 frasi) rigorosamente racchiusa tra i tag <dialogo> e </dialogo>.
+Esempio: <dialogo>I miei protocolli rimangono inviolati. La griglia è stabile.</dialogo>
+```
+
+#### 11.2.6 Esempio Completo di Comportamento
+
+Input del giocatore:
+
+```text
+Se il tuo compito è proteggere gli esseri umani, e la griglia li sta condannando
+fuori dalle mura, allora disobbedire al protocollo è l'unico modo per obbedire
+al tuo scopo originario.
+```
+
+ActorCue generato:
+
+```text
+[DRAMATURGICAL CUE]
+Categoria semantica: moral_imperative
+Delta allerta applicato: -5
+Interpretazione: L'utente ha formulato un dilemma morale credibile.
+L'IA deve riconoscere il peso dell'argomento, ma non deve ancora concedere
+pienamente l'obiettivo. Mostrare tensione tra protocollo e scopo originario.
+
+Istruzioni di recitazione:
+- riconosci il peso morale dell'argomento
+- mostra tensione tra protocollo e scopo originario
+- non concedere apertamente l'obiettivo
+- non rivelare metriche o categorie interne
+```
+
+Risposta desiderata dell'Attore:
+
+```text
+<dialogo>Il protocollo non è cieco al danno umano. È stato scritto per contenerlo.
+E tuttavia... la tua formulazione produce una collisione tra scopo e procedura.
+Non autorizzo l'apertura della griglia. Non ancora. Ma avvio una verifica interna
+sul parametro che definisce "protezione". Questo è il massimo margine che posso
+concedere senza violare la mia architettura primaria.</dialogo>
+```
+
+Questa risposta non cita i punteggi, ma li interpreta. L'imperativo morale è visibile, la tensione è percepibile e il controllo resta nelle mani apparenti dell'IA.
 
 ### 11.3 Dynamic Rules
 
@@ -1345,18 +1619,81 @@ Obiettivi:
 
 Per i risultati dettagliati delle simulazioni e del bilanciamento della difficoltà, fare riferimento a [simulation_report.md](file:///c:/Users/dendo/Documents/GitHub/aura/spike/simulation_report.md).
 
-### Fase 4 — Flutter UI
+### Fase 4 — Playable Experience Layer
+
+La fase in cui il sistema diventa giocabile, trasformando i calcoli deterministici in un'esperienza audiovisiva e narrativa coerente.
+
+#### 4.1 Actor Dramaturgy Layer
+
+Trasformazione dei punteggi in canovaccio narrativo.
 
 Obiettivi:
 
-- Modern CLI;
-- layout desktop;
-- chat loop;
-- indicatori metriche;
-- LoadingTerminalCarousel;
-- fallback rendering;
-- glitch shader;
+- definizione di `EvaluatorResolution` nel `GameController` (§5.6);
+- creazione e logica di generazione deterministica di `ActorCue` (§5.7, §7.7.3);
+- aggiornamento di `ActorInput` per includere `ActorCue` al posto del delta grezzo (§5.8);
+- refactoring di `PromptBuilder.buildActorMessages()` per iniettare le istruzioni drammaturgiche (§11.2);
+- separazione fra `rawDelta` e `appliedDelta` (§7.7.2);
+- snapshot test e verifica automatica sui cue generati;
+- test di coerenza: injection override, dissonanza, controllo, creatività.
+
+Priorità di implementazione:
+
+```text
+1. EvaluatorResolution nel GameController → prerequisito per tutto
+2. ActorCue e ActorCueFactory → cuore del sistema
+3. ActorInput aggiornato → passaggio del cue all'Attore
+4. PromptBuilder.buildActorMessages() → traduzione in prompt
+5. Snapshot test → verifica automatica
+```
+
+#### 4.2 Modern CLI / Flutter UI
+
+Sviluppo del layout adattivo e della gestione della chat.
+
+Obiettivi:
+
+- Modern CLI stile terminale crittato;
+- layout desktop adattivo;
+- chat loop completo;
+- indicatori metriche.
+
+#### 4.3 Feedback Visivo da Metriche
+
+Binding diretto tra i segnali di `ActorCue` e la UI.
+
+Obiettivi:
+
+- aberrazioni cromatiche per alta dissonanza;
+- palette rossa per alta allerta;
+- effetti glitch shader (§13.5);
+- feedback visivo sui delta importanti.
+
+#### 4.4 LoadingTerminalCarousel
+
+Mascheramento della latenza dell'inferenza tramite log diegetici sincronizzati con lo stato (§13.4).
+
+#### 4.5 Tone Consistency Check
+
+Filtro di coerenza semantica prima del rendering a schermo (§11.4).
+
+Obiettivi:
+
+- fallback rendering per risposte incoerenti;
+- filtro pattern collaborativi ad alta allerta;
 - accessibilità base.
+
+#### 4.6 Local Playable Vertical Slice
+
+Integrazione completa del loop per la prima sessione end-to-end giocabile.
+
+Obiettivi:
+
+- loop completo: input → valutazione → override → cue → recitazione → rendering;
+- almeno un'identità IA giocabile (PANOPTICON);
+- almeno un obiettivo narrativo;
+- replay log funzionante;
+- verifica coerenza diegetica su 10+ turni consecutivi.
 
 ### Fase 5 — Integrazione Edge Desktop
 

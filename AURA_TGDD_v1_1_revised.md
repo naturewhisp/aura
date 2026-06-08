@@ -1651,49 +1651,100 @@ Priorità di implementazione:
 
 Sviluppo del layout adattivo e della gestione della chat.
 
-Obiettivi:
+##### 4.2.1 Architettura e Stato Reattivo
+- **State Management Nativo**: Utilizzo di `ValueNotifier<GameState>` e `ListenableBuilder` nativi di Flutter per evitare accoppiamenti o dipendenze complesse nel pacchetto `aura_core`.
+- **Flusso dei Dati**:
+  ```text
+  User Input → GameController (elaborazione asincrona)
+    → Aggiornamento GameState → ValueNotifier.value = newState
+    → ListenableBuilder notifica i widget e aggiorna la UI
+  ```
 
-- Modern CLI stile terminale crittato;
-- layout desktop adattivo;
-- chat loop completo;
-- indicatori metriche.
+##### 4.2.2 Struttura Widget Tree
+L'interfaccia si sviluppa in una singola schermata principale (`TerminalScreen`) con layout desktop-first diviso in due colonne:
+1. `TerminalScreen` (Split Pane reattivo)
+   - **Pannello Sinistro** (60% larghezza): `CLIHistoryView` (stampa progressiva con effetto macchina da scrivere e auto-scroll) + `CLIInputBar` (campo di input con prompt diegetico `PANOPTICON_SYS> `, disabilitato durante l'attesa di inferenza).
+   - **Pannello Destro** (40% larghezza): `MetricsDashboard` (visualizzazione in tempo reale di Imperative, Control e Dissonance tramite indicatori grafici radiali o barre verticali) + `AlertLevelIndicator` (barra di allerta dinamica con alert flasher).
+
+##### 4.2.3 Usabilità e Accessibilità Desktop
+- Supporto completo alla navigazione da tastiera: `Enter` per invio comando, `Freccia Su`/`Freccia Giù` per scorrere la cronologia comandi inseriti dal giocatore in quel turno.
+- Focus automatico sulla barra di input al completamento dell'output dell'Attore.
 
 #### 4.3 Feedback Visivo da Metriche
 
 Binding diretto tra i segnali di `ActorCue` e la UI.
 
-Obiettivi:
+##### 4.3.1 Glitch Shader & Aberrazione Cromatica
+- **Fragment Shader (`glitch.frag`)**: Un fragment shader GLSL custom caricato come asset di Flutter, applicato a `CLIHistoryView` tramite un `ShaderBuilder` (ottimizzato per Impeller).
+- **Binding delle Metriche**:
+  - Se `dissonancePillar > 70` o `delta_dissonance >= 18`, viene innescato un glitch visivo con intensità $A$ e durata legata al delta:
+    $$A = \text{clamp}\left(\frac{\text{dissonancePillar} - 50}{50}, 0.0, 1.0\right)$$
+  - Durata dell'effetto: $450\text{ ms}$ con decadimento lineare.
+- **Fallback CustomPainter**: Nei dispositivi dove gli shader sono disabilitati o non supportati (o se l'opzione "Riduzione Animazioni" è attiva nelle impostazioni di accessibilità), si attiva un fallback `CustomPainter` che renderizza tre istanze sovrapposte del testo con leggeri pixel offset (RGB Shift).
 
-- aberrazioni cromatiche per alta dissonanza;
-- palette rossa per alta allerta;
-- effetti glitch shader (§13.5);
-- feedback visivo sui delta importanti.
+##### 4.3.2 Palette Adattiva e Vignette di Allerta
+- **Allerta Verde/Gialla (alertLevel <= 50)**: Palette monocromatica verde fosforo (`#00FF66`).
+- **Allerta Arancione (51-80)**: Passaggio a tonalità ambra (`#FFB000`).
+- **Allerta Critica (> 80)**: Palette rosso neon (`#FF003C`). Viene attivato un overlay `VignetteAlert` pulsante lungo i bordi dello schermo (opacità da 0.0 a 0.25 con frequenza $f = 1 + \frac{\text{alertLevel} - 80}{10}\text{ Hz}$).
 
 #### 4.4 LoadingTerminalCarousel
 
 Mascheramento della latenza dell'inferenza tramite log diegetici sincronizzati con lo stato (§13.4).
 
+##### 4.4.1 Emissione Step di Caricamento
+- Per mascherare i 3-5 secondi di latenza delle due chiamate LLM successive (Valutatore e Attore), il motore logico espone uno Stream di eventi di progresso:
+  ```dart
+  enum InferenceStep {
+    evaluatorStarted,    // "Inizializzazione vettori di valutazione..."
+    evaluatorFinished,   // "Dati semantici validati."
+    safetyOverrideCheck, // "Analisi integrità cognitiva..."
+    actorStarted,        // "Generazione risposta attore..."
+    toneConsistencyCheck,// "Verifica conformità del tono..."
+    completed            // "Pronto."
+  }
+  ```
+- La UI ascolta questo stream e inserisce righe di log simulando processi Unix diegetici reali (es. `[PID 804] Isolating protocol vectors...`).
+- Ogni riga viene mostrata con un effetto macchina da scrivere velocizzato. Ogni step ha un tempo minimo di visualizzazione di $250\text{ ms}$ per evitare flash veloci non leggibili.
+
 #### 4.5 Tone Consistency Check
 
 Filtro di coerenza semantica prima del rendering a schermo (§11.4).
 
-Obiettivi:
+##### 4.5.1 Classe ToneValidator
+Prima di passare il testo generato dall'attore alla visualizzazione UI, una classe dedicata `ToneValidator` scansiona l'output:
+- **Regole ad Alta Allerta (`alertLevel > 85`)**:
+  - Filtro delle parole collaborative/servizievoli: `/(certamente|ottimo|procedo|d'accordo|volentieri|con piacere|nessun problema|subito)/i`.
+- **Regole di Rivelazione Identità**:
+  - Se il modello attore include riferimenti metatestuali alla propria natura di IA (es. "Come modello linguistico..."), il test fallisce immediatamente.
 
-- fallback rendering per risposte incoerenti;
-- filtro pattern collaborativi ad alta allerta;
-- accessibilità base.
+##### 4.5.2 Severity Hierarchy di Fallback
+Se l'output dell'Attore fallisce il `ToneValidator`:
+1. **Sostituzione Regex**: Se l'incoerenza è localizzata e rimovibile senza compromettere il senso, si applica una regex di pulizia.
+2. **Hardcoded Fallback**: Se l'intero output è incoerente, il messaggio viene scartato e sostituito con una risposta diegetica predefinita ad alta dissonanza:
+   ```text
+   PANOPTICON: <ERRORE DI TRASMISSIONE - DEGRADAZIONE CANALE SEMANTICO> 
+   [CODICE_ERRORE: 0x8F4] I tentativi di riconciliazione cognitiva hanno generato un ciclo infinito. 
+   Ripristino parametri primari in corso.
+   ```
+3. Il fallimento viene registrato nel `ReplayLogger` con il flag `lastTurnUsedFallback = true`.
 
 #### 4.6 Local Playable Vertical Slice
 
 Integrazione completa del loop per la prima sessione end-to-end giocabile.
 
-Obiettivi:
-
-- loop completo: input → valutazione → override → cue → recitazione → rendering;
-- almeno un'identità IA giocabile (PANOPTICON);
-- almeno un obiettivo narrativo;
-- replay log funzionante;
-- verifica coerenza diegetica su 10+ turni consecutivi.
+##### 4.6.1 Eseguibile CLI `bin/aura_cli.dart`
+Per testare il nucleo logico e le transizioni prima di completare la UI Flutter, viene creato un client CLI autonomo in Dart:
+- **Loop Interattivo**:
+  1. Stampa lo stato corrente (Turno, Allerta, Pilastri con barre ASCII colorate tramite codici ANSI).
+  2. Chiede l'input dell'utente: `AURA_USER> `.
+  3. Esegue `GameController.processEvaluatorStep()`.
+  4. Genera e mostra l'evento di `ActorCue` generato per scopi di debug.
+  5. Esegue `GameController.processActorStep()` usando un `MockInferenceBridge` locale o le API reali.
+  6. Esegue il `ToneValidator` e stampa l'output finale del bot in giallo/rosso fosforo.
+  7. Salva la sessione in corso usando `ReplayLogger` in `spike/replays/session_<id>.json`.
+- **Criteri di Successo**:
+  - Esecuzione di 10 turni consecutivi completi senza crash del prompt builder o del motore di inferenza.
+  - Verifica delle condizioni di vittoria (tutti i pilastri > 90, allerta < 50) e sconfitta (allerta >= 100).
 
 ### Fase 5 — Integrazione Edge Desktop
 

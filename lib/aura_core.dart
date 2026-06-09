@@ -3,6 +3,8 @@ library aura_core;
 // Models & Core Controller
 export 'src/models/game_state.dart';
 export 'src/models/evaluator_delta.dart';
+export 'src/models/evaluator_resolution.dart';
+export 'src/models/actor_cue.dart';
 export 'src/models/turn_input.dart';
 export 'src/game_controller.dart';
 export 'src/replay_logger.dart';

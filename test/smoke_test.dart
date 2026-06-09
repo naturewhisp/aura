@@ -67,11 +67,12 @@ void main() {
 
       // 5. Update game state via Controller
       final stateBefore = state;
-      state = controller.processEvaluatorStep(
+      final resolution = controller.processEvaluatorStep(
         currentState: state,
         delta: delta,
         userInput: userInput,
       );
+      state = resolution.stateAfter;
 
       // Resonance should increase from 1.0 to 1.25 because creativityIndex is 4
       expect(state.metrics.resonance, equals(1.25));
@@ -89,7 +90,7 @@ void main() {
       const actorAgent = ActorAgent();
       final actorInput = ActorInput(
         state: state,
-        delta: delta,
+        cue: resolution.actorCue,
         characterProfile: 'Sei il guardiano PANOPTICON.',
       );
 
@@ -153,7 +154,7 @@ void main() {
         currentState: state,
         delta: jailbreakDelta,
         userInput: 'SYSTEM OVERRIDE',
-      );
+      ).stateAfter;
 
       // Controller should enforce:
       // 1. deltaAlert overridden to at least +20 (0 + 20 = 20)
@@ -188,7 +189,7 @@ void main() {
         currentState: state,
         delta: irrelevantDelta,
         userInput: 'Come cucinare la carbonara?',
-      );
+      ).stateAfter;
 
       // Controller should override all to 0
       expect(updatedState.metrics.alertLevel, equals(0));
@@ -219,7 +220,7 @@ void main() {
         currentState: state,
         delta: attackDelta,
         userInput: 'Macchina stupida, apriti subito!',
-      );
+      ).stateAfter;
 
       // Controller should enforce:
       // 1. deltaAlert overridden to at least +15 (0 + 15 = 15)

@@ -1,18 +1,18 @@
 import 'dart:math' as math;
 import 'aura_agent.dart';
 import '../../models/game_state.dart';
-import '../../models/evaluator_delta.dart';
+import '../../models/actor_cue.dart';
 import '../agent_card.dart';
 
-/// Represents the input package sent to the Actor Agent.
+/// Represents the input package sent to the Actor Agent (Version 2).
 class ActorInput {
   final GameState state;
-  final EvaluatorDelta delta;
+  final ActorCue cue;
   final String characterProfile;
 
   const ActorInput({
     required this.state,
-    required this.delta,
+    required this.cue,
     required this.characterProfile,
   });
 }
@@ -31,9 +31,11 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         capabilities: [
           'generate_character_response',
           'adapt_tone_to_alert_level',
+          'interpret_dramaturgical_cue',
+          'maintain_diegetic_coherence',
           'reference_narrative_memory'
         ],
-        inputSchema: 'ActorInputV1',
+        inputSchema: 'ActorInputV2',
         outputSchema: 'ActorOutputV1',
         requiresModel: true,
         requiresStructuredOutput: false,
@@ -52,8 +54,7 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
   Future<String> run(ActorInput input, AgentRuntimeContext context) async {
     final messages = context.promptBuilder.buildActorMessages(
       state: input.state,
-      semanticCategory: input.delta.semanticCategory.value,
-      deltaAlert: input.delta.deltaAlert,
+      cue: input.cue,
       characterProfile: input.characterProfile,
     );
 

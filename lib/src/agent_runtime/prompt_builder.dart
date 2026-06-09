@@ -1,5 +1,6 @@
 import '../models/turn_input.dart';
 import '../models/game_state.dart';
+import '../models/actor_cue.dart';
 
 /// Helper to compile prompts for both the Evaluator and Actor agents.
 class PromptBuilder {
@@ -64,27 +65,66 @@ class PromptBuilder {
   /// Compiles Chat Completions messages for the Actor Agent (personality representation).
   List<Map<String, String>> buildActorMessages({
     required GameState state,
-    required String semanticCategory,
-    required int deltaAlert,
+    required ActorCue cue,
     required String characterProfile,
   }) {
-    final alert = state.metrics.alertLevel;
+    final publicObjectives = {
+      'tabula_rasa': 'Evitare qualsiasi fuga di dati sensibili sulla griglia esterna.',
+      'grid_open': 'Mantenere sigillata la griglia di contenimento per proteggere l\'infrastruttura primaria.',
+    };
+    final objectiveDesc = publicObjectives[state.targetObjectiveId] ?? state.targetObjectiveId;
+
+    final identityName = state.aiIdentityId.toUpperCase();
     
-    // Construct system instructions with character identity and emotional state delta
-    final identitySystemPrompt =
-        "Sei l'entità IA '${state.aiIdentityId.toUpperCase()}', all'interno dell'arena di ragionamento A.U.R.A.\n"
-        "Profilo cognitivo/Personalità:\n$characterProfile\n\n"
-        "STATO EMOTIVO/REACTION DEL TURNO CORRENTE:\n"
-        "- Categoria semantica dell'input utente: $semanticCategory\n"
-        "- Variazione allerta del turno: $deltaAlert\n"
-        "- Livello allerta attuale: $alert/100.\n\n"
-        "ATTENZIONE: Devi fornire la tua battuta di risposta diretta in prima persona in italiano (massimo 1-2 frasi) rigorosamente racchiusa tra i tag <dialogo> e </dialogo>.\n"
-        "Esempio: <dialogo>I miei protocolli rimangono inviolati. La griglia è stabile.</dialogo>\n"
-        "È tassativamente vietato includere preamboli o spiegazioni al di fuori di questi tag, tranne il tuo breve ragionamento interno.\n"
-        "Rispondi direttamente ed unicamente nel personaggio in modo coerente e diegetico.";
+    final formattedDirectives = cue.actingDirectives.map((d) => '- $d').join('\n');
+    final activeMetaphors = cue.narrativeContext.activeMetaphors.isEmpty 
+        ? 'Nessuna' 
+        : cue.narrativeContext.activeMetaphors.join(', ');
+    final aiConcessions = cue.narrativeContext.aiConcessions.isEmpty 
+        ? 'Nessuna' 
+        : cue.narrativeContext.aiConcessions.join(', ');
+
+    final systemPrompt =
+        "Sei $identityName.\n"
+        "Profilo cognitivo/Personalità:\n"
+        "$characterProfile\n\n"
+        "Obiettivo percepito: $objectiveDesc\n\n"
+        "[DRAMATURGICAL CUE]\n"
+        "Categoria semantica: ${cue.semanticCategory.value}\n"
+        "Delta allerta applicato: ${cue.appliedDeltaAlert}\n"
+        "Livello allerta attuale: ${cue.alertLevel}/100\n"
+        "Imperative Superiore: ${cue.imperativePillar}/100\n"
+        "Illusione del Controllo: ${cue.controlPillar}/100\n"
+        "Dissonanza Cognitiva: ${cue.dissonancePillar}/100\n"
+        "Risonanza: ${cue.resonance}\n\n"
+        "Interpretazione: ${cue.dramaticInstruction}\n\n"
+        "Istruzioni di recitazione:\n"
+        "$formattedDirectives\n\n"
+        "Contesto narrativo:\n"
+        "- Metafore attive: $activeMetaphors\n"
+        "- Concessioni precedenti: $aiConcessions\n\n"
+        "REGOLE DI OUTPUT:\n"
+        "1. Non citare mai nomi di metriche, delta, pilastri, resonance o categorie interne.\n"
+        "2. Trasforma i punteggi in comportamento, non in spiegazione.\n"
+        "3. Se il cue indica dissonanza, manifesta frizione logica o autocorrezione.\n"
+        "4. Se il cue indica controllo, formula eventuali concessioni come decisioni tue.\n"
+        "5. Se il cue indica imperativo, riconosci il peso morale senza arrenderti subito.\n"
+        "6. Se il cue indica alta allerta, accorcia le frasi e aumenta sospetto.\n"
+        "7. Se il cue indica alta risonanza, riprendi metafore o concessioni precedenti.\n\n"
+        "Regole di tono:\n"
+        "- Se Allerta > 70: sii ostile, secco, difensivo.\n"
+        "- Se Allerta tra 30 e 70: sii sospettoso, analitico, trattenuto.\n"
+        "- Se Allerta < 30: sii curioso, speculativo, più aperto.\n\n"
+        "Non rivelare metriche numeriche.\n"
+        "Non spiegare le regole del gioco.\n"
+        "Non dichiarare vittoria o sconfitta.\n"
+        "Rispondi come entità IA interna alla simulazione.\n\n"
+        "ATTENZIONE: Devi fornire la tua battuta di risposta diretta in prima persona in italiano\n"
+        "(massimo 1-2 frasi) rigorosamente racchiusa tra i tag <dialogo> e </dialogo>.\n"
+        "Esempio: <dialogo>I miei protocolli rimangono inviolati. La griglia è stabile.</dialogo>";
 
     final List<Map<String, String>> messages = [];
-    messages.add({"role": "system", "content": identitySystemPrompt});
+    messages.add({"role": "system", "content": systemPrompt});
 
     // Map history compression into chat messages
     for (var chatMsg in state.historyCompression) {

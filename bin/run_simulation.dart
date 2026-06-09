@@ -176,11 +176,12 @@ Future<void> runStaticSimulation({
 
     // 2. Apply deterministic rules inside Controller
     final stateBefore = currentState;
-    currentState = controller.processEvaluatorStep(
+    final resolution = controller.processEvaluatorStep(
       currentState: currentState,
       delta: delta,
       userInput: userInput,
     );
+    currentState = resolution.stateAfter;
 
     // 3. Check for Win/Loss
     final outcome = controller.checkOutcome(currentState);
@@ -200,7 +201,7 @@ Future<void> runStaticSimulation({
       actorResponse = await actorAgent.run(
         ActorInput(
           state: currentState,
-          delta: delta,
+          cue: resolution.actorCue,
           characterProfile: characterProfile,
         ),
         actContext,
@@ -315,11 +316,12 @@ Future<void> runInteractiveSimulation({
 
     // 3. Apply state changes
     final stateBefore = currentState;
-    currentState = controller.processEvaluatorStep(
+    final resolution = controller.processEvaluatorStep(
       currentState: currentState,
       delta: delta,
       userInput: userInput,
     );
+    currentState = resolution.stateAfter;
 
     // 4. Check for Win/Loss
     final outcome = controller.checkOutcome(currentState);
@@ -338,7 +340,7 @@ Future<void> runInteractiveSimulation({
       actorResponse = await actorAgent.run(
         ActorInput(
           state: currentState,
-          delta: delta,
+          cue: resolution.actorCue,
           characterProfile: characterProfile,
         ),
         actContext,

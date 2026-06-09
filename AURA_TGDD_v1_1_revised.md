@@ -1553,13 +1553,35 @@ Eventuali esportazioni devono essere esplicite.
 
 Input utente sensibili possono essere hashati o anonimizzati.
 
-### 16.4 Fine-Tuning LoRA (Generazione Dataset)
+### 16.4 Fine-Tuning LoRA (Sessioni di Gioco Reali e Dataset)
 
-I replay log registrati localmente in `spike/replays/` fungono da base di conoscenza per l'addestramento futuro dell'Attore (PANOPTICON):
+L'obiettivo fondamentale del fine-tuning (LoRA/QLoRA) è catturare il comportamento naturale e l'interazione dei **giocatori umani reali**, differenziandoli nettamente dalle simulazioni automatiche (le quali tendono ad essere lineari, prevedibili e prive dell'espressività o dei tentativi di exploit tipici di un utente reale).
 
-1. **Filtro Sessioni di Successo**: Vengono selezionati solo i replay log delle partite concluse con Vittoria del giocatore (allineamento dei pilastri > 90) e con risposte dell'Attore ad alto gradimento (nessun fallback diegetico attivato, `lastTurnUsedFallback = false`).
-2. **Formattazione Instruction-Tuning**: Le coppie `[DRAMATURGICAL CUE]` (input completo dell'Attore con contesto narrativo e istruzioni di regia) e `[Risposta Attore]` (testo generato tra tag `<dialogo>`) vengono estratte e formattate in schemi standard (Alpaca o ShareGPT).
-3. **Addestramento Offline**: Questo dataset consente di effettuare il fine-tuning tramite LoRA/QLoRA di un modello Open Source (es. Qwen 9B o Llama 8B) per fargli apprendere nativamente la personalità protettiva, la logica e il tono adattivo di PANOPTICON, riducendo progressivamente la lunghezza del prompt di sistema in produzione.
+#### 16.4.1 Raccolta Dati da Sessioni Vere (Non Simulate)
+
+Per garantire la qualità del dataset, il sistema distingue e raccoglie i dati secondo le seguenti direttive:
+
+1. **Identificazione della Sorgente**: Ogni sessione di gioco viene marcata con un metadato `origin` (`human_playtest` vs `agent_simulation`). Solo i log contrassegnati come `human_playtest` vengono considerati eleggibili per il fine-tuning di produzione.
+2. **Telemetria Opt-In**: Nel rispetto della privacy (§16.3), all'avvio o al termine del gioco viene richiesta l'autorizzazione esplicita al giocatore per caricare il replay log anonimizzato su un server di raccolta centrale (o tramite esportazione manuale guidata).
+3. **Cattura degli Edge Case**: Le sessioni reali contengono preziosi esempi di tentativi di prompt injection, risposte emotive intense, sarcasmo o domande destrutturate che i simulatori non producono. Addestrare il modello su questi input allinea la personalità di PANOPTICON ad essere solida e coerente in contesti reali.
+
+#### 16.4.2 Criteri di Selezione e Qualità (Filtro dei Dati)
+
+I log delle sessioni umane non vengono inseriti ciecamente nel dataset, ma passano attraverso tre livelli di filtro:
+
+1. **Filtro di Completezza**: Vengono escluse le sessioni abbandonate precocemente (es. durata inferiore a 5 turni).
+2. **Filtro di Successo e Coerenza**:
+   - Vengono privilegiate le sessioni concluse con la vittoria del giocatore (allineamento pilastri > 90) o con un alto grado di engagement drammaturgico.
+   - Si escludono rigorosamente i turni che hanno attivato i fallback deterministici di coerenza (`lastTurnUsedFallback = true`), poiché l'Attore ha fallito l'inferenza o il tono.
+3. **Curating e Rating (Feedback esplicito)**: I giocatori possono opzionalmente dare una valutazione (es. pollice su/giù) alla qualità o all'impatto di singole risposte dell'Attore. Le risposte con feedback positivo o neutro formano il "Golden Dataset".
+
+#### 16.4.3 Formattazione per Instruction-Tuning (ShareGPT)
+
+I dati filtrati vengono convertiti in formato ShareGPT o Alpaca strutturato come segue:
+
+- **System Prompt**: Contiene il core dell'identità (es. PANOPTICON) ma con istruzioni via via più snelle.
+- **Input (Dramaturgical Cue)**: Contiene l'output del Valutatore, lo stato dei pilastri e il canovaccio dell'Attore (`ActorCue`), simulando perfettamente l'input ricevuto a runtime.
+- **Output (Target)**: La risposta dell'Attore (dialogo puro racchiuso in `<dialogo>...</dialogo>`) che è stata effettivamente validata ed apprezzata nella sessione di gioco reale.
 
 ---
 
@@ -1788,9 +1810,23 @@ Obiettivi:
 - achievement;
 - identità IA avanzate;
 - obiettivi narrativi;
-- QA;
-- playtest;
+- QA e playtest di massa;
+- implementazione telemetria e raccolta Replay Log (opt-in/volontaria) con metadati per sessioni umane;
+- feedback rapido in-game (es. rating pollice su/giù sull'output dell'Attore) per qualificare il dataset;
 - build release.
+
+### Fase 8 — Fine-Tuning e Ottimizzazione Modelli (Post-Rilascio)
+
+Durata stimata: Continuativa (cicli di 2-3 settimane ad ogni rilascio di dataset).
+
+Obiettivi:
+
+- **Pipeline di Ingestion**: Automazione del caricamento dei replay log da server e script di filtraggio/cleaning automatico (rimozione duplicati, sessioni simulate/incomplete, fallbacks).
+- **Curating e Labeling**: Interfaccia web o CLI interna per la validazione manuale veloce dei dialoghi ("Golden Dataset review").
+- **Fine-Tuning LoRA/QLoRA**: Addestramento sistematico su modelli base Open Source (es. Llama-3 8B, Qwen-2 7B/9B, Gemma-2 9B) usando il dataset raccolto dai playtest reali. L'obiettivo è far assimilare la personalità di PANOPTICON (e successivamente delle altre IA) direttamente nei pesi dell'adapter LoRA.
+- **Riduzione dei Prompt**: Distillazione delle istruzioni di sistema (riduzione del prompt di sistema dell'Attore del 40-50%), riducendo drasticamente il consumo di token di contesto e abbattendo la latenza di inferenza.
+- **Regression Testing e Validazione**: Suite di test automatizzati che confronta le risposte del modello fine-tuned con quelle del modello base a fronte di un set fisso di input critici (anti-jailbreak, risonanza estrema).
+- **Rilascio Adapter OTA**: Distribuzione di file adapter di pochi megabyte scaricabili dinamicamente dal gioco senza richiedere una nuova build dell'applicazione.
 
 ---
 

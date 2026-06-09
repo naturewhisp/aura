@@ -9,12 +9,16 @@ class AgentRuntimeContext {
   final InferenceBridge inferenceBridge;
   final OutputValidator outputValidator;
   final String modelId;
+  final bool? thinking;
+  final bool conciseReasoning;
 
   const AgentRuntimeContext({
     required this.promptBuilder,
     required this.inferenceBridge,
     required this.outputValidator,
     required this.modelId,
+    this.thinking,
+    this.conciseReasoning = false,
   });
 }
 

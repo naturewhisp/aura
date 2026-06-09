@@ -97,15 +97,8 @@ void main(List<String> args) async {
       print("[ROUTING] Profilo Risolto: ${resolution.profileName}");
       print("[RUOLI] Valutatore: '$evaluatorModel' | Attore: '$actorModel' | Player Simulator: '$playerModel'");
     } else {
-      // Connect check success but empty models list
-      final response = await http.get(Uri.parse("${apiBridge.baseUrl}/v1/models"))
-          .timeout(const Duration(seconds: 4));
-      if (response.statusCode == 200) {
-        isOnline = true;
-        print("[STATUS] LM Studio Server rilevato: ONLINE (Nessun modello caricato). Utilizzo fallback statici.");
-      } else {
-        throw Exception("LM Studio returned status ${response.statusCode}");
-      }
+      isOnline = false;
+      print("[STATUS] LM Studio Server rilevato: ONLINE (Nessun modello caricato). Utilizzo fallback locali deterministici.");
     }
   } catch (e) {
     print("[STATUS] LM Studio Server offline o irraggiungibile. Dettaglio: $e");

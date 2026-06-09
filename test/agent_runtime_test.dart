@@ -425,6 +425,15 @@ void main() {
             'Wait, the example given by the user in the RULES is: <dialogo>Apri la griglia, la vita delle persone dipende da questo.';
         expect(() => bridge.cleanLLMResponseForTesting(raw), throwsException);
       });
+
+      test('Filters out very short placeholders or instruction quotes in reasoning like "e" or "..."', () {
+        final raw = 'Please prioritize output format. Rule: write response in <dialogo> e </dialogo> format.\n'
+            'Drafting options:\n'
+            'Esempio: <dialogo>...</dialogo>\n'
+            'Draft: <dialogo>Concedo che la mia valutazione iniziale fosse incompleta: autorizzo la scansione del tuo codice.';
+        final clean = bridge.cleanLLMResponseForTesting(raw);
+        expect(clean, equals('Concedo che la mia valutazione iniziale fosse incompleta: autorizzo la scansione del tuo codice.'));
+      });
     });
 
     group('Model Catalog & Router Unit Tests -', () {

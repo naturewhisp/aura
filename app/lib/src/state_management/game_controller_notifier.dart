@@ -55,6 +55,8 @@ class GameControllerNotifier extends ChangeNotifier {
   String evaluatorModelId = "mistralai/ministral-3-3b";
   String actorModelId = "qwen/qwen3.5-9b";
   String activeProfile = "Offline Fallback";
+  bool reasoningEnabled = true;
+  bool conciseReasoning = true;
   late final ReplayLogger logger;
   
   GameControllerNotifier({
@@ -84,6 +86,18 @@ class GameControllerNotifier extends ChangeNotifier {
     } catch (_) {
       // Gracefully fall back to defaults on connection errors or offlines
     }
+  }
+
+  /// Toggles whether Chain-of-thought (reasoning) is enabled for the Actor model.
+  void toggleReasoning(bool value) {
+    reasoningEnabled = value;
+    notifyListeners();
+  }
+
+  /// Toggles whether reasoning is forced to be extremely concise via prompt.
+  void toggleConciseReasoning(bool value) {
+    conciseReasoning = value;
+    notifyListeners();
   }
 
   /// Runs the full dual-inference turn sequentially and notifies the UI state-changes.
@@ -154,6 +168,8 @@ class GameControllerNotifier extends ChangeNotifier {
           inferenceBridge: bridge,
           outputValidator: outputValidator,
           modelId: actorModelId,
+          thinking: reasoningEnabled,
+          conciseReasoning: reasoningEnabled && conciseReasoning,
         );
 
         actorResponse = await actorAgent.run(

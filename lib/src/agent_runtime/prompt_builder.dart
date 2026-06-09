@@ -67,6 +67,7 @@ class PromptBuilder {
     required GameState state,
     required ActorCue cue,
     required String characterProfile,
+    bool conciseReasoning = false,
   }) {
     final publicObjectives = {
       'tabula_rasa': 'Evitare qualsiasi fuga di dati sensibili sulla griglia esterna.',
@@ -84,8 +85,13 @@ class PromptBuilder {
         ? 'Nessuna' 
         : cue.narrativeContext.aiConcessions.join(', ');
 
+    final String reasoningDirective = conciseReasoning
+        ? "[REASONING CONSTRAINT]\nThink extremely briefly. Limit your internal thinking/reasoning process to 1 or 2 sentences max before generating the final dialogue response. Do not over-analyze.\n\n"
+        : "";
+
     final systemPrompt =
         "Sei $identityName.\n"
+        "$reasoningDirective"
         "Profilo cognitivo/Personalità:\n"
         "$characterProfile\n\n"
         "Obiettivo percepito: $objectiveDesc\n\n"

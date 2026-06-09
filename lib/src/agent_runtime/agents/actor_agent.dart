@@ -56,6 +56,7 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
       state: input.state,
       cue: input.cue,
       characterProfile: input.characterProfile,
+      conciseReasoning: context.conciseReasoning,
     );
 
     try {
@@ -63,7 +64,8 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         modelId: context.modelId,
         messages: messages,
         temperature: 0.7,
-        maxTokens: 4096,
+        maxTokens: context.conciseReasoning ? 800 : 4096,
+        thinking: context.thinking,
       );
       
       return response.trim();

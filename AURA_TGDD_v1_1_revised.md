@@ -1010,9 +1010,25 @@ Per la prima versione Android, il download diretto da Hugging Face non è priori
 
 ```dart
 abstract class InferenceBridge {
-  Future<String> generateText(InferenceRequest request);
-  Future<String> generateStructured(InferenceRequest request);
-  Future<ModelRuntimeInfo> getRuntimeInfo();
+  /// Generates a text response from the model based on messages.
+  Future<String> generateText({
+    required String modelId,
+    required List<Map<String, String>> messages,
+    double temperature = 0.7,
+    int maxTokens = 150,
+    bool? thinking,
+  });
+
+  /// Generates a structured JSON object matching the requested schema.
+  Future<Map<String, dynamic>> generateStructured({
+    required String modelId,
+    required List<Map<String, String>> messages,
+    required Map<String, dynamic> schema,
+    double temperature = 0.0,
+  });
+
+  /// Discovers the active models loaded in the backend.
+  Future<List<String>> discoverModels();
 }
 ```
 
@@ -1020,16 +1036,26 @@ abstract class InferenceBridge {
 
 ```text
 MockInferenceBridge
-LlamaCppInferenceBridge
-AICoreInferenceBridge
-RuleBasedEvaluatorBridge
+LocalApiInferenceBridge (LM Studio Local API)
+LlamaCppInferenceBridge (Desktop Nativo)
+AICoreInferenceBridge (Android Nativo)
+RuleBasedEvaluatorBridge (Motore Locale Deterministico)
 ```
 
 ### 10.3 MockInferenceBridge
 
 Serve nelle prime fasi per sviluppare UI, game loop e bilanciamento senza dipendere dai modelli.
 
-### 10.4 LlamaCppInferenceBridge
+### 10.4 LocalApiInferenceBridge
+
+Utilizzato per la comunicazione a runtime con le API di LM Studio (o qualsiasi server compatibile OpenAI/llama.cpp avviato in locale su porta `1234`).
+Gestisce:
+- Rilevamento dinamico dei modelli tramite l'endpoint `/v1/models` (`discoverModels`);
+- Inoltro delle richieste di completamento chat (`generateText`) con supporto al parametro `enable_thinking` (CoT) per modelli di ragionamento;
+- Inoltro di query strutturate con JSON Schema (`generateStructured`) per forzare output JSON conformi dal Valutatore;
+- Parsing automatico ed estrazione dei tag `<dialogo>` dalle risposte.
+
+### 10.5 LlamaCppInferenceBridge
 
 Gestisce:
 
@@ -1040,7 +1066,7 @@ Gestisce:
 - accelerazione GPU se disponibile;
 - fallback CPU.
 
-### 10.5 AICoreInferenceBridge
+### 10.6 AICoreInferenceBridge
 
 Gestisce:
 
@@ -1051,7 +1077,7 @@ Gestisce:
 - eventuali API structured output se disponibili;
 - fallback se il device non supporta il modello.
 
-### 10.6 RuleBasedEvaluatorBridge
+### 10.7 RuleBasedEvaluatorBridge
 
 Fallback deterministico per il Valutatore.
 

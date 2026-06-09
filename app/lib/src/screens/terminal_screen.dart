@@ -125,7 +125,13 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                         // Right dashboard panel (40%)
                         Expanded(
                           flex: 4,
-                          child: MetricsDashboard(metrics: state.metrics),
+                          child: MetricsDashboard(
+                            metrics: state.metrics,
+                            reasoningEnabled: widget.notifier.reasoningEnabled,
+                            onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
+                            conciseReasoning: widget.notifier.conciseReasoning,
+                            onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
+                          ),
                         ),
                       ],
                     );
@@ -141,7 +147,13 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                               bottom: BorderSide(color: Color(0xFF222222), width: 2.0),
                             ),
                           ),
-                          child: MetricsDashboard(metrics: state.metrics),
+                          child: MetricsDashboard(
+                            metrics: state.metrics,
+                            reasoningEnabled: widget.notifier.reasoningEnabled,
+                            onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
+                            conciseReasoning: widget.notifier.conciseReasoning,
+                            onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
+                          ),
                         ),
                         // Terminal body
                         Expanded(

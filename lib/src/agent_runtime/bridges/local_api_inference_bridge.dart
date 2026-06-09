@@ -118,7 +118,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
     final matches = fullRegex.allMatches(response).toList();
     for (var i = matches.length - 1; i >= 0; i--) {
       final extracted = matches[i].group(1)?.trim();
-      if (extracted != null && extracted.isNotEmpty) {
+      if (extracted != null && extracted.isNotEmpty && extracted.length >= 4) {
         if (!_isReasoning(extracted) && !_isExamplePrompt(extracted)) {
           return extracted;
         }
@@ -137,7 +137,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
         final tagLength = firstMatch.end;
         var content = matchString.substring(tagLength).trim();
         content = content.replaceAll(RegExp(r'</(?:dialogo|dialogue)>', caseSensitive: false), '').trim();
-        if (content.isNotEmpty && !_isReasoning(content) && !_isExamplePrompt(content)) {
+        if (content.isNotEmpty && content.length >= 4 && !_isReasoning(content) && !_isExamplePrompt(content)) {
           return content;
         }
       }

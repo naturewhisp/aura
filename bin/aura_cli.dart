@@ -43,10 +43,10 @@ void main() async {
   try {
     final response = await http.get(Uri.parse("$baseUrl/v1/models")).timeout(const Duration(seconds: 4));
     if (response.statusCode == 200) {
-      isOnline = true;
       final data = jsonDecode(response.body);
       final modelsList = data['data'] as List?;
       if (modelsList != null && modelsList.isNotEmpty) {
+        isOnline = true;
         final List<String> loadedModels = modelsList
             .map((m) => m['id'] as String? ?? '')
             .where((id) => id.isNotEmpty)
@@ -65,10 +65,12 @@ void main() async {
         print(TermColor.paint("[ROUTING] Profilo Attivo: ${resolution.profileName}", TermColor.cyan, isBold: true));
         print(TermColor.paint("[RUOLI] Assegnato Valutatore: '$evaluatorModelName' | Attore: '$actorModelName'", TermColor.cyan));
       } else {
-        print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE ma nessun modello attivo caricato.", TermColor.amber));
+        isOnline = false;
+        print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE ma nessun modello attivo caricato. Utilizzo del motore locale deterministico.", TermColor.amber));
       }
     }
   } catch (e) {
+    isOnline = false;
     print(TermColor.paint("[CONNESSIONE] Server LM Studio OFFLINE. Utilizzo del motore locale deterministico.", TermColor.amber));
   }
   

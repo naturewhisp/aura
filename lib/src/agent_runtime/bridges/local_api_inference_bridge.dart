@@ -335,9 +335,6 @@ class LocalApiInferenceBridge implements InferenceBridge {
            lowerText.contains("let's make") ||
            lowerText.contains("make it") ||
            lowerText.contains("even shorter") ||
-           lowerText.contains("analizz") ||  // Italian: analyzing
-           lowerText.contains("valut") ||    // Italian: evaluating
-           lowerText.contains("approccio") || // Italian: approach
            lowerText.contains("let's try") ||
            lowerText.contains("blend:") ||
            lowerText.contains("try to") ||

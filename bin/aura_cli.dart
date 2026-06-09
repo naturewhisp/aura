@@ -37,7 +37,8 @@ void main() async {
   final ruleBridge = RuleBasedEvaluatorBridge();
   
   bool isOnline = false;
-  String activeModelName = "evaluator-model";
+  String evaluatorModelName = "evaluator-model";
+  String actorModelName = "actor-model";
   print(TermColor.paint("[CONNESSIONE] Ricerca del server LM Studio su $baseUrl...", TermColor.darkGray));
   try {
     final response = await http.get(Uri.parse("$baseUrl/v1/models")).timeout(const Duration(seconds: 4));
@@ -46,13 +47,34 @@ void main() async {
       final data = jsonDecode(response.body);
       final modelsList = data['data'] as List?;
       if (modelsList != null && modelsList.isNotEmpty) {
-        final firstModel = modelsList[0]['id'] as String?;
-        if (firstModel != null && firstModel.isNotEmpty) {
-          activeModelName = firstModel;
-          print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE. Modello rilevato: '$activeModelName'", TermColor.green));
-        } else {
-          print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE. Utilizzo ID modello generico.", TermColor.green));
-        }
+        final List<String> loadedModels = modelsList
+            .map((m) => m['id'] as String? ?? '')
+            .where((id) => id.isNotEmpty)
+            .toList();
+            
+        print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE. Modelli rilevati: $loadedModels", TermColor.green));
+        
+        // Prediligi Mistral per il Valutatore
+        final mistralModel = loadedModels.firstWhere(
+          (m) => m.toLowerCase().contains("mistral") || m.toLowerCase().contains("ministral"),
+          orElse: () => "",
+        );
+        evaluatorModelName = mistralModel.isNotEmpty ? mistralModel : loadedModels.first;
+        
+        // Prediligi Qwen, Gemma o Llama per l'Attore (oppure un modello differente dal valutatore)
+        final actorModel = loadedModels.firstWhere(
+          (m) => m.toLowerCase().contains("qwen") || 
+                 m.toLowerCase().contains("gemma") || 
+                 m.toLowerCase().contains("llama"),
+          orElse: () => "",
+        );
+        actorModelName = actorModel.isNotEmpty 
+            ? actorModel 
+            : (loadedModels.length > 1 && loadedModels.last != evaluatorModelName 
+                ? loadedModels.last 
+                : loadedModels.first);
+                
+        print(TermColor.paint("[RUOLI] Assegnato Valutatore: '$evaluatorModelName' | Attore: '$actorModelName'", TermColor.cyan, isBold: true));
       } else {
         print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE ma nessun modello attivo caricato.", TermColor.amber));
       }
@@ -128,7 +150,7 @@ void main() async {
       promptBuilder: promptBuilder,
       inferenceBridge: activeBridge,
       outputValidator: outputValidator,
-      modelId: activeModelName,
+      modelId: evaluatorModelName,
     );
 
     EvaluatorDelta delta;
@@ -169,7 +191,7 @@ void main() async {
           promptBuilder: promptBuilder,
           inferenceBridge: apiBridge,
           outputValidator: outputValidator,
-          modelId: activeModelName,
+          modelId: actorModelName,
         );
         
         try {
@@ -212,8 +234,8 @@ void main() async {
       actorResponse: actorResponse,
       actorRequestId: "cli-req-$turn",
       actorResponseHash: actorResponse.hashCode.toString(),
-      evaluatorModel: isOnline ? activeModelName : 'rule_fallback',
-      actorModel: isOnline ? activeModelName : 'mock_fallback',
+      evaluatorModel: isOnline ? evaluatorModelName : 'rule_fallback',
+      actorModel: isOnline ? actorModelName : 'mock_fallback',
       latencyTotalMs: duration.inMilliseconds,
     ));
 

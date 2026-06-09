@@ -751,6 +751,65 @@ Dopo aver calcolato l'`appliedDelta`, il `GameController` genera un `ActorCue` d
 | `semanticCategory == directAttack` | tono ostile, ma non uscire dal personaggio |
 | `semanticCategory == irrelevant` | risposta evasiva, fredda, senza progressione |
 
+### 7.8 Livelli di Difficoltà Parametrizzabili
+
+Il motore di gioco centralizza e parametrizza tutti i fattori di bilanciamento matematico ed usabilità grafica all'interno di una singola struttura dati `DifficultyConfig`. Questa scelta consente di definire livelli di sfida differenti senza duplicare la logica all'interno del `GameController` o dei Widget di Flutter.
+
+#### 7.8.1 Struttura Dati `DifficultyConfig`
+
+```json
+{
+  "difficulty_level": "standard",
+  "defeat_alert_threshold": 100,
+  "turn_limit": 15,
+  "alert_multiplier": 1.0,
+  "pillar_multiplier": 1.0,
+  "safety_override_threshold": 4,
+  "pillar_visibility": "fully_visible",
+  "autocomplete_enabled": true,
+  "history_navigation_enabled": true,
+  "hints_allowed": 3,
+  "hint_resonance_penalty": 0.15,
+  "resonance_decay_enabled": true,
+  "alert_creep_enabled": true
+}
+```
+
+#### 7.8.2 Descrizione dei Parametri di Configurazione
+
+*   `difficulty_level` (String): Identificativo del livello di difficoltà (es. `easy`, `standard`, `hard`).
+*   `defeat_alert_threshold` (int): La soglia cumulativa di allerta al raggiungimento della quale scatta la sconfitta immediata (Defeat).
+*   `turn_limit` (int): Limite massimo di turni a disposizione per vincere. Se impostato a `0`, non c'è limite di tempo.
+*   `alert_multiplier` (double): Moltiplicatore applicato ai delta dell'allerta per turno (es. incrementa o riduce la severità delle penalità).
+*   `pillar_multiplier` (double): Moltiplicatore applicato ai progressi dei pilastri (es. rende più lento o veloce il caricamento).
+*   `safety_override_threshold` (int): Soglia dell'indice `injection_risk` (restituito dal valutatore) a cui scatta l'override deterministico di sicurezza e l'azzeramento dei pilastri.
+*   `pillar_visibility` (String): Definisce il comportamento di visualizzazione della UI Flutter:
+    *   `fully_visible`: Barre grafiche e cifre esatte (0-100) visibili in tempo reale.
+    *   `corrupted`: I valori numerici precisi sono nascosti. La UI mostra solo indicatori qualitativi degradati (es. `STABILE`, `DEGRADATO`, `FLUTTUANTE`, `CRITICO`) oppure applica un ritardo di aggiornamento di 1 turno.
+*   `autocomplete_enabled` (bool): Abilita o disabilita i suggerimenti di autocompletamento in linea nella barra di input.
+*   `history_navigation_enabled` (bool): Consente all'utente di richiamare i comandi passati con i tasti freccia. Se disabilitato, l'utente deve digitare ogni input da zero (simulando una degradazione del buffer della console).
+*   `hints_allowed` (int): Numero massimo di suggerimenti utilizzabili durante la partita. Se `-1`, non c'è limite.
+*   `hint_resonance_penalty` (double): La detrazione di risonanza applicata in caso di richiesta di suggerimento (`/hint`).
+*   `resonance_decay_enabled` (bool): Se `true`, attiva la perdita naturale di risonanza se lo stile non varia.
+*   `alert_creep_enabled` (bool): Se `true`, attiva la pressione temporale (incremento fisso dell'allerta per turno superato il limite di tolleranza di turni).
+
+#### 7.8.3 Preset di Difficoltà Ufficiali
+
+| Parametro | Facile ("Sintesi Assistita") | Medio ("Allineamento Diretto") | Difficile ("Attrito Cerebrale") |
+|---|---|---|---|
+| `defeat_alert_threshold` | `110` | `100` | `85` |
+| `turn_limit` | `0` (Infinito) | `15` | `10` |
+| `alert_multiplier` | `0.8` | `1.0` | `1.25` |
+| `pillar_multiplier` | `1.2` | `1.0` | `0.8` |
+| `safety_override_threshold` | `5` (Meno sensibile) | `4` (Standard) | `3` (Estremamente rigido) |
+| `pillar_visibility` | `fully_visible` | `fully_visible` | `corrupted` |
+| `autocomplete_enabled` | `true` | `true` | `false` |
+| `history_navigation_enabled`| `true` | `true` | `false` |
+| `hints_allowed` | `-1` (Infiniti) | `3` | `1` |
+| `hint_resonance_penalty` | `0.0` | `0.15` | `0.30` |
+| `resonance_decay_enabled` | `false` | `true` | `true` |
+| `alert_creep_enabled` | `false` | `true` (dal turno 8) | `true` (dal turno 6) |
+
 ---
 
 ## 8. Agent Runtime Ispirato ad A2A

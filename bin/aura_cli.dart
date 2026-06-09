@@ -54,27 +54,16 @@ void main() async {
             
         print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE. Modelli rilevati: $loadedModels", TermColor.green));
         
-        // Prediligi Mistral per il Valutatore
-        final mistralModel = loadedModels.firstWhere(
-          (m) => m.toLowerCase().contains("mistral") || m.toLowerCase().contains("ministral"),
-          orElse: () => "",
-        );
-        evaluatorModelName = mistralModel.isNotEmpty ? mistralModel : loadedModels.first;
+        // Utilizzo del ModelCatalog e ModelRouter formali di A.U.R.A.
+        final catalog = ModelCatalog.initialDefault();
+        const router = ModelRouter();
+        final resolution = router.resolve(loadedModelIds: loadedModels, catalog: catalog);
         
-        // Prediligi Qwen, Gemma o Llama per l'Attore (oppure un modello differente dal valutatore)
-        final actorModel = loadedModels.firstWhere(
-          (m) => m.toLowerCase().contains("qwen") || 
-                 m.toLowerCase().contains("gemma") || 
-                 m.toLowerCase().contains("llama"),
-          orElse: () => "",
-        );
-        actorModelName = actorModel.isNotEmpty 
-            ? actorModel 
-            : (loadedModels.length > 1 && loadedModels.last != evaluatorModelName 
-                ? loadedModels.last 
-                : loadedModels.first);
-                
-        print(TermColor.paint("[RUOLI] Assegnato Valutatore: '$evaluatorModelName' | Attore: '$actorModelName'", TermColor.cyan, isBold: true));
+        evaluatorModelName = resolution.evaluatorModelId;
+        actorModelName = resolution.actorModelId;
+        
+        print(TermColor.paint("[ROUTING] Profilo Attivo: ${resolution.profileName}", TermColor.cyan, isBold: true));
+        print(TermColor.paint("[RUOLI] Assegnato Valutatore: '$evaluatorModelName' | Attore: '$actorModelName'", TermColor.cyan));
       } else {
         print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE ma nessun modello attivo caricato.", TermColor.amber));
       }

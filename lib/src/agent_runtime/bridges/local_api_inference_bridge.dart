@@ -399,4 +399,26 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     return jsonDecode(rawJson) as Map<String, dynamic>;
   }
+
+  @override
+  Future<List<String>> discoverModels() async {
+    try {
+      final response = await http.get(Uri.parse("$baseUrl/v1/models"))
+          .timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final modelsList = data['data'] as List?;
+        if (modelsList != null) {
+          return modelsList
+              .map((m) => m['id'] as String? ?? '')
+              .where((id) => id.isNotEmpty)
+              .toList();
+        }
+      }
+    } catch (_) {
+      // Fallback on connection errors / timeouts
+    }
+    return const [];
+  }
 }
+

@@ -184,6 +184,18 @@ void main() {
       expect(mapEmpathy['delta_alert'], equals(-10));
     });
 
+    test('RuleBasedEvaluatorBridge discoverModels returns empty list', () async {
+      const bridge = RuleBasedEvaluatorBridge();
+      final models = await bridge.discoverModels();
+      expect(models, isEmpty);
+    });
+
+    test('MockInferenceBridge discoverModels returns default models', () async {
+      final bridge = MockInferenceBridge();
+      final models = await bridge.discoverModels();
+      expect(models, containsAll(["mistralai/ministral-3-3b", "qwen/qwen3.5-9b"]));
+    });
+
     test('EvaluatorAgent run loop with MockInferenceBridge', () async {
       const agent = EvaluatorAgent();
       final mockBridge = MockInferenceBridge(
@@ -412,6 +424,68 @@ void main() {
             'First, I need to analyze the previous exchanges. The user (PANOPTICON) keeps rejecting the hacker\'s arguments.\n'
             'Wait, the example given by the user in the RULES is: <dialogo>Apri la griglia, la vita delle persone dipende da questo.';
         expect(() => bridge.cleanLLMResponseForTesting(raw), throwsException);
+      });
+    });
+
+    group('Model Catalog & Router Unit Tests -', () {
+      final catalog = ModelCatalog.initialDefault();
+      const router = ModelRouter();
+
+      test('Default catalog registers models correctly', () {
+        expect(catalog.models.length, equals(3));
+        
+        final mistral = catalog.findModel("mistralai/ministral-3-3b");
+        expect(mistral, isNotNull);
+        expect(mistral!.name, contains("Ministral"));
+        expect(mistral.recommendedAgents, contains("evaluator"));
+        
+        final qwen = catalog.findModel("qwen/qwen3.5-9b");
+        expect(qwen, isNotNull);
+        expect(qwen!.recommendedAgents, contains("actor"));
+      });
+
+      test('Router resolves Offline Fallback when no models loaded', () {
+        final res = router.resolve(loadedModelIds: [], catalog: catalog);
+        expect(res.profileName, equals("Offline Fallback"));
+        expect(res.evaluatorModelId, equals("mistralai/ministral-3-3b"));
+        expect(res.actorModelId, equals("qwen/qwen3.5-9b"));
+      });
+
+      test('Router resolves P3 Mono-Model when only one model loaded', () {
+        final res = router.resolve(loadedModelIds: ["qwen/qwen3.5-9b"], catalog: catalog);
+        expect(res.profileName, contains("Mono-Model"));
+        expect(res.evaluatorModelId, equals("qwen/qwen3.5-9b"));
+        expect(res.actorModelId, equals("qwen/qwen3.5-9b"));
+      });
+
+      test('Router resolves P1 Standard when both mistral and qwen loaded', () {
+        final res = router.resolve(
+          loadedModelIds: ["mistralai/ministral-3-3b", "qwen/qwen3.5-9b"],
+          catalog: catalog,
+        );
+        expect(res.profileName, contains("P1: Standard"));
+        expect(res.evaluatorModelId, equals("mistralai/ministral-3-3b"));
+        expect(res.actorModelId, equals("qwen/qwen3.5-9b"));
+      });
+
+      test('Router resolves P2 Deep Reasoning when both mistral and gemma loaded', () {
+        final res = router.resolve(
+          loadedModelIds: ["mistralai/ministral-3-3b", "google/gemma-4-12b"],
+          catalog: catalog,
+        );
+        expect(res.profileName, contains("P2: Deep Reasoning"));
+        expect(res.evaluatorModelId, equals("mistralai/ministral-3-3b"));
+        expect(res.actorModelId, equals("google/gemma-4-12b"));
+      });
+
+      test('Router resolves unknown models using name heuristics', () {
+        final res = router.resolve(
+          loadedModelIds: ["llama-3-8b-instruct", "ministral-3b-gguf"],
+          catalog: catalog,
+        );
+        // Should detect 'ministral' for evaluator, and 'llama' for actor
+        expect(res.evaluatorModelId, equals("ministral-3b-gguf"));
+        expect(res.actorModelId, equals("llama-3-8b-instruct"));
       });
     });
   });

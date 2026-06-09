@@ -30,4 +30,10 @@ class MockInferenceBridge implements InferenceBridge {
   }) async {
     return mockStructuredResponse;
   }
+
+  @override
+  Future<List<String>> discoverModels() async {
+    return const ["mistralai/ministral-3-3b", "qwen/qwen3.5-9b"];
+  }
 }
+

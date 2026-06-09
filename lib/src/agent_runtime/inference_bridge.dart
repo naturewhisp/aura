@@ -16,4 +16,8 @@ abstract class InferenceBridge {
     required Map<String, dynamic> schema,
     double temperature = 0.0,
   });
+
+  /// Discovers the active models loaded in the backend.
+  Future<List<String>> discoverModels();
 }
+

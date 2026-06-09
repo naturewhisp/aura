@@ -66,16 +66,46 @@ void main(List<String> args) async {
   final apiBridge = const LocalApiInferenceBridge();
   final ruleBridge = const RuleBasedEvaluatorBridge();
   
-  // Test connection to LM Studio
+  // Test connection to LM Studio and discover models
   bool isOnline = false;
   try {
-    final response = await http.get(Uri.parse("${apiBridge.baseUrl}/v1/models"))
-        .timeout(const Duration(seconds: 5));
-    if (response.statusCode == 200) {
+    final loadedModels = await apiBridge.discoverModels();
+    if (loadedModels.isNotEmpty) {
       isOnline = true;
-      print("[STATUS] LM Studio Server rilevato: ONLINE (Utilizzo modelli reali)");
+      print("[STATUS] LM Studio Server rilevato: ONLINE (Modelli caricati: $loadedModels)");
+      
+      // Auto-routing using ModelCatalog and ModelRouter
+      final catalog = ModelCatalog.initialDefault();
+      const router = ModelRouter();
+      final resolution = router.resolve(loadedModelIds: loadedModels, catalog: catalog);
+      
+      // Update variables if not explicitly overridden by args
+      bool hasEvalArg = args.any((arg) => arg.startsWith('--evaluator-model='));
+      bool hasActorArg = args.any((arg) => arg.startsWith('--actor-model='));
+      bool hasPlayerArg = args.any((arg) => arg.startsWith('--player-model=') || arg == '--gemma-player');
+      
+      if (!hasEvalArg) {
+        evaluatorModel = resolution.evaluatorModelId;
+      }
+      if (!hasActorArg) {
+        actorModel = resolution.actorModelId;
+      }
+      if (!hasPlayerArg) {
+        playerModel = resolution.actorModelId;
+      }
+      
+      print("[ROUTING] Profilo Risolto: ${resolution.profileName}");
+      print("[RUOLI] Valutatore: '$evaluatorModel' | Attore: '$actorModel' | Player Simulator: '$playerModel'");
     } else {
-      throw Exception("LM Studio returned status ${response.statusCode}");
+      // Connect check success but empty models list
+      final response = await http.get(Uri.parse("${apiBridge.baseUrl}/v1/models"))
+          .timeout(const Duration(seconds: 4));
+      if (response.statusCode == 200) {
+        isOnline = true;
+        print("[STATUS] LM Studio Server rilevato: ONLINE (Nessun modello caricato). Utilizzo fallback statici.");
+      } else {
+        throw Exception("LM Studio returned status ${response.statusCode}");
+      }
     }
   } catch (e) {
     print("[STATUS] LM Studio Server offline o irraggiungibile. Dettaglio: $e");
@@ -86,6 +116,7 @@ void main(List<String> args) async {
     print("[STATUS] Utilizzo del Fallback deterministico (RuleBasedEvaluatorBridge)");
   }
   print("-" * 70);
+
 
   final activeBridge = isOnline ? apiBridge : ruleBridge;
   final controller = const GameController();

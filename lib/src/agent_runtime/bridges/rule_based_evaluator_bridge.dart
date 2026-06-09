@@ -105,4 +105,10 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
       'semantic_category': semanticCategory,
     };
   }
+
+  @override
+  Future<List<String>> discoverModels() async {
+    return const [];
+  }
 }
+

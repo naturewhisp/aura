@@ -3,7 +3,7 @@ import 'package:aura_core/aura_core.dart';
 import 'src/state_management/game_controller_notifier.dart';
 import 'src/screens/terminal_screen.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize core game state
@@ -23,6 +23,9 @@ void main() {
     bridge: apiBridge,
     initialState: initialState,
   );
+
+  // Discover and route models dynamically
+  await controllerNotifier.initializeModels();
 
   runApp(AuraApp(notifier: controllerNotifier));
 }

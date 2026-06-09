@@ -16,6 +16,8 @@ export 'src/agent_runtime/agent_registry.dart';
 export 'src/agent_runtime/inference_bridge.dart';
 export 'src/agent_runtime/prompt_builder.dart';
 export 'src/agent_runtime/output_validator.dart';
+export 'src/agent_runtime/model_catalog.dart';
+export 'src/agent_runtime/model_router.dart';
 
 // Concrete Agents
 export 'src/agent_runtime/agents/aura_agent.dart';

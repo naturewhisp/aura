@@ -50,6 +50,10 @@ class GameControllerNotifier extends ChangeNotifier {
   String _currentStepMessage = "";
   String get currentStepMessage => _currentStepMessage;
 
+  String evaluatorModelId = "mistralai/ministral-3-3b";
+  String actorModelId = "qwen/qwen3.5-9b";
+  String activeProfile = "Offline Fallback";
+
   GameControllerNotifier({
     this.controller = const GameController(),
     this.promptBuilder = const PromptBuilder(),
@@ -58,6 +62,24 @@ class GameControllerNotifier extends ChangeNotifier {
     required GameState initialState,
   }) {
     gameStateNotifier = ValueNotifier<GameState>(initialState);
+  }
+
+  /// Discovers the active models and routes them to agent roles.
+  Future<void> initializeModels() async {
+    try {
+      final loadedModels = await bridge.discoverModels();
+      if (loadedModels.isNotEmpty) {
+        final catalog = ModelCatalog.initialDefault();
+        const router = ModelRouter();
+        final resolution = router.resolve(loadedModelIds: loadedModels, catalog: catalog);
+        
+        evaluatorModelId = resolution.evaluatorModelId;
+        actorModelId = resolution.actorModelId;
+        activeProfile = resolution.profileName;
+      }
+    } catch (_) {
+      // Gracefully fall back to defaults on connection errors or offlines
+    }
   }
 
   /// Runs the full dual-inference turn sequentially and notifies the UI state-changes.
@@ -89,7 +111,7 @@ class GameControllerNotifier extends ChangeNotifier {
         promptBuilder: promptBuilder,
         inferenceBridge: bridge,
         outputValidator: outputValidator,
-        modelId: "evaluator-model",
+        modelId: evaluatorModelId,
       );
 
       // Run classification
@@ -126,7 +148,7 @@ class GameControllerNotifier extends ChangeNotifier {
           promptBuilder: promptBuilder,
           inferenceBridge: bridge,
           outputValidator: outputValidator,
-          modelId: "actor-model",
+          modelId: actorModelId,
         );
 
         actorResponse = await actorAgent.run(

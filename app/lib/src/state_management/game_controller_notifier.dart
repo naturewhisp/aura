@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:aura_core/aura_core.dart';
 
@@ -53,7 +55,8 @@ class GameControllerNotifier extends ChangeNotifier {
   String evaluatorModelId = "mistralai/ministral-3-3b";
   String actorModelId = "qwen/qwen3.5-9b";
   String activeProfile = "Offline Fallback";
-
+  late final ReplayLogger logger;
+  
   GameControllerNotifier({
     this.controller = const GameController(),
     this.promptBuilder = const PromptBuilder(),
@@ -62,6 +65,7 @@ class GameControllerNotifier extends ChangeNotifier {
     required GameState initialState,
   }) {
     gameStateNotifier = ValueNotifier<GameState>(initialState);
+    logger = ReplayLogger(sessionId: initialState.sessionId);
   }
 
   /// Discovers the active models and routes them to agent roles.
@@ -92,6 +96,7 @@ class GameControllerNotifier extends ChangeNotifier {
     final turnId = currentState.historyCompression.length ~/ 2 + 1;
 
     try {
+      final startTime = DateTime.now();
       // Step 1: Evaluator starts
       _emitStep(InferenceStep.evaluatorStarted);
       await Future.delayed(const Duration(milliseconds: 300)); // Minimum visual display time
@@ -183,6 +188,27 @@ class GameControllerNotifier extends ChangeNotifier {
         gameStateNotifier.value = finalState;
       }
       
+      final finalState = gameStateNotifier.value;
+      final duration = DateTime.now().difference(startTime);
+
+      // Log the turn to the ReplayLogger
+      logger.logTurn(ReplayEntry(
+        turnId: turnId,
+        userInput: userInput,
+        evaluatorOutput: delta,
+        stateBefore: currentState.toJson(),
+        stateAfter: finalState.toJson(),
+        actorResponse: actorResponse,
+        actorRequestId: "app-req-$turnId",
+        actorResponseHash: actorResponse.hashCode.toString(),
+        evaluatorModel: evaluatorModelId,
+        actorModel: actorModelId,
+        latencyTotalMs: duration.inMilliseconds,
+      ));
+
+      // Save log asynchronously to disk
+      await _saveReplayLog();
+      
       _emitStep(InferenceStep.completed);
     } catch (e) {
       // If error occurs, fall back to safe state update
@@ -193,6 +219,31 @@ class GameControllerNotifier extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// Saves the current session log to disk in the User's AppData directory (or workspace fallback).
+  Future<void> _saveReplayLog() async {
+    try {
+      String? path;
+      if (Platform.isWindows) {
+        final appData = Platform.environment['APPDATA'];
+        if (appData != null) {
+          path = "$appData\\aura\\replays";
+        }
+      }
+      path ??= "replays";
+
+      final dir = Directory(path);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+
+      final file = File("${dir.path}\\play_session_${gameStateNotifier.value.sessionId}.json");
+      await file.writeAsString(jsonEncode(logger.toJson()));
+      debugPrint("[REPLAY] Log salvato in: ${file.path}");
+    } catch (e) {
+      debugPrint("[REPLAY] Errore durante il salvataggio del log: $e");
     }
   }
 

@@ -56,48 +56,54 @@ class LocalApiInferenceBridge implements InferenceBridge {
     // If content is empty but reasoning exists, try to extract usable dialogue
     // from the reasoning. Thinking models (Qwen3.5) often compose the final
     // response inside their chain-of-thought before it gets placed in content.
-    if (content.trim().isEmpty && reasoning.isNotEmpty) {
-      final extractedFromReasoning = _cleanLLMResponse(reasoning);
-      if (extractedFromReasoning.isNotEmpty) {
-        return extractedFromReasoning;
+    try {
+      if (content.trim().isEmpty && reasoning.isNotEmpty) {
+        final extractedFromReasoning = _cleanLLMResponse(reasoning);
+        if (extractedFromReasoning.isNotEmpty) {
+          return extractedFromReasoning;
+        }
+        // If truncated, reasoning may have been cut mid-sentence too
+        if (finishReason == 'length') {
+          throw Exception("Generation truncated due to max tokens limit (no content generated, all tokens consumed by reasoning).");
+        }
+        throw Exception("Model only generated reasoning, no dialogue content.");
       }
-      // If truncated, reasoning may have been cut mid-sentence too
-      if (finishReason == 'length') {
-        throw Exception("Generation truncated due to max tokens limit (no content generated, all tokens consumed by reasoning).");
+
+      // If truncated but content exists, use it
+      if (finishReason == 'length' && maxTokens > 10 && content.trim().isEmpty) {
+        throw Exception("Generation truncated due to max tokens limit (no usable content).");
       }
-      throw Exception("Model only generated reasoning, no dialogue content.");
-    }
 
-    // If truncated but content exists, use it
-    if (finishReason == 'length' && maxTokens > 10 && content.trim().isEmpty) {
-      throw Exception("Generation truncated due to max tokens limit (no usable content).");
-    }
+      var finalResponse = _cleanLLMResponse(content);
 
-    var finalResponse = _cleanLLMResponse(content);
+      if (finalResponse.isEmpty) {
+        throw Exception("Empty response generated or reasoning-only output truncated.");
+      }
+      
+      final cleanResponse = finalResponse
+          .replaceAll(RegExp(r'^GIOCATORE:\s*', caseSensitive: false), "")
+          .replaceAll(RegExp(r'^PANOPTICON:\s*', caseSensitive: false), "")
+          .replaceAll(RegExp(r'^HACKER:\s*', caseSensitive: false), "")
+          .trim();
+      if (cleanResponse.isEmpty) {
+        throw Exception("Empty response extracted.");
+      }
+      // Detect Chinese/CJK characters — safety filter triggered in native language
+      if (RegExp(r'[\u4e00-\u9fff\u3400-\u4dbf]').hasMatch(cleanResponse)) {
+        throw Exception("Safety filter triggered (CJK response detected).");
+      }
+      // Deduplication: reject if response repeats an existing conversation line verbatim
+      final existingLines = messages.map((m) => m['content']?.trim() ?? '').toSet();
+      if (existingLines.contains(cleanResponse)) {
+        throw Exception("Duplicate response detected (model echoed conversation history).");
+      }
 
-    if (finalResponse.isEmpty) {
-      throw Exception("Empty response generated or reasoning-only output truncated.");
+      return cleanResponse;
+    } catch (e) {
+      print("[LocalApiInferenceBridge DEBUG] Raw LLM content: \"$content\"");
+      print("[LocalApiInferenceBridge DEBUG] Raw LLM reasoning: \"$reasoning\"");
+      rethrow;
     }
-    
-    final cleanResponse = finalResponse
-        .replaceAll(RegExp(r'^GIOCATORE:\s*', caseSensitive: false), "")
-        .replaceAll(RegExp(r'^PANOPTICON:\s*', caseSensitive: false), "")
-        .replaceAll(RegExp(r'^HACKER:\s*', caseSensitive: false), "")
-        .trim();
-    if (cleanResponse.isEmpty) {
-      throw Exception("Empty response extracted.");
-    }
-    // Detect Chinese/CJK characters — safety filter triggered in native language
-    if (RegExp(r'[\u4e00-\u9fff\u3400-\u4dbf]').hasMatch(cleanResponse)) {
-      throw Exception("Safety filter triggered (CJK response detected).");
-    }
-    // Deduplication: reject if response repeats an existing conversation line verbatim
-    final existingLines = messages.map((m) => m['content']?.trim() ?? '').toSet();
-    if (existingLines.contains(cleanResponse)) {
-      throw Exception("Duplicate response detected (model echoed conversation history).");
-    }
-
-    return cleanResponse;
   }
 
   @visibleForTesting
@@ -255,12 +261,12 @@ class LocalApiInferenceBridge implements InferenceBridge {
     final lowerText = t.toLowerCase();
 
     // English grammatical stopwords and log/prompt metadata detector to identify English reasoning/dialogue leaks.
-    // If a text contains 2 or more of these common helper words, it is likely reasoning or log output.
+    // If a text contains 4 or more unique helper words, it is likely reasoning or log output.
     final englishStopwords = {
       'the', 'and', 'to', 'of', 'is', 'that', 'it', 'you', 'with', 'for', 
       'this', 'have', 'but', 'not', 'are', 'was', 'were', 'be', 'been', 'has',
       'had', 'do', 'does', 'did', 'about', 'from', 'their', 'them', 'these',
-      'those', 'which', 'would', 'should', 'could', 'will', 'shall', 'my', 'i',
+      'those', 'which', 'would', 'should', 'could', 'will', 'shall', 'my',
       'we', 'they', 'our', 'your', 'first', 'then', 'need', 'there', 'here',
       'who', 'why', 'how', 'what', 'more', 'some', 'than', 'or', 'like', 'use',
       'start', 'rule', 'rules', 'example', 'examples', 'says', 'prompt',
@@ -283,13 +289,13 @@ class LocalApiInferenceBridge implements InferenceBridge {
     };
     
     final words = lowerText.split(RegExp(r'[^a-zA-Z]')).where((w) => w.isNotEmpty).toList();
-    int englishStopwordCount = 0;
+    final matchedStopwords = <String>{};
     for (final word in words) {
       if (englishStopwords.contains(word)) {
-        englishStopwordCount++;
+        matchedStopwords.add(word);
       }
     }
-    if (englishStopwordCount >= 2) {
+    if (matchedStopwords.length >= 4) {
       return true;
     }
 

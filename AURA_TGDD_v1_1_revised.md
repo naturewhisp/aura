@@ -1799,57 +1799,53 @@ Per testare il nucleo logico e le transizioni prima di completare la UI Flutter,
   - Esecuzione di 10 turni consecutivi completi senza crash del prompt builder o del motore di inferenza.
   - Verifica delle condizioni di vittoria (tutti i pilastri > 90, allerta < 50) e sconfitta (allerta >= 100).
 
-### Fase 5 — Integrazione Edge Desktop
+### Fase 5 — Integrazione Edge Desktop e LoRA Architecture
 
 Obiettivi:
 
-- LlamaCppInferenceBridge;
-- caricamento modelli GGUF;
-- selezione modello;
-- grammar decoding;
-- benchmark latenza;
-- fallback CPU/GPU;
-- packaging Windows.
+- **LlamaCppInferenceBridge**: caricamento nativo e ottimizzato di modelli GGUF locali;
+- **Fine-Tuning LoRA Iniziale (Surgical Evaluator & PANOPTICON)**:
+  - Utilizzo del dataset di simulazioni automatiche (Fase 3) e dei playtest locali (Fase 4) per addestrare un **Valutatore Chirurgico** focalizzato su `prompt_injection` e classificazione semantica, riducendo drasticamente il system prompt.
+  - Addestramento dell'adapter LoRA specifico per l'identità di **PANOPTICON** per fargli assimilare direttamente la personalità e il canovaccio drammaturgico.
+- **LoRA Swapping & ModelRouter**:
+  - Aggiornamento del `ModelRouter` per caricare a caldo (hot-swapping) diversi adapter LoRA a runtime a seconda dell'IA attiva, riducendo a zero il prompt drifting.
+- **Benchmark e Ottimizzazioni**:
+  - Ottimizzazione del tempo medio per turno su Windows (target turn-around < 3s usando il Valutatore compatto);
+  - Fallback CPU/GPU e grammar decoding;
+  - Packaging del client Windows.
 
-### Fase 6 — Integrazione Android
+### Fase 6 — Integrazione Android ed Edge Optimization
 
 Obiettivi:
 
-- AICoreInferenceBridge;
-- Platform Channels Kotlin;
-- rilevamento disponibilità modello;
-- test Pixel 10 Pro;
-- fallback compatibility mode;
-- test termico;
-- test batteria;
-- adattamento UX mobile.
+- **AICoreInferenceBridge**: integrazione con Gemini Nano e feature di structured output su Android;
+- **Ottimizzazione Mobile tramite LoRA**:
+  - Porting del Valutatore Chirurgico e degli adapter LoRA su hardware mobile tramite quantizzazione 4-bit (QLoRA).
+  - Abbattimento dei tempi di pre-fill e dei consumi di RAM/VRAM su dispositivi edge di fascia media grazie alla compressione del system prompt derivata dal fine-tuning;
+- **Platform Channels Kotlin** e rilevamento disponibilità modello a runtime;
+- **Test Prestazionali**: stress test termico, consumo batteria e ottimizzazione UX mobile.
 
 ### Fase 7 — Metagame, Contenuti e Rilascio
 
 Obiettivi:
 
-- Frammenti di Allineamento;
-- sblocchi;
-- achievement;
-- identità IA avanzate;
-- obiettivi narrativi;
+- Frammenti di Allineamento, achievement e sblocchi;
+- Introduzione di **nuove identità IA** (es. Oracolo AGI) gestite interamente tramite LoRA Swapping;
 - QA e playtest di massa;
-- implementazione telemetria e raccolta Replay Log (opt-in/volontaria) con metadati per sessioni umane;
-- feedback rapido in-game (es. rating pollice su/giù sull'output dell'Attore) per qualificare il dataset;
-- build release.
+- **Telemetria Opt-In & Raccolta Dati Reali**:
+  - Implementazione della telemetria opt-in per caricare i Replay Log contrassegnati come `human_playtest` (§16.3);
+  - Integrazione in-game del sistema di rating (pollice su/giù) per qualificare le interazioni umane reali;
+- Build release pubblica.
 
-### Fase 8 — Fine-Tuning e Ottimizzazione Modelli (Post-Rilascio)
+### Fase 8 — Pipeline di Fine-Tuning Continuo (Post-Rilascio)
 
-Durata stimata: Continuativa (cicli di 2-3 settimane ad ogni rilascio di dataset).
+Durata stimata: Continuativa (cicli periodici di 2-3 settimane).
 
 Obiettivi:
 
-- **Pipeline di Ingestion**: Automazione del caricamento dei replay log da server e script di filtraggio/cleaning automatico (rimozione duplicati, sessioni simulate/incomplete, fallbacks).
-- **Curating e Labeling**: Interfaccia web o CLI interna per la validazione manuale veloce dei dialoghi ("Golden Dataset review").
-- **Fine-Tuning LoRA/QLoRA**: Addestramento sistematico su modelli base Open Source (es. Llama-3 8B, Qwen-2 7B/9B, Gemma-2 9B) usando il dataset raccolto dai playtest reali. L'obiettivo è far assimilare la personalità di PANOPTICON (e successivamente delle altre IA) direttamente nei pesi dell'adapter LoRA.
-- **Riduzione dei Prompt**: Distillazione delle istruzioni di sistema (riduzione del prompt di sistema dell'Attore del 40-50%), riducendo drasticamente il consumo di token di contesto e abbattendo la latenza di inferenza.
-- **Regression Testing e Validazione**: Suite di test automatizzati che confronta le risposte del modello fine-tuned con quelle del modello base a fronte di un set fisso di input critici (anti-jailbreak, risonanza estrema).
-- **Rilascio Adapter OTA**: Distribuzione di file adapter di pochi megabyte scaricabili dinamicamente dal gioco senza richiedere una nuova build dell'applicazione.
+- **Automazione Ingestion**: Pipeline server per aggregare, pulire e filtrare i log reali inviati dai giocatori rispetto a quelli simulati;
+- **Curating & Golden Dataset**: Revisione rapida tramite interfaccia di curating per approvare le interazioni umane reali più espressive o complesse;
+- **Ciclo di Rilascio OTA (Over-The-Air)**: Addestramento continuo degli adapter LoRA delle personalità (PANOPTICON, Oracolo) e del Valutatore, con distribuzione automatica degli adapter aggiornati (pochi megabyte) direttamente all'avvio del client di gioco senza richiedere una nuova installazione dell'applicazione.
 
 ---
 

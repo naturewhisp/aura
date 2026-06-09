@@ -1545,13 +1545,36 @@ Serve per:
 - benchmark tra modelli;
 - analisi difficoltà.
 
-### 16.3 Privacy
+### 16.3 Memorizzazione, Privacy ed Esportazione Log
 
-Il replay log deve essere locale per default.
+#### 16.3.1 Dove Vengono Salvati i Log (Cartella Utente)
 
-Eventuali esportazioni devono essere esplicite.
+Per garantire una gestione pulita e sicura dei dati, il salvataggio dei replay log sul dispositivo del giocatore segue regole differenziate a seconda dell'ambiente:
 
-Input utente sensibili possono essere hashati o anonimizzati.
+- **Client di Gioco Desktop/Mobile (Flutter)**: I file JSON dei log vengono scritti nella cartella utente dell'applicazione (User Directory), sfruttando il pacchetto `path_provider` per rispettare i percorsi standard del sistema operativo:
+  - **Windows**: `C:\Users\<NomeUtente>\AppData\Roaming\aura\replays\` (risolto tramite `getApplicationSupportDirectory`).
+  - **Linux/macOS**: `~/.config/aura/replays/` o `~/Library/Application Support/aura/replays/`.
+  - **Android/iOS**: Directory di supporto interna all'applicazione (sandboxed).
+- **Ambiente di Sviluppo e Simulazioni**: I log delle simulazioni generate automaticamente o dei test CLI degli sviluppatori continuano ad essere salvati nella cartella locale al repository in `spike/replays/`.
+
+#### 16.3.2 Privacy e Anonimizzazione
+
+- Il salvataggio locale è sempre attivo per scopi di debug, riproduzione delle partite e accessibilità.
+- Nessuna informazione sensibile o identificativo personale hardware (es. nome utente OS, indirizzo IP, identificativi univoci del dispositivo) viene registrato all'interno dei log di replay.
+- Gli input utente possono essere scansionati localmente per rimuovere o mascherare stringhe di testo con pattern sensibili prima di scrivere sul disco.
+
+#### 16.3.3 Esportazione Manuale e Condivisione (Contributo allo Sviluppo)
+
+Per consentire ai giocatori di condividere le proprie sessioni di gioco (es. su Discord o GitHub) o di contribuire attivamente a raffinare i modelli:
+
+1. **Esportatore in-game (Flutter UI / CLI)**:
+   - **Flutter**: Un pulsante **"Esporta Replay"** nella schermata di fine partita o nella cronologia dei replay apre una finestra di dialogo di sistema (File Picker) che consente di salvare una copia del log JSON in una posizione arbitraria scelta dall'utente (es. Desktop, Download).
+   - **CLI**: Comando `--export-replay <path>` o menu interattivo finale per salvare il log in un percorso personalizzato.
+2. **Upload di Contributo Volontario (Opt-in)**:
+   - Un pulsante **"Invia per lo Sviluppo"** permette di caricare il log anonimizzato direttamente nel backend di A.U.R.A.
+   - Prima del caricamento, viene mostrato un popup esplicito con i dettagli dei dati inviati e il consenso GDPR-compliant. Questo log viene poi inserito nella pipeline di curation per il fine-tuning (§16.4).
+
+---
 
 ### 16.4 Fine-Tuning LoRA (Sessioni di Gioco Reali e Dataset)
 

@@ -4,13 +4,13 @@ import 'package:aura_core/aura_core.dart';
 import '../state_management/game_controller_notifier.dart';
 
 class CLIHistoryView extends StatefulWidget {
-  final List<MessageEnvelope> history;
+  final List<ChatMessage> history;
   final bool isLoading;
   final String currentLoadingMessage;
   final Stream<InferenceStep> stepStream;
 
   const CLIHistoryView({
-    Key key,
+    Key? key,
     required this.history,
     required this.isLoading,
     required this.currentLoadingMessage,
@@ -26,13 +26,13 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   
   // Typewriter state variables
   String _typedText = "";
-  Timer _typewriterTimer;
+  Timer? _typewriterTimer;
   int _charIndex = 0;
   String _lastTypewrittenMessageId = "";
   
   // Real-time loading steps stream buffer
   final List<String> _loadingLogs = [];
-  StreamSubscription<InferenceStep> _stepSubscription;
+  StreamSubscription<InferenceStep>? _stepSubscription;
 
   @override
   void initState() {
@@ -59,8 +59,9 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     // Check if there is a new bot message to typewrite
     if (widget.history.isNotEmpty) {
       final lastMsg = widget.history.last;
-      if (lastMsg.role == 'model' && lastMsg.id != _lastTypewrittenMessageId) {
-        _startTypewriter(lastMsg.content, lastMsg.id);
+      final messageKey = "${widget.history.length}_${lastMsg.content.hashCode}";
+      if (lastMsg.role == 'model' && messageKey != _lastTypewrittenMessageId) {
+        _startTypewriter(lastMsg.content, messageKey);
       }
     }
     
@@ -126,11 +127,11 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
             
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 6.0),
-              child: CrossFade(
+              child: AnimatedCrossFade(
                 firstChild: _buildMessageRow(isUser, displayText),
                 secondChild: _buildMessageRow(isUser, msg.content),
                 crossFadeState: isLastModelMsg ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-                duration: Duration.zero,
+                duration: const Duration(milliseconds: 100),
               ),
             );
           }

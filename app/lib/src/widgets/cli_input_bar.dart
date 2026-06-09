@@ -7,7 +7,7 @@ class CLIInputBar extends StatefulWidget {
   final ValueChanged<String> onSubmit;
 
   const CLIInputBar({
-    Key key,
+    Key? key,
     required this.isDisabled,
     required this.onSubmit,
   }) : super(key: key);
@@ -100,9 +100,6 @@ class _CLIInputBarState extends State<CLIInputBar> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isAmberMode = widget.isDisabled;
-    
     // Retro Terminal styles
     final textStyle = TextStyle(
       fontFamily: 'monospace',

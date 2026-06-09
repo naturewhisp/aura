@@ -1,6 +1,6 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:aura_core/aura_core.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../widgets/cli_history_view.dart';
 import '../widgets/cli_input_bar.dart';
@@ -10,7 +10,7 @@ class TerminalScreen extends StatefulWidget {
   final GameControllerNotifier notifier;
 
   const TerminalScreen({
-    Key key,
+    Key? key,
     required this.notifier,
   }) : super(key: key);
 
@@ -19,9 +19,9 @@ class TerminalScreen extends StatefulWidget {
 }
 
 class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProviderStateMixin {
-  FragmentShader _shader;
+  FragmentShader? _shader;
   double _time = 0.0;
-  Timer _timer;
+  Timer? _timer;
   late AnimationController _vignetteController;
 
   @override
@@ -201,15 +201,16 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
   Widget _buildGlitchContainer({required double intensity, required Widget child}) {
     if (intensity <= 0.0) return child;
     
-    if (_shader != null) {
+    final shader = _shader;
+    if (shader != null) {
       return ShaderMask(
         shaderCallback: (rect) {
-          _shader.setFloat(0, rect.width);
-          _shader.setFloat(1, rect.height);
-          _shader.setFloat(2, _time);
-          _shader.setFloat(3, intensity);
+          shader.setFloat(0, rect.width);
+          shader.setFloat(1, rect.height);
+          shader.setFloat(2, _time);
+          shader.setFloat(3, intensity);
           // Shader index 4 is the child texture, injected automatically by ShaderMask
-          return _shader;
+          return shader;
         },
         blendMode: BlendMode.dstIn,
         child: child,

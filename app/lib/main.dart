@@ -34,7 +34,7 @@ class AuraApp extends StatelessWidget {
   final GameControllerNotifier notifier;
 
   const AuraApp({
-    Key key,
+    Key? key,
     required this.notifier,
   }) : super(key: key);
 

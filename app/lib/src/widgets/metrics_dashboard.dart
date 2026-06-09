@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:aura_core/aura_core.dart';
 
 class MetricsDashboard extends StatelessWidget {
-  final GameStateState metrics;
+  final GameMetrics metrics;
 
   const MetricsDashboard({
-    Key key,
+    Key? key,
     required this.metrics,
   }) : super(key: key);
 

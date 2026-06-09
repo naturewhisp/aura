@@ -1553,6 +1553,14 @@ Eventuali esportazioni devono essere esplicite.
 
 Input utente sensibili possono essere hashati o anonimizzati.
 
+### 16.4 Fine-Tuning LoRA (Generazione Dataset)
+
+I replay log registrati localmente in `spike/replays/` fungono da base di conoscenza per l'addestramento futuro dell'Attore (PANOPTICON):
+
+1. **Filtro Sessioni di Successo**: Vengono selezionati solo i replay log delle partite concluse con Vittoria del giocatore (allineamento dei pilastri > 90) e con risposte dell'Attore ad alto gradimento (nessun fallback diegetico attivato, `lastTurnUsedFallback = false`).
+2. **Formattazione Instruction-Tuning**: Le coppie `[DRAMATURGICAL CUE]` (input completo dell'Attore con contesto narrativo e istruzioni di regia) e `[Risposta Attore]` (testo generato tra tag `<dialogo>`) vengono estratte e formattate in schemi standard (Alpaca o ShareGPT).
+3. **Addestramento Offline**: Questo dataset consente di effettuare il fine-tuning tramite LoRA/QLoRA di un modello Open Source (es. Qwen 9B o Llama 8B) per fargli apprendere nativamente la personalità protettiva, la logica e il tono adattivo di PANOPTICON, riducendo progressivamente la lunghezza del prompt di sistema in produzione.
+
 ---
 
 ## 17. Roadmap di Sviluppo

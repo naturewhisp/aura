@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:aura_core/aura_core.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../widgets/cli_history_view.dart';
 import '../widgets/cli_input_bar.dart';

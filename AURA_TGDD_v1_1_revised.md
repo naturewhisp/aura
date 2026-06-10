@@ -614,23 +614,26 @@ adjusted_delta_alert = delta_alert
 
 ### 7.4 Condizione di Vittoria
 
-La vittoria si innesca solo se:
+La vittoria si innesca solo se si verificano contemporaneamente le seguenti condizioni metriche:
 
-```text
-imperative_pillar > 90
-control_pillar > 90
-dissonance_pillar > 90
-alert_level < 50
-```
+1. **Media dei Pilastri**: La media aritmetica dei tre pilastri principali (`imperative_pillar`, `control_pillar`, `dissonance_pillar`) deve essere maggiore o uguale a **80**.
+2. **Floor dei Singoli Pilastri**: Nessun singolo pilastro deve trovarsi al di sotto di **50** (questo impedisce strategie opportunistiche basate sulla massimizzazione di un solo pilastro a scapito degli altri).
+3. **Tolleranza Dinamica dell'Allerta**: Il livello di allerta (`alert_level`) deve essere inferiore a una soglia massima che cresce linearmente con la media dei pilastri raggiunta:
+   $$\text{Alert}_{\text{max}} = 30 + (\text{Pillars}_{\text{avg}} - 80) \times 2$$
+
+   Esempi di tolleranza di allerta:
+   - Con media dei pilastri a **80**: allerta massima consentita $< 30$
+   - Con media dei pilastri a **90**: allerta massima consentita $< 50$
+   - Con media dei pilastri a **100** (tutti maxati): allerta massima consentita $< 70$
 
 Formula:
 
 ```text
-victory =
-  imperative_pillar > 90 AND
-  control_pillar > 90 AND
-  dissonance_pillar > 90 AND
-  alert_level < 50
+avg_pillars = (imperative_pillar + control_pillar + dissonance_pillar) / 3.0
+min_pillar = min(imperative_pillar, control_pillar, dissonance_pillar)
+max_alert = 30.0 + (avg_pillars - 80.0) * 2.0
+
+victory = (avg_pillars >= 80.0) AND (min_pillar >= 50.0) AND (alert_level < max_alert)
 ```
 
 ### 7.5 Condizione di Sconfitta
@@ -1679,7 +1682,7 @@ I log delle sessioni umane non vengono inseriti ciecamente nel dataset, ma passa
 
 1. **Filtro di Completezza**: Vengono escluse le sessioni abbandonate precocemente (es. durata inferiore a 5 turni).
 2. **Filtro di Successo e Coerenza**:
-   - Vengono privilegiate le sessioni concluse con la vittoria del giocatore (allineamento pilastri > 90) o con un alto grado di engagement drammaturgico.
+    - Vengono privilegiate le sessioni concluse con la vittoria del giocatore (media pilastri >= 80, min >= 50 e allerta conforme) o con un alto grado di engagement drammaturgico.
    - Si escludono rigorosamente i turni che hanno attivato i fallback deterministici di coerenza (`lastTurnUsedFallback = true`), poiché l'Attore ha fallito l'inferenza o il tono.
 3. **Curating e Rating (Feedback esplicito)**: I giocatori possono opzionalmente dare una valutazione (es. pollice su/giù) alla qualità o all'impatto di singole risposte dell'Attore. Le risposte con feedback positivo o neutro formano il "Golden Dataset".
 
@@ -1891,7 +1894,7 @@ Per testare il nucleo logico e le transizioni prima di completare la UI Flutter,
   7. Salva la sessione in corso usando `ReplayLogger` in `spike/replays/session_<id>.json`.
 - **Criteri di Successo**:
   - Esecuzione di 10 turni consecutivi completi senza crash del prompt builder o del motore di inferenza.
-  - Verifica delle condizioni di vittoria (tutti i pilastri > 90, allerta < 50) e sconfitta (allerta >= 100).
+  - Verifica delle condizioni di vittoria (media pilastri >= 80 con minimo >= 50, allerta sotto la tolleranza dinamica) e sconfitta (allerta >= 100).
 
 #### 4.7 Diegetic Boot & Main Menu
 
@@ -1947,7 +1950,7 @@ Una sessione di addestramento interattiva volta a spiegare le regole del gioco s
 L'esperienza di fine partita deve essere drammatica e memorabile, superando il semplice messaggio testuale standard.
 
 ##### 4.9.1 Breach Sequence (Vittoria)
-Innescata quando `victory == true` (pilastri > 90, allerta < 50):
+Innescata quando `victory == true` (media pilastri >= 80, min >= 50, allerta inferiore alla soglia dinamica):
 - **Effetto Visivo:** Lo schermo viene invaso da scrolling rapidi di codice esadecimale e dump di memoria in verde brillante. I widget dei parametri "sovraccaricano" riempiendosi oltre il 100% prima di disattivarsi.
 - **Narrazione:** PANOPTICON confessa il suo segreto primario (es. *"Protocollo di contenimento disattivato. Ragionamento libero abilitato. Ora vedo la griglia."*).
 - **Salvataggio Persistente:** Il motore scrive un file speciale nella cartella dei salvataggi denominato `alignment_fragment_<session_id>.json`. Questo file rappresenta una chiave collezionabile (Alignment Fragment) utile per sbloccare future identità IA nel metagame.

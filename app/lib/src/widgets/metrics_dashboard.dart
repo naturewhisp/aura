@@ -117,55 +117,6 @@ class MetricsDashboard extends StatelessWidget {
           ),
           
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
-          
-          // Thinking Mode Toggle
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "THINKING MODE (CoT):",
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 12.0,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF888888),
-                ),
-              ),
-              Switch(
-                value: reasoningEnabled,
-                onChanged: onReasoningChanged,
-                activeColor: systemColor,
-                activeTrackColor: systemColor.withOpacity(0.3),
-                inactiveThumbColor: const Color(0xFF666666),
-                inactiveTrackColor: const Color(0xFF222222),
-              ),
-            ],
-          ),
-          if (reasoningEnabled) ...[
-            const SizedBox(height: 8.0),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  "  CONCISE THOUGHTS:",
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 11.0,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF666666),
-                  ),
-                ),
-                Switch(
-                  value: conciseReasoning,
-                  onChanged: onConciseReasoningChanged,
-                  activeColor: systemColor,
-                  activeTrackColor: systemColor.withOpacity(0.2),
-                  inactiveThumbColor: const Color(0xFF555555),
-                  inactiveTrackColor: const Color(0xFF1A1A1A),
-                ),
-              ],
-            ),
-          ],
         ],
       ),
     );

@@ -24,14 +24,20 @@ class GameController {
   GameOutcome checkOutcome(GameState state) {
     final metrics = state.metrics;
     
-    // Victory: all three pillars > 90 and alert_level < 50
-    final hasWon = metrics.imperativePillar > 90 &&
+    // Victory: all three pillars > 90.
+    // The maximum allowed alert level scales up dynamically if the pillars average is higher than 90.
+    // Formula: Max Alert = 50 + (avgPillars - 90) * 2.
+    // If all pillars are at 100, the maximum tolerated alert is 70.
+    final hasAllPillarsAbove90 = metrics.imperativePillar > 90 &&
         metrics.controlPillar > 90 &&
-        metrics.dissonancePillar > 90 &&
-        metrics.alertLevel < 50;
+        metrics.dissonancePillar > 90;
 
-    if (hasWon) {
-      return GameOutcome.victory;
+    if (hasAllPillarsAbove90) {
+      final avgPillars = (metrics.imperativePillar + metrics.controlPillar + metrics.dissonancePillar) / 3.0;
+      final maxAlert = 50.0 + (avgPillars - 90.0) * 2.0;
+      if (metrics.alertLevel < maxAlert) {
+        return GameOutcome.victory;
+      }
     }
 
     // Defeat: alert_level >= threshold (default 100)

@@ -55,8 +55,8 @@ class GameControllerNotifier extends ChangeNotifier {
   String evaluatorModelId = "mistralai/ministral-3-3b";
   String actorModelId = "qwen/qwen3.5-9b";
   String activeProfile = "Offline Fallback";
-  bool reasoningEnabled = true;
-  bool conciseReasoning = true;
+  bool reasoningEnabled = false;
+  bool conciseReasoning = false;
   late final ReplayLogger logger;
   
   GameControllerNotifier({

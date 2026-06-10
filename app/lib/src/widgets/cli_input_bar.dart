@@ -4,11 +4,13 @@ import 'package:flutter/services.dart';
 /// Interactive retro-terminal input field.
 class CLIInputBar extends StatefulWidget {
   final bool isDisabled;
+  final bool isGameOver;
   final ValueChanged<String> onSubmit;
 
   const CLIInputBar({
     Key? key,
     required this.isDisabled,
+    this.isGameOver = false,
     required this.onSubmit,
   }) : super(key: key);
 
@@ -29,7 +31,7 @@ class _CLIInputBarState extends State<CLIInputBar> {
     super.initState();
     // Auto-focus the input bar when created or updated
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !widget.isDisabled) {
+      if (mounted && !widget.isDisabled && !widget.isGameOver) {
         _focusNode.requestFocus();
       }
     });
@@ -39,7 +41,7 @@ class _CLIInputBarState extends State<CLIInputBar> {
   void didUpdateWidget(covariant CLIInputBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Auto-refocus once inference completes and the input bar is enabled again
-    if (!widget.isDisabled && oldWidget.isDisabled) {
+    if (!widget.isDisabled && !widget.isGameOver && (oldWidget.isDisabled || oldWidget.isGameOver)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _focusNode.requestFocus();
@@ -105,9 +107,11 @@ class _CLIInputBarState extends State<CLIInputBar> {
       fontFamily: 'monospace',
       fontSize: 16.0,
       fontWeight: FontWeight.bold,
-      color: widget.isDisabled 
-          ? Colors.orange.shade700 
-          : const Color(0xFF00FF66), // Phosphor green
+      color: widget.isGameOver
+          ? Colors.red.shade700
+          : widget.isDisabled 
+              ? Colors.orange.shade700 
+              : const Color(0xFF00FF66), // Phosphor green
     );
 
     return Container(
@@ -116,9 +120,11 @@ class _CLIInputBarState extends State<CLIInputBar> {
         color: Colors.black,
         border: Border(
           top: BorderSide(
-            color: widget.isDisabled 
-                ? Colors.orange.shade900.withOpacity(0.5)
-                : const Color(0xFF005522),
+            color: widget.isGameOver
+                ? Colors.red.shade900.withOpacity(0.5)
+                : widget.isDisabled 
+                    ? Colors.orange.shade900.withOpacity(0.5)
+                    : const Color(0xFF005522),
             width: 2.0,
           ),
         ),
@@ -137,14 +143,18 @@ class _CLIInputBarState extends State<CLIInputBar> {
         child: Row(
           children: [
             Text(
-              widget.isDisabled ? "PANOPTICON_SYS> " : "AURA_USER> ",
+              widget.isGameOver
+                  ? "AURA_DISCONNECTED> "
+                  : widget.isDisabled 
+                      ? "PANOPTICON_SYS> " 
+                      : "AURA_USER> ",
               style: textStyle,
             ),
             Expanded(
               child: TextField(
                 controller: _controller,
                 focusNode: _focusNode,
-                enabled: !widget.isDisabled,
+                enabled: !widget.isDisabled && !widget.isGameOver,
                 cursorColor: const Color(0xFF00FF66),
                 style: textStyle,
                 decoration: const InputDecoration(

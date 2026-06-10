@@ -74,6 +74,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
         final state = widget.notifier.gameStateNotifier.value;
         final alert = state.metrics.alertLevel;
         final dissonance = state.metrics.dissonancePillar;
+        final outcome = widget.notifier.controller.checkOutcome(state);
+        final isGameOver = outcome != GameOutcome.ongoing;
         
         // Glitch intensity maps to dissonance above 50
         final double glitchIntensity = dissonance > 70 
@@ -110,6 +112,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                               ),
                               CLIInputBar(
                                 isDisabled: widget.notifier.isLoading,
+                                isGameOver: isGameOver,
                                 onSubmit: (input) => widget.notifier.submitTurn(input),
                               ),
                             ],
@@ -169,6 +172,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                         ),
                         CLIInputBar(
                           isDisabled: widget.notifier.isLoading,
+                          isGameOver: isGameOver,
                           onSubmit: (input) => widget.notifier.submitTurn(input),
                         ),
                       ],

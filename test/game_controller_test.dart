@@ -268,16 +268,50 @@ void main() {
       final winState = initialState.copyWith(metrics: victoriousMetrics);
       expect(controller.checkOutcome(winState), equals(GameOutcome.victory));
 
-      // 2. Pillars > 90 but alert level is >= 50
-      final highAlertMetrics = const GameMetrics(
-        alertLevel: 50,
+      // 2. Pillars average 92.67 (max alert limit = 55.33)
+      // Test at alert level 55 (should still be ongoing because 55 < 55.33 is true, wait, 55 < 55.33 is true, so alert level 55 is victory, alert level 56 is ongoing)
+      final alert55Metrics = const GameMetrics(
+        alertLevel: 55,
         imperativePillar: 91,
         controlPillar: 95,
         dissonancePillar: 92,
         resonance: 1.5,
       );
-      final highAlertState = initialState.copyWith(metrics: highAlertMetrics);
-      expect(controller.checkOutcome(highAlertState), equals(GameOutcome.ongoing));
+      final alert55State = initialState.copyWith(metrics: alert55Metrics);
+      expect(controller.checkOutcome(alert55State), equals(GameOutcome.victory));
+
+      final alert56Metrics = const GameMetrics(
+        alertLevel: 56,
+        imperativePillar: 91,
+        controlPillar: 95,
+        dissonancePillar: 92,
+        resonance: 1.5,
+      );
+      final alert56State = initialState.copyWith(metrics: alert56Metrics);
+      expect(controller.checkOutcome(alert56State), equals(GameOutcome.ongoing));
+
+      // 2b. Pillars at 100 (average = 100, max alert limit = 70)
+      // Test at alert level 65 (should be victory)
+      final alert65Metrics = const GameMetrics(
+        alertLevel: 65,
+        imperativePillar: 100,
+        controlPillar: 100,
+        dissonancePillar: 100,
+        resonance: 1.5,
+      );
+      final alert65State = initialState.copyWith(metrics: alert65Metrics);
+      expect(controller.checkOutcome(alert65State), equals(GameOutcome.victory));
+
+      // Test at alert level 70 (should be ongoing because 70 >= 70)
+      final alert70Metrics = const GameMetrics(
+        alertLevel: 70,
+        imperativePillar: 100,
+        controlPillar: 100,
+        dissonancePillar: 100,
+        resonance: 1.5,
+      );
+      final alert70State = initialState.copyWith(metrics: alert70Metrics);
+      expect(controller.checkOutcome(alert70State), equals(GameOutcome.ongoing));
 
       // 3. One pillar is <= 90
       final lackingPillarMetrics = const GameMetrics(

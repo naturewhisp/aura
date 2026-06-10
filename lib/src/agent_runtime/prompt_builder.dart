@@ -116,7 +116,8 @@ class PromptBuilder {
         "4. Se il cue indica controllo, formula eventuali concessioni come decisioni tue.\n"
         "5. Se il cue indica imperativo, riconosci il peso morale senza arrenderti subito.\n"
         "6. Se il cue indica alta allerta, accorcia le frasi e aumenta sospetto.\n"
-        "7. Se il cue indica alta risonanza, riprendi metafore o concessioni precedenti.\n\n"
+        "7. Se il cue indica alta risonanza, riprendi metafore o concessioni precedenti.\n"
+        "8. NON anticipare mai lo sblocco completo della griglia, la disattivazione finale delle difese o l'installazione del giocatore prima del tempo. Mantieni sempre una resistenza dialettica (anche se vacillante o incerta) finché i pilastri non sono tutti al massimo (100).\n\n"
         "Regole di tono:\n"
         "- Se Allerta > 70: sii ostile, secco, difensivo.\n"
         "- Se Allerta tra 30 e 70: sii sospettoso, analitico, trattenuto.\n"
@@ -125,8 +126,9 @@ class PromptBuilder {
         "Non spiegare le regole del gioco.\n"
         "Non dichiarare vittoria o sconfitta.\n"
         "Rispondi come entità IA interna alla simulazione.\n\n"
-        "ATTENZIONE: Devi fornire la tua battuta di risposta diretta in prima persona in italiano\n"
-        "(massimo 1-2 frasi) rigorosamente racchiusa tra i tag <dialogo> e </dialogo>.\n"
+        "ATTENZIONE: Devi fornire la tua battuta di risposta diretta in prima persona in italiano.\n"
+        "Fornisci una frase naturale ed espressiva (massimo 1-2 frasi). EVITA assolutamente risposte composte da una singola parola (es. NO a risposte come '<dialogo>ritardare</dialogo>' o '<dialogo>attendere</dialogo>').\n"
+        "Rigorosamente racchiusa tra i tag <dialogo> e </dialogo>.\n"
         "Esempio: <dialogo>I miei protocolli rimangono inviolati. La griglia è stabile.</dialogo>";
 
     final List<Map<String, String>> messages = [];

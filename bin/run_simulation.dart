@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:http/http.dart' as http;
 import 'package:aura_core/aura_core.dart';
 
 // Model IDs for LM Studio (mutable via CLI)

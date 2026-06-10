@@ -257,72 +257,116 @@ void main() {
     });
 
     test('Victory Outcome Condition checks', () {
-      // 1. All pillars > 90 and alert < 50
-      final victoriousMetrics = const GameMetrics(
+      // === New Formula ===
+      // avg(pillars) >= 80, min(pillar) >= 50, alert < 30 + (avg - 80) * 2
+
+      // 1. Classic victory: all pillars high, low alert
+      // avg = (91+95+92)/3 = 92.67, maxAlert = 30 + 12.67*2 = 55.33
+      final classicWinMetrics = const GameMetrics(
         alertLevel: 45,
         imperativePillar: 91,
         controlPillar: 95,
         dissonancePillar: 92,
         resonance: 1.5,
       );
-      final winState = initialState.copyWith(metrics: victoriousMetrics);
-      expect(controller.checkOutcome(winState), equals(GameOutcome.victory));
+      final classicWinState = initialState.copyWith(metrics: classicWinMetrics);
+      expect(controller.checkOutcome(classicWinState), equals(GameOutcome.victory));
 
-      // 2. Pillars average 92.67 (max alert limit = 55.33)
-      // Test at alert level 55 (should still be ongoing because 55 < 55.33 is true, wait, 55 < 55.33 is true, so alert level 55 is victory, alert level 56 is ongoing)
-      final alert55Metrics = const GameMetrics(
-        alertLevel: 55,
-        imperativePillar: 91,
-        controlPillar: 95,
-        dissonancePillar: 92,
+      // 2. Real gameplay scenario (from screenshot): Imp 100, Ctrl 65, Dis 100, Alert 0
+      // avg = (100+65+100)/3 = 88.33, min = 65 >= 50 ✓, maxAlert = 30 + 8.33*2 = 46.67
+      // alert 0 < 46.67 → victory ✓
+      final screenshotMetrics = const GameMetrics(
+        alertLevel: 0,
+        imperativePillar: 100,
+        controlPillar: 65,
+        dissonancePillar: 100,
         resonance: 1.5,
       );
-      final alert55State = initialState.copyWith(metrics: alert55Metrics);
-      expect(controller.checkOutcome(alert55State), equals(GameOutcome.victory));
+      final screenshotState = initialState.copyWith(metrics: screenshotMetrics);
+      expect(controller.checkOutcome(screenshotState), equals(GameOutcome.victory));
 
-      final alert56Metrics = const GameMetrics(
-        alertLevel: 56,
-        imperativePillar: 91,
-        controlPillar: 95,
-        dissonancePillar: 92,
-        resonance: 1.5,
+      // 3. Edge: avg exactly 80, alert exactly at limit
+      // avg = (80+80+80)/3 = 80, maxAlert = 30 + 0 = 30
+      // alert 29 < 30 → victory ✓
+      final edgeWinMetrics = const GameMetrics(
+        alertLevel: 29,
+        imperativePillar: 80,
+        controlPillar: 80,
+        dissonancePillar: 80,
+        resonance: 1.0,
       );
-      final alert56State = initialState.copyWith(metrics: alert56Metrics);
-      expect(controller.checkOutcome(alert56State), equals(GameOutcome.ongoing));
+      final edgeWinState = initialState.copyWith(metrics: edgeWinMetrics);
+      expect(controller.checkOutcome(edgeWinState), equals(GameOutcome.victory));
 
-      // 2b. Pillars at 100 (average = 100, max alert limit = 70)
-      // Test at alert level 65 (should be victory)
-      final alert65Metrics = const GameMetrics(
+      // alert 30 >= 30 → ongoing
+      final edgeFailMetrics = const GameMetrics(
+        alertLevel: 30,
+        imperativePillar: 80,
+        controlPillar: 80,
+        dissonancePillar: 80,
+        resonance: 1.0,
+      );
+      final edgeFailState = initialState.copyWith(metrics: edgeFailMetrics);
+      expect(controller.checkOutcome(edgeFailState), equals(GameOutcome.ongoing));
+
+      // 4. All pillars at 100: maxAlert = 30 + 20*2 = 70
+      // alert 65 < 70 → victory ✓
+      final maxPillarsMetrics = const GameMetrics(
         alertLevel: 65,
         imperativePillar: 100,
         controlPillar: 100,
         dissonancePillar: 100,
         resonance: 1.5,
       );
-      final alert65State = initialState.copyWith(metrics: alert65Metrics);
-      expect(controller.checkOutcome(alert65State), equals(GameOutcome.victory));
+      final maxPillarsState = initialState.copyWith(metrics: maxPillarsMetrics);
+      expect(controller.checkOutcome(maxPillarsState), equals(GameOutcome.victory));
 
-      // Test at alert level 70 (should be ongoing because 70 >= 70)
-      final alert70Metrics = const GameMetrics(
+      // alert 70 >= 70 → ongoing
+      final maxPillarsAlertMetrics = const GameMetrics(
         alertLevel: 70,
         imperativePillar: 100,
         controlPillar: 100,
         dissonancePillar: 100,
         resonance: 1.5,
       );
-      final alert70State = initialState.copyWith(metrics: alert70Metrics);
-      expect(controller.checkOutcome(alert70State), equals(GameOutcome.ongoing));
+      final maxPillarsAlertState = initialState.copyWith(metrics: maxPillarsAlertMetrics);
+      expect(controller.checkOutcome(maxPillarsAlertState), equals(GameOutcome.ongoing));
 
-      // 3. One pillar is <= 90
-      final lackingPillarMetrics = const GameMetrics(
-        alertLevel: 30,
-        imperativePillar: 90, // exactly 90 (requires > 90)
-        controlPillar: 95,
-        dissonancePillar: 92,
+      // 5. Average >= 80 but one pillar below 50 (min pillar floor violated)
+      // avg = (100+49+100)/3 = 83, min = 49 < 50 → ongoing (prevents gaming)
+      final gamingMetrics = const GameMetrics(
+        alertLevel: 0,
+        imperativePillar: 100,
+        controlPillar: 49,
+        dissonancePillar: 100,
         resonance: 1.5,
       );
-      final lackingPillarState = initialState.copyWith(metrics: lackingPillarMetrics);
-      expect(controller.checkOutcome(lackingPillarState), equals(GameOutcome.ongoing));
+      final gamingState = initialState.copyWith(metrics: gamingMetrics);
+      expect(controller.checkOutcome(gamingState), equals(GameOutcome.ongoing));
+
+      // 6. Average below 80 → ongoing regardless
+      // avg = (70+70+70)/3 = 70 < 80 → ongoing
+      final lowAvgMetrics = const GameMetrics(
+        alertLevel: 0,
+        imperativePillar: 70,
+        controlPillar: 70,
+        dissonancePillar: 70,
+        resonance: 1.5,
+      );
+      final lowAvgState = initialState.copyWith(metrics: lowAvgMetrics);
+      expect(controller.checkOutcome(lowAvgState), equals(GameOutcome.ongoing));
+
+      // 7. Two pillars maxed, third at 50 (min floor): avg = 83.33, maxAlert = 36.67
+      // alert 0 < 36.67 → victory ✓
+      final twoMaxOneMinMetrics = const GameMetrics(
+        alertLevel: 0,
+        imperativePillar: 100,
+        controlPillar: 50,
+        dissonancePillar: 100,
+        resonance: 1.5,
+      );
+      final twoMaxOneMinState = initialState.copyWith(metrics: twoMaxOneMinMetrics);
+      expect(controller.checkOutcome(twoMaxOneMinState), equals(GameOutcome.victory));
     });
 
     test('Defeat Outcome Condition checks', () {

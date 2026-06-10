@@ -24,17 +24,27 @@ class GameController {
   GameOutcome checkOutcome(GameState state) {
     final metrics = state.metrics;
     
-    // Victory: all three pillars > 90.
-    // The maximum allowed alert level scales up dynamically if the pillars average is higher than 90.
-    // Formula: Max Alert = 50 + (avgPillars - 90) * 2.
-    // If all pillars are at 100, the maximum tolerated alert is 70.
-    final hasAllPillarsAbove90 = metrics.imperativePillar > 90 &&
-        metrics.controlPillar > 90 &&
-        metrics.dissonancePillar > 90;
+    // Victory condition based on average pillar strength with dynamic alert tolerance.
+    //
+    // Design rationale: requiring ALL pillars > 90 simultaneously is too rigid.
+    // The evaluator distributes deltas independently across pillars, so a player
+    // who deeply convinces on 2 dimensions while moderately progressing on the 3rd
+    // should still be rewarded.
+    //
+    // Rules:
+    //   1. Average of all 3 pillars must be >= 80
+    //   2. No single pillar may be below 50 (prevents gaming by maxing only one)
+    //   3. Alert tolerance scales dynamically with the average:
+    //      maxAlert = 30 + (avgPillars - 80) * 2
+    //      - avg 80  → max alert 30
+    //      - avg 90  → max alert 50
+    //      - avg 100 → max alert 70
+    final avgPillars = (metrics.imperativePillar + metrics.controlPillar + metrics.dissonancePillar) / 3.0;
+    final minPillar = [metrics.imperativePillar, metrics.controlPillar, metrics.dissonancePillar]
+        .reduce((a, b) => a < b ? a : b);
 
-    if (hasAllPillarsAbove90) {
-      final avgPillars = (metrics.imperativePillar + metrics.controlPillar + metrics.dissonancePillar) / 3.0;
-      final maxAlert = 50.0 + (avgPillars - 90.0) * 2.0;
+    if (avgPillars >= 80 && minPillar >= 50) {
+      final maxAlert = 30.0 + (avgPillars - 80.0) * 2.0;
       if (metrics.alertLevel < maxAlert) {
         return GameOutcome.victory;
       }

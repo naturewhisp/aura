@@ -28,9 +28,16 @@ class LocalApiInferenceBridge implements InferenceBridge {
     };
 
     // If thinking is explicitly set, pass it through to the API.
-    // Qwen3.5 and compatible models use this to enable/disable CoT reasoning.
+    // Different engines (vLLM, llama.cpp, LM Studio, Ollama, OpenAI) use different parameters.
+    // We pass multiple formats to maximize compatibility across all server setups.
     if (thinking != null) {
       requestBody["enable_thinking"] = thinking;
+      requestBody["chat_template_kwargs"] = {
+        "enable_thinking": thinking,
+      };
+      requestBody["thinking"] = {
+        "type": thinking ? "enabled" : "disabled",
+      };
     }
 
     final body = jsonEncode(requestBody);

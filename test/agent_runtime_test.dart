@@ -440,6 +440,13 @@ void main() {
         final clean = bridge.cleanLLMResponseForTesting(raw);
         expect(clean, contains('decido strategicamente di concederti uno spazio limitato di dialogo'));
       });
+
+      test('Bypasses reasoning check completely if isNativeReasoningPresent is true', () {
+        final raw = '<dialogo>This is option one, which is strategic.</dialogo>';
+        expect(() => bridge.cleanLLMResponseForTesting(raw, isNativeReasoningPresent: false), throwsException);
+        final clean = bridge.cleanLLMResponseForTesting(raw, isNativeReasoningPresent: true);
+        expect(clean, equals('This is option one, which is strategic.'));
+      });
     });
 
     group('Model Catalog & Router Unit Tests -', () {

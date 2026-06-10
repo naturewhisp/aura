@@ -59,13 +59,14 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     var content = message['content'] as String? ?? '';
     final reasoning = message['reasoning_content'] as String? ?? '';
+    final hasNativeReasoning = reasoning.trim().isNotEmpty;
 
     // If content is empty but reasoning exists, try to extract usable dialogue
     // from the reasoning. Thinking models (Qwen3.5) often compose the final
     // response inside their chain-of-thought before it gets placed in content.
     try {
       if (content.trim().isEmpty && reasoning.isNotEmpty) {
-        final extractedFromReasoning = _cleanLLMResponse(reasoning);
+        final extractedFromReasoning = _cleanLLMResponse(reasoning, isNativeReasoningPresent: false);
         if (extractedFromReasoning.isNotEmpty) {
           return extractedFromReasoning;
         }
@@ -81,7 +82,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
         throw Exception("Generation truncated due to max tokens limit (no usable content).");
       }
 
-      var finalResponse = _cleanLLMResponse(content);
+      var finalResponse = _cleanLLMResponse(content, isNativeReasoningPresent: hasNativeReasoning);
 
       if (finalResponse.isEmpty) {
         throw Exception("Empty response generated or reasoning-only output truncated.");
@@ -114,11 +115,16 @@ class LocalApiInferenceBridge implements InferenceBridge {
   }
 
   @visibleForTesting
-  String cleanLLMResponseForTesting(String response) {
-    return _cleanLLMResponse(response);
+  String cleanLLMResponseForTesting(String response, {bool isNativeReasoningPresent = false}) {
+    return _cleanLLMResponse(response, isNativeReasoningPresent: isNativeReasoningPresent);
   }
 
-  String _cleanLLMResponse(String response) {
+  String _cleanLLMResponse(String response, {bool isNativeReasoningPresent = false}) {
+    bool checkReasoning(String text) {
+      if (isNativeReasoningPresent) return false;
+      return _isReasoning(text);
+    }
+
     // 1. Search for all fully closed <dialogo>...</dialogo> or <dialogue>...</dialogue> blocks
     // and take the LAST one that does NOT contain reasoning and is NOT the example prompt.
     final fullRegex = RegExp(r'<(?:dialogo|dialogue)>([\s\S]*?)</(?:dialogo|dialogue)>', caseSensitive: false);
@@ -126,7 +132,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
     for (var i = matches.length - 1; i >= 0; i--) {
       final extracted = matches[i].group(1)?.trim();
       if (extracted != null && extracted.isNotEmpty && extracted.length >= 4) {
-        if (!_isReasoning(extracted) && !_isExamplePrompt(extracted)) {
+        if (!checkReasoning(extracted) && !_isExamplePrompt(extracted)) {
           return extracted;
         }
       }
@@ -144,7 +150,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
         final tagLength = firstMatch.end;
         var content = matchString.substring(tagLength).trim();
         content = content.replaceAll(RegExp(r'</(?:dialogo|dialogue)>', caseSensitive: false), '').trim();
-        if (content.isNotEmpty && content.length >= 4 && !_isReasoning(content) && !_isExamplePrompt(content)) {
+        if (content.isNotEmpty && content.length >= 4 && !checkReasoning(content) && !_isExamplePrompt(content)) {
           return content;
         }
       }
@@ -167,7 +173,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     // Strip leading/trailing quotes before checking reasoning
     var strippedCleaned = cleaned.replaceAll(RegExp(r'^["“’‘”]|["“’‘”]$'), '').trim();
-    if (!_isReasoning(strippedCleaned) && !_isExamplePrompt(strippedCleaned)) {
+    if (!checkReasoning(strippedCleaned) && !_isExamplePrompt(strippedCleaned)) {
       return strippedCleaned;
     }
 
@@ -178,7 +184,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
       final extracted = match.group(1)?.trim();
       if (extracted != null && extracted.isNotEmpty) {
         final stripped = extracted.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-        if (stripped.isNotEmpty && !_isReasoning(stripped) && !_isExamplePrompt(stripped)) {
+        if (stripped.isNotEmpty && !checkReasoning(stripped) && !_isExamplePrompt(stripped)) {
           return stripped;
         }
       }
@@ -192,7 +198,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
       final extracted = lastMatch.group(1)?.trim();
       if (extracted != null && extracted.isNotEmpty) {
         final stripped = extracted.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-        if (stripped.isNotEmpty && !_isReasoning(stripped) && !_isExamplePrompt(stripped)) {
+        if (stripped.isNotEmpty && !checkReasoning(stripped) && !_isExamplePrompt(stripped)) {
           return stripped;
         }
       }
@@ -213,7 +219,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
         final lastMatch = matches.last;
         var extracted = lastMatch.group(1)?.trim() ?? '';
         extracted = extracted.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-        if (extracted.isNotEmpty && !_isReasoning(extracted) && !_isExamplePrompt(extracted)) {
+        if (extracted.isNotEmpty && !checkReasoning(extracted) && !_isExamplePrompt(extracted)) {
           return extracted;
         }
       }
@@ -227,7 +233,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
       final cleanText = afterLastHeader.replaceAll(RegExp(r'^\d+\.\s+\*\*(?:[^*]+)\*\*:\s*', caseSensitive: false), '').trim();
       if (cleanText.isNotEmpty) {
         final stripped = cleanText.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-        if (stripped.isNotEmpty && !stripped.contains('*') && !_isReasoning(stripped) && !_isExamplePrompt(stripped)) {
+        if (stripped.isNotEmpty && !stripped.contains('*') && !checkReasoning(stripped) && !_isExamplePrompt(stripped)) {
           return stripped;
         }
       }
@@ -242,13 +248,13 @@ class LocalApiInferenceBridge implements InferenceBridge {
         continue;
       }
       final cleanLine = line.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-      if (cleanLine.isNotEmpty && cleanLine.length > 5 && !_isReasoning(cleanLine) && !_isExamplePrompt(cleanLine)) {
+      if (cleanLine.isNotEmpty && cleanLine.length > 5 && !checkReasoning(cleanLine) && !_isExamplePrompt(cleanLine)) {
         return cleanLine;
       }
     }
 
     // If it still contains reasoning-like structures, throw an exception
-    if (_isReasoning(strippedCleaned) || _isExamplePrompt(strippedCleaned)) {
+    if (checkReasoning(strippedCleaned) || _isExamplePrompt(strippedCleaned)) {
       throw Exception("Incomplete model response (reasoning only, no dialogue generated).");
     }
 

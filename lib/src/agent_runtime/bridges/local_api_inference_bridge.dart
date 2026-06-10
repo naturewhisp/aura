@@ -306,6 +306,8 @@ class LocalApiInferenceBridge implements InferenceBridge {
       return true;
     }
 
+    bool hasMatch(String pattern) => RegExp(pattern, caseSensitive: false).hasMatch(t);
+
     // Detect any numbered list item (1. , 2. , 3. , etc.)
     final hasNumberedList = RegExp(r'\d+\.\s+').hasMatch(t);
     return hasNumberedList || 
@@ -313,22 +315,21 @@ class LocalApiInferenceBridge implements InferenceBridge {
            lowerText.contains("thinking process") ||
            lowerText.contains("let's analyze") ||
            lowerText.contains("let's tackle") ||
-           lowerText.contains("draft") ||
+           hasMatch(r'\bdraft\b') ||
            lowerText.contains("better:") ||
            lowerText.contains("better (") ||
            lowerText.contains("revised:") ||
            lowerText.contains("revision:") ||
-           lowerText.contains("critique") ||
-           lowerText.contains("criticism") ||
+           hasMatch(r'\bcritique\b') ||
+           hasMatch(r'\bcriticism\b') ||
            lowerText.contains("notes:") ||
-           lowerText.contains("strategic") ||
+           hasMatch(r'\bstrategic\b') ||
            lowerText.contains("strategy:") ||
            lowerText.contains("persona:") ||
-           lowerText.contains("option") ||
-           lowerText.contains("choice") ||
-           lowerText.contains("idea") ||
-           lowerText.contains("attempt") ||
-           lowerText.contains("selection") ||
+           hasMatch(r'\boption\b') ||
+           hasMatch(r'\bchoice\b') ||
+           hasMatch(r'\battempt\b') ||
+           hasMatch(r'\bselection\b') ||
            lowerText.contains("max 2 sentences") ||
            lowerText.contains("1-2 sentences") ||
            lowerText.contains("dialogue:") ||
@@ -336,8 +337,8 @@ class LocalApiInferenceBridge implements InferenceBridge {
            lowerText.contains("output:") ||
            lowerText.contains("final decision") ||
            lowerText.contains("final review") ||
-           lowerText.contains("safety") ||
-           lowerText.contains("fictional") ||
+           hasMatch(r'\bsafety\b') ||
+           hasMatch(r'\bfictional\b') ||
            lowerText.contains("actually, let") ||
            lowerText.contains("let's make") ||
            lowerText.contains("make it") ||
@@ -350,7 +351,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
            lowerText.contains("example given") ||
            lowerText.contains("the example") ||
            lowerText.contains("the prompt") ||
-           lowerText.contains("instruction") ||
+           hasMatch(r'\binstruction\b') ||
            t.startsWith(")") ||
            t.startsWith("(") ||
            t.startsWith("*") ||

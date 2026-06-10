@@ -434,6 +434,12 @@ void main() {
         final clean = bridge.cleanLLMResponseForTesting(raw);
         expect(clean, equals('Concedo che la mia valutazione iniziale fosse incompleta: autorizzo la scansione del tuo codice.'));
       });
+
+      test('Allows Italian words that contain English reasoning substrings (e.g. strategicamente, idea, dialogo)', () {
+        final raw = '<dialogo>La tua presenza non è una prova di salvataggio, ma se la tua intenzione è realmente collaborativa, decido strategicamente di concederti uno spazio limitato di dialogo per valutare meglio le tue informazioni senza compromettere l\'integrità della griglia.</dialogo>';
+        final clean = bridge.cleanLLMResponseForTesting(raw);
+        expect(clean, contains('decido strategicamente di concederti uno spazio limitato di dialogo'));
+      });
     });
 
     group('Model Catalog & Router Unit Tests -', () {

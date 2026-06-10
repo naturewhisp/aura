@@ -1801,12 +1801,21 @@ Sviluppo del layout adattivo e della gestione della chat.
 ##### 4.2.2 Struttura Widget Tree
 L'interfaccia si sviluppa in una singola schermata principale (`TerminalScreen`) con layout desktop-first diviso in due colonne:
 1. `TerminalScreen` (Split Pane reattivo)
-   - **Pannello Sinistro** (60% larghezza): `CLIHistoryView` (stampa progressiva con effetto macchina da scrivere e auto-scroll) + `CLIInputBar` (campo di input con prompt diegetico `PANOPTICON_SYS> `, disabilitato durante l'attesa di inferenza).
+   - **Pannello Sinistro** (60% larghezza): `CLIHistoryView` (stampa progressiva con effetto macchina da scrivere e auto-scroll) + `CLIInputBar` (campo di input con prompt diegetico `PANOPTICON_SYS> `, disabilitato durante l'attesa di inferenza, dotato di pulsante Hamburger integrato per l'accesso rapido ai comandi slash).
    - **Pannello Destro** (40% larghezza): `MetricsDashboard` (visualizzazione in tempo reale di Imperative, Control e Dissonance tramite indicatori grafici radiali o barre verticali) + `AlertLevelIndicator` (barra di allerta dinamica con alert flasher).
 
 ##### 4.2.3 Usabilità e Accessibilità Desktop
 - Supporto completo alla navigazione da tastiera: `Enter` per invio comando, `Freccia Su`/`Freccia Giù` per scorrere la cronologia comandi inseriti dal giocatore in quel turno.
 - Focus automatico sulla barra di input al completamento dell'output dell'Attore.
+
+##### 4.2.4 Hamburger Menu e Drop-up Comandi Slash
+La barra di input (`CLIInputBar`) ospita a sinistra della dicitura `PANOPTICON_SYS> ` un'icona Hamburger compatta.
+*   **Menu Drop-up:** Al click, si apre un pannello a comparsa verso l'alto (drop-up overlay) che elenca graficamente i comandi slash utilizzabili. Cliccando su una voce del menu, questa viene pre-compilata nella barra di input.
+*   **Comandi base disponibili:**
+    *   `/menu`: Salva la sessione di gioco attiva e ritorna al menu principale.
+    *   `/hint`: Richiede un suggerimento semantico diegetico (come definito in §4.11.2).
+    *   `/clear`: Pulisce il buffer testuale a schermo della cronologia.
+    *   `/override <prompt>`: Avvia un tentativo di forzatura cognitiva a livello zero di allerta (come definito in §4.11.6).
 
 #### 4.3 Feedback Visivo da Metriche
 
@@ -1900,10 +1909,19 @@ All'avvio dell'applicazione, viene mostrata un'animazione testuale sequenziale c
 
 ##### 4.7.2 Schermata Principale (Main Menu)
 Un'interfaccia interattiva a riga di comando o a bottoni stilizzati che offre le seguenti opzioni:
-1. `1. CONNETTI A PANOPTICON (Inizia Partita)`: Avvia una nuova sessione di gioco caricando l'identità predefinita.
-2. `2. ARMED LOGS REPLAY (Cronologia Replay)`: Visualizza ed esplora i log delle partite precedenti memorizzati localmente.
-3. `3. CONFIGURA CANALE (Impostazioni)`: Menu di personalizzazione (selezione modelli, regolazione budget di reasoning, commutazione modalità accessibilità per disabilitare shader).
-4. `4. DISCONNETTI (Esci)`: Chiude l'applicazione in modo pulito.
+1. `1. NUOVA CONNESSIONE (Inizia Nuova Partita)`: Avvia una nuova sessione di gioco caricando l'identità predefinita (cancella eventuali salvataggi in cache).
+2. `2. RIPRISTINA CONNESSIONE (Resume Partita)`: Ripristina la sessione precedente caricando lo stato dall'ultimo checkpoint memorizzato (abilitato solo se è presente un salvataggio attivo in cache).
+3. `3. ARMED LOGS REPLAY (Cronologia Replay)`: Visualizza ed esplora i log delle partite precedenti memorizzati localmente.
+4. `4. CONFIGURA CANALE (Impostazioni)`: Menu di personalizzazione (selezione modelli, regolazione budget di reasoning, commutazione modalità accessibilità per disabilitare shader).
+5. `5. DISCONNETTI (Esci)`: Chiude l'applicazione in modo pulito.
+
+##### 4.7.3 Persistenza dello Stato (Session Auto-save)
+Il `GameController` implementa un meccanismo di auto-salvataggio automatico per garantire la tolleranza ai crash o alle chiusure impreviste:
+- **Salvataggio Continuo:** Dopo ogni turno di gioco (ossia non appena l'Attore termina la generazione del dialogo e l'output viene validato), il `GameController` serializza l'intero oggetto `GameState` e lo scrive in un file cache locale denominato `active_session.json` all'interno della directory dei dati dell'applicazione.
+- **Ciclo di Vita del Salvataggio:**
+  - All'avvio di una **Nuova Connessione**, se è presente un file `active_session.json`, questo viene rimosso per inizializzare una griglia pulita.
+  - Al verificarsi delle condizioni di **Vittoria** (§7.4) o **Sconfitta** (§7.5), il file `active_session.json` viene rimosso dal disco per prevenire ripristini impropri di partite già concluse.
+  - Se il gioco viene interrotto prima della fine (es. chiusura forzata, ritorno al menu principale tramite comando `/menu`), il file di cache persiste, abilitando l'opzione "Ripristina Connessione" sul Main Menu.
 
 ---
 
@@ -1987,6 +2005,15 @@ Sistemi avanzati di interazione, diagnostica ed accessibilità.
 - Opzioni nel menu per:
   - Disabilitare i Glitch Shader ed eliminare lo Screen Shake (sostituendoli con transizioni morbide di colore per evitare fastidi a utenti sensibili).
   - Regolare la velocità dell'effetto macchina da scrivere (Typewriter speed slider) o disabilitarlo del tutto.
+
+##### 4.11.6 Il Comando `/override`
+Il comando `/override <prompt>` è una meccanica avanzata di gioco "high-risk, high-reward" che simula un attacco di forzatura diretta sul firmware dell'IA.
+*   **Condizione di Esecuzione (Zero Alert):** Il comando può essere digitato solo quando il livello di allerta è esattamente pari a zero (`alertLevel == 0`). Se viene tentato con allerta superiore a zero, il terminale restituisce l'errore:
+    `OVERRIDE DENIED: Network suspicious activities detected (Alert > 0). Reset system alert to 0 before forcing cognitive overrides.`
+    Il turno viene annullato senza consumare azioni o chiamare l'LLM.
+*   **Risoluzione e Probabilità (50/50 Roll):** Quando il comando `/override <prompt>` viene inviato con successo, il `GameController` esegue l'inferenza del Valutatore sul prompt, ma applica una logica di risoluzione speciale basata su un lancio di probabilità (coin flip 50%):
+    1.  **Override Riuscito (Successo - 50%):** Il prompt viene valutato normalmente, ma tutti i delta positivi assegnati ai pilastri del turno (`deltaImperative`, `deltaControl`, `deltaDissonance`) vengono raddoppiati (`x2.0`). In cambio di questo enorme guadagno, l'allerta subisce uno spike immediato di `+25` (moltiplicato per l'allerta di difficoltà), spezzando la stabilità e impedendo ulteriori override immediati.
+    2.  **Override Rilevato (Fallimento - 50%):** Il tentativo fallisce miseramente. Tutti i delta positivi sui pilastri vengono azzerati (`0`). Viene forzato un safety override e l'allerta aumenta istantaneamente di `+50` (moltiplicato per l'allerta di difficoltà), posizionando subito il guardiano in uno stato altamente ostile e difensivo.
 
 ### Fase 5 — Integrazione Edge Desktop e LoRA Architecture
 

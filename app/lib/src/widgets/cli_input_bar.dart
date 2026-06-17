@@ -142,6 +142,66 @@ class _CLIInputBarState extends State<CLIInputBar> {
         },
         child: Row(
           children: [
+            if (!widget.isGameOver) ...[
+              Theme(
+                data: Theme.of(context).copyWith(
+                  cardColor: Colors.black,
+                ),
+                child: PopupMenuButton<String>(
+                  enabled: !widget.isDisabled,
+                  icon: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: widget.isDisabled ? const Color(0xFF005522) : const Color(0xFF00FF66),
+                        width: 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      "[=]",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: widget.isDisabled ? const Color(0xFF005522) : const Color(0xFF00FF66),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12.0,
+                      ),
+                    ),
+                  ),
+                  tooltip: "Comandi terminale",
+                  onSelected: (cmd) {
+                    if (cmd == "/menu") {
+                      _controller.text = "/menu";
+                      _handleSubmit();
+                    } else if (cmd == "/override") {
+                      setState(() {
+                        _controller.text = "/override ";
+                        _focusNode.requestFocus();
+                        _controller.selection = TextSelection.fromPosition(
+                          TextPosition(offset: _controller.text.length),
+                        );
+                      });
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: "/menu",
+                      child: Text(
+                        "/menu  [Menu Principale]",
+                        style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF66)),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: "/override",
+                      child: Text(
+                        "/override <prompt> [Forza griglia]",
+                        style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF66)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8.0),
+            ],
             Text(
               widget.isGameOver
                   ? "AURA_DISCONNECTED> "

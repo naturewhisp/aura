@@ -67,6 +67,16 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     super.dispose();
   }
 
+  void _handleInput(String input) {
+    if (input.trim() == "/menu") {
+      widget.notifier.saveActiveSession().then((_) {
+        widget.notifier.switchScreen("menu");
+      });
+    } else {
+      widget.notifier.submitTurn(input);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -114,7 +124,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                               CLIInputBar(
                                 isDisabled: widget.notifier.isLoading,
                                 isGameOver: isGameOver,
-                                onSubmit: (input) => widget.notifier.submitTurn(input),
+                                onSubmit: _handleInput,
                               ),
                             ],
                           ),
@@ -174,7 +184,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                         CLIInputBar(
                           isDisabled: widget.notifier.isLoading,
                           isGameOver: isGameOver,
-                          onSubmit: (input) => widget.notifier.submitTurn(input),
+                          onSubmit: _handleInput,
                         ),
                       ],
                     );
@@ -216,7 +226,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
 
   // Wraps UI in FragmentShader or CustomPainter fallback
   Widget _buildGlitchContainer({required double intensity, required Widget child}) {
-    if (intensity <= 0.0) return child;
+    if (intensity <= 0.0 || !widget.notifier.shaderEnabled) return child;
     
     final shader = _shader;
     if (shader != null) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:aura_core/aura_core.dart';
 import 'src/state_management/game_controller_notifier.dart';
 import 'src/screens/terminal_screen.dart';
+import 'src/screens/boot_menu_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -59,7 +60,16 @@ class AuraApp extends StatelessWidget {
           background: Colors.black,
         ),
       ),
-      home: TerminalScreen(notifier: notifier),
+      home: ListenableBuilder(
+        listenable: notifier,
+        builder: (context, _) {
+          if (notifier.currentScreen == "terminal") {
+            return TerminalScreen(notifier: notifier);
+          } else {
+            return BootMenuScreen(notifier: notifier);
+          }
+        },
+      ),
     );
   }
 }

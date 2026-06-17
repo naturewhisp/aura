@@ -41,7 +41,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
       if (mounted) {
         setState(() {
           _loadingLogs.add("[PID ${1000 + _loadingLogs.length}] ${step.message}");
-          _scrollToBottom();
+          _scrollToBottom(animate: true);
         });
       }
     });
@@ -65,7 +65,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
       }
     }
     
-    _scrollToBottom();
+    _scrollToBottom(animate: true);
   }
 
   @override
@@ -87,7 +87,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
         setState(() {
           _typedText += text[_charIndex];
           _charIndex++;
-          _scrollToBottom();
+          _scrollToBottom(animate: false);
         });
       } else {
         timer.cancel();
@@ -95,14 +95,19 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     });
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
+        final double maxScroll = _scrollController.position.maxScrollExtent;
+        if (animate) {
+          _scrollController.animateTo(
+            maxScroll,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+          );
+        } else {
+          _scrollController.jumpTo(maxScroll);
+        }
       }
     });
   }

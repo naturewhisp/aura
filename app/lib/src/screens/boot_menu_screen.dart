@@ -39,6 +39,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
   // Menu navigation and visual selection fields
   int _selectedMenuIndex = 0;
   int? _flashingIndex;
+  final List<GlobalKey> _menuKeys = List.generate(6, (index) => GlobalKey());
 
   @override
   void initState() {
@@ -110,34 +111,54 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
   void _proceedToMainMenu() {
     setState(() {
       _subScreen = "menu";
-      _selectedMenuIndex = widget.notifier.activeSessionExists ? 1 : 0;
+      _selectedMenuIndex = widget.notifier.activeSessionExists ? 2 : 0;
     });
     // Check if active session exists to keep menu state updated
     widget.notifier.checkActiveSessionExists().then((exists) {
       // Refresh state
     });
+    _ensureSelectedVisible();
   }
 
   void _moveSelectionUp() {
     if (_flashingIndex != null) return;
     int prev = _selectedMenuIndex;
     do {
-      _selectedMenuIndex = (_selectedMenuIndex - 1 + 5) % 5;
-    } while (_selectedMenuIndex == 1 && !widget.notifier.activeSessionExists && _selectedMenuIndex != prev);
+      _selectedMenuIndex = (_selectedMenuIndex - 1 + 6) % 6;
+    } while (_selectedMenuIndex == 2 && !widget.notifier.activeSessionExists && _selectedMenuIndex != prev);
     setState(() {});
+    _ensureSelectedVisible();
   }
 
   void _moveSelectionDown() {
     if (_flashingIndex != null) return;
     int prev = _selectedMenuIndex;
     do {
-      _selectedMenuIndex = (_selectedMenuIndex + 1) % 5;
-    } while (_selectedMenuIndex == 1 && !widget.notifier.activeSessionExists && _selectedMenuIndex != prev);
+      _selectedMenuIndex = (_selectedMenuIndex + 1) % 6;
+    } while (_selectedMenuIndex == 2 && !widget.notifier.activeSessionExists && _selectedMenuIndex != prev);
     setState(() {});
+    _ensureSelectedVisible();
+  }
+
+  void _ensureSelectedVisible() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_selectedMenuIndex >= 0 && _selectedMenuIndex < _menuKeys.length) {
+        final key = _menuKeys[_selectedMenuIndex];
+        final context = key.currentContext;
+        if (context != null) {
+          Scrollable.ensureVisible(
+            context,
+            duration: const Duration(milliseconds: 150),
+            alignment: 0.5,
+            curve: Curves.easeOut,
+          );
+        }
+      }
+    });
   }
 
   void _executeOption(int index) {
-    if (index == 1 && !widget.notifier.activeSessionExists) return; // disabled
+    if (index == 2 && !widget.notifier.activeSessionExists) return; // disabled
     if (_flashingIndex != null) return; // already executing
 
     setState(() {
@@ -168,23 +189,26 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
   void _runOptionAction(int index) {
     switch (index) {
       case 0:
-        widget.notifier.startNewGame();
+        widget.notifier.startTutorial();
         break;
       case 1:
-        widget.notifier.resumeGame();
+        widget.notifier.startNewGame();
         break;
       case 2:
+        widget.notifier.resumeGame();
+        break;
+      case 3:
         _loadReplays();
         setState(() {
           _subScreen = "replays";
         });
         break;
-      case 3:
+      case 4:
         setState(() {
           _subScreen = "settings";
         });
         break;
-      case 4:
+      case 5:
         exit(0);
     }
   }
@@ -255,17 +279,19 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
           _moveSelectionDown();
         } else if (event.logicalKey == LogicalKeyboardKey.enter) {
           _executeOption(_selectedMenuIndex);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit1 || event.logicalKey == LogicalKeyboardKey.numpad1) {
+        } else if (event.logicalKey == LogicalKeyboardKey.digit0 || event.logicalKey == LogicalKeyboardKey.numpad0) {
           _executeOption(0);
+        } else if (event.logicalKey == LogicalKeyboardKey.digit1 || event.logicalKey == LogicalKeyboardKey.numpad1) {
+          _executeOption(1);
         } else if ((event.logicalKey == LogicalKeyboardKey.digit2 || event.logicalKey == LogicalKeyboardKey.numpad2) &&
             widget.notifier.activeSessionExists) {
-          _executeOption(1);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit3 || event.logicalKey == LogicalKeyboardKey.numpad3) {
           _executeOption(2);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit4 || event.logicalKey == LogicalKeyboardKey.numpad4) {
+        } else if (event.logicalKey == LogicalKeyboardKey.digit3 || event.logicalKey == LogicalKeyboardKey.numpad3) {
           _executeOption(3);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit5 || event.logicalKey == LogicalKeyboardKey.numpad5) {
+        } else if (event.logicalKey == LogicalKeyboardKey.digit4 || event.logicalKey == LogicalKeyboardKey.numpad4) {
           _executeOption(4);
+        } else if (event.logicalKey == LogicalKeyboardKey.digit5 || event.logicalKey == LogicalKeyboardKey.numpad5) {
+          _executeOption(5);
         }
       } else if (_subScreen == "replays" && event.logicalKey == LogicalKeyboardKey.escape) {
         _backToMainMenu();
@@ -420,7 +446,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
       children: [
         // Header
         _buildBorderHeader("A.U.R.A. INTERFACCIA DI CONTROLLO v0.1.0"),
-        const SizedBox(height: 24.0),
+        const SizedBox(height: 16.0),
         
         const Text(
           "SELEZIONARE UN'OPZIONE DIGITANDO IL NUMERO O CLICCANDO:",
@@ -431,57 +457,75 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 32.0),
+        const SizedBox(height: 16.0),
 
-        // Menu Choices
-        _buildMenuButton(
-          0,
-          "1",
-          "NUOVA CONNESSIONE",
-          "Inizia una nuova sessione e sovrascrivi la cache",
-          () => _executeOption(0),
+        // Menu Choices (Scrollable if vertical space is tight)
+        Expanded(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildMenuButton(
+                  0,
+                  "0",
+                  "PROGETTO SINDROME (TUTORIAL)",
+                  "Simulazione guidata per apprendere le meccaniche di persuasione dell'IA",
+                  () => _executeOption(0),
+                ),
+                const SizedBox(height: 12.0),
+
+                _buildMenuButton(
+                  1,
+                  "1",
+                  "NUOVA CONNESSIONE",
+                  "Inizia una nuova sessione e sovrascrivi la cache",
+                  () => _executeOption(1),
+                ),
+                const SizedBox(height: 12.0),
+                
+                _buildMenuButton(
+                  2,
+                  "2", 
+                  "RIPRISTINA CONNESSIONE", 
+                  "Ripristina la sessione interrotta dall'ultimo checkpoint", 
+                  widget.notifier.activeSessionExists
+                      ? () => _executeOption(2)
+                      : null,
+                  isActiveSession: widget.notifier.activeSessionExists,
+                ),
+                const SizedBox(height: 12.0),
+                
+                _buildMenuButton(
+                  3,
+                  "3",
+                  "ARMED LOGS REPLAY",
+                  "Esplora i log e la cronologia delle sessioni precedenti",
+                  () => _executeOption(3),
+                ),
+                const SizedBox(height: 12.0),
+                
+                _buildMenuButton(
+                  4,
+                  "4",
+                  "CONFIGURA CANALE",
+                  "Seleziona i modelli neurali e le impostazioni del CoT",
+                  () => _executeOption(4),
+                ),
+                const SizedBox(height: 12.0),
+                
+                _buildMenuButton(
+                  5,
+                  "5",
+                  "DISCONNETTI",
+                  "Chiudi il terminale e disconnetti il link neurale",
+                  () => _executeOption(5),
+                ),
+              ],
+            ),
+          ),
         ),
+        
         const SizedBox(height: 16.0),
-        
-        _buildMenuButton(
-          1,
-          "2", 
-          "RIPRISTINA CONNESSIONE", 
-          "Ripristina la sessione interrotta dall'ultimo checkpoint", 
-          widget.notifier.activeSessionExists
-              ? () => _executeOption(1)
-              : null,
-          isActiveSession: widget.notifier.activeSessionExists,
-        ),
-        const SizedBox(height: 16.0),
-        
-        _buildMenuButton(
-          2,
-          "3",
-          "ARMED LOGS REPLAY",
-          "Esplora i log e la cronologia delle sessioni precedenti",
-          () => _executeOption(2),
-        ),
-        const SizedBox(height: 16.0),
-        
-        _buildMenuButton(
-          3,
-          "4",
-          "CONFIGURA CANALE",
-          "Seleziona i modelli neurali e le impostazioni del CoT",
-          () => _executeOption(3),
-        ),
-        const SizedBox(height: 16.0),
-        
-        _buildMenuButton(
-          4,
-          "5",
-          "DISCONNETTI",
-          "Chiudi il terminale e disconnetti il link neurale",
-          () => _executeOption(4),
-        ),
-        
-        const Spacer(),
         
         // Footer profile status
         Container(
@@ -878,6 +922,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     }
 
     return MouseRegion(
+      key: _menuKeys[index],
       onEnter: (_) {
         if (isEnabled && _flashingIndex == null) {
           setState(() {

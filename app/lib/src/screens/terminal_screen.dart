@@ -167,6 +167,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                             onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
                             conciseReasoning: widget.notifier.conciseReasoning,
                             onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
+                            isCompact: true,
                           ),
                         ),
                         // Terminal body

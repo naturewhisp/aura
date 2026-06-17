@@ -2134,7 +2134,7 @@ Elementi:
 - menu configurazione;
 - auto-save tramite `active_session.json`.
 
-#### 4.8 Scripted Tutorial ("Progetto Sindrome") — Stato: prossimo blocco operativo
+#### 4.8 Scripted Tutorial ("Progetto Sindrome") — Stato: completata / avanzata
 
 Obiettivi:
 

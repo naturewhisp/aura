@@ -7,6 +7,7 @@ class MetricsDashboard extends StatelessWidget {
   final ValueChanged<bool>? onReasoningChanged;
   final bool conciseReasoning;
   final ValueChanged<bool>? onConciseReasoningChanged;
+  final bool isCompact;
 
   const MetricsDashboard({
     Key? key,
@@ -15,6 +16,7 @@ class MetricsDashboard extends StatelessWidget {
     this.onReasoningChanged,
     this.conciseReasoning = true,
     this.onConciseReasoningChanged,
+    this.isCompact = false,
   }) : super(key: key);
 
   @override
@@ -31,6 +33,10 @@ class MetricsDashboard extends StatelessWidget {
     } else if (alert > 50) {
       systemColor = const Color(0xFFFFB000); // Amber
       statusText = "CONTAINMENT DEVIATION DETECTED";
+    }
+
+    if (isCompact) {
+      return _buildCompactDashboard(context, systemColor, statusText);
     }
 
     return Container(
@@ -119,6 +125,130 @@ class MetricsDashboard extends StatelessWidget {
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
         ],
       ),
+    );
+  }
+
+  Widget _buildCompactDashboard(BuildContext context, Color systemColor, String statusText) {
+    return Container(
+      color: Colors.black,
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "PANOPTICON COMPACT TELEMETRY",
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 11.0,
+                  fontWeight: FontWeight.bold,
+                  color: systemColor,
+                ),
+              ),
+              Text(
+                statusText,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 9.0,
+                  color: systemColor.withOpacity(0.8),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6.0),
+          Row(
+            children: [
+              Expanded(
+                child: _buildCompactIndicator("ALERT", metrics.alertLevel.toDouble(), systemColor),
+              ),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: _buildCompactIndicator("IMP", metrics.imperativePillar.toDouble(), const Color(0xFF00BFFF)),
+              ),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: _buildCompactIndicator("CTL", metrics.controlPillar.toDouble(), const Color(0xFF00FF66)),
+              ),
+              const SizedBox(width: 8.0),
+              Expanded(
+                child: _buildCompactIndicator("DIS", metrics.dissonancePillar.toDouble(), const Color(0xFFFF00FF)),
+              ),
+              const SizedBox(width: 12.0),
+              // Resonance
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    "RESON",
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 8.0,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF888888),
+                    ),
+                  ),
+                  const SizedBox(height: 2.0),
+                  Text(
+                    "${metrics.resonance}x",
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12.0,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF00FFFF),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompactIndicator(String label, double value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 8.0,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF888888),
+              ),
+            ),
+            Text(
+              "${value.toInt()}",
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 8.0,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2.0),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(1.0),
+          child: LinearProgressIndicator(
+            value: value / 100.0,
+            backgroundColor: const Color(0xFF111111),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+            minHeight: 4.0,
+          ),
+        ),
+      ],
     );
   }
 

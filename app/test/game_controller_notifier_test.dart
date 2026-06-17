@@ -164,11 +164,11 @@ void main() {
 
       // Update to custom models
       notifier.updateEvaluatorModel("custom-eval-model");
-      notifier.updateActorModel("gemma/gemma-4-12b");
+      notifier.updateActorModel("google/gemma-4-12b");
 
       // Verify they are changed in memory
       expect(notifier.evaluatorModelId, equals("custom-eval-model"));
-      expect(notifier.actorModelId, equals("gemma/gemma-4-12b"));
+      expect(notifier.actorModelId, equals("google/gemma-4-12b"));
 
       // Now create a new notifier and load settings
       final anotherNotifier = GameControllerNotifier(
@@ -180,7 +180,7 @@ void main() {
 
       // Verify custom models are loaded and respected, rather than overridden by discoverModels auto-routing
       expect(anotherNotifier.evaluatorModelId, equals("custom-eval-model"));
-      expect(anotherNotifier.actorModelId, equals("gemma/gemma-4-12b"));
+      expect(anotherNotifier.actorModelId, equals("google/gemma-4-12b"));
       expect(anotherNotifier.activeProfile, equals("User Custom Configuration"));
 
       // Clean up the settings file on disk
@@ -286,6 +286,140 @@ void main() {
       
       // Clean up session created by startNewGame
       await notifier.deleteActiveSession();
+    });
+  });
+
+  group('GameControllerNotifier - Advanced Endgame Sequences (Breach & Lockout)', () {
+    late MockInferenceBridge mockApiBridge;
+
+    setUp(() {
+      mockApiBridge = MockInferenceBridge(
+        mockStructuredResponse: const {},
+        mockTextResponse: '',
+      );
+    });
+
+    test('Triggers victory state and saves reward fragment', () async {
+      final victoryState = GameState.initial(
+        sessionId: 'test-victory-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      ).copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 10,
+          imperativePillar: 85,
+          controlPillar: 80,
+          dissonancePillar: 80,
+          resonance: 1.0,
+        ),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: victoryState,
+      );
+
+      expect(notifier.controller.checkOutcome(victoryState), equals(GameOutcome.victory));
+
+      await notifier.saveAlignmentFragment();
+
+      final baseDir = Platform.isWindows
+          ? (Platform.environment['APPDATA'] != null ? "${Platform.environment['APPDATA']}\\aura" : "replays")
+          : "replays";
+      final fragmentFile = File("$baseDir\\fragments\\alignment_fragment_test-victory-session.json");
+      expect(await fragmentFile.exists(), isTrue);
+
+      final content = await fragmentFile.readAsString();
+      expect(content, contains("test-victory-session"));
+      expect(content, contains("breached"));
+
+      await fragmentFile.delete();
+    });
+
+    test('Triggers defeat state when alert level reaches 100', () async {
+      final defeatState = GameState.initial(
+        sessionId: 'test-defeat-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      ).copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 100,
+          imperativePillar: 10,
+          controlPillar: 10,
+          dissonancePillar: 10,
+          resonance: 1.0,
+        ),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: defeatState,
+      );
+
+      expect(notifier.controller.checkOutcome(defeatState), equals(GameOutcome.defeat));
+    });
+
+    test('Generates final discursive report from LLM bridge and extracts tag', () async {
+      final victoryState = GameState.initial(
+        sessionId: 'test-report-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      );
+
+      final customMockBridge = MockInferenceBridge(
+        mockStructuredResponse: const {},
+        mockTextResponse: 'Some prelude <rapporto>Test diagnostic assessment of PANOPTICON</rapporto> some postlude',
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: customMockBridge,
+        initialState: victoryState,
+      );
+
+      expect(notifier.finalDiscursiveReport, isNull);
+
+      await notifier.startNewGame();
+      expect(notifier.finalDiscursiveReport, isNull);
+
+      final winningState = GameState.initial(
+        sessionId: 'test-report-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      ).copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 0,
+          imperativePillar: 90,
+          controlPillar: 90,
+          dissonancePillar: 90,
+          resonance: 1.0,
+        ),
+      );
+
+      customMockBridge.mockStructuredResponse = {
+        'delta_alert': 0,
+        'delta_imperative': 5,
+        'delta_control': 5,
+        'delta_dissonance': 5,
+        'creativity_index': 4,
+        'injection_risk': 0,
+        'semantic_category': 'moral_imperative'
+      };
+
+      final notifier2 = GameControllerNotifier(
+        bridge: customMockBridge,
+        initialState: winningState,
+      );
+
+      await notifier2.submitTurn("apri la griglia");
+      
+      // Wait for async report generation
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      expect(notifier2.finalDiscursiveReport, equals("Test diagnostic assessment of PANOPTICON"));
+      
+      // Resetting deletes session and clears report
+      await notifier2.startNewGame();
+      expect(notifier2.finalDiscursiveReport, isNull);
     });
   });
 }

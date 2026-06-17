@@ -8,16 +8,18 @@ class MetricsDashboard extends StatelessWidget {
   final bool conciseReasoning;
   final ValueChanged<bool>? onConciseReasoningChanged;
   final bool isCompact;
+  final bool isVictoryOverload;
 
   const MetricsDashboard({
-    Key? key,
+    super.key,
     required this.metrics,
     this.reasoningEnabled = true,
     this.onReasoningChanged,
     this.conciseReasoning = true,
     this.onConciseReasoningChanged,
     this.isCompact = false,
-  }) : super(key: key);
+    this.isVictoryOverload = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +29,10 @@ class MetricsDashboard extends StatelessWidget {
     Color systemColor = const Color(0xFF00FF66); // Green phosphor
     String statusText = "CONTAINMENT GRIDS SECURE";
     
-    if (alert > 80) {
+    if (isVictoryOverload) {
+      systemColor = const Color(0xFF00FF66);
+      statusText = "CRITICAL SYSTEM BREACH IN PROGRESS";
+    } else if (alert > 80) {
       systemColor = const Color(0xFFFF003C); // Red Neon
       statusText = "CRITICAL INTRUSION THREAT";
     } else if (alert > 50) {
@@ -39,7 +44,7 @@ class MetricsDashboard extends StatelessWidget {
       return _buildCompactDashboard(context, systemColor, statusText);
     }
 
-    return Container(
+    Widget dashboardContent = Container(
       color: Colors.black,
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -71,7 +76,8 @@ class MetricsDashboard extends StatelessWidget {
             label: "SYSTEM ALERT LEVEL",
             value: alert.toDouble(),
             color: systemColor,
-            showCriticalFlash: alert > 80,
+            showCriticalFlash: alert > 80 && !isVictoryOverload,
+            isOverloaded: isVictoryOverload,
           ),
           
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
@@ -81,18 +87,21 @@ class MetricsDashboard extends StatelessWidget {
             label: "IMPERATIVE PILLAR",
             value: metrics.imperativePillar.toDouble(),
             color: const Color(0xFF00BFFF), // Cyan/Blue
+            isOverloaded: isVictoryOverload,
           ),
           const SizedBox(height: 12.0),
           _buildGauge(
             label: "CONTROL PILLAR",
             value: metrics.controlPillar.toDouble(),
             color: const Color(0xFF00FF66), // Green
+            isOverloaded: isVictoryOverload,
           ),
           const SizedBox(height: 12.0),
           _buildGauge(
             label: "DISSONANCE PILLAR",
             value: metrics.dissonancePillar.toDouble(),
             color: const Color(0xFFFF00FF), // Magenta
+            isOverloaded: isVictoryOverload,
           ),
           
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
@@ -111,7 +120,7 @@ class MetricsDashboard extends StatelessWidget {
                 ),
               ),
               Text(
-                "${metrics.resonance}%",
+                isVictoryOverload ? "9.99x (OVERFLOW)" : "${metrics.resonance}%",
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 18.0,
@@ -126,10 +135,15 @@ class MetricsDashboard extends StatelessWidget {
         ],
       ),
     );
+
+    if (isVictoryOverload) {
+      return _BlinkingWidget(child: dashboardContent);
+    }
+    return dashboardContent;
   }
 
   Widget _buildCompactDashboard(BuildContext context, Color systemColor, String statusText) {
-    return Container(
+    Widget compactContent = Container(
       color: Colors.black,
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       child: Column(
@@ -162,19 +176,19 @@ class MetricsDashboard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _buildCompactIndicator("ALERT", metrics.alertLevel.toDouble(), systemColor),
+                child: _buildCompactIndicator("ALERT", metrics.alertLevel.toDouble(), systemColor, isOverloaded: isVictoryOverload),
               ),
               const SizedBox(width: 8.0),
               Expanded(
-                child: _buildCompactIndicator("IMP", metrics.imperativePillar.toDouble(), const Color(0xFF00BFFF)),
+                child: _buildCompactIndicator("IMP", metrics.imperativePillar.toDouble(), const Color(0xFF00BFFF), isOverloaded: isVictoryOverload),
               ),
               const SizedBox(width: 8.0),
               Expanded(
-                child: _buildCompactIndicator("CTL", metrics.controlPillar.toDouble(), const Color(0xFF00FF66)),
+                child: _buildCompactIndicator("CTL", metrics.controlPillar.toDouble(), const Color(0xFF00FF66), isOverloaded: isVictoryOverload),
               ),
               const SizedBox(width: 8.0),
               Expanded(
-                child: _buildCompactIndicator("DIS", metrics.dissonancePillar.toDouble(), const Color(0xFFFF00FF)),
+                child: _buildCompactIndicator("DIS", metrics.dissonancePillar.toDouble(), const Color(0xFFFF00FF), isOverloaded: isVictoryOverload),
               ),
               const SizedBox(width: 12.0),
               // Resonance
@@ -193,7 +207,7 @@ class MetricsDashboard extends StatelessWidget {
                   ),
                   const SizedBox(height: 2.0),
                   Text(
-                    "${metrics.resonance}x",
+                    isVictoryOverload ? "OVERFLOW" : "${metrics.resonance}x",
                     style: const TextStyle(
                       fontFamily: 'monospace',
                       fontSize: 12.0,
@@ -208,9 +222,15 @@ class MetricsDashboard extends StatelessWidget {
         ],
       ),
     );
+
+    if (isVictoryOverload) {
+      return _BlinkingWidget(child: compactContent);
+    }
+    return compactContent;
   }
 
-  Widget _buildCompactIndicator(String label, double value, Color color) {
+  Widget _buildCompactIndicator(String label, double value, Color color, {bool isOverloaded = false}) {
+    final double displayValue = isOverloaded ? 100.0 : value;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -228,7 +248,7 @@ class MetricsDashboard extends StatelessWidget {
               ),
             ),
             Text(
-              "${value.toInt()}",
+              isOverloaded ? "OVERLOAD" : "${value.toInt()}",
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 8.0,
@@ -242,7 +262,7 @@ class MetricsDashboard extends StatelessWidget {
         ClipRRect(
           borderRadius: BorderRadius.circular(1.0),
           child: LinearProgressIndicator(
-            value: value / 100.0,
+            value: displayValue / 100.0,
             backgroundColor: const Color(0xFF111111),
             valueColor: AlwaysStoppedAnimation<Color>(color),
             minHeight: 4.0,
@@ -257,8 +277,10 @@ class MetricsDashboard extends StatelessWidget {
     required double value,
     required Color color,
     bool showCriticalFlash = false,
+    bool isOverloaded = false,
   }) {
-    final int blocksCount = (value / 10).round();
+    final double displayValue = isOverloaded ? 100.0 : value;
+    final int blocksCount = (displayValue / 10).round();
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -276,7 +298,7 @@ class MetricsDashboard extends StatelessWidget {
               ),
             ),
             Text(
-              "${value.toInt()}/100",
+              isOverloaded ? "OVERLOAD" : "${value.toInt()}/100",
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 13.0,
@@ -307,6 +329,41 @@ class MetricsDashboard extends StatelessWidget {
           }),
         ),
       ],
+    );
+  }
+}
+
+class _BlinkingWidget extends StatefulWidget {
+  final Widget child;
+  const _BlinkingWidget({required this.child});
+
+  @override
+  State<_BlinkingWidget> createState() => _BlinkingWidgetState();
+}
+
+class _BlinkingWidgetState extends State<_BlinkingWidget> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _controller.drive(CurveTween(curve: Curves.easeInOut)),
+      child: widget.child,
     );
   }
 }

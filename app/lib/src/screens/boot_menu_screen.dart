@@ -34,7 +34,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
   String _selectedReplayName = "";
 
   // Available models (fetched dynamically)
-  List<String> _modelsList = ["qwen/qwen3.5-9b", "mistralai/ministral-3-3b", "gemma/gemma-4-12b"];
+  List<String> _modelsList = ["qwen/qwen3.5-9b", "mistralai/ministral-3-3b", "google/gemma-4-12b"];
 
   // Menu navigation and visual selection fields
   int _selectedMenuIndex = 0;

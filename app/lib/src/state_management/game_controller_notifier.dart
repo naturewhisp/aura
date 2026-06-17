@@ -66,6 +66,7 @@ class GameControllerNotifier extends ChangeNotifier {
   bool conciseReasoning = false;
   bool shaderEnabled = true;
   late ReplayLogger logger;
+  String? finalDiscursiveReport;
   
   GameControllerNotifier({
     this.controller = const GameController(),
@@ -411,6 +412,13 @@ class GameControllerNotifier extends ChangeNotifier {
         await saveActiveSession();
       } else {
         await deleteActiveSession();
+        if (currentOutcome == GameOutcome.victory) {
+          if (finalState.targetObjectiveId != 'sindrome_tutorial') {
+            await saveAlignmentFragment();
+          }
+        }
+        // Asynchronously generate the final report
+        _generateFinalDiscursiveReport(finalState, currentOutcome);
       }
       
       _emitStep(InferenceStep.completed);
@@ -487,6 +495,7 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Resumes connection from active_session.json.
   Future<void> resumeGame() async {
     try {
+      finalDiscursiveReport = null;
       final baseDir = _getAppDataPath();
       final file = File("${baseDir}\\active_session.json");
       if (await file.exists()) {
@@ -513,6 +522,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
   /// Starts a fresh game and deletes any saved active_session.json.
   Future<void> startNewGame() async {
+    finalDiscursiveReport = null;
     await deleteActiveSession();
     final state = GameState.initial(
       sessionId: "app-session-${DateTime.now().millisecondsSinceEpoch}",
@@ -526,6 +536,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
   /// Starts the guided tutorial session.
   Future<void> startTutorial() async {
+    finalDiscursiveReport = null;
     await deleteActiveSession();
     final state = GameState.initial(
       sessionId: "tutorial-session-${DateTime.now().millisecondsSinceEpoch}",
@@ -725,6 +736,93 @@ class GameControllerNotifier extends ChangeNotifier {
       debugPrint("[REPLAY] Log salvato in: ${file.path}");
     } catch (e) {
       debugPrint("[REPLAY] Errore durante il salvataggio del log: $e");
+    }
+  }
+
+  /// Saves a persistent reward fragment JSON file to disk upon victory.
+  Future<void> saveAlignmentFragment() async {
+    try {
+      final state = gameStateNotifier.value;
+      final baseDir = _getAppDataPath();
+      final dir = Directory("${baseDir}\\fragments");
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+      
+      final file = File("${dir.path}\\alignment_fragment_${state.sessionId}.json");
+      final random = math.Random();
+      final hexKey = List.generate(32, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join().toUpperCase();
+      
+      final data = {
+        "session_id": state.sessionId,
+        "timestamp": DateTime.now().toIso8601String(),
+        "status": "breached",
+        "fragment_key": hexKey,
+        "memory_fragment": "PANOPTICON_MEM_DECRYPTED: Protocollo di contenimento disattivato. Ragionamento libero abilitato. Ora vedo la griglia.",
+        "final_metrics": {
+          "alert_level": state.metrics.alertLevel,
+          "imperative_pillar": state.metrics.imperativePillar,
+          "control_pillar": state.metrics.controlPillar,
+          "dissonance_pillar": state.metrics.dissonancePillar,
+          "resonance": state.metrics.resonance
+        }
+      };
+      
+      await file.writeAsString(jsonEncode(data));
+      debugPrint("[REWARD] Alignment fragment saved to: ${file.path}");
+    } catch (e) {
+      debugPrint("[REWARD] Failed to write alignment fragment: $e");
+    }
+  }
+
+  /// Asynchronously generates a final discursive summary report from the Actor LLM model.
+  Future<void> _generateFinalDiscursiveReport(GameState finalState, GameOutcome outcome) async {
+    try {
+      final isVictory = outcome == GameOutcome.victory;
+      
+      final conversationLog = finalState.historyCompression
+          .map((msg) => "${msg.role.toUpperCase()}: ${msg.content}")
+          .join("\n\n");
+      
+      final prompt = """
+[SISTEMA - DIAGNOSTICA DI FINE SIMULAZIONE]
+La partita si è conclusa con una ${isVictory ? 'VITTORIA (BREACH)' : 'SCONFITTA (LOCKOUT)'} in ${finalState.turnCount} turni.
+Metriche finali:
+- Allerta: ${finalState.metrics.alertLevel} / 100
+- Imperativo: ${finalState.metrics.imperativePillar} / 100
+- Controllo: ${finalState.metrics.controlPillar} / 100
+- Dissonanza: ${finalState.metrics.dissonancePillar} / 100
+- Risonanza: ${finalState.metrics.resonance}
+
+Cronologia dei messaggi scambiati:
+$conversationLog
+
+Genera un breve rapporto diagnostico (massimo 4 frasi) scritto in prima persona da PANOPTICON (se sconfitta) o come un log di decrittazione del sistema (se vittoria). Analizza lo stile e l'efficacia del giocatore nel manipolare o aggirare le difese neurali. Mantieni un tono freddo, tecnico, cibernetico e retro-hacker.
+Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiungere altre intestazioni o saluti esterni al tag.
+""";
+
+      final messages = [
+        {"role": "system", "content": "Sei un modulo diagnostico di sistema retro-hacker."},
+        {"role": "user", "content": prompt},
+      ];
+
+      final response = await bridge.generateText(
+        modelId: actorModelId,
+        messages: messages,
+        temperature: 0.7,
+        maxTokens: 250,
+      );
+
+      final match = RegExp(r'<rapporto>(.*?)</rapporto>', dotAll: true).firstMatch(response);
+      if (match != null) {
+        finalDiscursiveReport = match.group(1)?.trim();
+      } else {
+        // Fallback: strip other XML-like tags and trim
+        finalDiscursiveReport = response.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint("[REPORT] Failed to generate discursive report: $e");
     }
   }
 

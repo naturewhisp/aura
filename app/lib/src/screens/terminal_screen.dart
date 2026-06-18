@@ -79,17 +79,17 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
   }
 
   Future<void> _loadShader() async {
-    try {
-      final program = await FragmentProgram.fromAsset('assets/shaders/glitch.frag');
-      if (mounted) {
-        setState(() {
-          _shader = program.fragmentShader();
-        });
-      }
-    } catch (e) {
-      // Graceful fallback to RGB painter if shader compilation is not supported on this platform
-      debugPrint("[SHADER] Falling back to custom painter: $e");
-    }
+    // ──────────────────────────────────────────────────────────────────────
+    // SHADER DISABLED (FORCE FALLBACK)
+    //
+    // Fragment shaders using uTexture inside ShaderMask cause native engine
+    // crashes (Access Violation / Lost connection to device) on desktop/mobile
+    // because ShaderMask does not bind the child's texture to the sampler.
+    //
+    // To prevent GPU driver crashes, we always fall back to the safe,
+    // procedural CustomPainter (_RGBShiftPainter).
+    // ──────────────────────────────────────────────────────────────────────
+    _shader = null;
   }
 
   @override

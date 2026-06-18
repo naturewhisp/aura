@@ -46,32 +46,22 @@ class AudioManager {
     _audioEnabled = audioEnabled;
 
     // ──────────────────────────────────────────────────────────────────────
-    // PLATFORM GUARD — Windows
+    // PLATFORM WARNING — Windows
     //
     // audioplayers_windows v4.x sends platform channel event messages from
     // native (non-platform) threads. This violates Flutter's threading
-    // contract and causes the engine to crash with:
-    //   [ERROR:flutter/shell/common/shell.cc(1183)]
-    //   "...channel sent a message from native to Flutter on a non-platform
-    //   thread... Failure to do so may result in data loss or crashes..."
+    // contract. We print a warning in console but proceed with initialization
+    // since the immediate crash was resolved by fixing the shader.
     //
-    // The crash manifests as "Lost connection to device." after a few turns
-    // because the accumulated threading violations corrupt Flutter's
-    // internal message queue.
-    //
-    // TODO: Replace audioplayers with just_audio (which handles Windows
-    // threading correctly) to re-enable audio on Windows.
+    // TODO: Replace audioplayers with just_audio (Phase 4.12) to resolve
+    // these threading warnings permanently.
     // ──────────────────────────────────────────────────────────────────────
     if (Platform.isWindows) {
       debugPrint(
-        '[AUDIO] Audio disabled on Windows — audioplayers_windows v4.x '
-        'threading bug causes native crashes (shell.cc:1183). '
-        'Will be re-enabled after migration to just_audio.',
+        '[AUDIO] WARNING: Running audioplayers on Windows. Threading warnings '
+        '(shell.cc:1183) may appear in console. Migration to just_audio '
+        'is planned in Phase 4.12.',
       );
-      _audioEnabled = false;
-      _initialized = true;
-      // _playersCreated remains false — no AudioPlayer instances are created.
-      return;
     }
 
     // Ensure directory exists

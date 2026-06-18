@@ -11,14 +11,17 @@ class AudioManager {
   bool _initialized = false;
   bool _audioEnabled = true;
 
+  /// Whether AudioPlayer instances were actually created.
+  /// On Windows, players are never created due to a native threading bug
+  /// in audioplayers_windows that crashes Flutter's engine (shell.cc:1183).
+  /// All methods that access player instances MUST check this flag.
+  bool _playersCreated = false;
+
   // BGM Players
   late final AudioPlayer _bgmAmbientPlayer;
   late final AudioPlayer _bgmTensePlayer;
 
   // SFX Players — fixed pool, one per sound type, reused across calls.
-  // This avoids creating/disposing AudioPlayer instances on every SFX call,
-  // which causes native threading crashes on Windows (audioplayers_windows
-  // sends events from a non-platform thread during rapid create/dispose).
   late final AudioPlayer _sfxClickPlayer;
   late final AudioPlayer _sfxAlertPlayer;
   late final AudioPlayer _sfxGlitchPlayer;
@@ -41,6 +44,35 @@ class AudioManager {
   Future<void> initialize(String appDataPath, {bool audioEnabled = true}) async {
     if (_initialized) return;
     _audioEnabled = audioEnabled;
+
+    // ──────────────────────────────────────────────────────────────────────
+    // PLATFORM GUARD — Windows
+    //
+    // audioplayers_windows v4.x sends platform channel event messages from
+    // native (non-platform) threads. This violates Flutter's threading
+    // contract and causes the engine to crash with:
+    //   [ERROR:flutter/shell/common/shell.cc(1183)]
+    //   "...channel sent a message from native to Flutter on a non-platform
+    //   thread... Failure to do so may result in data loss or crashes..."
+    //
+    // The crash manifests as "Lost connection to device." after a few turns
+    // because the accumulated threading violations corrupt Flutter's
+    // internal message queue.
+    //
+    // TODO: Replace audioplayers with just_audio (which handles Windows
+    // threading correctly) to re-enable audio on Windows.
+    // ──────────────────────────────────────────────────────────────────────
+    if (Platform.isWindows) {
+      debugPrint(
+        '[AUDIO] Audio disabled on Windows — audioplayers_windows v4.x '
+        'threading bug causes native crashes (shell.cc:1183). '
+        'Will be re-enabled after migration to just_audio.',
+      );
+      _audioEnabled = false;
+      _initialized = true;
+      // _playersCreated remains false — no AudioPlayer instances are created.
+      return;
+    }
 
     // Ensure directory exists
     final audioDir = Directory('$appDataPath/audio');
@@ -75,10 +107,12 @@ class AudioManager {
 
     // SFX play once and stop (default ReleaseMode.stop is correct)
 
+    _playersCreated = true;
     _initialized = true;
   }
 
   void setAudioEnabled(bool enabled) {
+    if (!_playersCreated) return;
     if (_audioEnabled == enabled) return;
     _audioEnabled = enabled;
     if (!_audioEnabled) {
@@ -91,7 +125,7 @@ class AudioManager {
   }
 
   Future<void> startBgm() async {
-    if (!_initialized || !_audioEnabled) return;
+    if (!_playersCreated || !_audioEnabled) return;
 
     try {
       // Start both bgm players
@@ -110,7 +144,7 @@ class AudioManager {
   }
 
   Future<void> stopBgm() async {
-    if (!_initialized) return;
+    if (!_playersCreated) return;
     try {
       await _bgmAmbientPlayer.stop();
       await _bgmTensePlayer.stop();
@@ -124,7 +158,7 @@ class AudioManager {
     if (_currentAlert == alert && !force) return;
     _currentAlert = alert;
 
-    if (!_audioEnabled) return;
+    if (!_playersCreated || !_audioEnabled) return;
 
     // Mix mixing logic based on alert level:
     // * Allerta < 40: solo basso ambient (volume 0.6), arpeggiatore tense inattivo (volume 0.0).
@@ -161,7 +195,7 @@ class AudioManager {
   // ensures the player is in a clean state if the previous SFX hasn't
   // finished yet. This is safe and avoids overlapping the same sound.
   Future<void> _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) async {
-    if (!_initialized || !_audioEnabled || path == null) return;
+    if (!_playersCreated || !_audioEnabled || path == null) return;
     try {
       await player.stop();
       await player.setVolume(volume);
@@ -177,7 +211,10 @@ class AudioManager {
   void playChime() => _playSfx(_sfxChimePlayer, _sfxChimePath);
 
   Future<void> dispose() async {
-    if (!_initialized) return;
+    if (!_playersCreated) {
+      _initialized = false;
+      return;
+    }
     try {
       await _bgmAmbientPlayer.dispose();
       await _bgmTensePlayer.dispose();
@@ -188,6 +225,7 @@ class AudioManager {
     } catch (e) {
       debugPrint("Error disposing audio players: $e");
     }
+    _playersCreated = false;
     _initialized = false;
   }
 }

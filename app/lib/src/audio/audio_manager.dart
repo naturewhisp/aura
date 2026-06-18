@@ -205,10 +205,27 @@ class AudioManager {
     }
   }
 
-  void playClick() => _playSfx(_sfxClickPlayer, _sfxClickPath, volume: 0.25);
-  void playAlert() => _playSfx(_sfxAlertPlayer, _sfxAlertPath);
-  void playGlitch() => _playSfx(_sfxGlitchPlayer, _sfxGlitchPath);
-  void playChime() => _playSfx(_sfxChimePlayer, _sfxChimePath);
+  // IMPORTANT: Each public method guards with _playersCreated BEFORE
+  // accessing any late final field. Dart evaluates function arguments
+  // eagerly, so passing _sfxClickPlayer directly to _playSfx() would
+  // trigger a LateInitializationError on Windows where players are
+  // never created.
+  void playClick() {
+    if (!_playersCreated) return;
+    _playSfx(_sfxClickPlayer, _sfxClickPath, volume: 0.25);
+  }
+  void playAlert() {
+    if (!_playersCreated) return;
+    _playSfx(_sfxAlertPlayer, _sfxAlertPath);
+  }
+  void playGlitch() {
+    if (!_playersCreated) return;
+    _playSfx(_sfxGlitchPlayer, _sfxGlitchPath);
+  }
+  void playChime() {
+    if (!_playersCreated) return;
+    _playSfx(_sfxChimePlayer, _sfxChimePath);
+  }
 
   Future<void> dispose() async {
     if (!_playersCreated) {

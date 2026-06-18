@@ -9,6 +9,9 @@ class MetricsDashboard extends StatelessWidget {
   final ValueChanged<bool>? onConciseReasoningChanged;
   final bool isCompact;
   final bool isVictoryOverload;
+  final String pillarVisibility;
+  final double lastInferenceDuration;
+  final double lastTokensPerSecond;
 
   const MetricsDashboard({
     super.key,
@@ -19,7 +22,55 @@ class MetricsDashboard extends StatelessWidget {
     this.onConciseReasoningChanged,
     this.isCompact = false,
     this.isVictoryOverload = false,
+    this.pillarVisibility = "fully_visible",
+    this.lastInferenceDuration = 0.0,
+    this.lastTokensPerSecond = 0.0,
   });
+
+  String getPillarLabel(String label, double value, String visibility) {
+    if (visibility == 'fully_visible') {
+      return "${value.toInt()}/100";
+    }
+    
+    // Qualitative mappings
+    String qualitative;
+    if (label.contains("ALERT") || label.contains("SYSTEM")) {
+      if (value >= 80) {
+        qualitative = "CRITICO";
+      } else if (value >= 50) {
+        qualitative = "IN TENSIONE";
+      } else if (value >= 20) {
+        qualitative = "INSTABILE";
+      } else {
+        qualitative = "STABILE";
+      }
+    } else {
+      // Pillars
+      if (value >= 80) {
+        qualitative = "STABILE";
+      } else if (value >= 50) {
+        qualitative = "ELEVATO";
+      } else if (value >= 20) {
+        qualitative = "INSTABILE";
+      } else {
+        qualitative = "CRITICO";
+      }
+    }
+
+    if (visibility == 'corrupted') {
+      // Leetspeak mapping
+      return qualitative
+          .replaceAll('A', '@')
+          .replaceAll('E', '3')
+          .replaceAll('I', '1')
+          .replaceAll('O', '0')
+          .replaceAll('S', '5')
+          .replaceAll('T', '7')
+          .replaceAll('B', '8');
+    }
+    
+    return qualitative;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +171,9 @@ class MetricsDashboard extends StatelessWidget {
                 ),
               ),
               Text(
-                isVictoryOverload ? "9.99x (OVERFLOW)" : "${metrics.resonance}%",
+                isVictoryOverload 
+                    ? "9.99x (OVERFLOW)" 
+                    : "${metrics.resonance.toStringAsFixed(2)}x",
                 style: const TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 18.0,
@@ -132,6 +185,52 @@ class MetricsDashboard extends StatelessWidget {
           ),
           
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
+          
+          // Diagnostic Panel
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12.0),
+            decoration: BoxDecoration(
+              border: Border.all(color: systemColor.withOpacity(0.4), width: 1.0),
+              color: const Color(0xFF000501),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "DIAGNOSTICA CANALE NEURALE",
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11.0,
+                    fontWeight: FontWeight.bold,
+                    color: systemColor,
+                  ),
+                ),
+                const SizedBox(height: 6.0),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "LATENZA INFERENZA: ${lastInferenceDuration.toStringAsFixed(2)}s",
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11.0,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      "BANDA: ${lastTokensPerSecond.toStringAsFixed(1)} T/s",
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11.0,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          )
         ],
       ),
     );
@@ -231,6 +330,10 @@ class MetricsDashboard extends StatelessWidget {
 
   Widget _buildCompactIndicator(String label, double value, Color color, {bool isOverloaded = false}) {
     final double displayValue = isOverloaded ? 100.0 : value;
+    final String labelVal = isOverloaded 
+        ? "OVERLOAD" 
+        : getPillarLabel(label, value, pillarVisibility);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -248,7 +351,7 @@ class MetricsDashboard extends StatelessWidget {
               ),
             ),
             Text(
-              isOverloaded ? "OVERLOAD" : "${value.toInt()}",
+              labelVal,
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 8.0,
@@ -281,6 +384,9 @@ class MetricsDashboard extends StatelessWidget {
   }) {
     final double displayValue = isOverloaded ? 100.0 : value;
     final int blocksCount = (displayValue / 10).round();
+    final String labelVal = isOverloaded 
+        ? "OVERLOAD" 
+        : getPillarLabel(label, value, pillarVisibility);
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,7 +404,7 @@ class MetricsDashboard extends StatelessWidget {
               ),
             ),
             Text(
-              isOverloaded ? "OVERLOAD" : "${value.toInt()}/100",
+              labelVal,
               style: TextStyle(
                 fontFamily: 'monospace',
                 fontSize: 13.0,

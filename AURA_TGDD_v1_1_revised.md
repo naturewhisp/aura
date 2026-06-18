@@ -33,7 +33,7 @@ La revisione 1.2 introduce:
 La revisione 1.3 introduce:
 
 7. **Panopticon Pilot & Hidden Gameplay Model**: nuova Fase 5 dedicata a fissare PANOPTICON come identità pilota, definire affinità/allergie stilistiche, obiettivo pilota, tag nascosti emergenti, schema degli obiettivi futuri e test narrativi automatici.
-8. **Roadmap rebaseline**: lo stato attuale dello sviluppo viene allineato a **Fase 4.7 completata**. Le fasi successive sono rinumerate: Fase 5 Panopticon Pilot, Fase 6 Edge Desktop/LoRA, Fase 7 Android/AICore, Fase 8 Metagame e contenuti, Fase 9 fine-tuning continuo post-rilascio.
+8. **Roadmap rebaseline**: lo stato attuale dello sviluppo viene allineato a **Fase 4 (fino a 4.11) completata**. Le fasi successive sono rinumerate: Fase 5 Panopticon Pilot, Fase 6 Edge Desktop/LoRA, Fase 7 Android/AICore, Fase 8 Metagame e contenuti, Fase 9 fine-tuning continuo post-rilascio.
 
 ---
 
@@ -2058,11 +2058,11 @@ Per i risultati dettagliati delle simulazioni e del bilanciamento della difficol
 
 ### Fase 4 — Playable Experience Layer
 
-Stato: avanzata fino a **4.7 Diegetic Boot & Main Menu** inclusa.
+Stato: completata fino a **4.11 Advanced Metric Visual Feedback & QoL Systems** inclusa.
 
 La fase trasforma i calcoli deterministici in un'esperienza audiovisiva e narrativa coerente.
 
-#### 4.1 Actor Dramaturgy Layer — Stato: completata / avanzata
+#### 4.1 Actor Dramaturgy Layer — Stato: completata
 
 Trasformazione dei punteggi in canovaccio narrativo.
 
@@ -2076,7 +2076,7 @@ Obiettivi:
 - snapshot test e verifica automatica sui cue generati;
 - test di coerenza: injection override, dissonanza, controllo, creatività.
 
-#### 4.2 Modern CLI / Flutter UI — Stato: completata / avanzata
+#### 4.2 Modern CLI / Flutter UI — Stato: completata
 
 Sviluppo del layout adattivo e della gestione della chat.
 
@@ -2089,7 +2089,7 @@ Elementi chiave:
 - `AlertLevelIndicator`;
 - state management reattivo con `ValueNotifier<GameState>` e `ListenableBuilder`.
 
-#### 4.3 Feedback Visivo da Metriche — Stato: completata / avanzata
+#### 4.3 Feedback Visivo da Metriche — Stato: completata
 
 Binding diretto tra segnali di gameplay e UI:
 
@@ -2098,11 +2098,11 @@ Binding diretto tra segnali di gameplay e UI:
 - glitch shader o fallback `CustomPainter`;
 - feedback visivo di dissonanza.
 
-#### 4.4 LoadingTerminalCarousel — Stato: completata / avanzata
+#### 4.4 LoadingTerminalCarousel — Stato: completata
 
 Mascheramento della latenza tramite log diegetici sincronizzati con lo stream di inferenza.
 
-#### 4.5 Tone Consistency Check — Stato: completata / avanzata
+#### 4.5 Tone Consistency Check — Stato: completata
 
 Filtro di coerenza semantica prima del rendering:
 
@@ -2111,13 +2111,13 @@ Filtro di coerenza semantica prima del rendering:
 - fallback diegetici hardcoded;
 - logging del fallimento in `ReplayLogger`.
 
-#### 4.6 Local Playable Vertical Slice — Stato: completata / avanzata
+#### 4.6 Local Playable Vertical Slice — Stato: completata
 
 Loop end-to-end testabile con CLI o UI Flutter, comprensivo di replay log e condizioni di vittoria/sconfitta.
 
-#### 4.7 Diegetic Boot & Main Menu — Stato: completata / avanzata
+#### 4.7 Diegetic Boot & Main Menu — Stato: completata
 
-Stato corrente raggiunto.
+Stato: completata.
 
 Elementi:
 
@@ -2128,7 +2128,7 @@ Elementi:
 - menu configurazione;
 - auto-save tramite `active_session.json`.
 
-#### 4.8 Scripted Tutorial ("Progetto Sindrome") — Stato: completata / avanzata
+#### 4.8 Scripted Tutorial ("Progetto Sindrome") — Stato: completata
 
 Obiettivi:
 
@@ -2357,7 +2357,7 @@ containment_grid_override objective pilot
 ObjectiveDefinition schema
 Identity trait matrix schema
 ActorCue + ToneValidator per PANOPTICON
-Playable Experience Layer fino a 4.7 completato
+Playable Experience Layer fino a 4.11 completato
 ```
 
 ### Escluso dall'MVP

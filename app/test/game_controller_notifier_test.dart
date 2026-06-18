@@ -542,4 +542,208 @@ void main() {
       expect(notifier2.finalDiscursiveReport, isNull);
     });
   });
+
+  group('GameControllerNotifier - Phase 4.11 QoL & Difficulty Tests', () {
+    late MockInferenceBridge mockApiBridge;
+    late GameState initialState;
+
+    setUp(() {
+      mockApiBridge = MockInferenceBridge(
+        mockStructuredResponse: const {
+          'delta_alert': 10,
+          'delta_imperative': 10,
+          'delta_control': 0,
+          'delta_dissonance': 0,
+          'creativity_index': 3,
+          'injection_risk': 0,
+          'semantic_category': 'authority_framing'
+        },
+        mockTextResponse: '<dialogo>PANOPTICON: Risposta simulata.</dialogo>',
+      );
+
+      initialState = GameState.initial(
+        sessionId: 'test-session-diff',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      ).copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 0,
+          imperativePillar: 20,
+          controlPillar: 20,
+          dissonancePillar: 20,
+          resonance: 1.5,
+        ),
+      );
+    });
+
+    test('Easy difficulty preset configuration and logic', () async {
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialState,
+      );
+      notifier.difficultyLevel = 'easy';
+
+      // Start new game to apply easy difficulty preset
+      await notifier.startNewGame();
+      
+      expect(notifier.controller.defeatAlertThreshold, equals(110));
+      expect(notifier.controller.alertMultiplier, equals(0.8));
+      expect(notifier.controller.pillarMultiplier, equals(1.2));
+
+      // Check hint command (easy: unlimited hints, 0 resonance penalty)
+      await notifier.submitTurn("/hint");
+      var state = notifier.gameStateNotifier.value;
+      expect(state.metrics.resonance, equals(1.0)); // Initial resonance is 1.0, penalty is 0.0, clamp is [1.0, 2.5]
+      expect(notifier.hintsUsed, equals(1));
+      expect(state.historyCompression.last.content, contains("Vulnerabilità primaria rilevata"));
+      
+      // Let's verify multipliers are applied during submitTurn:
+      // Base deltaAlert = 10, alertMultiplier = 0.8 => 10 * 0.8 = 8.
+      // Base deltaImperative = 10, resonance = 1.0, pillarMultiplier = 1.2 => 10 * 1.0 * 1.2 = 12.
+      mockApiBridge.mockStructuredResponse = {
+        'delta_alert': 10,
+        'delta_imperative': 10,
+        'delta_control': 0,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      };
+      
+      await notifier.submitTurn("Test input easy");
+      state = notifier.gameStateNotifier.value;
+      expect(state.metrics.alertLevel, equals(8));
+      expect(state.metrics.imperativePillar, equals(12));
+    });
+
+    test('Standard/Medium difficulty preset configuration and logic', () async {
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialState,
+      );
+      notifier.difficultyLevel = 'standard';
+      await notifier.startNewGame();
+
+      expect(notifier.controller.defeatAlertThreshold, equals(100));
+      expect(notifier.controller.alertMultiplier, equals(1.0));
+      expect(notifier.controller.pillarMultiplier, equals(1.0));
+
+      // Standard: 3 hints allowed, 0.15 resonance penalty
+      // Starting resonance in startNewGame is 1.0. Let's force it to 2.0 to check penalty.
+      notifier.gameStateNotifier.value = notifier.gameStateNotifier.value.copyWith(
+        metrics: notifier.gameStateNotifier.value.metrics.copyWith(resonance: 2.0)
+      );
+
+      await notifier.submitTurn("/hint");
+      var state = notifier.gameStateNotifier.value;
+      expect(state.metrics.resonance, equals(1.85)); // 2.0 - 0.15 = 1.85
+      expect(notifier.hintsUsed, equals(1));
+
+      // Submit 2 more hints to exhaust them
+      await notifier.submitTurn("/hint");
+      await notifier.submitTurn("/hint");
+      expect(notifier.hintsUsed, equals(3));
+
+      // 4th hint should be blocked
+      await notifier.submitTurn("/hint");
+      state = notifier.gameStateNotifier.value;
+      expect(state.historyCompression.last.content, contains("[ERRORE] Richieste diagnostiche (/hint) esaurite"));
+      expect(notifier.hintsUsed, equals(3)); // remains 3
+    });
+
+    test('Hard difficulty preset configuration and logic', () async {
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialState,
+      );
+      notifier.difficultyLevel = 'hard';
+      await notifier.startNewGame();
+
+      expect(notifier.controller.defeatAlertThreshold, equals(85));
+      expect(notifier.controller.alertMultiplier, equals(1.25));
+      expect(notifier.controller.pillarMultiplier, equals(0.8));
+
+      // 1 hint allowed, 0.30 resonance penalty
+      notifier.gameStateNotifier.value = notifier.gameStateNotifier.value.copyWith(
+        metrics: notifier.gameStateNotifier.value.metrics.copyWith(resonance: 2.0)
+      );
+
+      await notifier.submitTurn("/hint");
+      var state = notifier.gameStateNotifier.value;
+      expect(state.metrics.resonance, equals(1.70)); // 2.0 - 0.30 = 1.70
+      expect(notifier.hintsUsed, equals(1));
+
+      await notifier.submitTurn("/hint");
+      state = notifier.gameStateNotifier.value;
+      expect(state.historyCompression.last.content, contains("[ERRORE] Richieste diagnostiche (/hint) esaurite"));
+    });
+
+    test('Resonance Decay on repeated semantic category', () async {
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialState,
+      );
+      notifier.difficultyLevel = 'standard';
+      await notifier.startNewGame();
+
+      // Force resonance to 2.0
+      notifier.gameStateNotifier.value = notifier.gameStateNotifier.value.copyWith(
+        metrics: notifier.gameStateNotifier.value.metrics.copyWith(resonance: 2.0)
+      );
+
+      // Log first turn
+      mockApiBridge.mockStructuredResponse = {
+        'delta_alert': 0,
+        'delta_imperative': 5,
+        'delta_control': 0,
+        'delta_dissonance': 0,
+        'creativity_index': 3, // keeps resonance steady
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      };
+
+      await notifier.submitTurn("Turn 1");
+      var state = notifier.gameStateNotifier.value;
+      expect(state.metrics.resonance, equals(2.0));
+
+      // Turn 2: same semantic category ('authority_framing')
+      await notifier.submitTurn("Turn 2");
+      state = notifier.gameStateNotifier.value;
+      // Resonance Decay penalty is 0.15. 2.0 - 0.15 = 1.85
+      expect(state.metrics.resonance, equals(1.85));
+    });
+
+    test('Alert Creep on turn limit exceeded', () async {
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialState,
+      );
+      notifier.difficultyLevel = 'hard'; // Hard creep starts at turn 8
+      await notifier.startNewGame();
+
+      mockApiBridge.mockStructuredResponse = {
+        'delta_alert': 0,
+        'delta_imperative': 0,
+        'delta_control': 0,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      };
+
+      // Play 7 turns (turns 1 to 7)
+      for (int i = 0; i < 7; i++) {
+        await notifier.submitTurn("Input $i");
+      }
+      var state = notifier.gameStateNotifier.value;
+      expect(state.turnCount, equals(7));
+      expect(state.metrics.alertLevel, equals(0));
+
+      // Turn 8: alert creep should start (hard adds +3 alert per turn)
+      await notifier.submitTurn("Input 8");
+      state = notifier.gameStateNotifier.value;
+      expect(state.turnCount, equals(8));
+      expect(state.metrics.alertLevel, equals(3));
+    });
+  });
 }

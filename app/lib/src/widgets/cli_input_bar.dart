@@ -6,12 +6,16 @@ import 'package:aura_app/src/audio/audio_manager.dart';
 class CLIInputBar extends StatefulWidget {
   final bool isDisabled;
   final bool isGameOver;
+  final bool autocompleteEnabled;
+  final bool historyNavigationEnabled;
   final ValueChanged<String> onSubmit;
 
   const CLIInputBar({
     Key? key,
     required this.isDisabled,
     this.isGameOver = false,
+    this.autocompleteEnabled = true,
+    this.historyNavigationEnabled = true,
     required this.onSubmit,
   }) : super(key: key);
 
@@ -137,6 +141,7 @@ class _CLIInputBarState extends State<CLIInputBar> {
       child: RawKeyboardListener(
         focusNode: FocusNode(skipTraversal: true), // Catch arrow keys before they shift focus
         onKey: (RawKeyEvent event) {
+          if (!widget.historyNavigationEnabled) return;
           if (event is RawKeyDownEvent) {
             if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
               _handleHistoryUp();
@@ -147,7 +152,7 @@ class _CLIInputBarState extends State<CLIInputBar> {
         },
         child: Row(
           children: [
-            if (!widget.isGameOver) ...[
+            if (!widget.isGameOver && widget.autocompleteEnabled) ...[
               Theme(
                 data: Theme.of(context).copyWith(
                   cardColor: Colors.black,
@@ -185,6 +190,9 @@ class _CLIInputBarState extends State<CLIInputBar> {
                           TextPosition(offset: _controller.text.length),
                         );
                       });
+                    } else if (cmd == "/hint") {
+                      _controller.text = "/hint";
+                      _handleSubmit();
                     }
                   },
                   itemBuilder: (context) => [
@@ -192,6 +200,13 @@ class _CLIInputBarState extends State<CLIInputBar> {
                       value: "/menu",
                       child: Text(
                         "/menu  [Menu Principale]",
+                        style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF66)),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: "/hint",
+                      child: Text(
+                        "/hint  [Suggerimento]",
                         style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF66)),
                       ),
                     ),

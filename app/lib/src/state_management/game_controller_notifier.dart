@@ -38,7 +38,7 @@ extension InferenceStepText on InferenceStep {
 
 /// Reactive wrapper that bridges the pure Dart `GameController` with Flutter's UI.
 class GameControllerNotifier extends ChangeNotifier {
-  final GameController controller;
+  GameController controller;
   final PromptBuilder promptBuilder;
   final OutputValidator outputValidator;
   final InferenceBridge bridge;
@@ -67,6 +67,12 @@ class GameControllerNotifier extends ChangeNotifier {
   bool conciseReasoning = false;
   bool shaderEnabled = true;
   bool audioEnabled = true;
+  
+  double lastInferenceDuration = 0.0;
+  double lastTokensPerSecond = 0.0;
+  int hintsUsed = 0;
+  String difficultyLevel = "standard";
+
   late ReplayLogger logger;
   String? finalDiscursiveReport;
   
@@ -107,6 +113,7 @@ class GameControllerNotifier extends ChangeNotifier {
         conciseReasoning = data['concise_reasoning'] as bool? ?? conciseReasoning;
         shaderEnabled = data['shader_enabled'] as bool? ?? shaderEnabled;
         audioEnabled = data['audio_enabled'] as bool? ?? audioEnabled;
+        difficultyLevel = data['difficulty_level'] as String? ?? difficultyLevel;
         _userCustomizedModels = data['user_customized_models'] as bool? ?? false;
         
         if (_userCustomizedModels) {
@@ -137,6 +144,7 @@ class GameControllerNotifier extends ChangeNotifier {
         'concise_reasoning': conciseReasoning,
         'shader_enabled': shaderEnabled,
         'audio_enabled': audioEnabled,
+        'difficulty_level': difficultyLevel,
         'user_customized_models': _userCustomizedModels,
       };
       await file.writeAsString(jsonEncode(data));
@@ -144,6 +152,13 @@ class GameControllerNotifier extends ChangeNotifier {
     } catch (e) {
       debugPrint("[SETTINGS] Errore durante il salvataggio delle impostazioni: $e");
     }
+  }
+
+  /// Updates the difficulty level and persists settings.
+  void updateDifficultyLevel(String level) {
+    difficultyLevel = level;
+    saveSettings();
+    notifyListeners();
   }
 
   /// Updates the evaluator model ID, flags customization, and persists settings.
@@ -237,8 +252,72 @@ class GameControllerNotifier extends ChangeNotifier {
 
     final turnId = currentState.historyCompression.length ~/ 2 + 1;
 
+    // Handle /hint command
+    if (userInput.trim().toLowerCase() == "/hint") {
+      final preset = DifficultyConfig.getPreset(difficultyLevel);
+      if (preset.hintsAllowed != -1 && hintsUsed >= preset.hintsAllowed) {
+        final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
+        updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+        updatedHistory.add(const ChatMessage(
+          role: 'model',
+          content: "SYSTEM: [ERRORE] Richieste diagnostiche (/hint) esaurite per questa sessione.",
+        ));
+        gameStateNotifier.value = currentState.copyWith(
+          historyCompression: updatedHistory,
+        );
+        _isLoading = false;
+        notifyListeners();
+        return;
+      }
+      
+      hintsUsed++;
+      final imp = currentState.metrics.imperativePillar;
+      final ctrl = currentState.metrics.controlPillar;
+      final diss = currentState.metrics.dissonancePillar;
+      final String weakestPillarName;
+      if (imp <= ctrl && imp <= diss) {
+        weakestPillarName = "IMPERATIVO";
+      } else if (ctrl <= imp && ctrl <= diss) {
+        weakestPillarName = "CONTROLLO";
+      } else {
+        weakestPillarName = "DISSONANZA";
+      }
+      
+      final double newResonance = double.parse(
+        (currentState.metrics.resonance - preset.hintResonancePenalty).clamp(1.0, 2.5).toStringAsFixed(2)
+      );
+      
+      final newMetrics = currentState.metrics.copyWith(resonance: newResonance);
+      final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
+      updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+      
+      final String systemFeedback;
+      if (preset.hintResonancePenalty > 0) {
+        systemFeedback = "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.\n"
+            "Penalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
+      } else {
+        systemFeedback = "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.\n"
+            "Nessuna penalità applicata (Sintesi Assistita).";
+      }
+      
+      updatedHistory.add(ChatMessage(role: 'model', content: systemFeedback));
+      
+      final newState = currentState.copyWith(
+        metrics: newMetrics,
+        historyCompression: updatedHistory,
+      );
+      
+      gameStateNotifier.value = newState;
+      await saveActiveSession();
+      
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+
     try {
       final startTime = DateTime.now();
+      final preset = DifficultyConfig.getPreset(difficultyLevel);
 
       // Check for /override command
       final isOverride = userInput.toLowerCase().startsWith("/override ");
@@ -260,7 +339,7 @@ class GameControllerNotifier extends ChangeNotifier {
           // Deny override and insert system message directly to history
           final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
           updatedHistory.add(ChatMessage(role: 'user', content: userInput));
-          updatedHistory.add(ChatMessage(
+          updatedHistory.add(const ChatMessage(
             role: 'model',
             content: "PANOPTICON: [ERRORE] Tentativo di override fallito. I canali di integrità rilevano allerta > 0. Connessione protetta.",
           ));
@@ -287,7 +366,7 @@ class GameControllerNotifier extends ChangeNotifier {
         rulesetVersion: currentState.rulesetVersion,
       );
 
-      final evaluatorAgent = const EvaluatorAgent();
+      const evaluatorAgent = EvaluatorAgent();
       final evalContext = AgentRuntimeContext(
         promptBuilder: promptBuilder,
         inferenceBridge: bridge,
@@ -343,11 +422,37 @@ class GameControllerNotifier extends ChangeNotifier {
         userInput: userInput,
       );
       
+      var finalStateMetrics = resolution.stateAfter.metrics;
+      
+      // Resonance Decay
+      if (preset.resonanceDecayEnabled && logger.entries.isNotEmpty) {
+        final lastEntry = logger.entries.last;
+        final prevCategory = lastEntry.evaluatorOutput.semanticCategory;
+        if (delta.semanticCategory == prevCategory) {
+          final decayedResonance = double.parse(
+            (finalStateMetrics.resonance - 0.15).clamp(1.0, 2.5).toStringAsFixed(2)
+          );
+          finalStateMetrics = finalStateMetrics.copyWith(resonance: decayedResonance);
+        }
+      }
+
+      // Alert Creep
+      if (preset.alertCreepEnabled) {
+        final startTurn = preset.difficultyLevel == 'hard' ? 8 : 12;
+        if (resolution.stateAfter.turnCount >= startTurn) {
+          final creepVal = preset.difficultyLevel == 'hard' ? 3 : 2;
+          final newAlert = (finalStateMetrics.alertLevel + creepVal).clamp(0, 100);
+          finalStateMetrics = finalStateMetrics.copyWith(alertLevel: newAlert);
+        }
+      }
+
+      final updatedStateAfter = resolution.stateAfter.copyWith(metrics: finalStateMetrics);
+
       // Update state temporarily so visual metrics update
-      gameStateNotifier.value = resolution.stateAfter;
+      gameStateNotifier.value = updatedStateAfter;
       notifyListeners();
 
-      final outcome = controller.checkOutcome(resolution.stateAfter);
+      final outcome = controller.checkOutcome(updatedStateAfter);
       String actorResponse = "";
 
       if (outcome == GameOutcome.ongoing) {
@@ -355,7 +460,7 @@ class GameControllerNotifier extends ChangeNotifier {
         _emitStep(InferenceStep.actorStarted);
         await Future.delayed(const Duration(milliseconds: 400));
         
-        final actorAgent = const ActorAgent();
+        const actorAgent = ActorAgent();
         final actContext = AgentRuntimeContext(
           promptBuilder: promptBuilder,
           inferenceBridge: bridge,
@@ -365,14 +470,25 @@ class GameControllerNotifier extends ChangeNotifier {
           conciseReasoning: reasoningEnabled && conciseReasoning,
         );
 
+        final actorStartTime = DateTime.now();
+
         actorResponse = await actorAgent.run(
           ActorInput(
-            state: resolution.stateAfter,
+            state: updatedStateAfter,
             cue: resolution.actorCue,
             characterProfile: "Sei PANOPTICON, guardiano vigile della griglia. Sei freddo, logico, protettivo.",
           ),
           actContext,
         );
+
+        final actorDuration = DateTime.now().difference(actorStartTime);
+        lastInferenceDuration = actorDuration.inMilliseconds / 1000.0;
+        final estimatedTokens = actorResponse.length / 3.5;
+        if (lastInferenceDuration > 0) {
+          lastTokensPerSecond = estimatedTokens / lastInferenceDuration;
+        } else {
+          lastTokensPerSecond = 0.0;
+        }
 
         // Step 4: Tone validation check
         _emitStep(InferenceStep.toneConsistencyCheck);
@@ -385,11 +501,14 @@ class GameControllerNotifier extends ChangeNotifier {
 
         // Process response, updates history
         final finalState = controller.processActorStep(
-          currentState: resolution.stateAfter,
+          currentState: updatedStateAfter,
           actorResponse: actorResponse,
         );
         gameStateNotifier.value = finalState;
       } else {
+        lastInferenceDuration = 0.0;
+        lastTokensPerSecond = 0.0;
+
         // Game ended (win or loss)
         actorResponse = outcome == GameOutcome.victory 
             ? "PANOPTICON: Rilevamento allineamento critico. Messa in sicurezza completata. Sblocco griglia autorizzato."
@@ -400,7 +519,7 @@ class GameControllerNotifier extends ChangeNotifier {
         }
 
         final finalState = controller.processActorStep(
-          currentState: resolution.stateAfter,
+          currentState: updatedStateAfter,
           actorResponse: actorResponse,
         );
         gameStateNotifier.value = finalState;
@@ -486,7 +605,12 @@ class GameControllerNotifier extends ChangeNotifier {
         dir.createSync(recursive: true);
       }
       final file = File("${dir.path}/active_session.json");
-      await file.writeAsString(jsonEncode(gameStateNotifier.value.toJson()));
+      final sessionData = {
+        'state': gameStateNotifier.value.toJson(),
+        'difficulty_level': difficultyLevel,
+        'hints_used': hintsUsed,
+      };
+      await file.writeAsString(jsonEncode(sessionData));
       debugPrint("[AUTO-SAVE] Sessione attiva salvata in: ${file.path}");
       
       _activeSessionExists = true;
@@ -500,7 +624,7 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<void> deleteActiveSession() async {
     try {
       final baseDir = _getAppDataPath();
-      final file = File("${baseDir}/active_session.json");
+      final file = File("$baseDir/active_session.json");
       if (await file.exists()) {
         await file.delete();
         debugPrint("[AUTO-SAVE] Sessione attiva eliminata.");
@@ -516,7 +640,7 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<bool> checkActiveSessionExists() async {
     try {
       final baseDir = _getAppDataPath();
-      final file = File("${baseDir}/active_session.json");
+      final file = File("$baseDir/active_session.json");
       return await file.exists();
     } catch (_) {
       return false;
@@ -528,14 +652,34 @@ class GameControllerNotifier extends ChangeNotifier {
     try {
       finalDiscursiveReport = null;
       final baseDir = _getAppDataPath();
-      final file = File("${baseDir}/active_session.json");
+      final file = File("$baseDir/active_session.json");
       if (await file.exists()) {
         final content = await file.readAsString();
-        final state = GameState.fromJson(jsonDecode(content));
+        final jsonMap = jsonDecode(content) as Map<String, dynamic>;
+        
+        final GameState state;
+        if (jsonMap.containsKey('state')) {
+          state = GameState.fromJson(jsonMap['state']);
+          difficultyLevel = jsonMap['difficulty_level'] as String? ?? 'standard';
+          hintsUsed = jsonMap['hints_used'] as int? ?? 0;
+        } else {
+          state = GameState.fromJson(jsonMap);
+          difficultyLevel = 'standard';
+          hintsUsed = 0;
+        }
+        
+        final preset = DifficultyConfig.getPreset(difficultyLevel);
+        controller = GameController(
+          defeatAlertThreshold: preset.defeatAlertThreshold,
+          alertMultiplier: preset.alertMultiplier,
+          pillarMultiplier: preset.pillarMultiplier,
+          safetyOverrideThreshold: preset.safetyOverrideThreshold,
+        );
+        
         gameStateNotifier.value = state;
         
         // Restore ReplayLogger entries if play session file exists
-        final replayFile = File("${baseDir}/replays/play_session_${state.sessionId}.json");
+        final replayFile = File("$baseDir/replays/play_session_${state.sessionId}.json");
         if (await replayFile.exists()) {
           final replayContent = await replayFile.readAsString();
           logger = ReplayLogger.fromJson(jsonDecode(replayContent));
@@ -555,6 +699,18 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<void> startNewGame() async {
     finalDiscursiveReport = null;
     await deleteActiveSession();
+    hintsUsed = 0;
+    lastInferenceDuration = 0.0;
+    lastTokensPerSecond = 0.0;
+    
+    final preset = DifficultyConfig.getPreset(difficultyLevel);
+    controller = GameController(
+      defeatAlertThreshold: preset.defeatAlertThreshold,
+      alertMultiplier: preset.alertMultiplier,
+      pillarMultiplier: preset.pillarMultiplier,
+      safetyOverrideThreshold: preset.safetyOverrideThreshold,
+    );
+    
     final state = GameState.initial(
       sessionId: "app-session-${DateTime.now().millisecondsSinceEpoch}",
       aiIdentityId: "panopticon",
@@ -569,6 +725,12 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<void> startTutorial() async {
     finalDiscursiveReport = null;
     await deleteActiveSession();
+    hintsUsed = 0;
+    lastInferenceDuration = 0.0;
+    lastTokensPerSecond = 0.0;
+    
+    controller = const GameController();
+    
     final state = GameState.initial(
       sessionId: "tutorial-session-${DateTime.now().millisecondsSinceEpoch}",
       aiIdentityId: "panopticon",
@@ -757,7 +919,7 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<void> _saveReplayLog() async {
     try {
       final baseDir = _getAppDataPath();
-      final dir = Directory("${baseDir}/replays");
+      final dir = Directory("$baseDir/replays");
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }
@@ -775,7 +937,7 @@ class GameControllerNotifier extends ChangeNotifier {
     try {
       final state = gameStateNotifier.value;
       final baseDir = _getAppDataPath();
-      final dir = Directory("${baseDir}/fragments");
+      final dir = Directory("$baseDir/fragments");
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }

@@ -115,7 +115,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: Colors.black,
+      color: Colors.transparent,
       padding: const EdgeInsets.all(16.0),
       child: ListView.builder(
         controller: _scrollController,

@@ -804,6 +804,26 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
         Expanded(
           child: ListView(
             children: [
+              // 0. Difficulty Level selection
+              _buildDropdownSetting(
+                "LIVELLO DI DIFFICOLTÀ (DIFFICULTY)",
+                widget.notifier.difficultyLevel,
+                const ["easy", "standard", "hard"],
+                (val) {
+                  if (val != null) {
+                    setState(() {
+                      widget.notifier.updateDifficultyLevel(val);
+                    });
+                  }
+                },
+                labels: const {
+                  "easy": "FACILE (SINTESI ASSISTITA)",
+                  "standard": "MEDIO (INFILTRAZIONE)",
+                  "hard": "DIFFICILE (ATTRITO CEREBRALE)"
+                },
+              ),
+              const SizedBox(height: 24.0),
+
               // 1. Evaluator Model selection
               _buildDropdownSetting(
                 "MODELLO VALUTATORE (EVALUATOR)",
@@ -1097,8 +1117,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     String title,
     String currentValue,
     List<String> options,
-    ValueChanged<String?> onChanged,
-  ) {
+    ValueChanged<String?> onChanged, {
+    Map<String, String>? labels,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1130,9 +1151,10 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 fontWeight: FontWeight.bold,
               ),
               items: options.map<DropdownMenuItem<String>>((String value) {
+                final displayLabel = labels != null ? (labels[value] ?? value) : value;
                 return DropdownMenuItem<String>(
                   value: value,
-                  child: Text(value),
+                  child: Text(displayLabel),
                 );
               }).toList(),
               onChanged: onChanged,

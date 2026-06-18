@@ -6,8 +6,10 @@ export 'src/models/evaluator_delta.dart';
 export 'src/models/evaluator_resolution.dart';
 export 'src/models/actor_cue.dart';
 export 'src/models/turn_input.dart';
+export 'src/models/difficulty_config.dart';
 export 'src/game_controller.dart';
 export 'src/replay_logger.dart';
+
 
 // Agent Runtime Base
 export 'src/agent_runtime/agent_card.dart';

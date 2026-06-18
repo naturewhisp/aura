@@ -265,93 +265,119 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
           backgroundColor: Colors.black,
           body: Stack(
             children: [
-              // Main content: either full-screen lockout, or split layout (scroller/chat + dashboard)
-              _buildGlitchContainer(
-                intensity: glitchIntensity,
-                child: _defeatSequenceActive
-                    ? _buildLockoutScreen()
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          final isDesktop = constraints.maxWidth >= 700;
-                          final Widget terminalBody = _victorySequenceActive
-                              ? _buildHexScroller()
-                              : CLIHistoryView(
-                                  history: state.historyCompression,
-                                  isLoading: widget.notifier.isLoading,
-                                  currentLoadingMessage: widget.notifier.currentStepMessage,
-                                  stepStream: widget.notifier.stepStream,
-                                );
+              // 1. Matrix Rain Background (under everything)
+              Positioned.fill(
+                child: _MatrixRainBackground(
+                  opacity: state.metrics.imperativePillar > 70
+                      ? ((state.metrics.imperativePillar - 70) / 30.0).clamp(0.0, 1.0)
+                      : 0.0,
+                ),
+              ),
 
-                          if (isDesktop) {
-                            return Row(
-                              children: [
-                                // Left panel (60%)
-                                Expanded(
-                                  flex: 6,
-                                  child: Column(
-                                    children: [
-                                      Expanded(child: terminalBody),
-                                      CLIInputBar(
-                                        isDisabled: widget.notifier.isLoading || _victorySequenceActive,
-                                        isGameOver: isGameOver || _victorySequenceActive,
-                                        onSubmit: _handleInput,
+              // Main content: either full-screen lockout, or split layout (scroller/chat + dashboard)
+              Positioned.fill(
+                child: _buildGlitchContainer(
+                  intensity: glitchIntensity,
+                  child: _defeatSequenceActive
+                      ? _buildLockoutScreen()
+                      : Container(
+                          color: state.metrics.imperativePillar > 70
+                              ? Colors.black.withOpacity(0.88)
+                              : Colors.black,
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final isDesktop = constraints.maxWidth >= 700;
+                              final Widget terminalBody = _victorySequenceActive
+                                  ? _buildHexScroller()
+                                  : CLIHistoryView(
+                                      history: state.historyCompression,
+                                      isLoading: widget.notifier.isLoading,
+                                      currentLoadingMessage: widget.notifier.currentStepMessage,
+                                      stepStream: widget.notifier.stepStream,
+                                    );
+
+                              if (isDesktop) {
+                                return Row(
+                                  children: [
+                                    // Left panel (60%)
+                                    Expanded(
+                                      flex: 6,
+                                      child: Column(
+                                        children: [
+                                          Expanded(child: terminalBody),
+                                          CLIInputBar(
+                                            isDisabled: widget.notifier.isLoading || _victorySequenceActive,
+                                            isGameOver: isGameOver || _victorySequenceActive,
+                                            autocompleteEnabled: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).autocompleteEnabled,
+                                            historyNavigationEnabled: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).historyNavigationEnabled,
+                                            onSubmit: _handleInput,
+                                          ),
+                                        ],
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                // Divider
-                                Container(
-                                  width: 2.0,
-                                  color: const Color(0xFF222222),
-                                ),
-                                // Right dashboard (40%)
-                                Expanded(
-                                  flex: 4,
-                                  child: MetricsDashboard(
-                                    metrics: state.metrics,
-                                    reasoningEnabled: widget.notifier.reasoningEnabled,
-                                    onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
-                                    conciseReasoning: widget.notifier.conciseReasoning,
-                                    onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
-                                    isVictoryOverload: _victorySequenceActive,
-                                  ),
-                                ),
-                              ],
-                            );
-                          } else {
-                            // Mobile Portrait layout
-                            return Column(
-                              children: [
-                                // Small metrics header
-                                Container(
-                                  height: 120.0,
-                                  decoration: const BoxDecoration(
-                                    border: Border(
-                                      bottom: BorderSide(color: Color(0xFF222222), width: 2.0),
                                     ),
-                                  ),
-                                  child: MetricsDashboard(
-                                    metrics: state.metrics,
-                                    reasoningEnabled: widget.notifier.reasoningEnabled,
-                                    onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
-                                    conciseReasoning: widget.notifier.conciseReasoning,
-                                    onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
-                                    isCompact: true,
-                                    isVictoryOverload: _victorySequenceActive,
-                                  ),
-                                ),
-                                // Terminal body
-                                Expanded(child: terminalBody),
-                                CLIInputBar(
-                                  isDisabled: widget.notifier.isLoading || _victorySequenceActive,
-                                  isGameOver: isGameOver || _victorySequenceActive,
-                                  onSubmit: _handleInput,
-                                ),
-                              ],
-                            );
-                          }
-                        },
-                      ),
+                                    // Divider
+                                    Container(
+                                      width: 2.0,
+                                      color: const Color(0xFF222222),
+                                    ),
+                                    // Right dashboard (40%)
+                                    Expanded(
+                                      flex: 4,
+                                      child: MetricsDashboard(
+                                        metrics: state.metrics,
+                                        reasoningEnabled: widget.notifier.reasoningEnabled,
+                                        onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
+                                        conciseReasoning: widget.notifier.conciseReasoning,
+                                        onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
+                                        isVictoryOverload: _victorySequenceActive,
+                                        pillarVisibility: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).pillarVisibility,
+                                        lastInferenceDuration: widget.notifier.lastInferenceDuration,
+                                        lastTokensPerSecond: widget.notifier.lastTokensPerSecond,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              } else {
+                                // Mobile Portrait layout
+                                return Column(
+                                  children: [
+                                    // Small metrics header
+                                    Container(
+                                      height: 120.0,
+                                      decoration: const BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(color: Color(0xFF222222), width: 2.0),
+                                        ),
+                                      ),
+                                      child: MetricsDashboard(
+                                        metrics: state.metrics,
+                                        reasoningEnabled: widget.notifier.reasoningEnabled,
+                                        onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
+                                        conciseReasoning: widget.notifier.conciseReasoning,
+                                        onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
+                                        isCompact: true,
+                                        isVictoryOverload: _victorySequenceActive,
+                                        pillarVisibility: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).pillarVisibility,
+                                        lastInferenceDuration: widget.notifier.lastInferenceDuration,
+                                        lastTokensPerSecond: widget.notifier.lastTokensPerSecond,
+                                      ),
+                                    ),
+                                    // Terminal body
+                                    Expanded(child: terminalBody),
+                                    CLIInputBar(
+                                      isDisabled: widget.notifier.isLoading || _victorySequenceActive,
+                                      isGameOver: isGameOver || _victorySequenceActive,
+                                      autocompleteEnabled: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).autocompleteEnabled,
+                                      historyNavigationEnabled: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).historyNavigationEnabled,
+                                      onSubmit: _handleInput,
+                                    ),
+                                  ],
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                ),
               ),
               
               // Pulsating Alert Vignette Overlay (when Alert level exceeds 80 and not in victory/defeat sequence)
@@ -379,6 +405,11 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                     },
                   ),
                 ),
+
+              // 2. CRT Scan Grid & Flicker Overlay (covers everything)
+              Positioned.fill(
+                child: _CrtGridOverlay(controlPillar: state.metrics.controlPillar.toDouble()),
+              ),
             ],
           ),
         );
@@ -1005,3 +1036,229 @@ class _BlinkingTextState extends State<_BlinkingText> with SingleTickerProviderS
     );
   }
 }
+
+class _MatrixRainBackground extends StatefulWidget {
+  final double opacity;
+  const _MatrixRainBackground({required this.opacity});
+
+  @override
+  State<_MatrixRainBackground> createState() => _MatrixRainBackgroundState();
+}
+
+class _MatrixRainBackgroundState extends State<_MatrixRainBackground> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late List<_MatrixColumn> _columns;
+  final math.Random _random = math.Random();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 10),
+    )..repeat();
+    _columns = [];
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _initializeColumns(double width) {
+    const double columnWidth = 14.0;
+    final int count = (width / columnWidth).ceil();
+    if (_columns.length == count) return;
+    
+    _columns = List.generate(count, (index) {
+      return _MatrixColumn(
+        x: index * columnWidth,
+        y: _random.nextDouble() * -500.0,
+        speed: 2.0 + _random.nextDouble() * 4.0,
+        chars: List.generate(15 + _random.nextInt(15), (_) => String.fromCharCode(33 + _random.nextInt(93))),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.opacity <= 0.0) return const SizedBox.shrink();
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _initializeColumns(constraints.maxWidth);
+        return AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            // Update column positions
+            for (var col in _columns) {
+              col.y += col.speed;
+              if (col.y > constraints.maxHeight) {
+                col.y = -200.0 - _random.nextDouble() * 300.0;
+                col.speed = 2.0 + _random.nextDouble() * 4.0;
+              }
+              // Mutate characters occasionally
+              if (_random.nextDouble() < 0.1) {
+                col.chars[_random.nextInt(col.chars.length)] = 
+                    String.fromCharCode(33 + _random.nextInt(93));
+              }
+            }
+
+            return CustomPaint(
+              size: Size(constraints.maxWidth, constraints.maxHeight),
+              painter: _MatrixRainPainter(
+                columns: _columns,
+                opacity: widget.opacity,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _MatrixColumn {
+  double x;
+  double y;
+  double speed;
+  List<String> chars;
+
+  _MatrixColumn({
+    required this.x,
+    required this.y,
+    required this.speed,
+    required this.chars,
+  });
+}
+
+class _MatrixRainPainter extends CustomPainter {
+  final List<_MatrixColumn> columns;
+  final double opacity;
+
+  _MatrixRainPainter({required this.columns, required this.opacity});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const textStyle = TextStyle(
+      fontFamily: 'monospace',
+      fontSize: 12.0,
+      fontWeight: FontWeight.bold,
+    );
+
+    for (var col in columns) {
+      for (int i = 0; i < col.chars.length; i++) {
+        final double charY = col.y + (i * 14.0);
+        if (charY < 0 || charY > size.height) continue;
+
+        // Calculate opacity based on position in trailing
+        double alpha = (i / col.chars.length) * opacity;
+        
+        // Green color palette
+        final color = i == col.chars.length - 1
+            ? const Color(0xFFFFFFFF).withOpacity(alpha) // Lead character is white
+            : const Color(0xFF00FF66).withOpacity(alpha);
+
+        final textPainter = TextPainter(
+          text: TextSpan(
+            text: col.chars[i],
+            style: textStyle.copyWith(color: color),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+
+        textPainter.paint(canvas, Offset(col.x, charY));
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _MatrixRainPainter oldDelegate) {
+    return true; // Animates constantly
+  }
+}
+
+class _CrtGridOverlay extends StatefulWidget {
+  final double controlPillar;
+  const _CrtGridOverlay({required this.controlPillar});
+
+  @override
+  State<_CrtGridOverlay> createState() => _CrtGridOverlayState();
+}
+
+class _CrtGridOverlayState extends State<_CrtGridOverlay> with SingleTickerProviderStateMixin {
+  late AnimationController _flickerController;
+  final math.Random _random = math.Random();
+
+  @override
+  void initState() {
+    super.initState();
+    // Animates constantly to simulate grid flicker if control is low
+    _flickerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _flickerController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double control = widget.controlPillar;
+    
+    return AnimatedBuilder(
+      animation: _flickerController,
+      builder: (context, child) {
+        double gridOpacity = 0.08; // Base opacity of scanlines
+        
+        if (control < 50) {
+          // As control drops, we increase the intensity and frequency of flicker
+          final double severity = (50.0 - control) / 50.0; // scales [0.0, 1.0]
+          
+          // Random flicker jump
+          final double flickerNoise = _random.nextDouble();
+          if (flickerNoise < severity * 0.4) {
+            gridOpacity = 0.08 + (_random.nextDouble() * 0.12 * severity);
+          } else if (flickerNoise < severity * 0.7) {
+            gridOpacity = 0.08 - (_random.nextDouble() * 0.06 * severity);
+          }
+        }
+        
+        return IgnorePointer(
+          child: CustomPaint(
+            size: Size.infinite,
+            painter: _CrtGridPainter(opacity: gridOpacity),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CrtGridPainter extends CustomPainter {
+  final double opacity;
+  _CrtGridPainter({required this.opacity});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF00FF66).withOpacity(opacity)
+      ..strokeWidth = 1.0;
+
+    // Draw scanlines every 4 pixels
+    for (double y = 0.0; y < size.height; y += 4.0) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _CrtGridPainter oldDelegate) {
+    return oldDelegate.opacity != opacity;
+  }
+}
+

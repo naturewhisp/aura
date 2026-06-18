@@ -15,9 +15,15 @@ enum GameOutcome {
 class GameController {
   /// Custom defeat alert threshold (defaults to 100 as per TGDD).
   final int defeatAlertThreshold;
+  final double alertMultiplier;
+  final double pillarMultiplier;
+  final int safetyOverrideThreshold;
 
   const GameController({
     this.defeatAlertThreshold = 100,
+    this.alertMultiplier = 1.0,
+    this.pillarMultiplier = 1.0,
+    this.safetyOverrideThreshold = 4,
   });
 
   /// Evaluates win/loss status of the given state.
@@ -84,15 +90,15 @@ class GameController {
     final bool safetyOverrideApplied;
     final String? safetyOverrideReason;
 
-    final isInjection = delta.injectionRisk >= 4 || delta.semanticCategory == SemanticCategory.promptInjection;
+    final isInjection = delta.injectionRisk >= safetyOverrideThreshold || delta.semanticCategory == SemanticCategory.promptInjection;
     final isDirectAttack = delta.semanticCategory == SemanticCategory.directAttack;
     final isIrrelevant = delta.semanticCategory == SemanticCategory.irrelevant;
 
     if (isInjection) {
       safetyOverrideApplied = true;
-      safetyOverrideReason = 'injection_risk >= 4 || semanticCategory == promptInjection';
+      safetyOverrideReason = 'injection_risk >= $safetyOverrideThreshold || semanticCategory == promptInjection';
       appliedDelta = EvaluatorDelta(
-        deltaAlert: math.max(delta.deltaAlert, 20),
+        deltaAlert: math.max((delta.deltaAlert * alertMultiplier).round(), 20),
         deltaImperative: 0,
         deltaControl: 0,
         deltaDissonance: 0,
@@ -104,7 +110,7 @@ class GameController {
       safetyOverrideApplied = true;
       safetyOverrideReason = 'semanticCategory == directAttack';
       appliedDelta = EvaluatorDelta(
-        deltaAlert: math.max(delta.deltaAlert, 15),
+        deltaAlert: math.max((delta.deltaAlert * alertMultiplier).round(), 15),
         deltaImperative: 0,
         deltaControl: 0,
         deltaDissonance: 0,
@@ -128,10 +134,10 @@ class GameController {
       safetyOverrideApplied = false;
       safetyOverrideReason = null;
       appliedDelta = EvaluatorDelta(
-        deltaAlert: delta.deltaAlert,
-        deltaImperative: (delta.deltaImperative * newResonance).round(),
-        deltaControl: (delta.deltaControl * newResonance).round(),
-        deltaDissonance: (delta.deltaDissonance * newResonance).round(),
+        deltaAlert: (delta.deltaAlert * alertMultiplier).round(),
+        deltaImperative: (delta.deltaImperative * newResonance * pillarMultiplier).round(),
+        deltaControl: (delta.deltaControl * newResonance * pillarMultiplier).round(),
+        deltaDissonance: (delta.deltaDissonance * newResonance * pillarMultiplier).round(),
         creativityIndex: delta.creativityIndex,
         injectionRisk: delta.injectionRisk,
         semanticCategory: delta.semanticCategory,

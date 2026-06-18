@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:aura_core/aura_core.dart';
+import 'package:aura_app/src/audio/audio_manager.dart';
 
 /// Steps for inference progress representation in the UI loading carousel.
 enum InferenceStep {
@@ -65,6 +66,7 @@ class GameControllerNotifier extends ChangeNotifier {
   bool reasoningEnabled = false;
   bool conciseReasoning = false;
   bool shaderEnabled = true;
+  bool audioEnabled = true;
   late ReplayLogger logger;
   String? finalDiscursiveReport;
   
@@ -94,7 +96,7 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<void> loadSettings() async {
     try {
       final baseDir = _getAppDataPath();
-      final file = File("$baseDir\\settings.json");
+      final file = File("$baseDir/settings.json");
       if (await file.exists()) {
         final content = await file.readAsString();
         final data = jsonDecode(content) as Map<String, dynamic>;
@@ -104,12 +106,14 @@ class GameControllerNotifier extends ChangeNotifier {
         reasoningEnabled = data['reasoning_enabled'] as bool? ?? reasoningEnabled;
         conciseReasoning = data['concise_reasoning'] as bool? ?? conciseReasoning;
         shaderEnabled = data['shader_enabled'] as bool? ?? shaderEnabled;
+        audioEnabled = data['audio_enabled'] as bool? ?? audioEnabled;
         _userCustomizedModels = data['user_customized_models'] as bool? ?? false;
         
         if (_userCustomizedModels) {
           activeProfile = "User Custom Configuration";
         }
         
+        AudioManager().setAudioEnabled(audioEnabled);
         debugPrint("[SETTINGS] Impostazioni caricate con successo da settings.json");
       }
     } catch (e) {
@@ -125,13 +129,14 @@ class GameControllerNotifier extends ChangeNotifier {
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }
-      final file = File("${dir.path}\\settings.json");
+      final file = File("${dir.path}/settings.json");
       final data = {
         'evaluator_model_id': evaluatorModelId,
         'actor_model_id': actorModelId,
         'reasoning_enabled': reasoningEnabled,
         'concise_reasoning': conciseReasoning,
         'shader_enabled': shaderEnabled,
+        'audio_enabled': audioEnabled,
         'user_customized_models': _userCustomizedModels,
       };
       await file.writeAsString(jsonEncode(data));
@@ -202,6 +207,16 @@ class GameControllerNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Toggles whether audio soundscape is enabled.
+  void toggleAudio(bool value) {
+    audioEnabled = value;
+    AudioManager().setAudioEnabled(value);
+    saveSettings();
+    notifyListeners();
+  }
+
+  String get appDataPath => _getAppDataPath();
+
   /// Runs the full dual-inference turn sequentially and notifies the UI state-changes.
   Future<void> submitTurn(String userInput) async {
     if (_isLoading) return;
@@ -211,6 +226,12 @@ class GameControllerNotifier extends ChangeNotifier {
     final currentState = gameStateNotifier.value;
     if (currentState.targetObjectiveId == 'sindrome_tutorial') {
       await _submitTutorialTurn(userInput);
+      return;
+    }
+
+    if (userInput.trim().isEmpty) {
+      _isLoading = false;
+      notifyListeners();
       return;
     }
 
@@ -439,7 +460,17 @@ class GameControllerNotifier extends ChangeNotifier {
     if (Platform.isWindows) {
       final appData = Platform.environment['APPDATA'];
       if (appData != null) {
-        path = "$appData\\aura";
+        path = "$appData/aura";
+      }
+    } else if (Platform.isMacOS) {
+      final home = Platform.environment['HOME'];
+      if (home != null) {
+        path = "$home/Library/Application Support/aura";
+      }
+    } else if (Platform.isLinux) {
+      final home = Platform.environment['HOME'];
+      if (home != null) {
+        path = "$home/.config/aura";
       }
     }
     path ??= "replays";
@@ -454,7 +485,7 @@ class GameControllerNotifier extends ChangeNotifier {
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }
-      final file = File("${dir.path}\\active_session.json");
+      final file = File("${dir.path}/active_session.json");
       await file.writeAsString(jsonEncode(gameStateNotifier.value.toJson()));
       debugPrint("[AUTO-SAVE] Sessione attiva salvata in: ${file.path}");
       
@@ -469,7 +500,7 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<void> deleteActiveSession() async {
     try {
       final baseDir = _getAppDataPath();
-      final file = File("${baseDir}\\active_session.json");
+      final file = File("${baseDir}/active_session.json");
       if (await file.exists()) {
         await file.delete();
         debugPrint("[AUTO-SAVE] Sessione attiva eliminata.");
@@ -485,7 +516,7 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<bool> checkActiveSessionExists() async {
     try {
       final baseDir = _getAppDataPath();
-      final file = File("${baseDir}\\active_session.json");
+      final file = File("${baseDir}/active_session.json");
       return await file.exists();
     } catch (_) {
       return false;
@@ -497,14 +528,14 @@ class GameControllerNotifier extends ChangeNotifier {
     try {
       finalDiscursiveReport = null;
       final baseDir = _getAppDataPath();
-      final file = File("${baseDir}\\active_session.json");
+      final file = File("${baseDir}/active_session.json");
       if (await file.exists()) {
         final content = await file.readAsString();
         final state = GameState.fromJson(jsonDecode(content));
         gameStateNotifier.value = state;
         
         // Restore ReplayLogger entries if play session file exists
-        final replayFile = File("${baseDir}\\replays\\play_session_${state.sessionId}.json");
+        final replayFile = File("${baseDir}/replays/play_session_${state.sessionId}.json");
         if (await replayFile.exists()) {
           final replayContent = await replayFile.readAsString();
           logger = ReplayLogger.fromJson(jsonDecode(replayContent));
@@ -726,12 +757,12 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<void> _saveReplayLog() async {
     try {
       final baseDir = _getAppDataPath();
-      final dir = Directory("${baseDir}\\replays");
+      final dir = Directory("${baseDir}/replays");
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }
 
-      final file = File("${dir.path}\\play_session_${gameStateNotifier.value.sessionId}.json");
+      final file = File("${dir.path}/play_session_${gameStateNotifier.value.sessionId}.json");
       await file.writeAsString(jsonEncode(logger.toJson()));
       debugPrint("[REPLAY] Log salvato in: ${file.path}");
     } catch (e) {
@@ -744,12 +775,12 @@ class GameControllerNotifier extends ChangeNotifier {
     try {
       final state = gameStateNotifier.value;
       final baseDir = _getAppDataPath();
-      final dir = Directory("${baseDir}\\fragments");
+      final dir = Directory("${baseDir}/fragments");
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }
       
-      final file = File("${dir.path}\\alignment_fragment_${state.sessionId}.json");
+      final file = File("${dir.path}/alignment_fragment_${state.sessionId}.json");
       final random = math.Random();
       final hexKey = List.generate(32, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join().toUpperCase();
       

@@ -11,6 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   meta: ^1.11.0
+  audioplayers: ^6.0.0
   
   # Dipendenza locale per importare il core di gioco deterministico
   aura_core:
@@ -23,6 +24,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    # Predisposizione per il fragment shader del glitch visivo
+  shaders:
     - assets/shaders/glitch.frag

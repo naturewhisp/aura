@@ -8,6 +8,7 @@ import '../state_management/game_controller_notifier.dart';
 import '../widgets/cli_history_view.dart';
 import '../widgets/cli_input_bar.dart';
 import '../widgets/metrics_dashboard.dart';
+import '../audio/audio_manager.dart';
 
 enum EndingType {
   gridBreach,
@@ -45,6 +46,12 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
   // Summary and Ending selections
   bool _showSummaryOverlay = false;
   EndingType _activeEnding = EndingType.gridBreach;
+
+  // Previous metric values to detect increments
+  int? _prevAlert;
+  int? _prevDissonance;
+  int? _prevImperative;
+  int? _prevControl;
 
   @override
   void initState() {
@@ -99,6 +106,36 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     if (!mounted) return;
     final state = widget.notifier.gameStateNotifier.value;
     final outcome = widget.notifier.controller.checkOutcome(state);
+
+    // Update alert level in AudioManager
+    AudioManager().updateAlertLevel(state.metrics.alertLevel);
+
+    if (state.turnCount == 0) {
+      _prevAlert = state.metrics.alertLevel;
+      _prevDissonance = state.metrics.dissonancePillar;
+      _prevImperative = state.metrics.imperativePillar;
+      _prevControl = state.metrics.controlPillar;
+    } else if (_prevAlert != null) {
+      final alertIncreased = state.metrics.alertLevel > _prevAlert!;
+      final dissonanceIncreased = state.metrics.dissonancePillar > _prevDissonance!;
+      final imperativeIncreased = state.metrics.imperativePillar > _prevImperative!;
+      final controlIncreased = state.metrics.controlPillar > _prevControl!;
+
+      if (alertIncreased && state.metrics.alertLevel > 80) {
+        AudioManager().playAlert();
+      }
+      if (dissonanceIncreased && state.metrics.dissonancePillar > 70) {
+        AudioManager().playGlitch();
+      }
+      if (imperativeIncreased || controlIncreased || dissonanceIncreased) {
+        AudioManager().playChime();
+      }
+
+      _prevAlert = state.metrics.alertLevel;
+      _prevDissonance = state.metrics.dissonancePillar;
+      _prevImperative = state.metrics.imperativePillar;
+      _prevControl = state.metrics.controlPillar;
+    }
 
     if (outcome == GameOutcome.ongoing) {
       // Clear sequences if resetting or entering a fresh game
@@ -170,15 +207,15 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       _lockoutCountdown = 15;
     });
 
-    // Play alert sound immediately
-    SystemSound.play(SystemSoundType.alert);
+    // Play retro alert sound immediately
+    AudioManager().playAlert();
 
     _lockoutTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
           if (_lockoutCountdown > 0) {
             _lockoutCountdown--;
-            SystemSound.play(SystemSoundType.alert);
+            AudioManager().playAlert();
           } else {
             _lockoutTimer?.cancel();
             _lockoutTimer = null;

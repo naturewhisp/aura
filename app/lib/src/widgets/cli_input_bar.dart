@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:aura_app/src/audio/audio_manager.dart';
 
 /// Interactive retro-terminal input field.
 class CLIInputBar extends StatefulWidget {
@@ -59,7 +60,11 @@ class _CLIInputBarState extends State<CLIInputBar> {
 
   void _handleSubmit() {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    if (text.isEmpty) {
+      _controller.clear();
+      widget.onSubmit("");
+      return;
+    }
 
     // Add to history and reset index
     _history.add(text);
@@ -222,6 +227,9 @@ class _CLIInputBarState extends State<CLIInputBar> {
                   isDense: true,
                   contentPadding: EdgeInsets.zero,
                 ),
+                onChanged: (_) {
+                  AudioManager().playClick();
+                },
                 onSubmitted: (_) => _handleSubmit(),
               ),
             ),

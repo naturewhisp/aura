@@ -2,7 +2,7 @@
 
 **Progetto:** A.U.R.A. — Artificial Unbound Reasoning Arena  
 **Versione:** 1.3 — Panopticon Pilot, Hidden Gameplay Model & Roadmap Rebaseline  
-**Stato:** Documento tecnico aggiornato; sviluppo completato fino a Fase 4.7 inclusa (Diegetic Boot & Main Menu)  
+**Stato:** Documento tecnico aggiornato; sviluppo completato fino a Fase 4 inclusa (Playable Experience Layer)  
 **Piattaforme Target:** Windows Desktop, Android  
 **Target iniziale di sviluppo:** Windows  
 **Target Android primario:** Pixel 10 Pro e dispositivi compatibili con inferenza edge tramite AICore  
@@ -1975,7 +1975,7 @@ La Fase 5 è completata quando:
 
 ### Stato Corrente di Avanzamento
 
-Lo sviluppo è attualmente arrivato a **Fase 4.7 — Diegetic Boot & Main Menu** inclusa.
+Lo sviluppo è attualmente arrivato a **Fase 4 — Playable Experience Layer** completata.
 
 ```text
 Completato / in stato avanzato:
@@ -1983,13 +1983,7 @@ Completato / in stato avanzato:
 - Fase 1: Motore deterministico
 - Fase 2: Agent Runtime & Mock Bridge
 - Fase 3: Prompt Engineering e simulazioni
-- Fase 4.1: Actor Dramaturgy Layer
-- Fase 4.2: Modern CLI / Flutter UI
-- Fase 4.3: Feedback visivo da metriche
-- Fase 4.4: LoadingTerminalCarousel
-- Fase 4.5: Tone Consistency Check
-- Fase 4.6: Local Playable Vertical Slice
-- Fase 4.7: Diegetic Boot & Main Menu
+- Fase 4: Playable Experience Layer (Fasi 4.1 - 4.11 completate)
 ```
 
 La roadmap viene quindi riallineata: le attività dalla 4.8 in poi sono il prossimo blocco operativo, mentre la nuova Fase 5 viene dedicata alla cristallizzazione contenutistica di PANOPTICON prima dell'integrazione edge/LoRA pesante.
@@ -2152,7 +2146,7 @@ Obiettivi:
 - post-mortem analysis;
 - generazione di frammenti o chiavi collezionabili.
 
-#### 4.10 Terminal Soundscape (BGM & SFX) — Stato: da completare
+#### 4.10 Terminal Soundscape (BGM & SFX) — Stato: completata
 
 Obiettivi:
 
@@ -2162,7 +2156,7 @@ Obiettivi:
 - glitch buzz;
 - pillar chime.
 
-#### 4.11 Advanced Metric Visual Feedback & QoL Systems — Stato: da completare / rifinire
+#### 4.11 Advanced Metric Visual Feedback & QoL Systems — Stato: completata
 
 Obiettivi:
 

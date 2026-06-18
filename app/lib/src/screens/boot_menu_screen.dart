@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state_management/game_controller_notifier.dart';
+import '../audio/audio_manager.dart';
 
 class BootMenuScreen extends StatefulWidget {
   final GameControllerNotifier notifier;
@@ -72,22 +73,28 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
 
       if (_currentBootStep < steps.length) {
         setState(() {
-          _bootLines.add("AURA_INIT> " + steps[_currentBootStep]);
+          _bootLines.add("AURA_INIT> ${steps[_currentBootStep]}");
           _currentBootStep++;
         });
         
         // Trigger model catalog loading asynchronously on step 3
         if (_currentBootStep == 3) {
-          widget.notifier.initializeModels().then((_) {
+          widget.notifier.initializeModels().then((_) async {
+            await AudioManager().initialize(
+              widget.notifier.appDataPath,
+              audioEnabled: widget.notifier.audioEnabled,
+            );
             if (mounted) {
               setState(() {
                 _bootLines.add("AURA_INIT> Model Router profile: [${widget.notifier.activeProfile}] loaded.");
+                _bootLines.add("AURA_INIT> Soundscape initialized: [${widget.notifier.audioEnabled ? 'ENABLED' : 'MUTED'}].");
               });
             }
           });
         }
       } else {
         timer.cancel();
+        AudioManager().startBgm();
         // Show ASCII art logo after a short delay
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {
@@ -128,6 +135,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     } while (_selectedMenuIndex == 2 && !widget.notifier.activeSessionExists && _selectedMenuIndex != prev);
     setState(() {});
     _ensureSelectedVisible();
+    AudioManager().playClick();
   }
 
   void _moveSelectionDown() {
@@ -138,6 +146,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     } while (_selectedMenuIndex == 2 && !widget.notifier.activeSessionExists && _selectedMenuIndex != prev);
     setState(() {});
     _ensureSelectedVisible();
+    AudioManager().playClick();
   }
 
   void _ensureSelectedVisible() {
@@ -161,6 +170,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     if (index == 2 && !widget.notifier.activeSessionExists) return; // disabled
     if (_flashingIndex != null) return; // already executing
 
+    AudioManager().playClick();
     setState(() {
       _flashingIndex = index;
     });
@@ -223,7 +233,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
   void _loadReplays() {
     try {
       final baseDir = _getAppDataPath();
-      final replaysDir = Directory("$baseDir\\replays");
+      final replaysDir = Directory("$baseDir/replays");
       if (replaysDir.existsSync()) {
         setState(() {
           _replayFiles = replaysDir
@@ -247,7 +257,17 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     if (Platform.isWindows) {
       final appData = Platform.environment['APPDATA'];
       if (appData != null) {
-        path = "$appData\\aura";
+        path = "$appData/aura";
+      }
+    } else if (Platform.isMacOS) {
+      final home = Platform.environment['HOME'];
+      if (home != null) {
+        path = "$home/Library/Application Support/aura";
+      }
+    } else if (Platform.isLinux) {
+      final home = Platform.environment['HOME'];
+      if (home != null) {
+        path = "$home/.config/aura";
       }
     }
     path ??= "replays";
@@ -260,7 +280,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
       final data = jsonDecode(content);
       setState(() {
         _selectedReplayData = data;
-        _selectedReplayName = file.path.split("\\").last;
+        _selectedReplayName = file.path.split(RegExp(r'[/\\]')).last;
         _subScreen = "replay_detail";
       });
     } catch (e) {
@@ -602,7 +622,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                   itemBuilder: (context, index) {
                     final entity = _replayFiles[index];
                     final file = File(entity.path);
-                    final name = file.path.split("\\").last;
+                    final name = file.path.split(RegExp(r'[/\\]')).last;
                     final lastModified = file.lastModifiedSync();
                     final kbSize = (file.lengthSync() / 1024.0).toStringAsFixed(1);
                     
@@ -847,6 +867,29 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                   widget.notifier.toggleShader(val);
                 },
               ),
+              const SizedBox(height: 24.0),
+              const Divider(color: Color(0xFF005522), thickness: 1.5, height: 40.0),
+              const Text(
+                "CONFIGURAZIONE AUDIO & SOUNDSCAPE",
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  color: Color(0xFF00FF66),
+                  fontSize: 15.0,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 16.0),
+
+              // 6. Audio terminal (Soundscape) toggle
+              _buildToggleSetting(
+                "AUDIO TERMINALE (SOUNDSCAPE)",
+                "Attiva gli effetti sonori retro chiptune e la musica d'ambiente",
+                widget.notifier.audioEnabled,
+                (val) {
+                  widget.notifier.toggleAudio(val);
+                },
+              ),
             ],
           ),
         ),
@@ -1027,7 +1070,10 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
 
   Widget _buildRetroLinkButton(String label, VoidCallback onPressed) {
     return InkWell(
-      onTap: onPressed,
+      onTap: () {
+        AudioManager().playClick();
+        onPressed();
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
         decoration: BoxDecoration(

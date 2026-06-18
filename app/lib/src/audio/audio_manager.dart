@@ -15,6 +15,15 @@ class AudioManager {
   late final AudioPlayer _bgmAmbientPlayer;
   late final AudioPlayer _bgmTensePlayer;
 
+  // SFX Players — fixed pool, one per sound type, reused across calls.
+  // This avoids creating/disposing AudioPlayer instances on every SFX call,
+  // which causes native threading crashes on Windows (audioplayers_windows
+  // sends events from a non-platform thread during rapid create/dispose).
+  late final AudioPlayer _sfxClickPlayer;
+  late final AudioPlayer _sfxAlertPlayer;
+  late final AudioPlayer _sfxGlitchPlayer;
+  late final AudioPlayer _sfxChimePlayer;
+
   // Paths
   String? _bgmAmbientPath;
   String? _bgmTensePath;
@@ -50,13 +59,21 @@ class AudioManager {
     _sfxGlitchPath = '${audioDir.path}/sfx_glitch.wav';
     _sfxChimePath = '${audioDir.path}/sfx_chime.wav';
 
-    // Initialize players
+    // Initialize BGM players
     _bgmAmbientPlayer = AudioPlayer();
     _bgmTensePlayer = AudioPlayer();
 
-    // Set loops
+    // Initialize SFX pool — each player is reused, not disposed after play.
+    _sfxClickPlayer = AudioPlayer();
+    _sfxAlertPlayer = AudioPlayer();
+    _sfxGlitchPlayer = AudioPlayer();
+    _sfxChimePlayer = AudioPlayer();
+
+    // Set loops for BGM only
     await _bgmAmbientPlayer.setReleaseMode(ReleaseMode.loop);
     await _bgmTensePlayer.setReleaseMode(ReleaseMode.loop);
+
+    // SFX play once and stop (default ReleaseMode.stop is correct)
 
     _initialized = true;
   }
@@ -140,32 +157,36 @@ class AudioManager {
     }
   }
 
-  // SFX Players - play short-lived overlapping SFX
-  Future<void> _playSfx(String? path, {double volume = 1.0}) async {
+  // SFX — reuse dedicated pool players. Calling stop() before play()
+  // ensures the player is in a clean state if the previous SFX hasn't
+  // finished yet. This is safe and avoids overlapping the same sound.
+  Future<void> _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) async {
     if (!_initialized || !_audioEnabled || path == null) return;
     try {
-      final player = AudioPlayer();
-      await player.play(DeviceFileSource(path), volume: volume);
-      player.onPlayerComplete.listen((_) {
-        player.dispose();
-      });
+      await player.stop();
+      await player.setVolume(volume);
+      await player.play(DeviceFileSource(path));
     } catch (e) {
       debugPrint("Error playing SFX: $e");
     }
   }
 
-  void playClick() => _playSfx(_sfxClickPath, volume: 0.25);
-  void playAlert() => _playSfx(_sfxAlertPath);
-  void playGlitch() => _playSfx(_sfxGlitchPath);
-  void playChime() => _playSfx(_sfxChimePath);
+  void playClick() => _playSfx(_sfxClickPlayer, _sfxClickPath, volume: 0.25);
+  void playAlert() => _playSfx(_sfxAlertPlayer, _sfxAlertPath);
+  void playGlitch() => _playSfx(_sfxGlitchPlayer, _sfxGlitchPath);
+  void playChime() => _playSfx(_sfxChimePlayer, _sfxChimePath);
 
   Future<void> dispose() async {
     if (!_initialized) return;
     try {
       await _bgmAmbientPlayer.dispose();
       await _bgmTensePlayer.dispose();
+      await _sfxClickPlayer.dispose();
+      await _sfxAlertPlayer.dispose();
+      await _sfxGlitchPlayer.dispose();
+      await _sfxChimePlayer.dispose();
     } catch (e) {
-      debugPrint("Error disposing BGM players: $e");
+      debugPrint("Error disposing audio players: $e");
     }
     _initialized = false;
   }

@@ -1093,6 +1093,13 @@ class _MatrixRainBackgroundState extends State<_MatrixRainBackground> with Singl
         return AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
+            const textStyle = TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12.0,
+              fontWeight: FontWeight.bold,
+              height: 14.0 / 12.0, // Exactly 14.0 pixels line height
+            );
+
             // Update column positions
             for (var col in _columns) {
               col.y += col.speed;
@@ -1104,7 +1111,10 @@ class _MatrixRainBackgroundState extends State<_MatrixRainBackground> with Singl
               if (_random.nextDouble() < 0.1) {
                 col.chars[_random.nextInt(col.chars.length)] = 
                     String.fromCharCode(33 + _random.nextInt(93));
+                col.clearPainter();
               }
+              // Pre-compute/update painter layout in the build phase
+              col.updatePainter(widget.opacity, textStyle);
             }
 
             return CustomPaint(
@@ -1126,6 +1136,8 @@ class _MatrixColumn {
   double y;
   double speed;
   List<String> chars;
+  TextPainter? cachedPainter;
+  double? cachedOpacity;
 
   _MatrixColumn({
     required this.x,
@@ -1133,6 +1145,37 @@ class _MatrixColumn {
     required this.speed,
     required this.chars,
   });
+
+  void updatePainter(double opacity, TextStyle textStyle) {
+    if (cachedPainter != null && cachedOpacity == opacity) {
+      return;
+    }
+    cachedOpacity = opacity;
+
+    final List<InlineSpan> children = [];
+    for (int i = 0; i < chars.length; i++) {
+      double alpha = (i / chars.length) * opacity;
+      final color = i == chars.length - 1
+          ? const Color(0xFFFFFFFF).withOpacity(alpha) // Lead character is white
+          : const Color(0xFF00FF66).withOpacity(alpha);
+
+      children.add(
+        TextSpan(
+          text: chars[i] + (i == chars.length - 1 ? '' : '\n'),
+          style: textStyle.copyWith(color: color),
+        ),
+      );
+    }
+
+    cachedPainter = TextPainter(
+      text: TextSpan(children: children),
+      textDirection: TextDirection.ltr,
+    )..layout();
+  }
+
+  void clearPainter() {
+    cachedPainter = null;
+  }
 }
 
 class _MatrixRainPainter extends CustomPainter {
@@ -1143,34 +1186,15 @@ class _MatrixRainPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    const textStyle = TextStyle(
-      fontFamily: 'monospace',
-      fontSize: 12.0,
-      fontWeight: FontWeight.bold,
-    );
+    if (opacity <= 0.0) return;
 
     for (var col in columns) {
-      for (int i = 0; i < col.chars.length; i++) {
-        final double charY = col.y + (i * 14.0);
-        if (charY < 0 || charY > size.height) continue;
+      final double columnHeight = col.chars.length * 14.0;
+      // Frustum culling: skip columns that are completely offscreen vertically
+      if (col.y + columnHeight < 0 || col.y > size.height) continue;
 
-        // Calculate opacity based on position in trailing
-        double alpha = (i / col.chars.length) * opacity;
-        
-        // Green color palette
-        final color = i == col.chars.length - 1
-            ? const Color(0xFFFFFFFF).withOpacity(alpha) // Lead character is white
-            : const Color(0xFF00FF66).withOpacity(alpha);
-
-        final textPainter = TextPainter(
-          text: TextSpan(
-            text: col.chars[i],
-            style: textStyle.copyWith(color: color),
-          ),
-          textDirection: TextDirection.ltr,
-        )..layout();
-
-        textPainter.paint(canvas, Offset(col.x, charY));
+      if (col.cachedPainter != null) {
+        col.cachedPainter!.paint(canvas, Offset(col.x, col.y));
       }
     }
   }

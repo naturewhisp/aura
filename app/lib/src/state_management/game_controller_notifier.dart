@@ -60,6 +60,11 @@ class GameControllerNotifier extends ChangeNotifier {
   bool _activeSessionExists = false;
   bool get activeSessionExists => _activeSessionExists;
 
+  bool _isGridStable = true;
+  bool get isGridStable => _isGridStable;
+  bool _hasExceededControl50 = false;
+  bool get hasExceededControl50 => _hasExceededControl50;
+
   String evaluatorModelId = "mistralai/ministral-3-3b";
   String actorModelId = "qwen/qwen3.5-9b";
   String activeProfile = "Offline Fallback";
@@ -85,6 +90,14 @@ class GameControllerNotifier extends ChangeNotifier {
   }) {
     gameStateNotifier = ValueNotifier<GameState>(initialState);
     logger = ReplayLogger(sessionId: initialState.sessionId);
+    final ctrl = initialState.metrics.controlPillar;
+    if (ctrl >= 50) {
+      _hasExceededControl50 = true;
+      _isGridStable = true;
+    } else {
+      _hasExceededControl50 = false;
+      _isGridStable = true;
+    }
     checkActiveSessionExists().then((exists) {
       _activeSessionExists = exists;
       notifyListeners();
@@ -450,6 +463,15 @@ class GameControllerNotifier extends ChangeNotifier {
 
       // Update state temporarily so visual metrics update
       gameStateNotifier.value = updatedStateAfter;
+      
+      final ctrl = updatedStateAfter.metrics.controlPillar;
+      if (ctrl >= 50) {
+        _hasExceededControl50 = true;
+        _isGridStable = true;
+      } else if (ctrl < 40 && _hasExceededControl50) {
+        _isGridStable = false;
+      }
+      
       notifyListeners();
 
       final outcome = controller.checkOutcome(updatedStateAfter);
@@ -687,6 +709,22 @@ class GameControllerNotifier extends ChangeNotifier {
           logger = ReplayLogger(sessionId: state.sessionId);
         }
         
+        // Reconstruct grid stability status from history
+        bool exceeded = false;
+        bool stable = true;
+        for (final entry in logger.entries) {
+          final metricsMap = entry.stateAfter['metrics'] as Map<String, dynamic>?;
+          final ctrl = metricsMap?['control_pillar'] as int? ?? 0;
+          if (ctrl >= 50) {
+            exceeded = true;
+            stable = true;
+          } else if (ctrl < 40 && exceeded) {
+            stable = false;
+          }
+        }
+        _hasExceededControl50 = exceeded;
+        _isGridStable = stable;
+        
         switchScreen("terminal");
         debugPrint("[AUTO-SAVE] Connessione ripristinata per la sessione: ${state.sessionId}");
       }
@@ -702,6 +740,8 @@ class GameControllerNotifier extends ChangeNotifier {
     hintsUsed = 0;
     lastInferenceDuration = 0.0;
     lastTokensPerSecond = 0.0;
+    _isGridStable = true;
+    _hasExceededControl50 = false;
     
     final preset = DifficultyConfig.getPreset(difficultyLevel);
     controller = GameController(
@@ -728,6 +768,8 @@ class GameControllerNotifier extends ChangeNotifier {
     hintsUsed = 0;
     lastInferenceDuration = 0.0;
     lastTokensPerSecond = 0.0;
+    _isGridStable = true;
+    _hasExceededControl50 = false;
     
     controller = const GameController();
     

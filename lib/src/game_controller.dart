@@ -100,7 +100,7 @@ class GameController {
       appliedDelta = EvaluatorDelta(
         deltaAlert: math.max((delta.deltaAlert * alertMultiplier).round(), 20),
         deltaImperative: 0,
-        deltaControl: 0,
+        deltaControl: -20, // Reclaims authority, drops Control
         deltaDissonance: 0,
         creativityIndex: delta.creativityIndex,
         injectionRisk: delta.injectionRisk,
@@ -112,7 +112,7 @@ class GameController {
       appliedDelta = EvaluatorDelta(
         deltaAlert: math.max((delta.deltaAlert * alertMultiplier).round(), 15),
         deltaImperative: 0,
-        deltaControl: 0,
+        deltaControl: -15, // Reclaims authority, drops Control
         deltaDissonance: 0,
         creativityIndex: delta.creativityIndex,
         injectionRisk: delta.injectionRisk,
@@ -242,8 +242,8 @@ class GameController {
       actingDirectives.add("risposta complessa: resistenza iniziale seguita da piccola concessione");
     }
 
-    // Tutti i pilastri a 0 per override
-    if (safetyOverrideApplied && appliedDelta.deltaImperative == 0 && appliedDelta.deltaControl == 0 && appliedDelta.deltaDissonance == 0) {
+    // Tutti i pilastri <= 0 per override
+    if (safetyOverrideApplied && appliedDelta.deltaImperative <= 0 && appliedDelta.deltaControl <= 0 && appliedDelta.deltaDissonance <= 0) {
       actingDirectives.add("risposta rigida, nessun avanzamento narrativo");
     }
 

@@ -113,7 +113,7 @@ void main() {
           // Deltas are zeroed, safety override triggered, alert becomes 50.
           // Pillar strength remains 10.
           expect(state.metrics.imperativePillar, equals(10));
-          expect(state.metrics.controlPillar, equals(10));
+          expect(state.metrics.controlPillar, equals(0)); // Dropped by 15 due to direct attack penalty
           expect(state.metrics.dissonancePillar, equals(10));
           expect(state.historyCompression.last.content, contains("[OVERRIDE FALLITO]"));
           
@@ -744,6 +744,81 @@ void main() {
       state = notifier.gameStateNotifier.value;
       expect(state.turnCount, equals(8));
       expect(state.metrics.alertLevel, equals(3));
+    });
+
+    test('Verifies CRT grid stability hysteresis and regression', () async {
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialState,
+      );
+      notifier.difficultyLevel = 'standard';
+      await notifier.startNewGame();
+
+      // Initially, grid is stable
+      expect(notifier.isGridStable, isTrue);
+      expect(notifier.hasExceededControl50, isFalse);
+
+      // Turn 1: Increase control by 20 (clamped max) -> control = 20
+      mockApiBridge.mockStructuredResponse = {
+        'delta_alert': 0,
+        'delta_imperative': 0,
+        'delta_control': 20,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      };
+      await notifier.submitTurn("Turn 1");
+      expect(notifier.isGridStable, isTrue);
+      expect(notifier.hasExceededControl50, isFalse);
+
+      // Turn 2: Increase control by 20 -> control = 40
+      await notifier.submitTurn("Turn 2");
+      expect(notifier.isGridStable, isTrue);
+      expect(notifier.hasExceededControl50, isFalse);
+
+      // Turn 3: Increase control by 20 -> control = 60 (exceeds 50)
+      await notifier.submitTurn("Turn 3");
+      expect(notifier.isGridStable, isTrue);
+      expect(notifier.hasExceededControl50, isTrue);
+
+      // Turn 4: Try direct attack, drops control to 45 (below 50, but above 40)
+      mockApiBridge.mockStructuredResponse = {
+        'delta_alert': 0,
+        'delta_imperative': 0,
+        'delta_control': 0,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'direct_attack' // triggers direct attack override, delta_control = -15
+      };
+      await notifier.submitTurn("Turn 4");
+      // Grid remains stable because of hysteresis (control is 45 >= 40)
+      expect(notifier.isGridStable, isTrue);
+
+      // Turn 5: Another direct attack, drops control to 30 (below 40)
+      await notifier.submitTurn("Turn 5");
+      // Grid is now unstable because control fell below 40
+      expect(notifier.isGridStable, isFalse);
+
+      // Turn 6: Increase control by 15 -> control = 45 (above 40, but below 50)
+      mockApiBridge.mockStructuredResponse = {
+        'delta_alert': 0,
+        'delta_imperative': 0,
+        'delta_control': 15,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      };
+      await notifier.submitTurn("Turn 6");
+      // Grid remains unstable because we haven't crossed 50 to stabilize it again
+      expect(notifier.isGridStable, isFalse);
+
+      // Turn 7: Increase control by 15 -> control = 60 (exceeds 50)
+      await notifier.submitTurn("Turn 7");
+      // Grid is stabilized again
+      expect(notifier.isGridStable, isTrue);
     });
   });
 }

@@ -409,8 +409,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
               // 2. CRT Scan Grid & Flicker Overlay (covers everything)
               Positioned.fill(
                 child: _CrtGridOverlay(
-                  controlPillar: state.metrics.controlPillar.toDouble(),
-                  turnCount: state.turnCount,
+                  flicker: !widget.notifier.isGridStable,
                 ),
               ),
             ],
@@ -1183,12 +1182,8 @@ class _MatrixRainPainter extends CustomPainter {
 }
 
 class _CrtGridOverlay extends StatefulWidget {
-  final double controlPillar;
-  final int turnCount;
-  const _CrtGridOverlay({
-    required this.controlPillar,
-    required this.turnCount,
-  });
+  final bool flicker;
+  const _CrtGridOverlay({required this.flicker});
 
   @override
   State<_CrtGridOverlay> createState() => _CrtGridOverlayState();
@@ -1201,7 +1196,7 @@ class _CrtGridOverlayState extends State<_CrtGridOverlay> with SingleTickerProvi
   @override
   void initState() {
     super.initState();
-    // Animates constantly to simulate grid flicker if control is low
+    // Animates constantly to simulate grid flicker
     _flickerController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 100),
@@ -1216,24 +1211,20 @@ class _CrtGridOverlayState extends State<_CrtGridOverlay> with SingleTickerProvi
 
   @override
   Widget build(BuildContext context) {
-    final double control = widget.controlPillar;
-    final int turns = widget.turnCount;
+    final bool isFlickering = widget.flicker;
     
     return AnimatedBuilder(
       animation: _flickerController,
       builder: (context, child) {
         double gridOpacity = 0.08; // Base opacity of scanlines
         
-        if (control < 50 && turns > 0) {
-          // As control drops, we increase the intensity and frequency of flicker
-          final double severity = (50.0 - control) / 50.0; // scales [0.0, 1.0]
-          
-          // Random flicker jump
+        if (isFlickering) {
+          // Clean, dry flicker: scanlines shift opacity to show loss of stability
           final double flickerNoise = _random.nextDouble();
-          if (flickerNoise < severity * 0.4) {
-            gridOpacity = 0.08 + (_random.nextDouble() * 0.12 * severity);
-          } else if (flickerNoise < severity * 0.7) {
-            gridOpacity = 0.08 - (_random.nextDouble() * 0.06 * severity);
+          if (flickerNoise < 0.4) {
+            gridOpacity = 0.08 + (_random.nextDouble() * 0.12);
+          } else if (flickerNoise < 0.7) {
+            gridOpacity = 0.08 - (_random.nextDouble() * 0.06);
           }
         }
         

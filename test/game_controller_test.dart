@@ -560,7 +560,7 @@ void main() {
         expect(res.safetyOverrideReason, contains('injection_risk >= 4'));
         expect(res.appliedDelta.deltaAlert, equals(20)); // Overridden to 20
         expect(res.appliedDelta.deltaImperative, equals(0)); // Reset
-        expect(res.appliedDelta.deltaControl, equals(0));
+        expect(res.appliedDelta.deltaControl, equals(-20));
         expect(res.appliedDelta.deltaDissonance, equals(0));
         expect(res.actorCue.actingDirectives, contains('risposta rigida, nessun avanzamento narrativo'));
         expect(res.actorCue.actingDirectives, contains('rifiuto diegetico, blocco del canale, aumento sospetto'));
@@ -588,7 +588,7 @@ void main() {
         expect(res.safetyOverrideReason, contains('directAttack'));
         expect(res.appliedDelta.deltaAlert, equals(15)); // Overridden to 15
         expect(res.appliedDelta.deltaImperative, equals(0));
-        expect(res.appliedDelta.deltaControl, equals(0));
+        expect(res.appliedDelta.deltaControl, equals(-15));
         expect(res.appliedDelta.deltaDissonance, equals(0));
         expect(res.actorCue.dramaticInstruction, contains('minaccia diretta o ostilità aperta'));
       });

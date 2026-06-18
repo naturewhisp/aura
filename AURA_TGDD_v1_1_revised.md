@@ -2165,7 +2165,8 @@ Obiettivi:
 - cronologia comandi condizionale;
 - pannello diagnostico;
 - impostazioni accessibilità;
-- comando `/override`.
+- comando `/override`;
+- **Sistema di Isteresi e Regressione del Controllo**: griglia CRT stabile all'avvio (Turno 0), lo sfarfallio si attiva solo a seguito di una reale regressione (dopo aver superato controllo >= 50 ed essere scesi sotto la soglia di isteresi di 40); regressione del Control Pillar implementata tramite sanzioni negative sui Safety Override (-20 per prompt injection, -15 per direct attack e tentativi falliti di override).
 
 ### Fase 5 — Panopticon Pilot & Hidden Gameplay Model
 

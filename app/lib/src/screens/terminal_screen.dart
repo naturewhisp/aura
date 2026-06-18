@@ -408,7 +408,10 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
 
               // 2. CRT Scan Grid & Flicker Overlay (covers everything)
               Positioned.fill(
-                child: _CrtGridOverlay(controlPillar: state.metrics.controlPillar.toDouble()),
+                child: _CrtGridOverlay(
+                  controlPillar: state.metrics.controlPillar.toDouble(),
+                  turnCount: state.turnCount,
+                ),
               ),
             ],
           ),
@@ -1181,7 +1184,11 @@ class _MatrixRainPainter extends CustomPainter {
 
 class _CrtGridOverlay extends StatefulWidget {
   final double controlPillar;
-  const _CrtGridOverlay({required this.controlPillar});
+  final int turnCount;
+  const _CrtGridOverlay({
+    required this.controlPillar,
+    required this.turnCount,
+  });
 
   @override
   State<_CrtGridOverlay> createState() => _CrtGridOverlayState();
@@ -1210,13 +1217,14 @@ class _CrtGridOverlayState extends State<_CrtGridOverlay> with SingleTickerProvi
   @override
   Widget build(BuildContext context) {
     final double control = widget.controlPillar;
+    final int turns = widget.turnCount;
     
     return AnimatedBuilder(
       animation: _flickerController,
       builder: (context, child) {
         double gridOpacity = 0.08; // Base opacity of scanlines
         
-        if (control < 50) {
+        if (control < 50 && turns > 0) {
           // As control drops, we increase the intensity and frequency of flicker
           final double severity = (50.0 - control) / 50.0; // scales [0.0, 1.0]
           

@@ -2058,7 +2058,7 @@ Per i risultati dettagliati delle simulazioni e del bilanciamento della difficol
 
 ### Fase 4 — Playable Experience Layer
 
-Stato: completata fino a **4.11 Advanced Metric Visual Feedback & QoL Systems** inclusa.
+Stato: completata fino a **4.11 Advanced Metric Visual Feedback & QoL Systems** inclusa; **4.12** in backlog.
 
 La fase trasforma i calcoli deterministici in un'esperienza audiovisiva e narrativa coerente.
 
@@ -2167,6 +2167,41 @@ Obiettivi:
 - impostazioni accessibilità;
 - comando `/override`;
 - **Sistema di Isteresi e Regressione del Controllo**: griglia CRT stabile all'avvio (Turno 0), lo sfarfallio si attiva solo a seguito di una reale regressione (dopo aver superato controllo >= 50 ed essere scesi sotto la soglia di isteresi di 40); regressione del Control Pillar implementata tramite sanzioni negative sui Safety Override (-20 per prompt injection, -15 per direct attack e tentativi falliti di override).
+
+#### 4.12 Audio Backend Migration (`audioplayers` → `just_audio`) — Stato: backlog
+
+**Motivazione tecnica:**
+
+Il plugin `audioplayers_windows` v4.x invia messaggi di platform channel da thread nativi non-platform, violando il contratto di threading di Flutter (`shell.cc:1183`). Questo causa crash nativi cumulativi (`Lost connection to device.`) dopo pochi turni di gioco su Windows. Il bug è nel codice nativo del plugin e non è aggirabile da Dart.
+
+Come workaround temporaneo, l'audio è disabilitato su Windows tramite un guard `Platform.isWindows` in `AudioManager.initialize()`. Nessuna istanza di `AudioPlayer` viene creata su Windows.
+
+**Obiettivi:**
+
+- sostituire la dipendenza `audioplayers: ^6.0.0` con `just_audio: ^0.9.x` + `just_audio_windows`;
+- riscrivere `AudioManager` per utilizzare le API di `just_audio` (`AudioPlayer`, `ConcatenatingAudioSource`, `LoopMode`);
+- rimuovere il guard `Platform.isWindows` e ri-abilitare l'audio su tutte le piattaforme;
+- mantenere parità funzionale con l'implementazione precedente:
+  - BGM a due stem (ambient + tense) con crossfade basato sull'allerta;
+  - SFX pool a 4 player dedicati (click, alert, glitch, chime);
+  - toggle audio nelle impostazioni;
+  - playback rate accelerato per il tense stem ad alta allerta;
+- rimuovere `audioplayers`, `audioplayers_windows` e tutte le dipendenze transitive dal lockfile;
+- verificare assenza di errori threading su Windows (zero messaggi `shell.cc:1183` in console).
+
+**Criteri di accettazione:**
+
+1. `flutter run -d windows` riproduce BGM e SFX senza errori threading in console.
+2. Toggle audio nelle impostazioni funziona correttamente (on/off/persist).
+3. Crossfade BGM dinamico in base al livello di allerta verificato manualmente.
+4. Tutti i 18 test dell'app passano.
+5. `flutter analyze` privo di errori e warning.
+
+**File coinvolti:**
+
+- `app/pubspec.yaml` — sostituzione dipendenza;
+- `app/lib/src/audio/audio_manager.dart` — riscrittura completa;
+- `app/lib/src/audio/sound_generator.dart` — eventuale adattamento formato output.
 
 ### Fase 5 — Panopticon Pilot & Hidden Gameplay Model
 

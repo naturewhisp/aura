@@ -2143,7 +2143,7 @@ Obiettivi:
 - onboarding senza documentazione esterna;
 - uscita verso partita normale.
 
-#### 4.9 Advanced Endgame Sequences (Breach & Lockout) — Stato: da completare
+#### 4.9 Advanced Endgame Sequences (Breach & Lockout) — Stato: completata
 
 Obiettivi:
 

@@ -2170,6 +2170,8 @@ Obiettivi:
 
 ### Fase 5 — Panopticon Pilot & Hidden Gameplay Model
 
+*(Per l'implementazione e i dettagli di architettura tecnica, vedi [ARCHITECTURE.md](file:///c:/Users/dendo/Documents/GitHub/aura/ARCHITECTURE.md#9-fase-5--panopticon-pilot--hidden-gameplay-model))*
+
 Stato: nuova fase introdotta in revisione 1.3.
 
 Obiettivi:

@@ -244,6 +244,8 @@ Il progetto include tre strumenti eseguibili da riga di comando posizionati nell
 
 ## 9. Fase 5 — Panopticon Pilot & Hidden Gameplay Model
 
+*(Vedi specifica di Game Design ufficiale in [AURA_TGDD_v1_1_revised.md](file:///c:/Users/dendo/Documents/GitHub/aura/AURA_TGDD_v1_1_revised.md#fase-5--panopticon-pilot--hidden-gameplay-model))*
+
 La Fase 5 costituisce la transizione dallo sviluppo del motore deterministico alla definizione dell'esperienza pilota incentrata sull'entità **PANOPTICON** e sul modello di gameplay nascosto.
 
 ### Obiettivi e Componenti della Fase 5

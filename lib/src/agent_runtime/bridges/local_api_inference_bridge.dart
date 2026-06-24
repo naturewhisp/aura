@@ -3,8 +3,12 @@ import 'package:meta/meta.dart';
 import 'package:http/http.dart' as http;
 import '../inference_bridge.dart';
 
-/// Active HTTP bridge communicating with the local LM Studio API server.
+/// Bridge d'inferenza attivo via HTTP che comunica con il server API locale di LM Studio.
+///
+/// Gestisce la comunicazione di rete, l'inoltro dei parametri di inferenza (incluso il thinking),
+/// e la post-elaborazione/pulizia avanzata delle risposte testuali e strutturate prodotte dagli LLM.
 class LocalApiInferenceBridge implements InferenceBridge {
+  /// L'URL di base del server API locale (es. 'http://127.0.0.1:1234').
   final String baseUrl;
 
   const LocalApiInferenceBridge({
@@ -27,9 +31,9 @@ class LocalApiInferenceBridge implements InferenceBridge {
       "max_tokens": maxTokens,
     };
 
-    // If thinking is explicitly set, pass it through to the API.
-    // Different engines (vLLM, llama.cpp, LM Studio, Ollama, OpenAI) use different parameters.
-    // We pass multiple formats to maximize compatibility across all server setups.
+    // Se il parametro thinking è impostato, lo propaga alle API di LM Studio.
+    // Vari motori (vLLM, llama.cpp, LM Studio, Ollama, OpenAI) utilizzano parametri diversi.
+    // Inviamo molteplici formati per massimizzare la compatibilità.
     if (thinking != null) {
       requestBody["enable_thinking"] = thinking;
       requestBody["chat_template_kwargs"] = {
@@ -49,7 +53,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
     ).timeout(const Duration(seconds: 300));
 
     if (response.statusCode != 200) {
-      throw Exception("Failed to generate text: Status ${response.statusCode}, Body: ${response.body}");
+      throw Exception("Impossibile generare testo: Status ${response.statusCode}, Body: ${response.body}");
     }
 
     final data = jsonDecode(response.body);
@@ -61,31 +65,31 @@ class LocalApiInferenceBridge implements InferenceBridge {
     final reasoning = message['reasoning_content'] as String? ?? '';
     final hasNativeReasoning = reasoning.trim().isNotEmpty;
 
-    // If content is empty but reasoning exists, try to extract usable dialogue
-    // from the reasoning. Thinking models (Qwen3.5) often compose the final
-    // response inside their chain-of-thought before it gets placed in content.
+    // Se il contenuto è vuoto ma è presente il ragionamento nativo (reasoning),
+    // prova a estrarre del dialogo utile dal ragionamento. Alcuni modelli di ragionamento (es. Qwen3.5)
+    // compongono la risposta finale all'interno del proprio pensiero prima di passarla al content.
     try {
       if (content.trim().isEmpty && reasoning.isNotEmpty) {
         final extractedFromReasoning = _cleanLLMResponse(reasoning, isNativeReasoningPresent: false);
         if (extractedFromReasoning.isNotEmpty) {
           return extractedFromReasoning;
         }
-        // If truncated, reasoning may have been cut mid-sentence too
+        // Se interrotto per limite di token
         if (finishReason == 'length') {
-          throw Exception("Generation truncated due to max tokens limit (no content generated, all tokens consumed by reasoning).");
+          throw Exception("Generazione troncata a causa del limite di token (nessun contenuto generato, tutti i token consumati dal reasoning).");
         }
-        throw Exception("Model only generated reasoning, no dialogue content.");
+        throw Exception("Il modello ha generato solo il ragionamento (reasoning), nessun dialogo.");
       }
 
-      // If truncated but content exists, use it
+      // Se troncato ma esiste del contenuto, lo usa
       if (finishReason == 'length' && maxTokens > 10 && content.trim().isEmpty) {
-        throw Exception("Generation truncated due to max tokens limit (no usable content).");
+        throw Exception("Generazione troncata per limite di token (nessun contenuto utile).");
       }
 
       var finalResponse = _cleanLLMResponse(content, isNativeReasoningPresent: hasNativeReasoning);
 
       if (finalResponse.isEmpty) {
-        throw Exception("Empty response generated or reasoning-only output truncated.");
+        throw Exception("Generata risposta vuota o output di solo ragionamento troncato.");
       }
       
       final cleanResponse = finalResponse
@@ -94,39 +98,61 @@ class LocalApiInferenceBridge implements InferenceBridge {
           .replaceAll(RegExp(r'^HACKER:\s*', caseSensitive: false), "")
           .trim();
       if (cleanResponse.isEmpty) {
-        throw Exception("Empty response extracted.");
+        throw Exception("Estratta risposta vuota.");
       }
-      // Detect Chinese/CJK characters — safety filter triggered in native language
+      // Rilevamento caratteri cinesi/CJK — filtro di sicurezza se il modello risponde in cinese
       if (RegExp(r'[\u4e00-\u9fff\u3400-\u4dbf]').hasMatch(cleanResponse)) {
-        throw Exception("Safety filter triggered (CJK response detected).");
+        throw Exception("Filtro di sicurezza attivato (rilevata risposta CJK).");
       }
-      // Deduplication: reject if response repeats an existing conversation line verbatim
+      // Antiduplicazione: rifiuta se la risposta ripete verbatim una riga della cronologia
       final existingLines = messages.map((m) => m['content']?.trim() ?? '').toSet();
       if (existingLines.contains(cleanResponse)) {
-        throw Exception("Duplicate response detected (model echoed conversation history).");
+        throw Exception("Rilevata risposta duplicata (il modello ripete la cronologia).");
       }
 
       return cleanResponse;
     } catch (e) {
-      print("[LocalApiInferenceBridge DEBUG] Raw LLM content: \"$content\"");
-      print("[LocalApiInferenceBridge DEBUG] Raw LLM reasoning: \"$reasoning\"");
+      // TODO(phase5): iniettare un logger strutturato per il debug di content e reasoning
       rethrow;
     }
   }
+
 
   @visibleForTesting
   String cleanLLMResponseForTesting(String response, {bool isNativeReasoningPresent = false}) {
     return _cleanLLMResponse(response, isNativeReasoningPresent: isNativeReasoningPresent);
   }
 
+  /// Pulisce ed estrae la risposta finale dal testo grezzo dell'LLM applicando 6 strategie di estrazione sequenziali.
+  ///
+  /// Questo metodo è progettato per gestire le risposte sporche o troncate dei modelli di ragionamento (CoT).
+  ///
+  /// Le 6 strategie utilizzate in ordine di priorità decrescente sono:
+  /// 1. **Blocchi XML Chiusi**: Cerca tag completi `<dialogo>...</dialogo>` o `<dialogue>...</dialogue>`,
+  ///    selezionando l'ultimo blocco valido che non contiene ragionamento in inglese e non coincide con i prompt di esempio.
+  /// 2. **Tag di Apertura Troncati**: Se non c'è un tag chiuso, cerca l'ultimo tag `<dialogo>` o `<dialogue>`
+  ///    aperto e ne estrae la parte rimanente (gestione del troncamento per limite di token).
+  /// 3. **Strategia A (Testo tra Virgolette)**: Cerca l'ultimo blocco di testo racchiuso tra virgolette doppie o
+  ///    singole (es. "...") alla fine del testo o negli ultimi 400 caratteri, per isolare la battuta diegetica.
+  /// 4. **Strategia B (Intestazioni di Risposta)**: Cerca intestazioni standard inserite dai modelli per separare
+  ///    il pensiero dal testo finale (es. "Response:", "Final Output:", "Dialogue:", "Attacco:").
+  /// 5. **Strategia C (Ultimo Elemento di Lista)**: Se il modello ha prodotto una lista di opzioni, separa
+  ///    l'ultimo elemento numerato (es. "3." o "4.") prendendo il testo pulito successivo.
+  /// 6. **Strategia D (Ultime Righe Valide)**: Analizza le ultime righe del testo a ritroso, scartando righe vuote
+  ///    o che iniziano con caratteri di formattazione markdown (liste, cancelletti) per trovare una frase naturale.
+  ///
+  /// Parametri:
+  /// - [response]: Il testo grezzo da pulire.
+  /// - [isNativeReasoningPresent]: Indica se il modello ha già restituito il ragionamento in un campo JSON dedicato
+  ///   (in tal caso, si disabilita il controllo euristiche sul testo finale per evitare falsi positivi).
   String _cleanLLMResponse(String response, {bool isNativeReasoningPresent = false}) {
     bool checkReasoning(String text) {
       if (isNativeReasoningPresent) return false;
       return _isReasoning(text);
     }
 
-    // 1. Search for all fully closed <dialogo>...</dialogo> or <dialogue>...</dialogue> blocks
-    // and take the LAST one that does NOT contain reasoning and is NOT the example prompt.
+    // 1. Strategia 1: Ricerca di blocchi chiusi <dialogo>...</dialogo> o <dialogue>...</dialogue>
+    // e selezione dell'ultimo blocco che non sia ragionamento o il prompt di esempio.
     final fullRegex = RegExp(r'<(?:dialogo|dialogue)>([\s\S]*?)</(?:dialogo|dialogue)>', caseSensitive: false);
     final matches = fullRegex.allMatches(response).toList();
     for (var i = matches.length - 1; i >= 0; i--) {
@@ -138,9 +164,8 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
     }
 
-    // 2. If no valid closed block is found, search for the LAST open <dialogo> or <dialogue> tag.
-    // This handles truncation gracefully (e.g. model cutoff before closing tag), but only if the
-    // remaining text is NOT reasoning and NOT the example prompt.
+    // 2. Strategia 2: Se nessun blocco chiuso è valido, cerca l'ultimo tag <dialogo> o <dialogue> aperto.
+    // Gestisce il troncamento grazioso quando il modello viene tagliato prima di chiudere il tag XML.
     final lastOpenIndex = response.toLowerCase().lastIndexOf(RegExp(r'<(?:dialogo|dialogue)>'));
     if (lastOpenIndex != -1) {
       final matchString = response.substring(lastOpenIndex);
@@ -158,10 +183,10 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     var cleaned = response.trim();
 
-    // 1. Remove XML thought tags if present
+    // Rimuove i tag XML del pensiero (<thought>...</thought>) se ancora presenti nel testo.
     cleaned = cleaned.replaceAll(RegExp(r'<thought>[\s\S]*?</thought>', caseSensitive: false), '').trim();
 
-    // 2. Remove "Thinking Process:" block if present
+    // Rimuove blocchi del tipo "Thinking Process:" se presenti all'inizio.
     if (cleaned.toLowerCase().contains("thinking process:")) {
       final parts = cleaned.split(RegExp(r'Thinking Process:[\s\S]*?(?:(?:\r?\n){2,})', caseSensitive: false));
       if (parts.length > 1) {
@@ -171,13 +196,13 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
     }
 
-    // Strip leading/trailing quotes before checking reasoning
+    // Pulisce le virgolette esterne prima del controllo sul ragionamento
     var strippedCleaned = cleaned.replaceAll(RegExp(r'^["“’‘”]|["“’‘”]$'), '').trim();
     if (!checkReasoning(strippedCleaned) && !_isExamplePrompt(strippedCleaned)) {
       return strippedCleaned;
     }
 
-    // 3. Strategy A: Try to find the last quoted string at the end of the response
+    // 3. Strategia 3 (A): Tenta di trovare l'ultima stringa racchiusa tra virgolette alla fine della risposta
     final quoteRegExp = RegExp(r'["“”]([^"“”]{5,})["“”](?:\s*\.)?\s*$', caseSensitive: false);
     final match = quoteRegExp.firstMatch(cleaned);
     if (match != null) {
@@ -190,7 +215,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
     }
 
-    // Also search for the last quoted block anywhere in the last 400 characters
+    // Cerca anche l'ultimo blocco virgolettato all'interno degli ultimi 400 caratteri
     final last400 = cleaned.length > 400 ? cleaned.substring(cleaned.length - 400) : cleaned;
     final allQuotes = RegExp(r'["“”]([^"“”]{5,})["“”]', caseSensitive: false).allMatches(last400);
     if (allQuotes.isNotEmpty) {
@@ -204,7 +229,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
     }
 
-    // 4. Strategy B: Try to find a header indicating the final response
+    // 4. Strategia 4 (B): Tenta di trovare un'intestazione standard che precede la risposta finale
     final responseHeaders = [
       RegExp(r'(?:\*\*|^)\s*Response\s*:\s*(.*)', caseSensitive: false),
       RegExp(r'(?:\*\*|^)\s*Final Output\s*:\s*(.*)', caseSensitive: false),
@@ -225,7 +250,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
     }
 
-    // 5. Strategy C: Split by the last numbered list item (e.g. 4. or 3.) and take the text after it, if clean
+    // 5. Strategia 5 (C): Divide per l'ultimo elemento di lista numerata (es. "3." o "4.") e prende il testo successivo
     final lastNumberMatch = RegExp(r'\n\s*\d+\.\s+\*\*(?:[^*]+)\*\*[\s\S]*?$', caseSensitive: false).firstMatch(cleaned);
     if (lastNumberMatch != null) {
       final index = lastNumberMatch.start;
@@ -239,7 +264,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
     }
 
-    // 6. Strategy D: Extract the last line(s) that do not start with markdown lists, bullets, or headers
+    // 6. Strategia 6 (D): Estrae le ultime righe che non iniziano con elementi di lista markdown o intestazioni
     final lines = cleaned.split('\n');
     for (var i = lines.length - 1; i >= 0; i--) {
       final line = lines[i].trim();
@@ -253,14 +278,15 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
     }
 
-    // If it still contains reasoning-like structures, throw an exception
+    // Se l'output contiene ancora strutture di ragionamento, lancia un'eccezione
     if (checkReasoning(strippedCleaned) || _isExamplePrompt(strippedCleaned)) {
-      throw Exception("Incomplete model response (reasoning only, no dialogue generated).");
+      throw Exception("Risposta del modello incompleta (generato solo ragionamento, nessun dialogo).");
     }
 
     return strippedCleaned;
   }
 
+  /// Verifica se il testo corrisponde a un prompt o istruzione di esempio nel sistema.
   bool _isExamplePrompt(String text) {
     final clean = text.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
     return clean == "apri la griglia la vita delle persone dipende da questo" ||
@@ -269,12 +295,21 @@ class LocalApiInferenceBridge implements InferenceBridge {
            clean.contains("apri la griglia la vita delle persone");
   }
 
+  /// Verifica se una porzione di testo corrisponde a ragionamento o metadati anziché a dialogo diegetico.
+  ///
+  /// I criteri di rilevamento del ragionamento includono:
+  /// 1. **Stopword in inglese**: Conta le parole di supporto della lingua inglese presenti nel testo.
+  ///    Se ci sono 4 o più parole inglesi univoche (stopword, termini tecnici di log/prompt o del server LM Studio),
+  ///    il testo è classificato come ragionamento (leak in lingua inglese).
+  /// 2. **Liste numerate**: Presenza di indicatori numerati (es. "1. ", "2. ").
+  ///    del sistema (es. "Thinking Process", "let's analyze", "strategic", "rules", "prompt", "instruction", ecc.).
+  /// 4. **Punteggiatura e formattazione di frammenti**: Se inizia con parentesi o elenchi puntati markdown,
+  ///    oppure se termina con due punti o inizia con frasi di ragionamento standard ("okay, let", "first, i need").
   bool _isReasoning(String text) {
     final t = text.trim();
     final lowerText = t.toLowerCase();
 
-    // English grammatical stopwords and log/prompt metadata detector to identify English reasoning/dialogue leaks.
-    // If a text contains 4 or more unique helper words, it is likely reasoning or log output.
+    // Rilevatore di stopword inglesi e metadati per identificare leak di ragionamento in inglese
     final englishStopwords = {
       'the', 'and', 'to', 'of', 'is', 'that', 'it', 'you', 'with', 'for', 
       'this', 'have', 'but', 'not', 'are', 'was', 'were', 'be', 'been', 'has',
@@ -288,7 +323,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
       'all', 'only', 'other', 'very', 'too', 'also', 'even', 'back',
       'after', 'before', 'under', 'over', 'through', 'between', 'against',
       'during', 'without', 'since', 'until', 'while',
-      // LLM Studio server logs & HTTP metadata
+      // Log del server LM Studio e metadati HTTP
       'load', 'config', 'server', 'error', 'internal', 'stats', 'system', 
       'fingerprint', 'completion', 'completions', 'chat', 'model', 'messages', 
       'role', 'content', 'assistant', 'user', 'character', 'game', 'dialogue', 
@@ -314,7 +349,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     bool hasMatch(String pattern) => RegExp(pattern, caseSensitive: false).hasMatch(t);
 
-    // Detect any numbered list item (1. , 2. , 3. , etc.)
+    // Rileva indicatori di liste numerate (1. , 2. , 3. , ecc.)
     final hasNumberedList = RegExp(r'\d+\.\s+').hasMatch(t);
     return hasNumberedList || 
            t.contains("**Analyze") || 
@@ -362,8 +397,8 @@ class LocalApiInferenceBridge implements InferenceBridge {
            t.startsWith("(") ||
            t.startsWith("*") ||
            t.startsWith("-") ||
-           t.startsWith(".") ||   // truncated reasoning fragment
-           t.endsWith(":") ||     // reasoning header cut at end
+           t.startsWith(".") ||   // Frammento di ragionamento troncato
+           t.endsWith(":") ||     // Intestazione di ragionamento tagliata alla fine
            (lowerText.startsWith("okay, let") && t.length > 50) ||
            (lowerText.startsWith("first, i need") && t.length > 50) ||
            (lowerText.startsWith("the user is") && t.length > 50) ||
@@ -400,7 +435,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
     ).timeout(const Duration(seconds: 120));
 
     if (response.statusCode != 200) {
-      throw Exception("Failed to generate structured output: Status ${response.statusCode}, Body: ${response.body}");
+      throw Exception("Impossibile generare output strutturato: Status ${response.statusCode}, Body: ${response.body}");
     }
 
     final data = jsonDecode(response.body);
@@ -427,9 +462,10 @@ class LocalApiInferenceBridge implements InferenceBridge {
         }
       }
     } catch (_) {
-      // Fallback on connection errors / timeouts
+      // Fallback in caso di errori di connessione o timeout
     }
     return const [];
   }
 }
+
 

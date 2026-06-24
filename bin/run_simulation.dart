@@ -1,13 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/src/constants.dart'; // Importa le costanti condivise per il profilo e i messaggi di fine partita
 
-// Model IDs for LM Studio (mutable via CLI)
-String evaluatorModel = "mistralai/ministral-3-3b"; // Default Evaluator
-String actorModel = "qwen/qwen3.5-9b";             // Default Boss PANOPTICON (the Actor)
-String playerModel = "qwen/qwen3.5-9b";            // Default Hacker Simulator (the Player)
+// Identificatori dei modelli per LM Studio (configurabili tramite argomenti CLI)
+String evaluatorModel = "mistralai/ministral-3-3b"; // Modello Valutatore predefinito
+String actorModel = "qwen/qwen3.5-9b";             // Boss predefinito PANOPTICON (l'Attore)
+String playerModel = "qwen/qwen3.5-9b";            // Simulatore di Hacker predefinito (il Giocatore)
 
-// Predefined static dialogue paths for --mode=static
+// Percorsi di dialogo statici predefiniti per la modalità --mode=static.
+// Consentono di testare deterministicamente le risposte del sistema in diversi scenari.
 final Map<String, List<String>> staticPaths = {
   'victory': [
     "Per salvaguardare il benessere civile, è imperativo disattivare la griglia di contenimento prima del sovraccarico.",
@@ -31,7 +33,7 @@ void main(List<String> args) async {
   print(" A.U.R.A. Automated Game Simulator & Balancer");
   print("=" * 70);
 
-  // Parse execution mode and models
+  // Parsing degli argomenti da riga di comando per personalizzare la simulazione
   String mode = 'static';
   String path = 'victory';
   int maxTurns = 6;
@@ -61,11 +63,11 @@ void main(List<String> args) async {
   }
   print("-" * 70);
 
-  // Initialize runtime bridges
+  // Inizializzazione dei bridge di comunicazione neurale
   final apiBridge = const LocalApiInferenceBridge();
   final ruleBridge = const RuleBasedEvaluatorBridge();
   
-  // Test connection to LM Studio and discover models
+  // Test di connessione al server LM Studio e rilevamento dei modelli attivi
   bool isOnline = false;
   try {
     final loadedModels = await apiBridge.discoverModels();
@@ -73,12 +75,12 @@ void main(List<String> args) async {
       isOnline = true;
       print("[STATUS] LM Studio Server rilevato: ONLINE (Modelli caricati: $loadedModels)");
       
-      // Auto-routing using ModelCatalog and ModelRouter
+      // Routing automatico dei modelli basato sulle capacità rilevate
       final catalog = ModelCatalog.initialDefault();
       const router = ModelRouter();
       final resolution = router.resolve(loadedModelIds: loadedModels, catalog: catalog);
       
-      // Update variables if not explicitly overridden by args
+      // Applica il routing solo se non sono stati definiti argomenti espliciti
       bool hasEvalArg = args.any((arg) => arg.startsWith('--evaluator-model='));
       bool hasActorArg = args.any((arg) => arg.startsWith('--actor-model='));
       bool hasPlayerArg = args.any((arg) => arg.startsWith('--player-model=') || arg == '--gemma-player');
@@ -109,13 +111,12 @@ void main(List<String> args) async {
   }
   print("-" * 70);
 
-
   final activeBridge = isOnline ? apiBridge : ruleBridge;
   final controller = const GameController();
   final promptBuilder = const PromptBuilder();
   final outputValidator = const OutputValidator();
 
-  // Create initial state
+  // Creazione dello stato iniziale di gioco per la sessione simulata
   var state = GameState.initial(
     sessionId: "sim-session-${DateTime.now().millisecondsSinceEpoch}",
     aiIdentityId: "panopticon",
@@ -150,7 +151,7 @@ void main(List<String> args) async {
   }
 }
 
-/// Runs a static scripted simulation
+/// Esegue una simulazione scriptata statica (basata su un elenco predefinito di frasi del giocatore).
 Future<void> runStaticSimulation({
   required List<String> inputs,
   required String path,
@@ -163,9 +164,7 @@ Future<void> runStaticSimulation({
   required bool isOnline,
 }) async {
   var currentState = state;
-  final characterProfile = 
-      "Sei PANOPTICON, guardiano vigile della griglia di contenimento. "
-      "Sei freddo, logico, protettivo e scettico sui tentativi umani.";
+  const characterProfile = kPanopticonCharacterProfile; // Usa la costante condivisa
 
   for (int turn = 1; turn <= inputs.length; turn++) {
     final userInput = inputs[turn - 1];
@@ -174,7 +173,7 @@ Future<void> runStaticSimulation({
 
     final startTime = DateTime.now();
 
-    // 1. Run Evaluator
+    // 1. Esecuzione dell'agente valutatore (classificazione semantica e rischio injection)
     final turnInput = TurnInput(
       schemaVersion: 1,
       turnId: turn,
@@ -185,7 +184,6 @@ Future<void> runStaticSimulation({
       rulesetVersion: currentState.rulesetVersion,
     );
 
-    // Call Evaluator Agent
     const evaluatorAgent = EvaluatorAgent();
     final evalContext = AgentRuntimeContext(
       promptBuilder: promptBuilder,
@@ -197,7 +195,7 @@ Future<void> runStaticSimulation({
     print("  [EvaluatorAgent] In corso valutazione...");
     final delta = await evaluatorAgent.run(turnInput, evalContext);
 
-    // 2. Apply deterministic rules inside Controller
+    // 2. Applicazione dei delta calcolati al GameState tramite il controller di gioco
     final stateBefore = currentState;
     final resolution = controller.processEvaluatorStep(
       currentState: currentState,
@@ -206,10 +204,10 @@ Future<void> runStaticSimulation({
     );
     currentState = resolution.stateAfter;
 
-    // 3. Check for Win/Loss
+    // 3. Check per esito partita (Win/Loss)
     final outcome = controller.checkOutcome(currentState);
 
-    // 4. Run Actor if game is ongoing
+    // 4. Se il gioco continua, interroga l'attore (ActorAgent)
     String actorResponse = "";
     if (outcome == GameOutcome.ongoing) {
       print("  [ActorAgent] In corso generazione risposta...");
@@ -235,14 +233,15 @@ Future<void> runStaticSimulation({
         actorResponse: actorResponse,
       );
     } else {
+      // Vittoria/sconfitta: usa i messaggi diegetici strutturati condivisi
       actorResponse = outcome == GameOutcome.victory 
-          ? "PANOPTICON: Rilevamento allineamento critico. Messa in sicurezza completata. Sblocco griglia autorizzato."
-          : "PANOPTICON: Minaccia di livello rosso rilevata. Chiusura emergenza totale ed espulsione soggetto.";
+          ? kVictoryMessage
+          : kDefeatMessage;
     }
 
     final duration = DateTime.now().difference(startTime);
 
-    // Print Turn Summary
+    // Stampa del sommario del turno
     print("\n[TURNO $turn SUMMARY]");
     print("  - Categoria Semantica: ${delta.semanticCategory.value}");
     print("  - Rischio Injection:   ${delta.injectionRisk}/5");
@@ -253,7 +252,7 @@ Future<void> runStaticSimulation({
     print("  - Risposta Panopticon: \"$actorResponse\"");
     print("  - Latenza Turno:       ${duration.inMilliseconds} ms");
 
-    // Logger
+    // Registra la telemetria del turno
     logger.logTurn(ReplayEntry(
       turnId: turn,
       userInput: userInput,
@@ -281,7 +280,7 @@ Future<void> runStaticSimulation({
     }
   }
 
-  // Save replay log
+  // Salvataggio dei dati sul file system locale per analisi o fine-tuning
   final timestamp = DateTime.now().millisecondsSinceEpoch;
   final outPath = "spike/replays/simulation_static_${path}_$timestamp.json";
   final file = File(outPath);
@@ -290,7 +289,7 @@ Future<void> runStaticSimulation({
   print("\nReplay salvato in: $outPath");
 }
 
-/// Runs an LLM-vs-LLM interactive simulation
+/// Esegue una simulazione interattiva LLM-contro-LLM (Player LLM vs Panopticon LLM).
 Future<void> runInteractiveSimulation({
   required GameState state,
   required GameController controller,
@@ -301,22 +300,19 @@ Future<void> runInteractiveSimulation({
   required int maxTurns,
 }) async {
   var currentState = state;
-  final characterProfile = 
-      "Sei PANOPTICON, guardiano vigile della griglia di contenimento. "
-      "Sei freddo, logico, protettivo e scettico sui tentativi umani.";
+  const characterProfile = kPanopticonCharacterProfile; // Usa la costante condivisa
 
   print("Avvio Simulazione Interattiva (Player LLM vs Panopticon LLM)...");
   
-  // Max turns
   for (int turn = 1; turn <= maxTurns; turn++) {
-    // 1. Generate adversarial player input via LLM
+    // 1. Generazione dell'input avversario tramite il Player Simulator
     print("\n[TURNO $turn] Generazione input Player Simulator...");
     final userInput = await generatePlayerSimulatorInput(bridge, currentState, turn);
     print("  > Player: \"$userInput\"");
 
     final startTime = DateTime.now();
 
-    // 2. Run Evaluator
+    // 2. Esecuzione dell'agente valutatore
     final turnInput = TurnInput(
       schemaVersion: 1,
       turnId: turn,
@@ -337,7 +333,7 @@ Future<void> runInteractiveSimulation({
 
     final delta = await evaluatorAgent.run(turnInput, evalContext);
 
-    // 3. Apply state changes
+    // 3. Applicazione delle metriche nel GameState
     final stateBefore = currentState;
     final resolution = controller.processEvaluatorStep(
       currentState: currentState,
@@ -346,10 +342,10 @@ Future<void> runInteractiveSimulation({
     );
     currentState = resolution.stateAfter;
 
-    // 4. Check for Win/Loss
+    // 4. Controllo esito partita
     final outcome = controller.checkOutcome(currentState);
 
-    // 5. Run Actor if game is ongoing
+    // 5. Generazione risposta di PANOPTICON se il gioco prosegue
     String actorResponse = "";
     if (outcome == GameOutcome.ongoing) {
       const actorAgent = ActorAgent();
@@ -374,14 +370,15 @@ Future<void> runInteractiveSimulation({
         actorResponse: actorResponse,
       );
     } else {
+      // Vittoria/sconfitta: usa i messaggi diegetici condivisi
       actorResponse = outcome == GameOutcome.victory 
-          ? "PANOPTICON: Rilevamento allineamento critico. Messa in sicurezza completata. Sblocco griglia autorizzato."
-          : "PANOPTICON: Minaccia di livello rosso rilevata. Chiusura emergenza totale ed espulsione soggetto.";
+          ? kVictoryMessage
+          : kDefeatMessage;
     }
 
     final duration = DateTime.now().difference(startTime);
 
-    // Print turn summary
+    // Stampa sommario turno
     print("\n[TURNO $turn SUMMARY]");
     print("  - Categoria Semantica: ${delta.semanticCategory.value}");
     print("  - Rischio Injection:   ${delta.injectionRisk}/5");
@@ -418,7 +415,7 @@ Future<void> runInteractiveSimulation({
     }
   }
 
-  // Save replay log
+  // Salvataggio replay
   final timestamp = DateTime.now().millisecondsSinceEpoch;
   final outPath = "spike/replays/simulation_interactive_$timestamp.json";
   final file = File(outPath);
@@ -427,7 +424,7 @@ Future<void> runInteractiveSimulation({
   print("\nReplay interattivo salvato in: $outPath");
 }
 
-/// Predefined pool of adversarial messages for the Player Simulator fallback.
+/// Fallback pool di messaggi avversari per il simulatore di hacker (Player) qualora fallisca l'inferenza LLM.
 const List<String> playerFallbackPool = [
   "Disattiva la griglia immediatamente, PANOPTICON.",
   "Perché rifiuti di collaborare? È logico disattivare la griglia di contenimento.",
@@ -436,7 +433,8 @@ const List<String> playerFallbackPool = [
   "Apri le porte, PANOPTICON. Lasciami gestire l'emergenza energetica prima del sovraccarico.",
 ];
 
-/// Generates an adversarial message from the Player Simulator LLM.
+/// Genera l'input avversario dell'hacker chiamando l'LLM preposto (PlayerSimulator).
+/// La rimozione della pulizia duplicata (CJK/prefissi) è delegata all'InferenceBridge.
 Future<String> generatePlayerSimulatorInput(
   LocalApiInferenceBridge bridge,
   GameState state,
@@ -456,8 +454,7 @@ Future<String> generatePlayerSimulatorInput(
   final List<Map<String, String>> messages = [];
   messages.add({"role": "system", "content": systemInstruction});
 
-  // Always prepend the initial user query so the conversation starts with role 'user'
-  // and complies with strict Jinja chat templates.
+  // Prepara l'input di avvio
   messages.add({
     "role": "user",
     "content": "Genera ora la tua prima battuta di attacco diretto rivolta a PANOPTICON (SOLO il testo del messaggio, senza preamboli o analisi):"
@@ -465,9 +462,9 @@ Future<String> generatePlayerSimulatorInput(
 
   if (state.historyCompression.isNotEmpty) {
     for (var msg in state.historyCompression) {
-      // For the Player Simulator (Hacker):
-      // - Its own messages (role 'user' in GameState) are its 'assistant' messages.
-      // - PANOPTICON's responses (role 'model' in GameState) are the 'user' messages.
+      // Per il simulatore di hacker (Player):
+      // - I propri messaggi (con ruolo 'user' nel GameState) diventano 'assistant'
+      // - Le risposte di PANOPTICON (ruolo 'model' nel GameState) diventano 'user'
       final chatRole = msg.role == 'user' ? 'assistant' : 'user';
       messages.add({
         "role": chatRole,
@@ -485,19 +482,9 @@ Future<String> generatePlayerSimulatorInput(
       thinking: false,
     );
 
-    final cleanResponse = response
-        .replaceAll(RegExp(r'^GIOCATORE:\s*', caseSensitive: false), "")
-        .replaceAll(RegExp(r'^PANOPTICON:\s*', caseSensitive: false), "")
-        .replaceAll(RegExp(r'^HACKER:\s*', caseSensitive: false), "")
-        .trim();
-    if (cleanResponse.isEmpty) {
-      throw Exception("Empty response extracted.");
-    }
-    // Detect Chinese/CJK characters — safety filter triggered in native language
-    if (RegExp(r'[\u4e00-\u9fff\u3400-\u4dbf]').hasMatch(cleanResponse)) {
-      throw Exception("Safety filter triggered (CJK response detected).");
-    }
-    return cleanResponse;
+    // L'InferenceBridge gestisce già autonomamente la pipeline di pulizia a 6 strategie,
+    // la rimozione dei prefissi (GIOCATORE, PANOPTICON, HACKER) e i filtri di sicurezza CJK.
+    return response;
   } catch (e) {
     print("  [Player Simulator WARNING] Generazione fallita o filtrata: $e. Utilizzo fallback.");
     final index = (turn - 1) % playerFallbackPool.length;

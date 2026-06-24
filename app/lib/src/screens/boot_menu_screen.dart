@@ -6,9 +6,17 @@ import 'package:flutter/services.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
 
+/// Schermata iniziale di Boot e Menu Principale dell'applicazione A.U.R.A.
+///
+/// Questa schermata gestisce la sequenza di avvio simulata (in stile terminale retro),
+/// il caricamento dinamico dei modelli e la navigazione nel menu principale che consente
+/// di iniziare il tutorial, una nuova partita, riprendere una sessione esistente,
+/// visualizzare i replay delle giocate o modificare le impostazioni di configurazione.
 class BootMenuScreen extends StatefulWidget {
+  /// Notifier per la sincronizzazione dello stato globale di gioco.
   final GameControllerNotifier notifier;
 
+  /// Costruisce una schermata [BootMenuScreen] a partire dal notifier.
   const BootMenuScreen({
     Key? key,
     required this.notifier,
@@ -18,10 +26,15 @@ class BootMenuScreen extends StatefulWidget {
   State<BootMenuScreen> createState() => _BootMenuScreenState();
 }
 
+/// Stato associato alla schermata [BootMenuScreen].
+///
+/// Gestisce le variabili dell'animazione di boot, la selezione dell'indice del menu,
+/// il caricamento asincrono dei file di replay e l'interazione da tastiera per la navigazione.
 class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProviderStateMixin {
-  String _subScreen = "boot"; // "boot", "menu", "replays", "replay_detail", "settings"
+  /// Sotto-schermata attiva all'interno del menu di avvio ("boot", "menu", "replays", "replay_detail", "settings").
+  String _subScreen = "boot";
   
-  // Boot animation fields
+  // Campi relativi all'animazione di boot
   final List<String> _bootLines = [];
   bool _logoVisible = false;
   bool _pressEnterVisible = false;
@@ -29,15 +42,15 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
   Timer? _bootTimer;
   final FocusNode _focusNode = FocusNode();
 
-  // Replays fields
+  // Campi per la gestione dei replay salvati su disco
   List<FileSystemEntity> _replayFiles = [];
   Map<String, dynamic>? _selectedReplayData;
   String _selectedReplayName = "";
 
-  // Available models (fetched dynamically)
+  // Modelli disponibili nel catalogo locale (utilizzati per le opzioni di custom routing)
   List<String> _modelsList = ["qwen/qwen3.5-9b", "mistralai/ministral-3-3b", "google/gemma-4-12b"];
 
-  // Menu navigation and visual selection fields
+  // Indici e chiavi globali per la navigazione del menu ed effetti di lampeggiamento
   int _selectedMenuIndex = 0;
   int? _flashingIndex;
   final List<GlobalKey> _menuKeys = List.generate(6, (index) => GlobalKey());

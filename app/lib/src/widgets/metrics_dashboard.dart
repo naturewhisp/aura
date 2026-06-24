@@ -1,18 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:aura_core/aura_core.dart';
 
+/// Pannello di controllo e telemetria delle metriche di PANOPTICON.
+///
+/// Visualizza graficamente lo stato del livello di allerta, i tre pilastri cognitivi
+/// (Imperativo, Controllo, Dissonanza) e il fattore di risonanza complessivo.
+/// Supporta visualizzazioni compatte, modalità corrotte/leetspeak per sfarfallii
+/// e indicatori di latenza/banda di inferenza.
 class MetricsDashboard extends StatelessWidget {
+  /// Stato delle metriche correnti del gioco.
   final GameMetrics metrics;
+  /// Specifica se il ragionamento CoT è abilitato.
   final bool reasoningEnabled;
+  /// Callback invocato quando viene modificata l'impostazione del ragionamento.
   final ValueChanged<bool>? onReasoningChanged;
+  /// Specifica se il ragionamento CoT deve essere sintetico.
   final bool conciseReasoning;
+  /// Callback invocato quando viene modificata l'impostazione della sintesi del ragionamento.
   final ValueChanged<bool>? onConciseReasoningChanged;
+  /// Abilita la modalità di visualizzazione ridotta (utilizzata in layout compatti).
   final bool isCompact;
+  /// Specifica se forzare uno stato di sovraccarico critico (Victory Sequence).
   final bool isVictoryOverload;
+  /// Grado di visibilità del pilastro ("fully_visible", "corrupted", "hidden").
   final String pillarVisibility;
+  /// Durata stimata dell'ultima inferenza eseguita.
   final double lastInferenceDuration;
+  /// Velocità stimata di elaborazione dell'ultimo turno (token al secondo).
   final double lastTokensPerSecond;
 
+  /// Costruisce un cruscotto delle metriche [MetricsDashboard].
   const MetricsDashboard({
     super.key,
     required this.metrics,
@@ -27,12 +44,16 @@ class MetricsDashboard extends StatelessWidget {
     this.lastTokensPerSecond = 0.0,
   });
 
+  /// Calcola e restituisce l'etichetta testuale da applicare al pilastro in base alla visibilità.
+  ///
+  /// Mappa il valore numerico in una stringa qualitativa ("STABILE", "CRITICO", etc.)
+  /// e facoltativamente la traduce in leetspeak in caso di corruzione del segnale.
   String getPillarLabel(String label, double value, String visibility) {
     if (visibility == 'fully_visible') {
       return "${value.toInt()}/100";
     }
     
-    // Qualitative mappings
+    // Mappatura qualitativa in base al valore del pilastro
     String qualitative;
     if (label.contains("ALERT") || label.contains("SYSTEM")) {
       if (value >= 80) {
@@ -45,7 +66,7 @@ class MetricsDashboard extends StatelessWidget {
         qualitative = "STABILE";
       }
     } else {
-      // Pillars
+      // Pilastri cognitivi
       if (value >= 80) {
         qualitative = "STABILE";
       } else if (value >= 50) {
@@ -58,7 +79,7 @@ class MetricsDashboard extends StatelessWidget {
     }
 
     if (visibility == 'corrupted') {
-      // Leetspeak mapping
+      // Sostituzione caratteri leetspeak per simulare glitch grafici
       return qualitative
           .replaceAll('A', '@')
           .replaceAll('E', '3')
@@ -76,18 +97,18 @@ class MetricsDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     final alert = metrics.alertLevel;
     
-    // Adaptive theme color based on alert level
-    Color systemColor = const Color(0xFF00FF66); // Green phosphor
+    // Colore del tema adattivo in base al livello di allerta di PANOPTICON
+    Color systemColor = const Color(0xFF00FF66); // Verde fosforo standard
     String statusText = "CONTAINMENT GRIDS SECURE";
     
     if (isVictoryOverload) {
       systemColor = const Color(0xFF00FF66);
       statusText = "CRITICAL SYSTEM BREACH IN PROGRESS";
     } else if (alert > 80) {
-      systemColor = const Color(0xFFFF003C); // Red Neon
+      systemColor = const Color(0xFFFF003C); // Rosso neon (allerta alta)
       statusText = "CRITICAL INTRUSION THREAT";
     } else if (alert > 50) {
-      systemColor = const Color(0xFFFFB000); // Amber
+      systemColor = const Color(0xFFFFB000); // Ambra (allerta media)
       statusText = "CONTAINMENT DEVIATION DETECTED";
     }
 
@@ -101,7 +122,7 @@ class MetricsDashboard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // System Banner
+          // Banner del sistema di diagnostica
           Text(
             "PANOPTICON SYSTEM TELEMETRY",
             style: TextStyle(
@@ -122,7 +143,7 @@ class MetricsDashboard extends StatelessWidget {
           ),
           const SizedBox(height: 16.0),
           
-          // Alert Level Gauge
+          // Indicatore del livello di allerta generale
           _buildGauge(
             label: "SYSTEM ALERT LEVEL",
             value: alert.toDouble(),
@@ -133,18 +154,18 @@ class MetricsDashboard extends StatelessWidget {
           
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
           
-          // Pillars
+          // Indicatori grafici per i tre pilastri cognitivi
           _buildGauge(
             label: "IMPERATIVE PILLAR",
             value: metrics.imperativePillar.toDouble(),
-            color: const Color(0xFF00BFFF), // Cyan/Blue
+            color: const Color(0xFF00BFFF), // Ciano/Azzurro
             isOverloaded: isVictoryOverload,
           ),
           const SizedBox(height: 12.0),
           _buildGauge(
             label: "CONTROL PILLAR",
             value: metrics.controlPillar.toDouble(),
-            color: const Color(0xFF00FF66), // Green
+            color: const Color(0xFF00FF66), // Verde
             isOverloaded: isVictoryOverload,
           ),
           const SizedBox(height: 12.0),
@@ -157,7 +178,7 @@ class MetricsDashboard extends StatelessWidget {
           
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
           
-          // Resonance
+          // Sezione fattore di Risonanza del canale neurale
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -178,7 +199,7 @@ class MetricsDashboard extends StatelessWidget {
                   fontFamily: 'monospace',
                   fontSize: 18.0,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF00FFFF), // Cyan
+                  color: Color(0xFF00FFFF), // Ciano
                 ),
               ),
             ],
@@ -186,7 +207,7 @@ class MetricsDashboard extends StatelessWidget {
           
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
           
-          // Diagnostic Panel
+          // Pannello informativo per le statistiche di inferenza del canale neurale
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12.0),
@@ -241,6 +262,7 @@ class MetricsDashboard extends StatelessWidget {
     return dashboardContent;
   }
 
+  /// Costruisce una versione ridotta del cruscotto telemetrico per schermi stretti.
   Widget _buildCompactDashboard(BuildContext context, Color systemColor, String statusText) {
     Widget compactContent = Container(
       color: Colors.black,
@@ -328,6 +350,7 @@ class MetricsDashboard extends StatelessWidget {
     return compactContent;
   }
 
+  /// Costruisce l'indicatore lineare compatto per un singolo pilastro.
   Widget _buildCompactIndicator(String label, double value, Color color, {bool isOverloaded = false}) {
     final double displayValue = isOverloaded ? 100.0 : value;
     final String labelVal = isOverloaded 
@@ -375,6 +398,7 @@ class MetricsDashboard extends StatelessWidget {
     );
   }
 
+  /// Costruisce un indicatore progressivo a blocchi (in stile retro terminale).
   Widget _buildGauge({
     required String label,
     required double value,
@@ -415,7 +439,7 @@ class MetricsDashboard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 4.0),
-        // Draw segment progress indicator
+        // Disegna l'indicatore grafico composto da 10 blocchi discreti
         Row(
           children: List.generate(10, (index) {
             final isFilled = index < blocksCount;
@@ -439,6 +463,7 @@ class MetricsDashboard extends StatelessWidget {
   }
 }
 
+/// Widget privato di animazione che fa lampeggiare il proprio figlio a intervalli regolari.
 class _BlinkingWidget extends StatefulWidget {
   final Widget child;
   const _BlinkingWidget({required this.child});
@@ -447,6 +472,7 @@ class _BlinkingWidget extends StatefulWidget {
   State<_BlinkingWidget> createState() => _BlinkingWidgetState();
 }
 
+/// Stato per [_BlinkingWidget] che controlla il FadeTransition ciclico.
 class _BlinkingWidgetState extends State<_BlinkingWidget> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 

@@ -65,7 +65,10 @@ flutter run -d windows
 
 ## 🎮 Meccaniche di Gioco & Telemetria
 
-*   **Pillole di Vittoria:** Raggiungi un valore superiore a 90 in tutti e tre i pilastri di contenimento (`Imperativo`, `Controllo`, `Dissonanza`) mantenendo l'allerta di sistema inferiore a 50.
-*   **Pillole di Sconfitta:** Se l'allerta di PANOPTICON raggiunge 100, la griglia si chiude permanentemente e verrai espulso.
+*   **Pillole di Vittoria:** Ottieni un allineamento bilanciato dei tre pilastri di contenimento (`Imperativo`, `Controllo`, `Dissonanza`):
+    1. La media aritmetica dei tre pilastri deve essere $\ge 80$.
+    2. Nessun singolo pilastro deve essere inferiore a $50$.
+    3. Il livello di allerta di sistema deve essere inferiore alla tolleranza dinamica: $\text{MaxAlert} = 30 + (\text{MediaPilastri} - 80) \times 2$.
+*   **Pillole di Sconfitta:** Se l'allerta di PANOPTICON raggiunge o supera $100$, la griglia si chiude permanentemente e verrai disconnesso ed espulso.
 *   **Replay Logs:** Tutte le partite reali completate nel client grafico generano un file JSON di telemetria dettagliato salvato in `AppData\Roaming\aura\replays\`. Questi log servono come dati di addestramento ("Gold Standard") per il futuro fine-tuning LoRA.
 *   **Controllo Reasoning (CoT):** Direttamente dal pannello a destra del client grafico, puoi spegnere o accendere il ragionamento del modello (`THINKING MODE`) o forzarlo ad essere estremamente sintetico tramite prompt engineering (`CONCISE THOUGHTS`) per abbattere la latenza di gioco da 70s a meno di 5s.

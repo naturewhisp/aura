@@ -1,17 +1,19 @@
 import 'dart:convert';
 import '../models/evaluator_delta.dart';
 
-/// Handles parsing, structure validation, and safety clamping of agent output.
+/// Gestisce il parsing, la validazione strutturale e il contenimento (clamping) di sicurezza dell'output del Valutatore.
 class OutputValidator {
   const OutputValidator();
 
-  /// Parses raw text output from the Evaluator LLM and returns a clamped, valid [EvaluatorDelta].
-  /// 
-  /// Throws a [FormatException] if the text cannot be parsed as JSON or has invalid types.
+  /// Esegue il parsing dell'output testuale grezzo generato dall'LLM del Valutatore
+  /// e restituisce un'istanza convalidata e limitata di [EvaluatorDelta].
+  ///
+  /// Se il testo contiene blocchi di codice markdown (es. ` ```json `), questi vengono rimossi automaticamente.
+  /// Lancia un [FormatException] se il testo non può essere analizzato come JSON o se contiene tipi non validi.
   EvaluatorDelta parseEvaluatorDelta(String rawContent) {
     String jsonText = rawContent.trim();
     
-    // Clean up markdown code blocks if present
+    // Rimuove eventuali blocchi di codice markdown se presenti
     if (jsonText.startsWith("```")) {
       final match = RegExp(r'```(?:json)?([\s\S]*?)```').firstMatch(jsonText);
       if (match != null) {
@@ -21,10 +23,10 @@ class OutputValidator {
 
     final decoded = jsonDecode(jsonText);
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException("Decoded JSON content is not a JSON Map");
+      throw const FormatException("Il contenuto JSON decodificato non è una Map JSON valida");
     }
 
-    // Read and enforce strict bounds clamping as per TGDD Section 6.1
+    // Estrae e applica i limiti rigidi (clamps) come specificato nel TGDD Sezione 6.1
     final rawAlert = decoded['delta_alert'] as int? ?? 0;
     final clampedAlert = rawAlert.clamp(-20, 25);
 
@@ -57,3 +59,4 @@ class OutputValidator {
     );
   }
 }
+

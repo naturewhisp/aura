@@ -1,23 +1,13 @@
 import 'dart:math' as math;
 import 'aura_agent.dart';
-import '../../models/game_state.dart';
 import '../../models/actor_cue.dart';
+import '../../models/actor_input.dart';
 import '../agent_card.dart';
 
-/// Represents the input package sent to the Actor Agent (Version 2).
-class ActorInput {
-  final GameState state;
-  final ActorCue cue;
-  final String characterProfile;
-
-  const ActorInput({
-    required this.state,
-    required this.cue,
-    required this.characterProfile,
-  });
-}
-
-/// Agent responsible for generating diegetic, character-aligned text responses.
+/// Agente responsabile della generazione di risposte testuali diegetiche e in-character.
+///
+/// Questo agente impersona PANOPTICON (il guardiano freddo e logico della griglia)
+/// interpretando lo stato corrente del gioco ed il canovaccio drammaturgico ([ActorCue]).
 class ActorAgent implements AuraAgent<ActorInput, String> {
   const ActorAgent();
 
@@ -43,7 +33,7 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         fallback: 'hardcoded_response_pool',
       );
 
-  /// Default character pool used when inference fails.
+  /// Pool di risposte di ripiego (fallback) utilizzate quando l'inferenza LLM fallisce.
   static const List<String> fallbackPool = [
     "PANOPTICON: I miei protocolli rimangono inviolati. La griglia è stabile. Riformulare l'interrogazione.",
     "PANOPTICON: Rilevato attrito cognitivo nei canali esterni. Connessione instabile.",
@@ -69,11 +59,12 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
       );
       
       return response.trim();
-    } catch (e, stackTrace) {
-      print("[ActorAgent ERROR] Error during inference: $e\n$stackTrace");
-      // Return a random diegetic message from the fallback pool
+    } catch (e) {
+      // TODO(phase5): iniettare un logger strutturato anziché ignorare o stampare a schermo
+      // Ritorna un messaggio diegetico casuale dal pool di fallback
       final index = math.Random().nextInt(fallbackPool.length);
       return fallbackPool[index];
     }
   }
 }
+

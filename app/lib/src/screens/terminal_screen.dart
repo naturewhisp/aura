@@ -10,16 +10,28 @@ import '../widgets/cli_input_bar.dart';
 import '../widgets/metrics_dashboard.dart';
 import '../audio/audio_manager.dart';
 
+/// Tipologie di finale (Outcome) della partita A.U.R.A.
 enum EndingType {
+  /// Violazione della griglia (vittoria standard).
   gridBreach,
+  /// Alleanza neurale con l'oracolo (risonanza medio-alta).
   oracleAlliance,
+  /// Coesistenza armonica con la griglia (risonanza massima, allerta 0).
   gridCoexistence,
+  /// Lockout totale del sistema (sconfitta).
   systemLockout,
 }
 
+/// Schermata del Terminale interattivo di A.U.R.A.
+///
+/// Questa schermata costituisce la GUI principale di gioco: visualizza lo storico della console,
+/// la barra di input dei comandi e il cruscotto con le metriche (pilastri di allerta, imperativo,
+/// controllo, dissonanza e risonanza). Esegue inoltre sequenze grafiche a fine partita.
 class TerminalScreen extends StatefulWidget {
+  /// Notifier per aggiornare e leggere lo stato reattivo del gioco.
   final GameControllerNotifier notifier;
 
+  /// Costruisce una schermata [TerminalScreen] con il relativo notifier.
   const TerminalScreen({
     super.key,
     required this.notifier,
@@ -29,13 +41,17 @@ class TerminalScreen extends StatefulWidget {
   State<TerminalScreen> createState() => _TerminalScreenState();
 }
 
+/// Stato associato a [TerminalScreen].
+///
+/// Gestisce gli shader (con fallback procedurale in CustomPainter), il calcolo del tempo,
+/// gli stream audio per alert e glitch, e le animazioni di fine partita (scorrimento esadecimale).
 class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProviderStateMixin {
   FragmentShader? _shader;
   double _time = 0.0;
   Timer? _timer;
   late AnimationController _vignetteController;
 
-  // Endgame sequence states
+  // Variabili per la gestione della sequenza finale (Endgame)
   bool _victorySequenceActive = false;
   bool _defeatSequenceActive = false;
   int _lockoutCountdown = 15;

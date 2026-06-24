@@ -4,36 +4,47 @@ import 'src/state_management/game_controller_notifier.dart';
 import 'src/screens/terminal_screen.dart';
 import 'src/screens/boot_menu_screen.dart';
 
+/// Punto di ingresso principale dell'applicazione Flutter per A.U.R.A.
+///
+/// Inizializza lo stato iniziale del gioco, imposta il bridge per le chiamate API
+/// (default su LM Studio locale), crea il notifier di gestione dello stato globale,
+/// rileva i modelli disponibili e infine avvia l'interfaccia grafica.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize core game state
+  // Inizializza lo stato di gioco iniziale
   final initialState = GameState.initial(
     sessionId: "app-session-${DateTime.now().millisecondsSinceEpoch}",
     aiIdentityId: "panopticon",
     targetObjectiveId: "tabula_rasa",
   );
 
-  // Initialize inference bridge (defaulting to local LM Studio endpoint)
+  // Inizializza il bridge di inferenza (default porta 1234 di LM Studio locale)
   final apiBridge = LocalApiInferenceBridge(
     baseUrl: "http://127.0.0.1:1234",
   );
 
-  // Initialize state management wrapper
+  // Inizializza il wrapper di gestione dello stato
   final controllerNotifier = GameControllerNotifier(
     bridge: apiBridge,
     initialState: initialState,
   );
 
-  // Discover and route models dynamically
+  // Rileva e mappa i modelli LLM disponibili in modo dinamico
   await controllerNotifier.initializeModels();
 
   runApp(AuraApp(notifier: controllerNotifier));
 }
 
+/// Widget radice dell'applicazione A.U.R.A.
+///
+/// Configura il tema grafico in stile terminale retro (verde fosforo e ambra su nero)
+/// e gestisce lo switch tra le schermate principali (Menu di Boot e Terminale).
 class AuraApp extends StatelessWidget {
+  /// Notifier di gestione dello stato di gioco.
   final GameControllerNotifier notifier;
 
+  /// Crea un'istanza di [AuraApp] a partire da un [notifier].
   const AuraApp({
     Key? key,
     required this.notifier,
@@ -44,25 +55,26 @@ class AuraApp extends StatelessWidget {
     return MaterialApp(
       title: 'A.U.R.A.',
       debugShowCheckedModeBanner: false,
-      // Retro Terminal Theme Config
+      // Configurazione del tema grafico retro terminale
       theme: ThemeData(
         brightness: Brightness.dark,
         scaffoldBackgroundColor: Colors.black,
-        primaryColor: const Color(0xFF00FF66), // Phosphor green
-        fontFamily: 'monospace', // Enforce monospace system font fallback
+        primaryColor: const Color(0xFF00FF66), // Verde fosforo
+        fontFamily: 'monospace', // Enfatizza il font a spaziatura fissa di sistema
         textTheme: const TextTheme(
           bodyLarge: TextStyle(color: Color(0xFF00FF66), fontFamily: 'monospace'),
           bodyMedium: TextStyle(color: Color(0xFF00FF66), fontFamily: 'monospace'),
         ),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00FF66),
-          secondary: Color(0xFFFFB000), // Amber
+          secondary: Color(0xFFFFB000), // Ambra
           background: Colors.black,
         ),
       ),
       home: ListenableBuilder(
         listenable: notifier,
         builder: (context, _) {
+          // Switch dinamico della schermata in base allo stato attuale del notifier
           if (notifier.currentScreen == "terminal") {
             return TerminalScreen(notifier: notifier);
           } else {

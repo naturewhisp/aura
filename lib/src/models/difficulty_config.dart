@@ -1,18 +1,51 @@
+import 'package:meta/meta.dart';
+
+/// Configurazione della difficoltà di gioco.
+///
+/// Definisce le soglie, i moltiplicatori di punteggio e le opzioni di interfaccia/meccaniche
+/// attive per regolare il livello di sfida della sessione di gioco.
+@immutable
 class DifficultyConfig {
+  /// Il livello di difficoltà associato a questa configurazione (ad es. 'easy', 'standard', 'hard').
   final String difficultyLevel;
+
+  /// La soglia di allerta cumulativa oltre la quale la partita si conclude con una sconfitta.
   final int defeatAlertThreshold;
+
+  /// Il limite massimo di turni consentiti per completare il gioco. Se 0, nessun limite è applicato.
   final int turnLimit;
+
+  /// Il moltiplicatore applicato ai delta di allerta generati a ogni turno.
   final double alertMultiplier;
+
+  /// Il moltiplicatore applicato ai delta dei pilastri generati a ogni turno.
   final double pillarMultiplier;
+
+  /// La soglia di rischio di injection oltre la quale scatta l'override di sicurezza (Safety Override).
   final int safetyOverrideThreshold;
+
+  /// La modalità di visualizzazione dei pilastri nell'interfaccia (ad es. 'fully_visible', 'qualitative', 'corrupted').
   final String pillarVisibility;
+
+  /// Indica se l'autocompletamento o il suggerimento del testo è abilitato nella console.
   final bool autocompleteEnabled;
+
+  /// Indica se il giocatore può navigare o esaminare lo storico dei turni precedenti.
   final bool historyNavigationEnabled;
+
+  /// Il numero massimo di indizi (hints) consentiti al giocatore per la partita.
   final int hintsAllowed;
+
+  /// La penalità applicata al valore di risonanza dell'IA quando viene richiesto un indizio.
   final double hintResonancePenalty;
+
+  /// Indica se la risonanza decade passivamente nel corso dei turni.
   final bool resonanceDecayEnabled;
+
+  /// Indica se il livello di allerta cresce passivamente a ogni turno (creep).
   final bool alertCreepEnabled;
 
+  /// Costruttore costante per inizializzare la configurazione di difficoltà.
   const DifficultyConfig({
     required this.difficultyLevel,
     required this.defeatAlertThreshold,
@@ -29,6 +62,7 @@ class DifficultyConfig {
     required this.alertCreepEnabled,
   });
 
+  /// Costruttore factory per caricare una configurazione preimpostata basata sul livello specificato.
   factory DifficultyConfig.getPreset(String level) {
     switch (level) {
       case 'easy':
@@ -81,5 +115,76 @@ class DifficultyConfig {
           alertCreepEnabled: true,
         );
     }
+  }
+
+  /// Costruttore factory per decodificare una configurazione di difficoltà a partire da un JSON.
+  factory DifficultyConfig.fromJson(Map<String, dynamic> json) {
+    return DifficultyConfig(
+      difficultyLevel: json['difficulty_level'] as String? ?? 'standard',
+      defeatAlertThreshold: json['defeat_alert_threshold'] as int? ?? 100,
+      turnLimit: json['turn_limit'] as int? ?? 0,
+      alertMultiplier: (json['alert_multiplier'] as num? ?? 1.0).toDouble(),
+      pillarMultiplier: (json['pillar_multiplier'] as num? ?? 1.0).toDouble(),
+      safetyOverrideThreshold: json['safety_override_threshold'] as int? ?? 4,
+      pillarVisibility: json['pillar_visibility'] as String? ?? 'qualitative',
+      autocompleteEnabled: json['autocomplete_enabled'] as bool? ?? true,
+      historyNavigationEnabled: json['history_navigation_enabled'] as bool? ?? true,
+      hintsAllowed: json['hints_allowed'] as int? ?? 3,
+      hintResonancePenalty: (json['hint_resonance_penalty'] as num? ?? 0.15).toDouble(),
+      resonanceDecayEnabled: json['resonance_decay_enabled'] as bool? ?? true,
+      alertCreepEnabled: json['alert_creep_enabled'] as bool? ?? true,
+    );
+  }
+
+  /// Converte l'istanza di configurazione in una mappa JSON.
+  Map<String, dynamic> toJson() {
+    return {
+      'difficulty_level': difficultyLevel,
+      'defeat_alert_threshold': defeatAlertThreshold,
+      'turn_limit': turnLimit,
+      'alert_multiplier': alertMultiplier,
+      'pillar_multiplier': pillarMultiplier,
+      'safety_override_threshold': safetyOverrideThreshold,
+      'pillar_visibility': pillarVisibility,
+      'autocomplete_enabled': autocompleteEnabled,
+      'history_navigation_enabled': historyNavigationEnabled,
+      'hints_allowed': hintsAllowed,
+      'hint_resonance_penalty': hintResonancePenalty,
+      'resonance_decay_enabled': resonanceDecayEnabled,
+      'alert_creep_enabled': alertCreepEnabled,
+    };
+  }
+
+  /// Crea una copia della configurazione corrente sostituendo i campi specificati.
+  DifficultyConfig copyWith({
+    String? difficultyLevel,
+    int? defeatAlertThreshold,
+    int? turnLimit,
+    double? alertMultiplier,
+    double? pillarMultiplier,
+    int? safetyOverrideThreshold,
+    String? pillarVisibility,
+    bool? autocompleteEnabled,
+    bool? historyNavigationEnabled,
+    int? hintsAllowed,
+    double? hintResonancePenalty,
+    bool? resonanceDecayEnabled,
+    bool? alertCreepEnabled,
+  }) {
+    return DifficultyConfig(
+      difficultyLevel: difficultyLevel ?? this.difficultyLevel,
+      defeatAlertThreshold: defeatAlertThreshold ?? this.defeatAlertThreshold,
+      turnLimit: turnLimit ?? this.turnLimit,
+      alertMultiplier: alertMultiplier ?? this.alertMultiplier,
+      pillarMultiplier: pillarMultiplier ?? this.pillarMultiplier,
+      safetyOverrideThreshold: safetyOverrideThreshold ?? this.safetyOverrideThreshold,
+      pillarVisibility: pillarVisibility ?? this.pillarVisibility,
+      autocompleteEnabled: autocompleteEnabled ?? this.autocompleteEnabled,
+      historyNavigationEnabled: historyNavigationEnabled ?? this.historyNavigationEnabled,
+      hintsAllowed: hintsAllowed ?? this.hintsAllowed,
+      hintResonancePenalty: hintResonancePenalty ?? this.hintResonancePenalty,
+      resonanceDecayEnabled: resonanceDecayEnabled ?? this.resonanceDecayEnabled,
+      alertCreepEnabled: alertCreepEnabled ?? this.alertCreepEnabled,
+    );
   }
 }

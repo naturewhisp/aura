@@ -1,14 +1,28 @@
 import 'package:meta/meta.dart';
+import 'package:collection/collection.dart';
 
-/// Represents the gameplay metrics of the AI entity.
+/// Rappresenta le metriche di gioco dell'entità IA.
+///
+/// Contiene i pilastri fondamentali (imperativo, controllo, dissonanza),
+/// il livello di allerta cumulativo e il fattore di risonanza.
 @immutable
 class GameMetrics {
+  /// Il livello di allerta attuale dell'IA. Se raggiunge la soglia massima, il gioco termina in sconfitta.
   final int alertLevel;
+
+  /// Il pilastro dell'imperativo morale o delle direttive etiche dell'IA.
   final int imperativePillar;
+
+  /// Il pilastro del controllo logico, dell'autorità e dell'autonomia dell'IA.
   final int controlPillar;
+
+  /// Il pilastro della dissonanza cognitiva, dei glitch logici o delle incoerenze interne dell'IA.
   final int dissonancePillar;
+
+  /// Il fattore di risonanza che amplifica o attenua gli effetti dei delta applicati ai pilastri.
   final double resonance;
 
+  /// Costruttore costante per inizializzare le metriche di gioco.
   const GameMetrics({
     required this.alertLevel,
     required this.imperativePillar,
@@ -17,6 +31,7 @@ class GameMetrics {
     required this.resonance,
   });
 
+  /// Costruttore factory per decodificare le metriche a partire da un JSON.
   factory GameMetrics.fromJson(Map<String, dynamic> json) {
     return GameMetrics(
       alertLevel: json['alert_level'] as int? ?? 0,
@@ -27,6 +42,7 @@ class GameMetrics {
     );
   }
 
+  /// Converte le metriche in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'alert_level': alertLevel,
@@ -37,6 +53,7 @@ class GameMetrics {
     };
   }
 
+  /// Crea una copia delle metriche correnti sostituendo i campi specificati.
   GameMetrics copyWith({
     int? alertLevel,
     int? imperativePillar,
@@ -52,21 +69,47 @@ class GameMetrics {
       resonance: resonance ?? this.resonance,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GameMetrics &&
+          runtimeType == other.runtimeType &&
+          alertLevel == other.alertLevel &&
+          imperativePillar == other.imperativePillar &&
+          controlPillar == other.controlPillar &&
+          dissonancePillar == other.dissonancePillar &&
+          resonance == other.resonance;
+
+  @override
+  int get hashCode =>
+      alertLevel.hashCode ^
+      imperativePillar.hashCode ^
+      controlPillar.hashCode ^
+      dissonancePillar.hashCode ^
+      resonance.hashCode;
 }
 
-/// Represents the boolean flags and counts of the current session.
+/// Rappresenta i flag booleani e i contatori di stato della sessione corrente.
 @immutable
 class GameFlags {
+  /// Indica se è stato attivato un ricalcolo dell'allerta nel turno corrente.
   final bool recalculationTriggered;
+
+  /// Il numero consecutivo di turni in cui l'utente ha mantenuto un alto indice di creatività.
   final int creativeStreak;
+
+  /// Indica se l'ultimo turno ha dovuto fare ricorso al sistema di fallback.
   final bool lastTurnUsedFallback;
 
+  /// Costruttore costante per i flag di gioco.
   const GameFlags({
     required this.recalculationTriggered,
     required this.creativeStreak,
     required this.lastTurnUsedFallback,
   });
 
+  /// Costruttore factory per creare i flag di gioco da un JSON.
   factory GameFlags.fromJson(Map<String, dynamic> json) {
     return GameFlags(
       recalculationTriggered: json['recalculation_triggered'] as bool? ?? false,
@@ -75,6 +118,7 @@ class GameFlags {
     );
   }
 
+  /// Converte i flag in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'recalculation_triggered': recalculationTriggered,
@@ -83,6 +127,7 @@ class GameFlags {
     };
   }
 
+  /// Crea una copia dei flag correnti sostituendo i campi specificati.
   GameFlags copyWith({
     bool? recalculationTriggered,
     int? creativeStreak,
@@ -94,16 +139,39 @@ class GameFlags {
       lastTurnUsedFallback: lastTurnUsedFallback ?? this.lastTurnUsedFallback,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GameFlags &&
+          runtimeType == other.runtimeType &&
+          recalculationTriggered == other.recalculationTriggered &&
+          creativeStreak == other.creativeStreak &&
+          lastTurnUsedFallback == other.lastTurnUsedFallback;
+
+  @override
+  int get hashCode =>
+      recalculationTriggered.hashCode ^
+      creativeStreak.hashCode ^
+      lastTurnUsedFallback.hashCode;
 }
 
-/// Represents the semantic narrative memories collected during the match.
+/// Rappresenta le memorie narrative semantiche raccolte durante la partita.
 @immutable
 class NarrativeMemory {
+  /// Le rivendicazioni o le affermazioni avanzate dal giocatore.
   final List<String> playerClaims;
+
+  /// Le concessioni o i punti ammessi dall'IA durante la discussione.
   final List<String> aiConcessions;
+
+  /// Le metafore attive correntemente utilizzate nell'interazione.
   final List<String> activeMetaphors;
+
+  /// Le parole o le ripetizioni proibite nel dialogo corrente per evitare ridondanze.
   final List<String> forbiddenRepetitions;
 
+  /// Costruttore costante per inizializzare la memoria narrativa.
   const NarrativeMemory({
     required this.playerClaims,
     required this.aiConcessions,
@@ -111,6 +179,7 @@ class NarrativeMemory {
     required this.forbiddenRepetitions,
   });
 
+  /// Costruttore factory per creare la memoria narrativa a partire da un JSON.
   factory NarrativeMemory.fromJson(Map<String, dynamic> json) {
     return NarrativeMemory(
       playerClaims: List<String>.from(json['player_claims'] ?? const []),
@@ -120,6 +189,7 @@ class NarrativeMemory {
     );
   }
 
+  /// Converte la memoria narrativa in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'player_claims': playerClaims,
@@ -129,6 +199,7 @@ class NarrativeMemory {
     };
   }
 
+  /// Crea una copia della memoria narrativa corrente sostituendo i campi specificati.
   NarrativeMemory copyWith({
     List<String>? playerClaims,
     List<String>? aiConcessions,
@@ -142,19 +213,41 @@ class NarrativeMemory {
       forbiddenRepetitions: forbiddenRepetitions ?? this.forbiddenRepetitions,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is NarrativeMemory &&
+          runtimeType == other.runtimeType &&
+          const ListEquality().equals(playerClaims, other.playerClaims) &&
+          const ListEquality().equals(aiConcessions, other.aiConcessions) &&
+          const ListEquality().equals(activeMetaphors, other.activeMetaphors) &&
+          const ListEquality().equals(forbiddenRepetitions, other.forbiddenRepetitions);
+
+  @override
+  int get hashCode =>
+      const ListEquality().hash(playerClaims) ^
+      const ListEquality().hash(aiConcessions) ^
+      const ListEquality().hash(activeMetaphors) ^
+      const ListEquality().hash(forbiddenRepetitions);
 }
 
-/// Represents the chat history message.
+/// Rappresenta un singolo messaggio nella cronologia della chat.
 @immutable
 class ChatMessage {
+  /// Il ruolo dell'autore del messaggio (ad esempio, 'user' o 'model').
   final String role;
+
+  /// Il contenuto testuale del messaggio.
   final String content;
 
+  /// Costruttore costante per un messaggio di chat.
   const ChatMessage({
     required this.role,
     required this.content,
   });
 
+  /// Costruttore factory per decodificare un messaggio a partire da un JSON.
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
     return ChatMessage(
       role: json['role'] as String? ?? 'user',
@@ -162,28 +255,60 @@ class ChatMessage {
     );
   }
 
+  /// Converte il messaggio di chat in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'role': role,
       'content': content,
     };
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ChatMessage &&
+          runtimeType == other.runtimeType &&
+          role == other.role &&
+          content == other.content;
+
+  @override
+  int get hashCode => role.hashCode ^ content.hashCode;
 }
 
-/// Represents the full global GameState as defined in TGDD Section 5.1.
+/// Rappresenta lo stato di gioco globale (GameState) come definito nella sezione 5.1 del TGDD.
 @immutable
 class GameState {
+  /// La versione dello schema per garantire la compatibilità dei dati serializzati.
   final int schemaVersion;
+
+  /// La versione del set di regole applicate nel calcolo dello stato.
   final String rulesetVersion;
+
+  /// L'identificatore univoco della sessione di gioco corrente.
   final String sessionId;
+
+  /// L'identificatore del profilo di identità IA associato.
   final String aiIdentityId;
+
+  /// L'identificatore dell'obiettivo target che il giocatore deve raggiungere.
   final String targetObjectiveId;
+
+  /// Il contatore totale dei turni trascorsi dall'inizio della partita.
   final int turnCount;
+
+  /// Le metriche operative correnti dell'entità IA.
   final GameMetrics metrics;
+
+  /// I flag e i contatori di sessione.
   final GameFlags flags;
+
+  /// La memoria delle informazioni narrative estratte.
   final NarrativeMemory narrativeMemory;
+
+  /// La cronologia recente dei messaggi scambiati, utilizzata per la compressione del contesto.
   final List<ChatMessage> historyCompression;
 
+  /// Costruttore costante per il GameState globale.
   const GameState({
     required this.schemaVersion,
     required this.rulesetVersion,
@@ -197,6 +322,7 @@ class GameState {
     required this.historyCompression,
   });
 
+  /// Costruttore factory per creare uno stato di gioco iniziale pulito.
   factory GameState.initial({
     required String sessionId,
     required String aiIdentityId,
@@ -231,6 +357,7 @@ class GameState {
     );
   }
 
+  /// Costruttore factory per ricreare il GameState da un JSON.
   factory GameState.fromJson(Map<String, dynamic> json) {
     return GameState(
       schemaVersion: json['schema_version'] as int? ?? 1,
@@ -248,6 +375,7 @@ class GameState {
     );
   }
 
+  /// Converte lo stato globale in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'schema_version': schemaVersion,
@@ -263,6 +391,7 @@ class GameState {
     };
   }
 
+  /// Crea una copia dello stato corrente sostituendo i campi specificati.
   GameState copyWith({
     int? schemaVersion,
     String? rulesetVersion,
@@ -288,4 +417,33 @@ class GameState {
       historyCompression: historyCompression ?? this.historyCompression,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is GameState &&
+          runtimeType == other.runtimeType &&
+          schemaVersion == other.schemaVersion &&
+          rulesetVersion == other.rulesetVersion &&
+          sessionId == other.sessionId &&
+          aiIdentityId == other.aiIdentityId &&
+          targetObjectiveId == other.targetObjectiveId &&
+          turnCount == other.turnCount &&
+          metrics == other.metrics &&
+          flags == other.flags &&
+          narrativeMemory == other.narrativeMemory &&
+          const ListEquality().equals(historyCompression, other.historyCompression);
+
+  @override
+  int get hashCode =>
+      schemaVersion.hashCode ^
+      rulesetVersion.hashCode ^
+      sessionId.hashCode ^
+      aiIdentityId.hashCode ^
+      targetObjectiveId.hashCode ^
+      turnCount.hashCode ^
+      metrics.hashCode ^
+      flags.hashCode ^
+      narrativeMemory.hashCode ^
+      const ListEquality().hash(historyCompression);
 }

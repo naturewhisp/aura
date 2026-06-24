@@ -1,9 +1,17 @@
 import 'package:meta/meta.dart';
 
-/// Performance constraints applied to an agent invocation.
+// TODO(phase5): Queste classi sono riservate per l'implementazione dell'orchestrazione avanzata e
+// della messaggistica strutturata asincrona tra agenti nella Fase 5.
+
+/// Vincoli di performance applicati all'invocazione di un agente.
+///
+/// TODO(phase5): Riservato per il controllo di latenza e conformità strutturata nella Fase 5.
 @immutable
 class MessageConstraints {
+  /// Il budget massimo di latenza (in millisecondi) consentito per il task.
   final int latencyBudgetMs;
+
+  /// Specifica se per questo messaggio è obbligatorio produrre un output strutturato JSON.
   final bool structuredOutputRequired;
 
   const MessageConstraints({
@@ -11,6 +19,7 @@ class MessageConstraints {
     required this.structuredOutputRequired,
   });
 
+  /// Crea un'istanza a partire da una mappa JSON.
   factory MessageConstraints.fromJson(Map<String, dynamic> json) {
     return MessageConstraints(
       latencyBudgetMs: json['latency_budget_ms'] as int? ?? 1000,
@@ -18,6 +27,7 @@ class MessageConstraints {
     );
   }
 
+  /// Converte questa istanza in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'latency_budget_ms': latencyBudgetMs,
@@ -26,16 +36,33 @@ class MessageConstraints {
   }
 }
 
-/// Staged envelope wrap for agent requests.
+/// Involucro (envelope) di messaggistica strutturato per le richieste inviate agli agenti.
+///
+/// TODO(phase5): Riservato per il protocollo di comunicazione inter-agente della Fase 5.
 @immutable
 class MessageEnvelope {
+  /// Identificatore univoco del messaggio.
   final String messageId;
+
+  /// L'identificatore del turno di gioco corrente.
   final int turnId;
+
+  /// ID dell'agente mittente.
   final String fromAgent;
+
+  /// ID dell'agente destinatario.
   final String toAgent;
+
+  /// Descrizione o istruzione del task da eseguire.
   final String task;
+
+  /// Schema di convalida per l'input.
   final String inputSchema;
+
+  /// Il carico di dati (payload) della richiesta.
   final Map<String, dynamic> payload;
+
+  /// I vincoli prestazionali applicati a questa richiesta.
   final MessageConstraints constraints;
 
   const MessageEnvelope({
@@ -49,6 +76,7 @@ class MessageEnvelope {
     required this.constraints,
   });
 
+  /// Crea un'istanza a partire da una mappa JSON.
   factory MessageEnvelope.fromJson(Map<String, dynamic> json) {
     return MessageEnvelope(
       messageId: json['message_id'] as String? ?? '',
@@ -62,6 +90,7 @@ class MessageEnvelope {
     );
   }
 
+  /// Converte questa istanza in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'message_id': messageId,
@@ -76,13 +105,24 @@ class MessageEnvelope {
   }
 }
 
-/// Performance telemetry recorded during agent execution.
+/// Metadati di telemetria e performance registrati durante l'esecuzione dell'agente.
+///
+/// TODO(phase5): Riservato per il tracciamento della telemetria dei modelli a runtime nella Fase 5.
 @immutable
 class RuntimeMetadata {
+  /// L'ID del modello di linguaggio utilizzato per l'inferenza.
   final String modelId;
+
+  /// Tempo totale impiegato dall'agente (in millisecondi).
   final int latencyMs;
+
+  /// Numero di token inviati in input.
   final int tokensIn;
+
+  /// Numero di token generati in output.
   final int tokensOut;
+
+  /// Backend di inferenza impiegato (es. 'llama_cpp').
   final String backend;
 
   const RuntimeMetadata({
@@ -93,6 +133,7 @@ class RuntimeMetadata {
     required this.backend,
   });
 
+  /// Crea un'istanza a partire da una mappa JSON.
   factory RuntimeMetadata.fromJson(Map<String, dynamic> json) {
     return RuntimeMetadata(
       modelId: json['model_id'] as String? ?? '',
@@ -103,6 +144,7 @@ class RuntimeMetadata {
     );
   }
 
+  /// Converte questa istanza in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'model_id': modelId,
@@ -114,14 +156,27 @@ class RuntimeMetadata {
   }
 }
 
-/// Staged envelope wrap for agent responses.
+/// Involucro (envelope) di risposta generato da un agente.
+///
+/// TODO(phase5): Riservato per il protocollo di risposta asincrona inter-agente della Fase 5.
 @immutable
 class AgentResponseEnvelope {
+  /// Identificatore univoco del messaggio di risposta.
   final String messageId;
+
+  /// L'ID del messaggio di richiesta a cui questa risposta è correlata.
   final String correlationId;
-  final String status; // "ok", "error", "fallback"
+
+  /// Stato dell'operazione ("ok", "error", "fallback").
+  final String status;
+
+  /// Schema di convalida dell'output.
   final String outputSchema;
+
+  /// Carico utile di dati ritornato dall'agente.
   final Map<String, dynamic> payload;
+
+  /// Informazioni sulla telemetria di runtime del modello.
   final RuntimeMetadata runtime;
 
   const AgentResponseEnvelope({
@@ -133,6 +188,7 @@ class AgentResponseEnvelope {
     required this.runtime,
   });
 
+  /// Crea un'istanza a partire da una mappa JSON.
   factory AgentResponseEnvelope.fromJson(Map<String, dynamic> json) {
     return AgentResponseEnvelope(
       messageId: json['message_id'] as String? ?? '',
@@ -144,6 +200,7 @@ class AgentResponseEnvelope {
     );
   }
 
+  /// Converte questa istanza in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'message_id': messageId,
@@ -155,3 +212,4 @@ class AgentResponseEnvelope {
     };
   }
 }
+

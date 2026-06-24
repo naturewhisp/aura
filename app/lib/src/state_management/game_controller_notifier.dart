@@ -6,18 +6,25 @@ import 'package:flutter/foundation.dart';
 import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 
-/// Steps for inference progress representation in the UI loading carousel.
+/// Fasi dell'avanzamento dell'inferenza rappresentate nel carosello di caricamento dell'interfaccia utente.
 enum InferenceStep {
+  /// Avvio dell'agente valutatore (classificazione semantica dell'input).
   evaluatorStarted,     // "Inizializzazione vettori di valutazione..."
+  /// Fine dell'agente valutatore.
   evaluatorFinished,    // "Dati semantici validati."
+  /// Verifica dei controlli di sicurezza (Safety Override).
   safetyOverrideCheck,  // "Analisi integrità cognitiva..."
+  /// Avvio dell'agente attore (PANOPTICON).
   actorStarted,         // "Generazione risposta attore..."
+  /// Verifica della consistenza e del tono della risposta generata.
   toneConsistencyCheck, // "Verifica conformità del tono..."
+  /// Elaborazione completata con successo.
   completed             // "Pronto."
 }
 
-/// Helper extension to get diegetic text representation for each step.
+/// Estensione di supporto per ottenere messaggi diegetici e descrizioni in italiano per ogni fase di inferenza.
 extension InferenceStepText on InferenceStep {
+  /// Restituisce la stringa in stile retro-terminale corrispondente alla fase corrente.
   String get message {
     switch (this) {
       case InferenceStep.evaluatorStarted:
@@ -36,51 +43,84 @@ extension InferenceStepText on InferenceStep {
   }
 }
 
-/// Reactive wrapper that bridges the pure Dart `GameController` with Flutter's UI.
+/// Wrapper reattivo che fa da ponte tra il modulo puramente logico [GameController] e l'interfaccia utente Flutter.
+///
+/// Implementa [ChangeNotifier] per notificare la UI riguardo ai cambiamenti di stato di inferenza,
+/// all'avanzamento dei turni, ai glitch visivi e alle impostazioni salvate su disco.
 class GameControllerNotifier extends ChangeNotifier {
+  /// Riferimento al controller di gioco centrale (gestore delle formule dei pilastri).
   GameController controller;
+
+  /// Costruttore di prompt per formattare i messaggi inviati ai LLM.
   final PromptBuilder promptBuilder;
+
+  /// Validatore di output per estrarre JSON semantico e blocchi di dialogo.
   final OutputValidator outputValidator;
+
+  /// Bridge di inferenza attivo per effettuare le chiamate ai modelli LLM.
   final InferenceBridge bridge;
   
+  /// Notifier del valore che contiene lo stato corrente del gioco.
   late ValueNotifier<GameState> gameStateNotifier;
   
   final _stepController = StreamController<InferenceStep>.broadcast();
+  /// Stream di eventi delle fasi di inferenza per aggiornare la barra di caricamento.
   Stream<InferenceStep> get stepStream => _stepController.stream;
   
   bool _isLoading = false;
+  /// Indica se c'è una chiamata di inferenza in corso.
   bool get isLoading => _isLoading;
   
   String _currentStepMessage = "";
+  /// Messaggio descrittivo della fase di inferenza corrente da visualizzare nella console.
   String get currentStepMessage => _currentStepMessage;
 
-  String _currentScreen = "boot"; // "boot", "menu", "terminal", "replays", "settings"
+  String _currentScreen = "boot"; // Schermate possibili: "boot", "menu", "terminal", "replays", "settings"
+  /// Identificativo della schermata attiva nell'applicazione.
   String get currentScreen => _currentScreen;
 
   bool _activeSessionExists = false;
+  /// Indica se esiste un file di salvataggio per una sessione non completata.
   bool get activeSessionExists => _activeSessionExists;
 
   bool _isGridStable = true;
+  /// Stato di stabilità della griglia.
   bool get isGridStable => _isGridStable;
+
   bool _hasExceededControl50 = false;
+  /// Flag interno per tracciare se il pilastro del controllo ha mai superato la soglia di 50.
   bool get hasExceededControl50 => _hasExceededControl50;
 
+  /// ID del modello utilizzato per il ruolo di Valutatore.
   String evaluatorModelId = "mistralai/ministral-3-3b";
+  /// ID del modello utilizzato per il ruolo di Attore (PANOPTICON).
   String actorModelId = "qwen/qwen3.5-9b";
+  /// Profilo di routing attivo derivato dal Model Router.
   String activeProfile = "Offline Fallback";
+  /// Specifica se abilitare la Chain-of-Thought (ragionamento) per l'Attore.
   bool reasoningEnabled = false;
+  /// Specifica se forzare un ragionamento CoT sintetico e ridotto.
   bool conciseReasoning = false;
+  /// Specifica se abilitare lo shader per simulare l'effetto schermo CRT.
   bool shaderEnabled = true;
+  /// Specifica se abilitare l'audio e gli effetti sonori.
   bool audioEnabled = true;
   
+  /// Latenza totale dell'ultima inferenza eseguita (in secondi).
   double lastInferenceDuration = 0.0;
+  /// Velocità stimata di generazione dell'ultimo turno (token al secondo).
   double lastTokensPerSecond = 0.0;
+  /// Numero di suggerimenti diagnostici (/hint) consumati in questa sessione.
   int hintsUsed = 0;
+  /// Livello di difficoltà selezionato (standard, hard, custom).
   String difficultyLevel = "standard";
 
+  /// Logger delle giocate per salvare i replay.
   late ReplayLogger logger;
+  /// Rapporto finale generato dall'IA a fine partita (vittoria/sconfitta).
   String? finalDiscursiveReport;
   
+  /// Crea un notifier di gestione dello stato a partire dallo stato iniziale e dal bridge.
   GameControllerNotifier({
     this.controller = const GameController(),
     this.promptBuilder = const PromptBuilder(),
@@ -104,6 +144,7 @@ class GameControllerNotifier extends ChangeNotifier {
     });
   }
 
+  /// Cambia la schermata attiva dell'applicazione.
   void switchScreen(String screen) {
     _currentScreen = screen;
     notifyListeners();
@@ -111,7 +152,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
   bool _userCustomizedModels = false;
 
-  /// Loads persisted settings from disk if settings.json exists.
+  /// Carica le impostazioni persistenti da disco (file settings.json) se presente.
   Future<void> loadSettings() async {
     try {
       final baseDir = _getAppDataPath();
@@ -130,7 +171,7 @@ class GameControllerNotifier extends ChangeNotifier {
         _userCustomizedModels = data['user_customized_models'] as bool? ?? false;
         
         if (_userCustomizedModels) {
-          activeProfile = "User Custom Configuration";
+          activeProfile = "Configurazione Personalizzata";
         }
         
         AudioManager().setAudioEnabled(audioEnabled);
@@ -141,7 +182,7 @@ class GameControllerNotifier extends ChangeNotifier {
     }
   }
 
-  /// Saves current configuration settings to settings.json on disk.
+  /// Salva la configurazione corrente delle impostazioni nel file settings.json su disco.
   Future<void> saveSettings() async {
     try {
       final baseDir = _getAppDataPath();
@@ -167,39 +208,39 @@ class GameControllerNotifier extends ChangeNotifier {
     }
   }
 
-  /// Updates the difficulty level and persists settings.
+  /// Aggiorna il livello di difficoltà e persiste la scelta su disco.
   void updateDifficultyLevel(String level) {
     difficultyLevel = level;
     saveSettings();
     notifyListeners();
   }
 
-  /// Updates the evaluator model ID, flags customization, and persists settings.
+  /// Aggiorna il modello del Valutatore, marca la configurazione come personalizzata e salva su disco.
   void updateEvaluatorModel(String modelId) {
     evaluatorModelId = modelId;
     _userCustomizedModels = true;
-    activeProfile = "User Custom Configuration";
+    activeProfile = "Configurazione Personalizzata";
     saveSettings();
     notifyListeners();
   }
 
-  /// Updates the actor model ID, flags customization, and persists settings.
+  /// Aggiorna il modello dell'Attore (PANOPTICON), marca la configurazione come personalizzata e salva su disco.
   void updateActorModel(String modelId) {
     actorModelId = modelId;
     _userCustomizedModels = true;
-    activeProfile = "User Custom Configuration";
+    activeProfile = "Configurazione Personalizzata";
     saveSettings();
     notifyListeners();
   }
 
-  /// Discovers the active models and routes them to agent roles.
+  /// Rileva i modelli LLM caricati sul server e li assegna ai ruoli tramite il Model Router.
   Future<void> initializeModels() async {
     try {
-      // First, try loading saved user selections
+      // Carica prima le impostazioni utente salvate
       await loadSettings();
 
       final loadedModels = await bridge.discoverModels();
-      // Only run auto-routing if the user hasn't explicitly customized their choices
+      // Esegue il routing automatico solo se l'utente non ha impostato una configurazione personalizzata
       if (!_userCustomizedModels && loadedModels.isNotEmpty) {
         final catalog = ModelCatalog.initialDefault();
         const router = ModelRouter();
@@ -210,32 +251,32 @@ class GameControllerNotifier extends ChangeNotifier {
         activeProfile = resolution.profileName;
       }
     } catch (_) {
-      // Gracefully fall back to defaults on connection errors or offlines
+      // Fallback silenzioso sui valori di default in caso di errore di connessione
     }
   }
 
-  /// Toggles whether Chain-of-thought (reasoning) is enabled for the Actor model.
+  /// Attiva/disattiva la Chain-of-Thought (CoT/ragionamento) per l'Attore.
   void toggleReasoning(bool value) {
     reasoningEnabled = value;
     saveSettings();
     notifyListeners();
   }
 
-  /// Toggles whether reasoning is forced to be extremely concise via prompt.
+  /// Attiva/disattiva se forzare un ragionamento estremamente conciso via prompt.
   void toggleConciseReasoning(bool value) {
     conciseReasoning = value;
     saveSettings();
     notifyListeners();
   }
 
-  /// Toggles whether the CRT visual glitch shader is enabled.
+  /// Attiva/disattiva lo shader CRT per gli effetti di sfarfallio e distorsione.
   void toggleShader(bool value) {
     shaderEnabled = value;
     saveSettings();
     notifyListeners();
   }
 
-  /// Toggles whether audio soundscape is enabled.
+  /// Attiva/disattiva gli effetti sonori e il sottofondo audio.
   void toggleAudio(bool value) {
     audioEnabled = value;
     AudioManager().setAudioEnabled(value);
@@ -243,9 +284,14 @@ class GameControllerNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Ottiene il percorso della directory dei dati dell'app.
   String get appDataPath => _getAppDataPath();
 
-  /// Runs the full dual-inference turn sequentially and notifies the UI state-changes.
+  /// Esegue in modo sequenziale il loop a due livelli (Valutatore -> Attore) per il turno corrente.
+  ///
+  /// Gestisce la visualizzazione delle fasi sulla UI, comandi speciali come `/hint` o `/override`,
+  /// il decadimento della risonanza e l'incremento di allerta in difficoltà elevata, salvando
+  /// lo stato e i log su disco.
   Future<void> submitTurn(String userInput) async {
     if (_isLoading) return;
     _isLoading = true;
@@ -265,7 +311,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
     final turnId = currentState.historyCompression.length ~/ 2 + 1;
 
-    // Handle /hint command
+    // Gestione del comando speciale /hint (richiesta di suggerimento diagnostico)
     if (userInput.trim().toLowerCase() == "/hint") {
       final preset = DifficultyConfig.getPreset(difficultyLevel);
       if (preset.hintsAllowed != -1 && hintsUsed >= preset.hintsAllowed) {
@@ -627,7 +673,7 @@ class GameControllerNotifier extends ChangeNotifier {
     return path;
   }
 
-  /// Saves the current session state to active_session.json.
+  /// Salva lo stato della sessione corrente nel file active_session.json.
   Future<void> saveActiveSession() async {
     try {
       final baseDir = _getAppDataPath();
@@ -651,7 +697,7 @@ class GameControllerNotifier extends ChangeNotifier {
     }
   }
 
-  /// Deletes active_session.json.
+  /// Elimina il file active_session.json per invalidare la sessione attiva.
   Future<void> deleteActiveSession() async {
     try {
       final baseDir = _getAppDataPath();
@@ -667,7 +713,7 @@ class GameControllerNotifier extends ChangeNotifier {
     }
   }
 
-  /// Checks if active_session.json exists.
+  /// Verifica se esiste un file active_session.json.
   Future<bool> checkActiveSessionExists() async {
     try {
       final baseDir = _getAppDataPath();
@@ -678,7 +724,7 @@ class GameControllerNotifier extends ChangeNotifier {
     }
   }
 
-  /// Resumes connection from active_session.json.
+  /// Ripristina lo stato del gioco a partire dal file active_session.json.
   Future<void> resumeGame() async {
     try {
       finalDiscursiveReport = null;
@@ -709,7 +755,7 @@ class GameControllerNotifier extends ChangeNotifier {
         
         gameStateNotifier.value = state;
         
-        // Restore ReplayLogger entries if play session file exists
+        // Ripristina le voci di ReplayLogger se il file della sessione esiste
         final replayFile = File("$baseDir/replays/play_session_${state.sessionId}.json");
         if (await replayFile.exists()) {
           final replayContent = await replayFile.readAsString();
@@ -718,7 +764,7 @@ class GameControllerNotifier extends ChangeNotifier {
           logger = ReplayLogger(sessionId: state.sessionId);
         }
         
-        // Reconstruct grid stability status from history
+        // Ricostruisce lo stato di stabilità della griglia analizzando lo storico dei turni
         bool exceeded = false;
         bool stable = true;
         for (final entry in logger.entries) {
@@ -742,7 +788,7 @@ class GameControllerNotifier extends ChangeNotifier {
     }
   }
 
-  /// Starts a fresh game and deletes any saved active_session.json.
+  /// Avvia una nuova sessione di gioco pulita, eliminando eventuali salvataggi precedenti.
   Future<void> startNewGame() async {
     finalDiscursiveReport = null;
     await deleteActiveSession();

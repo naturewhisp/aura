@@ -1,21 +1,47 @@
 import 'package:meta/meta.dart';
 import 'models/evaluator_delta.dart';
 
-/// Represents a single recorded turn in the replay log.
+/// Rappresenta un singolo turno registrato all'interno del registro di replay (replay log).
+///
+/// Contiene tutti i dettagli dello scambio: l'input del giocatore, l'output strutturato del valutatore,
+/// lo stato precedente e successivo alla transazione, la risposta dell'attore, i dettagli del modello
+/// LLM utilizzato e le metriche di latenza temporale.
 @immutable
 class ReplayEntry {
+  /// L'identificatore progressivo o numero del turno.
   final int turnId;
+
+  /// L'input testuale originario inserito dal giocatore.
   final String userInput;
+
+  /// Il delta delle metriche calcolato e applicato dall'agente valutatore.
   final EvaluatorDelta evaluatorOutput;
+
+  /// La mappa rappresentante lo stato di gioco prima dell'elaborazione del turno.
   final Map<String, dynamic> stateBefore;
+
+  /// La mappa rappresentante lo stato di gioco dopo l'elaborazione del turno.
   final Map<String, dynamic> stateAfter;
+
+  /// La risposta diegetica prodotta dall'agente attore.
   final String actorResponse;
+
+  /// L'identificatore univoco della richiesta inviata all'agente attore.
   final String actorRequestId;
+
+  /// L'hash crittografico o firma di validazione associato alla risposta dell'attore.
   final String actorResponseHash;
+
+  /// Il modello LLM utilizzato per l'inferenza del valutatore.
   final String evaluatorModel;
+
+  /// Il modello LLM utilizzato per l'inferenza dell'attore.
   final String actorModel;
+
+  /// La latenza totale di elaborazione misurata in millisecondi.
   final int latencyTotalMs;
 
+  /// Costruttore costante per inizializzare una voce di replay.
   const ReplayEntry({
     required this.turnId,
     required this.userInput,
@@ -30,7 +56,7 @@ class ReplayEntry {
     required this.latencyTotalMs,
   });
 
-  /// Factory constructor to parse a replay entry from JSON.
+  /// Costruttore factory per ripristinare o decodificare una voce di replay a partire da una mappa JSON.
   factory ReplayEntry.fromJson(Map<String, dynamic> json) {
     final runtime = json['runtime'] as Map<String, dynamic>? ?? const {};
     return ReplayEntry(
@@ -48,7 +74,7 @@ class ReplayEntry {
     );
   }
 
-  /// Converts the entry to JSON as specified in TGDD Section 16.1.
+  /// Converte la voce di replay in una mappa JSON conforme alla sezione 16.1 del TGDD.
   Map<String, dynamic> toJson() {
     return {
       'turn_id': turnId,
@@ -68,22 +94,27 @@ class ReplayEntry {
   }
 }
 
-/// Manages and aggregates replay logs for a full game session.
+/// Gestisce e aggrega i registri dei replay per l'intera sessione di gioco.
+///
+/// Memorizza l'elenco sequenziale di tutte le voci registrate ([ReplayEntry])
+/// per consentire l'esportazione dello storico della partita e l'analisi del gameplay.
 class ReplayLogger {
+  /// L'identificatore univoco della sessione di gioco associata.
   final String sessionId;
   final List<ReplayEntry> _entries = [];
 
+  /// Inizializza il logger per la sessione specificata.
   ReplayLogger({required this.sessionId});
 
-  /// Returns an unmodifiable list of all log entries.
+  /// Restituisce una lista non modificabile di tutte le voci registrate finora.
   List<ReplayEntry> get entries => List.unmodifiable(_entries);
 
-  /// Appends a new turn's replay entry.
+  /// Registra e aggiunge una nuova voce di replay associata a un turno completato.
   void logTurn(ReplayEntry entry) {
     _entries.add(entry);
   }
 
-  /// Converts the full session log to a JSON-compatible map.
+  /// Converte l'intera sessione di log in una mappa compatibile con il formato JSON.
   Map<String, dynamic> toJson() {
     return {
       'session_id': sessionId,
@@ -92,7 +123,7 @@ class ReplayLogger {
     };
   }
 
-  /// Restores a logger session from JSON.
+  /// Costruttore factory per ripristinare una sessione di logging a partire da dati JSON.
   factory ReplayLogger.fromJson(Map<String, dynamic> json) {
     final logger = ReplayLogger(sessionId: json['session_id'] as String? ?? '');
     final list = json['entries'] as List? ?? const [];

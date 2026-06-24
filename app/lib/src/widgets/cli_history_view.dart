@@ -3,12 +3,21 @@ import 'package:flutter/material.dart';
 import 'package:aura_core/aura_core.dart';
 import '../state_management/game_controller_notifier.dart';
 
+/// Widget che visualizza la cronologia dei messaggi scambiati tra l'utente e PANOPTICON.
+///
+/// Implementa un effetto macchina da scrivere per i messaggi ricevuti dall'IA e mostra
+/// i log diagnostici in tempo reale durante il processo di inferenza.
 class CLIHistoryView extends StatefulWidget {
+  /// Lista dei messaggi della chat.
   final List<ChatMessage> history;
+  /// Specifica se il sistema è attualmente in attesa di una risposta di inferenza.
   final bool isLoading;
+  /// Messaggio descrittivo della fase di caricamento corrente.
   final String currentLoadingMessage;
+  /// Stream delle fasi di avanzamento dell'inferenza.
   final Stream<InferenceStep> stepStream;
 
+  /// Costruisce una vista della cronologia [CLIHistoryView].
   const CLIHistoryView({
     Key? key,
     required this.history,
@@ -21,22 +30,24 @@ class CLIHistoryView extends StatefulWidget {
   State<CLIHistoryView> createState() => _CLIHistoryViewState();
 }
 
+/// Stato per [CLIHistoryView] che gestisce l'effetto macchina da scrivere e i log di avanzamento.
 class _CLIHistoryViewState extends State<CLIHistoryView> {
   final ScrollController _scrollController = ScrollController();
   
-  // Typewriter state variables
+  // Variabili per l'animazione della macchina da scrivere
   String _typedText = "";
   Timer? _typewriterTimer;
   int _charIndex = 0;
   String _lastTypewrittenMessageId = "";
   
-  // Real-time loading steps stream buffer
+  // Buffer per la memorizzazione dei log di caricamento intermedi
   final List<String> _loadingLogs = [];
   StreamSubscription<InferenceStep>? _stepSubscription;
 
   @override
   void initState() {
     super.initState();
+    // Ascolta lo stream dei passi dell'inferenza per mostrare i log dinamici nella console
     _stepSubscription = widget.stepStream.listen((step) {
       if (mounted) {
         setState(() {
@@ -51,12 +62,12 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   void didUpdateWidget(covariant CLIHistoryView oldWidget) {
     super.didUpdateWidget(oldWidget);
     
-    // Clear loading logs once inference completes
+    // Pulisce i log diagnostici una volta completata l'elaborazione
     if (!widget.isLoading && oldWidget.isLoading) {
       _loadingLogs.clear();
     }
     
-    // Check if there is a new bot message to typewrite
+    // Avvia l'effetto macchina da scrivere solo se c'è un nuovo messaggio dell'IA
     if (widget.history.isNotEmpty) {
       final lastMsg = widget.history.last;
       final messageKey = "${widget.history.length}_${lastMsg.content.hashCode}";
@@ -76,6 +87,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     super.dispose();
   }
 
+  /// Avvia l'effetto macchina da scrivere per stampare il testo carattere per carattere.
   void _startTypewriter(String text, String messageId) {
     _typewriterTimer?.cancel();
     _lastTypewrittenMessageId = messageId;
@@ -95,6 +107,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     });
   }
 
+  /// Esegue lo scroll automatico verso il basso per mostrare sempre gli ultimi messaggi.
   void _scrollToBottom({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -121,12 +134,12 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
         controller: _scrollController,
         itemCount: widget.history.length + (widget.isLoading ? 1 + _loadingLogs.length : 0),
         itemBuilder: (context, index) {
-          // 1. Render standard history items
+          // 1. Renderizzazione dei messaggi standard della cronologia
           if (index < widget.history.length) {
             final msg = widget.history[index];
             final isUser = msg.role == 'user';
             
-            // If it is the last message and is currently being typewritten
+            // Applica l'effetto macchina da scrivere solo all'ultimo messaggio dell'IA
             final isLastModelMsg = !isUser && index == widget.history.length - 1;
             final displayText = isLastModelMsg ? _typedText : msg.content;
             
@@ -141,7 +154,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
             );
           }
           
-          // 2. Render loading indicators (if isLoading is true)
+          // 2. Renderizzazione dei log intermedi di avanzamento dell'inferenza
           final loadingIndex = index - widget.history.length;
           
           if (loadingIndex < _loadingLogs.length) {
@@ -157,7 +170,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
               ),
             );
           } else {
-            // Render active loading message
+            // Renderizzazione dell'indicatore di caricamento attivo principale
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 6.0),
               child: Row(
@@ -188,6 +201,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     );
   }
 
+  /// Crea la riga del singolo messaggio formattato con i colori del terminale retro.
   Widget _buildMessageRow(bool isUser, String text) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,8 +213,8 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
             fontWeight: FontWeight.bold,
             fontSize: 12.0,
             color: isUser 
-                ? const Color(0xFF00FFFF) // Cyan
-                : const Color(0xFF00FF66), // Green
+                ? const Color(0xFF00FFFF) // Ciano
+                : const Color(0xFF00FF66), // Verde fosforo
           ),
         ),
         const SizedBox(height: 2.0),
@@ -211,7 +225,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
             fontSize: 15.0,
             color: isUser 
                 ? Colors.white 
-                : const Color(0xFF00FF66), // Green
+                : const Color(0xFF00FF66), // Verde fosforo
           ),
         ),
       ],

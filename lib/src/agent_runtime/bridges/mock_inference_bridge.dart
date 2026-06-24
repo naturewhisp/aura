@@ -1,8 +1,13 @@
 import '../inference_bridge.dart';
 
-/// An offline mock implementation of [InferenceBridge] returning predefined stubs.
+/// Implementazione mock offline di [InferenceBridge] che restituisce risposte predefinite (stub).
+///
+/// Utilizzata principalmente per scopi di test unitari, test di integrazione offline e simulazioni.
 class MockInferenceBridge implements InferenceBridge {
+  /// Risposta testuale fittizia restituita da [generateText].
   String mockTextResponse;
+
+  /// Risposta strutturata fittizia restituita da [generateStructured].
   Map<String, dynamic> mockStructuredResponse;
 
   MockInferenceBridge({
@@ -36,4 +41,5 @@ class MockInferenceBridge implements InferenceBridge {
     return const ["mistralai/ministral-3-3b", "qwen/qwen3.5-9b"];
   }
 }
+
 

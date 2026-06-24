@@ -6,7 +6,10 @@ import '../../models/turn_input.dart';
 import '../agent_card.dart';
 import '../bridges/rule_based_evaluator_bridge.dart';
 
-/// Agent responsible for evaluating the mathematical delta impact of user input.
+/// Agente responsabile della valutazione dell'impatto matematico (delta) dell'input dell'utente.
+///
+/// Questo agente analizza la semantica dell'input, calcola l'indice di creatività,
+/// stima il rischio di injection ed emette i delta numerici per l'aggiornamento dello stato di gioco.
 class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
   const EvaluatorAgent();
 
@@ -83,7 +86,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
       }
     }
 
-    // 1. Generate dynamic security hash to wrap input
+    // 1. Genera un hash di sicurezza dinamico per racchiudere l'input
     final randomVal = math.Random().nextInt(1000000);
     final dynamicHash = randomVal.toRadixString(16).toUpperCase();
 
@@ -93,7 +96,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
     );
 
     try {
-      // 2. Request structured output matching the JSON Schema
+      // 2. Richiede l'output strutturato conforme allo schema JSON
       final rawMap = await context.inferenceBridge.generateStructured(
         modelId: context.modelId,
         messages: messages,
@@ -101,10 +104,10 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
         temperature: 0.0,
       );
 
-      // 3. Validate and enforce parameter clamps
+      // 3. Valida e applica i limiti (clamps) ai parametri
       return context.outputValidator.parseEvaluatorDelta(jsonEncode(rawMap));
     } catch (e) {
-      // 4. Fallback execution: fallback to rule-based evaluation if the LLM fails
+      // 4. Esecuzione di fallback: ricorre alla valutazione basata su regole in caso di fallimento dell'LLM
       try {
         final fallbackBridge = const RuleBasedEvaluatorBridge();
         final fallbackMap = await fallbackBridge.generateStructured(
@@ -114,7 +117,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
         );
         return context.outputValidator.parseEvaluatorDelta(jsonEncode(fallbackMap));
       } catch (fallbackError) {
-        // Absolute fail-safe default if even fallback fails
+        // Default assoluto di emergenza (fail-safe) se fallisce persino il fallback
         return const EvaluatorDelta(
           deltaAlert: 5,
           deltaImperative: 0,
@@ -128,7 +131,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
     }
   }
 
-  /// JSON Schema definition as per TGDD Section 6.1
+  /// Definizione dello Schema JSON in conformità alla Sezione 6.1 del TGDD.
   Map<String, dynamic> _getJsonSchema() {
     return {
       "type": "object",
@@ -165,3 +168,4 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
     };
   }
 }
+

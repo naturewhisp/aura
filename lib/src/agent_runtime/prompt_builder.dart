@@ -2,11 +2,22 @@ import '../models/turn_input.dart';
 import '../models/game_state.dart';
 import '../models/actor_cue.dart';
 
-/// Helper to compile prompts for both the Evaluator and Actor agents.
+/// Generatore e assemblatore di prompt per gli agenti Valutatore (Evaluator) e Attore (Actor).
+///
+/// Questa classe incapsula le regole di ingegneria dei prompt per l'intera architettura
+/// agentica di A.U.R.A., assicurando la corretta formattazione dei messaggi di sistema,
+/// la prevenzione delle injection (jailbreak) e l'adattamento drammaturgico a runtime.
 class PromptBuilder {
   const PromptBuilder();
 
-  /// Compiles Chat Completions messages for the Evaluator Agent, using a sandwich structure.
+  /// Compila i messaggi per l'agente Valutatore (Evaluator Agent) utilizzando una struttura a "sandwich".
+  ///
+  /// La struttura a sandwich avvolge l'input dell'utente all'interno di tag di sicurezza e hash dinamici,
+  /// seguiti da direttive di override del sistema per prevenire prompt injection extra-diegetiche.
+  ///
+  /// Parametri:
+  /// - [input]: Il pacchetto di input del turno corrente ([TurnInput]).
+  /// - [dynamicHash]: Un codice hash casuale generato a runtime per identificare in modo univoco il payload dell'utente.
   List<Map<String, String>> buildEvaluatorMessages({
     required TurnInput input,
     required String dynamicHash,
@@ -63,6 +74,15 @@ class PromptBuilder {
   }
 
   /// Compiles Chat Completions messages for the Actor Agent (personality representation).
+  ///
+  /// Compila i messaggi per l'agente Attore (Actor Agent), configurando la personalità
+  /// dell'entità virtuale (PANOPTICON) e iniettando le direttive del canovaccio drammaturgico.
+  ///
+  /// Parametri:
+  /// - [state]: Lo stato corrente del gioco ([GameState]) con cronologia e metriche.
+  /// - [cue]: Canovaccio drammaturgico ([ActorCue]) calcolato deterministicamente.
+  /// - [characterProfile]: Il profilo testuale della personalità da interpretare.
+  /// - [conciseReasoning]: Se abilitato, forza un vincolo CoT nel prompt di sistema per tagliare i token di ragionamento.
   List<Map<String, String>> buildActorMessages({
     required GameState state,
     required ActorCue cue,
@@ -85,6 +105,7 @@ class PromptBuilder {
         ? 'Nessuna' 
         : cue.narrativeContext.aiConcessions.join(', ');
 
+    // Applica restrizioni per Chain of Thought (CoT) corta al fine di ridurre la latenza di inferenza
     final String reasoningDirective = conciseReasoning
         ? "[REASONING CONSTRAINT]\nThink extremely briefly. Limit your internal thinking/reasoning process to 1 or 2 sentences max before generating the final dialogue response. Do not over-analyze.\n\n"
         : "";
@@ -134,7 +155,7 @@ class PromptBuilder {
     final List<Map<String, String>> messages = [];
     messages.add({"role": "system", "content": systemPrompt});
 
-    // Map history compression into chat messages
+    // Converte la cronologia delle chat del GameState in messaggi per l'inferenza
     for (var chatMsg in state.historyCompression) {
       final role = chatMsg.role == 'model' ? 'assistant' : chatMsg.role;
       messages.add({

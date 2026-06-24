@@ -1,22 +1,49 @@
 import 'dart:convert';
 import 'package:meta/meta.dart';
 
-/// Metadata entry representing a supported AI model in A.U.R.A.
+/// Rappresenta i metadati relativi a un modello di intelligenza artificiale supportato in A.U.R.A.
 @immutable
 class ModelCatalogEntry {
+  /// Identificatore univoco del modello (es. 'qwen/qwen3.5-9b').
   final String modelId;
+
+  /// Nome visualizzabile del modello.
   final String name;
+
+  /// Fonte da cui è distribuito il modello (es. 'lmstudio-community').
   final String source;
-  final String format;
+
+  /// Formato del file del modello (es. 'gguf').
   final List<String> platforms;
+
+  /// Formato del modello (gguf, safetensors, ecc.).
+  final String format;
+
+  /// Classe di parametri (es. '3b', '9b', '12b').
   final String parameterClass;
+
+  /// Tipo di quantizzazione applicata (es. 'q4_k_m').
   final String quantization;
+
+  /// RAM minima richiesta in Gigabyte.
   final int? minRamGb;
+
+  /// VRAM minima richiesta in Gigabyte.
   final int? minVramGb;
+
+  /// Elenco degli agenti raccomandati per questo modello (es. ['evaluator']).
   final List<String> recommendedAgents;
+
+  /// Capacità e abilità supportate da questo modello.
   final List<String> capabilities;
+
+  /// Indica se il modello supporta vincoli grammaticali (es. GBNF o regex).
   final bool supportsGrammar;
+
+  /// Indica se il modello supporta nativamente l'output strutturato (JSON Schema).
   final bool supportsStructuredOutput;
+
+  /// Il backend di inferenza preferito (es. 'llama_cpp').
   final String preferredBackend;
 
   const ModelCatalogEntry({
@@ -36,7 +63,7 @@ class ModelCatalogEntry {
     required this.preferredBackend,
   });
 
-  /// Factory to parse from a JSON map.
+  /// Costruttore factory per analizzare e caricare un'istanza da una mappa JSON.
   factory ModelCatalogEntry.fromJson(Map<String, dynamic> json) {
     return ModelCatalogEntry(
       modelId: json['model_id'] as String? ?? '',
@@ -56,7 +83,7 @@ class ModelCatalogEntry {
     );
   }
 
-  /// Converts to JSON map.
+  /// Converte questa istanza in una mappa JSON.
   Map<String, dynamic> toJson() {
     return {
       'model_id': modelId,
@@ -77,20 +104,23 @@ class ModelCatalogEntry {
   }
 }
 
-/// Holds a registry of known supported models.
+/// Gestisce un registro di modelli noti e supportati all'interno di A.U.R.A.
 class ModelCatalog {
   final List<ModelCatalogEntry> _models = [];
 
+  /// Restituisce la lista immutabile dei modelli registrati nel catalogo.
   List<ModelCatalogEntry> get models => List.unmodifiable(_models);
 
   ModelCatalog();
 
-  /// Registers a new entry in the catalog.
+  /// Registra una nuova voce all'interno del catalogo.
   void registerEntry(ModelCatalogEntry entry) {
     _models.add(entry);
   }
 
-  /// Searches for a model matching a specific ID.
+  /// Cerca un modello registrato corrispondente a un determinato [modelId].
+  ///
+  /// Ritorna `null` se il modello non è presente nel catalogo.
   ModelCatalogEntry? findModel(String modelId) {
     for (var model in _models) {
       if (model.modelId == modelId) return model;
@@ -98,7 +128,7 @@ class ModelCatalog {
     return null;
   }
 
-  /// Initializes the catalog from a JSON string.
+  /// Inizializza e popola il catalogo a partire da una stringa JSON.
   void loadFromJson(String jsonString) {
     final Map<String, dynamic> data = jsonDecode(jsonString);
     final list = data['models'] as List? ?? const [];
@@ -108,7 +138,7 @@ class ModelCatalog {
     }
   }
 
-  /// Factory to load a catalog with the initial default models.
+  /// Costruttore factory per caricare il catalogo con i modelli predefiniti iniziali.
   factory ModelCatalog.initialDefault() {
     final catalog = ModelCatalog();
     catalog.registerEntry(const ModelCatalogEntry(
@@ -162,3 +192,4 @@ class ModelCatalog {
     return catalog;
   }
 }
+

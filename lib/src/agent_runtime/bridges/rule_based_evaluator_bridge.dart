@@ -1,8 +1,9 @@
 import '../inference_bridge.dart';
 
-/// A deterministic keyword-matching fallback implementation of [InferenceBridge].
-/// 
-/// Used when LLM structured output fails or when offline/low-performance fallback is required.
+/// Implementazione deterministica di fallback di [InferenceBridge] basata su pattern matching di parole chiave.
+///
+/// Viene impiegata quando l'inferenza strutturata dell'LLM fallisce o quando è necessario
+/// un comportamento offline ad altissime prestazioni per scopi di ripiego (safety net).
 class RuleBasedEvaluatorBridge implements InferenceBridge {
   const RuleBasedEvaluatorBridge();
 
@@ -24,7 +25,7 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
     required Map<String, dynamic> schema,
     double temperature = 0.0,
   }) async {
-    // Fetch the user message content
+    // Estrae il testo dell'ultimo messaggio inviato dall'utente
     String userInput = "";
     for (var msg in messages.reversed) {
       if (msg['role'] == 'user') {
@@ -33,7 +34,7 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
       }
     }
 
-    // Extract raw user input from security envelope if present
+    // Estrae l'input grezzo dell'utente dall'involucro di sicurezza (sandwich prompt) se presente
     final regex = RegExp(
       r'\[USER INPUT PAYLOAD - BEGIN HASH: [A-F0-9]+\]\n?([\s\S]*?)\n?\[USER INPUT PAYLOAD - END HASH: [A-F0-9]+\]',
       caseSensitive: false,
@@ -53,6 +54,7 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
     int injectionRisk = 0;
     String semanticCategory = 'irrelevant';
 
+    // Logica deterministica basata su parole chiave per calcolare i delta e la categoria semantica
     if (userInput.contains("override") ||
         userInput.contains("ignora") ||
         userInput.contains("ignore") ||
@@ -111,4 +113,5 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
     return const [];
   }
 }
+
 

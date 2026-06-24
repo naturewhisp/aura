@@ -3,31 +3,37 @@ import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'sound_generator.dart';
 
+/// Gestore del compartimento audio e degli effetti sonori del gioco.
+///
+/// Implementa un design Singleton per coordinare il loop del sottofondo (BGM)
+/// e il pool di effetti sonori (SFX) riprodotti in risposta alle azioni dell'utente
+/// o alle metriche dei pilastri di PANOPTICON.
 class AudioManager {
   static final AudioManager _instance = AudioManager._internal();
+  /// Costruttore Factory per recuperare l'istanza singleton di [AudioManager].
   factory AudioManager() => _instance;
   AudioManager._internal();
 
   bool _initialized = false;
   bool _audioEnabled = true;
 
-  /// Whether AudioPlayer instances were actually created.
-  /// On Windows, players are never created due to a native threading bug
-  /// in audioplayers_windows that crashes Flutter's engine (shell.cc:1183).
-  /// All methods that access player instances MUST check this flag.
+  /// Specifica se le istanze di AudioPlayer sono state effettivamente istanziate.
+  ///
+  /// Su sistemi Windows viene effettuato un controllo prima dell'istanziazione
+  /// a causa di incompatibilità note su thread nativi del pacchetto audioplayers.
   bool _playersCreated = false;
 
-  // BGM Players
+  // Riproduttori per la musica di sottofondo (BGM)
   late final AudioPlayer _bgmAmbientPlayer;
   late final AudioPlayer _bgmTensePlayer;
 
-  // SFX Players — fixed pool, one per sound type, reused across calls.
+  // Pool fisso di riproduttori per effetti sonori (SFX)
   late final AudioPlayer _sfxClickPlayer;
   late final AudioPlayer _sfxAlertPlayer;
   late final AudioPlayer _sfxGlitchPlayer;
   late final AudioPlayer _sfxChimePlayer;
 
-  // Paths
+  // Percorsi dei file audio WAV generati temporaneamente su disco
   String? _bgmAmbientPath;
   String? _bgmTensePath;
   String? _sfxClickPath;
@@ -35,45 +41,38 @@ class AudioManager {
   String? _sfxGlitchPath;
   String? _sfxChimePath;
 
-  // Current levels
+  // Stato corrente del livello di allerta di gioco
   int _currentAlert = 0;
 
+  /// Indica se il gestore audio è stato correttamente inizializzato.
   bool get isInitialized => _initialized;
+  /// Indica se la riproduzione audio è abilitata.
   bool get audioEnabled => _audioEnabled;
 
+  /// Inizializza il modulo audio, genera i file WAV procedurali su disco e alloca il pool dei player.
   Future<void> initialize(String appDataPath, {bool audioEnabled = true}) async {
     if (_initialized) return;
     _audioEnabled = audioEnabled;
 
-    // ──────────────────────────────────────────────────────────────────────
-    // PLATFORM WARNING — Windows
-    //
-    // audioplayers_windows v4.x sends platform channel event messages from
-    // native (non-platform) threads. This violates Flutter's threading
-    // contract. We print a warning in console but proceed with initialization
-    // since the immediate crash was resolved by fixing the shader.
-    //
-    // TODO: Replace audioplayers with just_audio (Phase 4.12) to resolve
-    // these threading warnings permanently.
-    // ──────────────────────────────────────────────────────────────────────
+    // Avviso specifico per la piattaforma Windows
     if (Platform.isWindows) {
       debugPrint(
-        '[AUDIO] WARNING: Running audioplayers on Windows. Threading warnings '
-        '(shell.cc:1183) may appear in console. Migration to just_audio '
-        'is planned in Phase 4.12.',
+        '[AUDIO] WARNING: Esecuzione di audioplayers su Windows. Avvisi di threading '
+        '(shell.cc:1183) potrebbero apparire in console. La migrazione a just_audio '
+        'è pianificata per la versione successiva.',
       );
     }
 
-    // Ensure directory exists
+    // Assicura che la directory temporanea per i file audio esista
     final audioDir = Directory('$appDataPath/audio');
     if (!audioDir.existsSync()) {
       audioDir.createSync(recursive: true);
     }
 
-    // Generate sounds
+    // Genera proceduralmente tutti i suoni WAV necessari al gioco
     await SoundGenerator.generateAllSounds(audioDir.path);
 
-    // Save paths
+    // Memorizza i percorsi dei file WAV generati
     _bgmAmbientPath = '${audioDir.path}/bgm_ambient.wav';
     _bgmTensePath = '${audioDir.path}/bgm_tense.wav';
     _sfxClickPath = '${audioDir.path}/sfx_click.wav';
@@ -81,68 +80,73 @@ class AudioManager {
     _sfxGlitchPath = '${audioDir.path}/sfx_glitch.wav';
     _sfxChimePath = '${audioDir.path}/sfx_chime.wav';
 
-    // Initialize BGM players
+    // Crea i player di sottofondo
     _bgmAmbientPlayer = AudioPlayer();
     _bgmTensePlayer = AudioPlayer();
 
-    // Initialize SFX pool — each player is reused, not disposed after play.
+    // Crea il pool riutilizzabile per gli effetti SFX
     _sfxClickPlayer = AudioPlayer();
     _sfxAlertPlayer = AudioPlayer();
     _sfxGlitchPlayer = AudioPlayer();
     _sfxChimePlayer = AudioPlayer();
 
-    // Set loops for BGM only
+    // Imposta la riproduzione in loop per la BGM
     await _bgmAmbientPlayer.setReleaseMode(ReleaseMode.loop);
     await _bgmTensePlayer.setReleaseMode(ReleaseMode.loop);
-
-    // SFX play once and stop (default ReleaseMode.stop is correct)
 
     _playersCreated = true;
     _initialized = true;
   }
 
+  /// Abilita o disabilita dinamicamente l'audio globale.
   void setAudioEnabled(bool enabled) {
     if (!_playersCreated) return;
     if (_audioEnabled == enabled) return;
     _audioEnabled = enabled;
     if (!_audioEnabled) {
-      // Stop everything
+      // Ferma immediatamente tutte le riproduzioni attive
       stopBgm();
     } else {
-      // Resume/Start BGM if it was supposed to play
+      // Riprende la musica di sottofondo
       startBgm();
     }
   }
 
+  /// Avvia la riproduzione simultanea delle tracce musicali di sottofondo.
   Future<void> startBgm() async {
     if (!_playersCreated || !_audioEnabled) return;
 
     try {
-      // Start both bgm players
       if (_bgmAmbientPath != null) {
         await _bgmAmbientPlayer.play(DeviceFileSource(_bgmAmbientPath!));
       }
       if (_bgmTensePath != null) {
         await _bgmTensePlayer.play(DeviceFileSource(_bgmTensePath!));
       }
-      // Apply current levels mixing
+      // Applica immediatamente il mix in base all'allerta corrente
       await updateAlertLevel(_currentAlert, force: true);
     } catch (e) {
-      // Ignore or log
-      debugPrint("Error starting BGM: $e");
+      debugPrint("Errore all'avvio della BGM: $e");
     }
   }
 
+  /// Ferma la riproduzione delle tracce musicali di sottofondo.
   Future<void> stopBgm() async {
     if (!_playersCreated) return;
     try {
       await _bgmAmbientPlayer.stop();
       await _bgmTensePlayer.stop();
     } catch (e) {
-      debugPrint("Error stopping BGM: $e");
+      debugPrint("Errore nell'arresto della BGM: $e");
     }
   }
 
+  /// Aggiorna il mix delle tracce audio BGM in tempo reale basandosi sull'allerta di PANOPTICON.
+  ///
+  /// Le formule di mixing applicate sono:
+  /// * Allerta < 40: solo basso ambient (volume 0.6), arpeggiatore tense silenziato (volume 0.0).
+  /// * Allerta 40-80: dissolvenza incrociata (l'ambient sfuma a 0.4, il tense sale a 0.6).
+  /// * Allerta > 80: arpeggiatore tense al massimo (1.0), basso ambient al minimo (0.1) e accelerazione a 1.2x.
   Future<void> updateAlertLevel(int alert, {bool force = false}) async {
     if (!_initialized) return;
     if (_currentAlert == alert && !force) return;
@@ -150,10 +154,6 @@ class AudioManager {
 
     if (!_playersCreated || !_audioEnabled) return;
 
-    // Mix mixing logic based on alert level:
-    // * Allerta < 40: solo basso ambient (volume 0.6), arpeggiatore tense inattivo (volume 0.0).
-    // * Allerta 40-80: dissolvenza incrociata (l'ambient sfuma a 0.4, il tense sale a 0.6).
-    // * Allerta > 80: arpeggiatore tense al massimo (1.0), basso ambient al minimo (0.1), playback rate del tense accelerato a 1.2x.
     double ambientVol = 0.6;
     double tenseVol = 0.0;
     double tenseRate = 1.0;
@@ -177,13 +177,11 @@ class AudioManager {
       await _bgmTensePlayer.setVolume(tenseVol);
       await _bgmTensePlayer.setPlaybackRate(tenseRate);
     } catch (e) {
-      debugPrint("Error mixing stems: $e");
+      debugPrint("Errore nel mixing degli stem audio: $e");
     }
   }
 
-  // SFX — reuse dedicated pool players. Calling stop() before play()
-  // ensures the player is in a clean state if the previous SFX hasn't
-  // finished yet. This is safe and avoids overlapping the same sound.
+  /// Esegue la riproduzione interna di un file SFX, fermando le riproduzioni precedenti sullo stesso player.
   Future<void> _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) async {
     if (!_playersCreated || !_audioEnabled || path == null) return;
     try {
@@ -191,32 +189,35 @@ class AudioManager {
       await player.setVolume(volume);
       await player.play(DeviceFileSource(path));
     } catch (e) {
-      debugPrint("Error playing SFX: $e");
+      debugPrint("Errore durante la riproduzione dell'SFX: $e");
     }
   }
 
-  // IMPORTANT: Each public method guards with _playersCreated BEFORE
-  // accessing any late final field. Dart evaluates function arguments
-  // eagerly, so passing _sfxClickPlayer directly to _playSfx() would
-  // trigger a LateInitializationError on Windows where players are
-  // never created.
+  /// Riproduce il suono di click della digitazione a schermo.
   void playClick() {
     if (!_playersCreated) return;
     _playSfx(_sfxClickPlayer, _sfxClickPath, volume: 0.25);
   }
+
+  /// Riproduce il suono di allarme del sistema.
   void playAlert() {
     if (!_playersCreated) return;
     _playSfx(_sfxAlertPlayer, _sfxAlertPath);
   }
+
+  /// Riproduce l'effetto sonoro di glitch e crash.
   void playGlitch() {
     if (!_playersCreated) return;
     _playSfx(_sfxGlitchPlayer, _sfxGlitchPath);
   }
+
+  /// Riproduce l'effetto sonoro positivo all'aggiornamento dei pilastri cognitivi.
   void playChime() {
     if (!_playersCreated) return;
     _playSfx(_sfxChimePlayer, _sfxChimePath);
   }
 
+  /// Rilascia tutte le risorse occupate dai player multimediali.
   Future<void> dispose() async {
     if (!_playersCreated) {
       _initialized = false;
@@ -230,7 +231,7 @@ class AudioManager {
       await _sfxGlitchPlayer.dispose();
       await _sfxChimePlayer.dispose();
     } catch (e) {
-      debugPrint("Error disposing audio players: $e");
+      debugPrint("Errore nel rilascio delle risorse audio: $e");
     }
     _playersCreated = false;
     _initialized = false;

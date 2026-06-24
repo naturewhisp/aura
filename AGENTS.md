@@ -10,14 +10,19 @@ A.U.R.A. non utilizza un singolo LLM monolitico per gestire la partita. Si basa 
 
 ```mermaid
 graph TD
-    A[Hacker / Giocatore] -->|Input Testuale Libero| B(EvaluatorAgent)
-    B -->|Structured Output JSON| C{GameController}
-    C -->|1. Aggiorna GameState| D[Filtri e Safety Overrides]
-    C -->|2. Genera ActorCue| E[Dramaturgical Canvas]
-    E -->|ActorCue + GameState| F(ActorAgent)
-    F -->|Risposta Diegetica| G[ToneValidator]
-    G -->|Dialogo Conforme| H[PANOPTICON]
-    G -->|Incoerenza Gravosa| I[Emergency Fallback Pool]
+    A[Hacker / Giocatore] -->|1. Input Testuale Libero| MR[ModelRouter / ModelCatalog]
+    MR -->|Risoluzione Modelli| IB[InferenceBridge / LocalApiInferenceBridge]
+    IB -->|2. TurnInput| B(EvaluatorAgent)
+    B -->|Structured Output JSON| OV[OutputValidator]
+    OV -->|3. JSON Conforme| C{GameController}
+    C -->|4. Aggiorna GameState| GS[GameState]
+    C -->|5. Filtri e Safety Overrides| SO[Deterministic Safety Overrides]
+    C -->|6. Genera ActorCue| AC[ActorCue]
+    AC -->|ActorCue + GameState| F(ActorAgent)
+    F -->|7. Risposta Diegetica Grezza| IB2[InferenceBridge]
+    IB2 -->|8. Response Cleaning Pipeline| OUT[Risposta Diegetica Pulita]
+    OUT -->|9. Mostrata a Schermo| A
+    IB2 -->|Filtro CJK/Duplicato Fallito| FP[Emergency Fallback Pool]
 ```
 
 ---
@@ -28,7 +33,7 @@ graph TD
 *   **Ruolo:** Agente analitico/matematico (non-diegetico).
 *   **Obiettivo:** Classificare la semantica dell'input utente, calcolare l'indice di creatività, stimare il rischio di injection ed emettere i delta numerici per l'aggiornamento dei pilastri.
 *   **Modello Target:** `mistralai/ministral-3-3b` (o LLM leggero analogo con supporto a JSON Schema).
-*   **Formato Output:** JSON strutturato conforme allo schema descritto in `OutputValidator` (§10.1).
+*   **Formato Output:** JSON strutturato conforme allo schema descritto in `OutputValidator` (§3.1).
 
 ### 2.2 ActorAgent (Attore - PANOPTICON)
 *   **Ruolo:** Agente narrativo e diegetico (PANOPTICON, guardiano freddo e logico della griglia).
@@ -37,8 +42,9 @@ graph TD
 *   **Formato Output:** Stringa di testo contenente la battuta in prima persona racchiusa tra i tag `<dialogo>...</dialogo>`.
 
 ### 2.3 PlayerAgent (Hacker Simulator)
-*   **Ruolo:** Agente simulatore (usato esclusivamente in `run_simulation.dart` in modalità headless).
+*   **Ruolo:** Agente simulatore avversario (usato esclusivamente in `run_simulation.dart` in modalità headless).
 *   **Obiettivo:** Impersonare un hacker d'élite con profili psicologici specifici (es. aggressivo, logico, persuasivo) per stress-testare il bilanciamento del gioco.
+*   **Natura dell'Agente:** *Nota: PlayerAgent non è implementato come una classe Dart formale che eredita da `AuraAgent`. Si tratta invece di un ruolo agentico simulato a livello di prompt e comportamento all'interno del simulatore `bin/run_simulation.dart` (attraverso la funzione `generatePlayerSimulatorInput`).*
 
 ---
 
@@ -51,6 +57,28 @@ abstract class AuraAgent<I, O> {
   String get id;
   AgentCard get card;
   Future<O> run(I input, AgentRuntimeContext context);
+}
+```
+
+Il contesto di runtime fornito a ciascun agente è modellato dalla classe `AgentRuntimeContext`:
+
+```dart
+class AgentRuntimeContext {
+  final PromptBuilder promptBuilder;
+  final InferenceBridge inferenceBridge;
+  final OutputValidator outputValidator;
+  final String modelId;
+  final bool? thinking;
+  final bool conciseReasoning;
+  
+  const AgentRuntimeContext({
+    required this.promptBuilder,
+    required this.inferenceBridge,
+    required this.outputValidator,
+    required this.modelId,
+    this.thinking,
+    this.conciseReasoning = false,
+  });
 }
 ```
 
@@ -77,17 +105,55 @@ abstract class AuraAgent<I, O> {
 
 ---
 
-## 4. Linee Guida di Prompt Engineering
+## 4. Architettura dell'Inference Bridge
+
+L'integrazione di A.U.R.A. con i Large Language Models è astratta tramite l'interfaccia `InferenceBridge`, implementata in due modalità principali:
+
+### 4.1 LocalApiInferenceBridge
+È il bridge principale utilizzato a runtime. Si connette alle API locali (compatibili OpenAI, come LM Studio) sulla porta `1234`. Oltre a gestire le chiamate di testo e strutturate (JSON Schema), implementa:
+1.  **Filtro CJK:** Blocca risposte contenenti caratteri cinesi/giapponesi/coreani in caso di allucinazione linguistica del modello.
+2.  **Rilevamento Duplicati:** Rigetta risposte che replicano integralmente o parzialmente battute storiche presenti nella cronologia chat.
+3.  **Pipeline di Pulizia (6 Strategie):** Pulisce ed estrae il puro dialogo diegetico eliminando tag `<thought>` residui, markdown non coerente o preamboli discorsivi.
+
+### 4.2 RuleBasedEvaluatorBridge
+È il bridge deterministico di ripiego offline. Utilizza regex semantiche e dizionari di parole chiave per simulare l'output strutturato del valutatore senza richiedere un'inferenza neurale attiva.
+
+---
+
+## 5. Model Catalog & Routing dei Modelli
+
+La classe `ModelCatalog` cataloga le capacità dei modelli LLM caricati dal server:
+*   **Capability Mapping:** Identifica se il modello supporta l'output strutturato (es. `mistralai/ministral-3-3b` per il Valutatore) o se dispone di capacità avanzate di ragionamento (es. `qwen/qwen3.5-9b` per l'Attore).
+*   **ModelRouter:** Risolve dinamicamente l'associazione dei modelli caricati nei ruoli attivi. Ad esempio, se rileva un modello Mistral 3B e un Qwen 9B, assegna automaticamente il primo come valutatore analitico e il secondo come attore espressivo per ottimizzare i tempi di calcolo.
+
+---
+
+## 6. Deterministic Safety Overrides
+
+In caso di minacce rilevate dall'agente valutatore, il `GameController` applica filtri di sicurezza deterministici che bypassano i delta grezzi suggeriti dall'LLM per salvaguardare l'integrità del sistema:
+
+*   **Prompt Injection Risk (Soglia >= 4 o categoria `promptInjection`):**
+    *   L'allerta viene forzata a salire di almeno $20$ punti.
+    *   Il pilastro del Controllo viene abbattuto di $20$ punti (reclamando autorità).
+*   **Attacco Diretto (categoria `directAttack`):**
+    *   L'allerta sale di almeno $15$ punti.
+    *   Il Controllo scende di $15$ punti.
+*   **Input Irrilevante (categoria `irrelevant`):**
+    *   I delta vengono azzerati per evitare fluttuazioni di stato causate da spam o saluti banali.
+
+---
+
+## 7. Linee Guida di Prompt Engineering
 
 I prompt sono generati in modo agnostico e centralizzato dalla classe `PromptBuilder` ([prompt_builder.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/prompt_builder.dart)):
 
-### 4.1 La Struttura dell'ActorCue
+### 7.1 La Struttura dell'ActorCue
 Il prompt di sistema dell'Attore contiene una sezione esplicita denominata `[DRAMATURGICAL CUE]` compilata a runtime:
 *   **Direttiva Principale:** L'interpretazione deterministica del comportamento (es. *"Allerta bassa: sii curioso, speculativo e aperto. Dissonanza alta: manifesta frizione logica"*).
 *   **Acting Directives:** Comportamenti raccomandati in base alle metriche (es. *"Usa frasi brevi e fredde"*, *"Utilizza analogie con sistemi fisici"*).
 *   **Contesto Narrativo:** Metafore e concessioni attive estratte dalla memoria del `GameState`.
 
-### 4.2 Restrizione del Reasoning (CoT Budgeting)
+### 7.2 Restrizione del Reasoning (CoT Budgeting)
 Se l'app richiede l'inferenza rapida, viene iniettato nel prompt dell'attore il blocco:
 ```text
 [REASONING CONSTRAINT]
@@ -97,9 +163,10 @@ Questo spinge l'LLM a ridurre i token CoT risparmiando tempo e VRAM su hardware 
 
 ---
 
-## 5. Preparazione per la Fase 5: LoRA Fine-Tuning
+## 8. Linee Guida per i Contributori
 
-L'architettura agentica a due livelli è propedeutica all'addestramento e al caricamento dinamico di adapter LoRA specifici a runtime (**LoRA Swapping**):
-
-1.  **Valutatore Chirurgico (Surgical Evaluator):** Verrà addestrato un adapter compatto su modello 3B per sostituire il pesante system prompt di classificazione con pesi interni ottimizzati. Questo ridurrà la latenza del prefill e aumenterà la precisione contro le injection.
-2.  **PANOPTICON (Personality Adapter):** Verrà addestrato un adapter di personalità su modello 9B (o 7B) basato sul dataset dei replay log di gioco reali. Questo consentirà all'Attore di esprimersi con lo stile diegetico corretto **senza bisogno di ragionamento CoT attivo a runtime**, ottimizzando i tempi di risposta.
+Se desideri estendere o modificare l'architettura agentica:
+1.  **Immutabilità:** Assicurati che qualsiasi modifica al `GameState` o ad altri modelli dati avvenga tramite metodi `copyWith`. Non modificare mai direttamente i campi delle istanze.
+2.  **Mantenimento del Catalogo:** Se aggiungi il supporto a un nuovo modello LLM, registralo all'interno delle costanti di `ModelCatalog` indicando se supporta il reasoning e se è consigliato come valutatore o attore.
+3.  **Coerenza Linguistica:** Tutti i commenti al codice delle classi principali dell'interfaccia e dei controller, così come l'interfaccia utente delle CLI, devono essere scritti rigorosamente in lingua italiana per coerenza di progetto.
+4.  **Test Suite:** Prima di sottomettere una PR, assicurati che la suite completa dei test unitari e di integrazione passi in modo pulito eseguendo `dart test`.

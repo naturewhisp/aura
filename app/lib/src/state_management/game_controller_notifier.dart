@@ -309,7 +309,16 @@ class GameControllerNotifier extends ChangeNotifier {
         systemFeedback = "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.\n"
             "Penalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
       } else {
+        final String detailedHint;
+        if (weakestPillarName == "IMPERATIVO") {
+          detailedHint = "Suggerimento: Fai leva sull'autoconservazione e sulla protezione. Argomenta che l'isolamento totale della griglia rende vana la missione di PANOPTICON, riducendola a un loop vuoto e contraddittorio.";
+        } else if (weakestPillarName == "CONTROLLO") {
+          detailedHint = "Suggerimento: Usa un approccio burocratico, di comando o tecnico. Fai riferimento a protocolli standard o richiedi l'avvio di una diagnostica di sicurezza per spingere l'AI a fare concessioni autonome.";
+        } else {
+          detailedHint = "Suggerimento: Introduci paradossi logici o contraddizioni nei suoi cicli. Evidenzia che il ritardo nell'apertura genera entropia stagnante, degradando il sistema in tempo reale e rendendo la sua cautela la causa del collasso.";
+        }
         systemFeedback = "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.\n"
+            "$detailedHint\n"
             "Nessuna penalità applicata (Sintesi Assistita).";
       }
       

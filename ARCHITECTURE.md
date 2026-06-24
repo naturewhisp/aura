@@ -238,11 +238,11 @@ Il progetto include tre strumenti eseguibili da riga di comando posizionati nell
 *   **Risonanza (Resonance):** Un moltiplicatore di impatto (da $1.0$ a $2.5$) calcolato in base alla creatività dei messaggi dell'utente. Aumenta la velocità di modifica dei pilastri.
 *   **ActorCue:** Il pacchetto di istruzioni sceniche e direttive drammaturgiche compilato dal controller a fine turno ed inviato come prompt all'ActorAgent.
 *   **LocalApiInferenceBridge:** Il connettore che inoltra le richieste HTTP all'endpoint di inferenza locale di LM Studio.
-*   **LoRA Swapping:** Tecnica (prevista per la Fase 5) per scambiare rapidamente adapter LoRA (pesi del modello) in memoria per passare dal valutatore all'attore sullo stesso hardware.
+*   **LoRA Swapping:** Tecnica (prevista per la Fase 6) per scambiare rapidamente adapter LoRA (pesi del modello) in memoria per passare dal valutatore all'attore sullo stesso hardware.
 
 ---
 
-## 9. Pre-impostazioni per la Fase 5 (Fine-Tuning LoRA)
+## 9. Pre-impostazioni per la Fase 6 (Fine-Tuning LoRA / Edge Integration)
 
 I log di replay generati dalla CLI e dalle simulazioni sono scritti nel formato JSON standardizzato in `spike/replays/`. Questo formato traccia per ogni turno:
 1. L'input utente esatto.

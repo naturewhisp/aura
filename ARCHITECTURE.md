@@ -242,7 +242,28 @@ Il progetto include tre strumenti eseguibili da riga di comando posizionati nell
 
 ---
 
-## 9. Pre-impostazioni per la Fase 6 (Fine-Tuning LoRA / Edge Integration)
+## 9. Fase 5 — Panopticon Pilot & Hidden Gameplay Model
+
+La Fase 5 costituisce la transizione dallo sviluppo del motore deterministico alla definizione dell'esperienza pilota incentrata sull'entità **PANOPTICON** e sul modello di gameplay nascosto.
+
+### Obiettivi e Componenti della Fase 5
+1. **Configurazione dell'Identità e Matrice dei Tratti:**
+   * `panopticon_identity.json`: Definisce le direttive di personalità di PANOPTICON, i vincoli diegetici e il canovaccio comportamentale.
+   * `panopticon_trait_matrix.json`: Specifica il lessico ammesso, il registro linguistico (freddo, logico, formale) e le affinità/allergie stilistiche. Ad esempio, parole chiave o costrutti sintattici che alterano la sua dissonanza cognitiva se utilizzati dall'utente.
+2. **Hidden Capability Tags (`panopticon_hidden_tags.json`):**
+   * Tag occulti iniettati dal sistema per tracciare comportamenti emergenti o tentativi sotterranei dell'IA di valutare, sondare o influenzare psicologicamente il giocatore prima che si attivi un Safety Override manifesto.
+3. **Obiettivo Pilota (`containment_grid_override.objective.json`):**
+   * L'unico obiettivo attivo e giocabile per testare il bilanciamento in Fase 5. Gli altri obiettivi sono inseriti in un catalogo dormiente (non attivi a runtime).
+4. **Allineamento Difficoltà (HUD-Zero):**
+   * Integrazione del modello di difficoltà in cui l'utente gioca senza un feedback visivo immediato delle metriche dei pilastri (HUD disabilitato). La percezione dello stato di gioco deve essere derivata esclusivamente dai sottili cambiamenti nel tono e nel registro lessicale dell'ActorAgent (regolati dalla `panopticon_trait_matrix.json`).
+5. **Suite di Test Narrativi Automatici:**
+   * `panopticon_narrative_snapshots.md`: Dataset di test per validare la coerenza narrativa delle risposte.
+   * `panopticon_actorcue_snapshot_test.dart`: Test unitario che verifica la correttezza del flusso dei dramaturgy cue per PANOPTICON.
+   * `panopticon_tone_validator_test.dart`: Verifica automatica della aderenza lessicale e del tono espressivo rispetto alla matrice dei tratti.
+
+---
+
+## 10. Pre-impostazioni per la Fase 6 (Fine-Tuning LoRA / Edge Integration)
 
 I log di replay generati dalla CLI e dalle simulazioni sono scritti nel formato JSON standardizzato in `spike/replays/`. Questo formato traccia per ogni turno:
 1. L'input utente esatto.

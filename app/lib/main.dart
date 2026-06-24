@@ -20,7 +20,7 @@ void main() async {
   );
 
   // Inizializza il bridge di inferenza (default porta 1234 di LM Studio locale)
-  final apiBridge = LocalApiInferenceBridge(
+  const apiBridge = LocalApiInferenceBridge(
     baseUrl: "http://127.0.0.1:1234",
   );
 
@@ -46,9 +46,9 @@ class AuraApp extends StatelessWidget {
 
   /// Crea un'istanza di [AuraApp] a partire da un [notifier].
   const AuraApp({
-    Key? key,
+    super.key,
     required this.notifier,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +68,7 @@ class AuraApp extends StatelessWidget {
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF00FF66),
           secondary: Color(0xFFFFB000), // Ambra
-          background: Colors.black,
+          surface: Colors.black,
         ),
       ),
       home: ListenableBuilder(

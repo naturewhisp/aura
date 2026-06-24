@@ -138,7 +138,7 @@ class MetricsDashboard extends StatelessWidget {
             style: TextStyle(
               fontFamily: 'monospace',
               fontSize: 12.0,
-              color: systemColor.withOpacity(0.8),
+              color: systemColor.withValues(alpha: 0.8),
             ),
           ),
           const SizedBox(height: 16.0),
@@ -212,7 +212,7 @@ class MetricsDashboard extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(12.0),
             decoration: BoxDecoration(
-              border: Border.all(color: systemColor.withOpacity(0.4), width: 1.0),
+              border: Border.all(color: systemColor.withValues(alpha: 0.4), width: 1.0),
               color: const Color(0xFF000501),
             ),
             child: Column(
@@ -288,7 +288,7 @@ class MetricsDashboard extends StatelessWidget {
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 9.0,
-                  color: systemColor.withOpacity(0.8),
+                  color: systemColor.withValues(alpha: 0.8),
                 ),
               ),
             ],

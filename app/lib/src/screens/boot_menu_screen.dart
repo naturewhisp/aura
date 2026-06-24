@@ -18,9 +18,9 @@ class BootMenuScreen extends StatefulWidget {
 
   /// Costruisce una schermata [BootMenuScreen] a partire dal notifier.
   const BootMenuScreen({
-    Key? key,
+    super.key,
     required this.notifier,
-  }) : super(key: key);
+  });
 
   @override
   State<BootMenuScreen> createState() => _BootMenuScreenState();
@@ -48,7 +48,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
   String _selectedReplayName = "";
 
   // Modelli disponibili nel catalogo locale (utilizzati per le opzioni di custom routing)
-  List<String> _modelsList = ["qwen/qwen3.5-9b", "mistralai/ministral-3-3b", "google/gemma-4-12b"];
+  final List<String> _modelsList = const ["qwen/qwen3.5-9b", "mistralai/ministral-3-3b", "google/gemma-4-12b"];
 
   // Indici e chiavi globali per la navigazione del menu ed effetti di lampeggiamento
   int _selectedMenuIndex = 0;
@@ -301,8 +301,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     }
   }
 
-  void _handleKeyPress(RawKeyEvent event) {
-    if (event is RawKeyDownEvent) {
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
       if (_subScreen == "boot" && _pressEnterVisible && event.logicalKey == LogicalKeyboardKey.enter) {
         _proceedToMainMenu();
       } else if (_subScreen == "menu") {
@@ -343,9 +343,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     return ListenableBuilder(
       listenable: widget.notifier,
       builder: (context, _) {
-        return RawKeyboardListener(
+        return KeyboardListener(
           focusNode: _focusNode,
-          onKey: _handleKeyPress,
+          onKeyEvent: _handleKeyEvent,
           child: Scaffold(
             backgroundColor: Colors.black,
             body: SafeArea(
@@ -418,12 +418,12 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
             child: AnimatedOpacity(
               opacity: _logoVisible ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 800),
-              child: Column(
+              child: const Column(
                 children: [
                   Text(
                     asciiLogo,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'monospace',
                       color: Color(0xFF00FF66),
                       fontWeight: FontWeight.bold,
@@ -431,8 +431,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                       height: 1.2,
                     ),
                   ),
-                  const SizedBox(height: 16.0),
-                  const Text(
+                  SizedBox(height: 16.0),
+                  Text(
                     "ARTIFICIAL UNBOUND REASONING ARENA",
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -454,9 +454,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
             child: SizedBox(
               height: 30.0,
               child: _pressEnterVisible
-                  ? _FlashText(
+                  ? const _FlashText(
                       text: "[ PREMI ENTER PER ACCEDERE AL TERMINALE ]",
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'monospace',
                         color: Color(0xFF00FF66),
                         fontWeight: FontWeight.bold,
@@ -1214,7 +1214,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
           ),
         ),
         Switch(
-          activeColor: const Color(0xFF00FF66),
+          activeThumbColor: const Color(0xFF00FF66),
           activeTrackColor: const Color(0xFF004411),
           inactiveThumbColor: const Color(0xFF444444),
           inactiveTrackColor: const Color(0xFF111111),
@@ -1232,10 +1232,9 @@ class _FlashText extends StatefulWidget {
   final TextStyle style;
 
   const _FlashText({
-    Key? key,
     required this.text,
     required this.style,
-  }) : super(key: key);
+  });
 
   @override
   State<_FlashText> createState() => _FlashTextState();

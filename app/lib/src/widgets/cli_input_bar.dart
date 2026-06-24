@@ -21,13 +21,13 @@ class CLIInputBar extends StatefulWidget {
 
   /// Costruisce una barra di input [CLIInputBar].
   const CLIInputBar({
-    Key? key,
+    super.key,
     required this.isDisabled,
     this.isGameOver = false,
     this.autocompleteEnabled = true,
     this.historyNavigationEnabled = true,
     required this.onSubmit,
-  }) : super(key: key);
+  });
 
   @override
   State<CLIInputBar> createState() => _CLIInputBarState();
@@ -144,19 +144,19 @@ class _CLIInputBarState extends State<CLIInputBar> {
         border: Border(
           top: BorderSide(
             color: widget.isGameOver
-                ? Colors.red.shade900.withOpacity(0.5)
+                ? Colors.red.shade900.withValues(alpha: 0.5)
                 : widget.isDisabled 
-                    ? Colors.orange.shade900.withOpacity(0.5)
+                    ? Colors.orange.shade900.withValues(alpha: 0.5)
                     : const Color(0xFF005522),
             width: 2.0,
           ),
         ),
       ),
-      child: RawKeyboardListener(
+      child: KeyboardListener(
         focusNode: FocusNode(skipTraversal: true), // Intercetta i tasti direzionali prima del focus manager di sistema
-        onKey: (RawKeyEvent event) {
+        onKeyEvent: (KeyEvent event) {
           if (!widget.historyNavigationEnabled) return;
-          if (event is RawKeyDownEvent) {
+          if (event is KeyDownEvent) {
             if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
               _handleHistoryUp();
             } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {

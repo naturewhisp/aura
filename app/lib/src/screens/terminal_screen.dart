@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:aura_core/aura_core.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../widgets/cli_history_view.dart';
@@ -298,7 +297,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                       ? _buildLockoutScreen()
                       : Container(
                           color: state.metrics.imperativePillar > 70
-                              ? Colors.black.withOpacity(0.88)
+                              ? Colors.black.withValues(alpha: 0.88)
                               : Colors.black,
                           child: LayoutBuilder(
                             builder: (context, constraints) {
@@ -406,13 +405,13 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                       return Container(
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: const Color(0xFFFF003C).withOpacity(opacity),
+                            color: const Color(0xFFFF003C).withValues(alpha: opacity),
                             width: 24.0,
                           ),
                           gradient: RadialGradient(
                             colors: [
                               Colors.transparent,
-                              const Color(0xFFFF003C).withOpacity(opacity * 0.5),
+                              const Color(0xFFFF003C).withValues(alpha: opacity * 0.5),
                             ],
                             stops: const [0.7, 1.0],
                           ),
@@ -856,7 +855,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 width: double.infinity,
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  border: Border.all(color: themeColor.withOpacity(0.3), width: 1.5),
+                  border: Border.all(color: themeColor.withValues(alpha: 0.3), width: 1.5),
                   color: const Color(0xFF020803),
                 ),
                 child: SingleChildScrollView(
@@ -907,7 +906,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
-        border: Border.all(color: color.withOpacity(0.5), width: 1.5),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
         color: Colors.black,
       ),
       child: Column(
@@ -999,7 +998,7 @@ class _RGBShiftPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.green.withOpacity(0.03 * intensity)
+      ..color = Colors.green.withValues(alpha: 0.03 * intensity)
       ..strokeWidth = 1.0;
 
     for (double y = 0.0; y < size.height; y += 4.0) {
@@ -1008,7 +1007,7 @@ class _RGBShiftPainter extends CustomPainter {
     
     if (time % 0.5 < 0.15) {
       final flickerPaint = Paint()
-        ..color = const Color(0xFF00FF66).withOpacity(0.015 * intensity);
+        ..color = const Color(0xFF00FF66).withValues(alpha: 0.015 * intensity);
       canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), flickerPaint);
     }
   }
@@ -1172,8 +1171,8 @@ class _MatrixColumn {
     for (int i = 0; i < chars.length; i++) {
       double alpha = (i / chars.length) * opacity;
       final color = i == chars.length - 1
-          ? const Color(0xFFFFFFFF).withOpacity(alpha) // Lead character is white
-          : const Color(0xFF00FF66).withOpacity(alpha);
+          ? const Color(0xFFFFFFFF).withValues(alpha: alpha) // Lead character is white
+          : const Color(0xFF00FF66).withValues(alpha: alpha);
 
       children.add(
         TextSpan(
@@ -1286,7 +1285,7 @@ class _CrtGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = const Color(0xFF00FF66).withOpacity(opacity)
+      ..color = const Color(0xFF00FF66).withValues(alpha: opacity)
       ..strokeWidth = 1.0;
 
     // Draw scanlines every 4 pixels

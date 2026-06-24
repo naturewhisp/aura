@@ -19,12 +19,12 @@ class CLIHistoryView extends StatefulWidget {
 
   /// Costruisce una vista della cronologia [CLIHistoryView].
   const CLIHistoryView({
-    Key? key,
+    super.key,
     required this.history,
     required this.isLoading,
     required this.currentLoadingMessage,
     required this.stepStream,
-  }) : super(key: key);
+  });
 
   @override
   State<CLIHistoryView> createState() => _CLIHistoryViewState();
@@ -165,7 +165,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 14.0,
-                  color: Colors.orange.shade700.withOpacity(0.8),
+                  color: Colors.orange.shade700.withValues(alpha: 0.8),
                 ),
               ),
             );

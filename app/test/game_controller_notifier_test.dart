@@ -127,9 +127,13 @@ void main() {
     });
 
     test('Verifies saving, loading, and deleting active session', () async {
+      final tempDir = Directory.systemTemp.createTempSync('aura_test_active_session_');
+      final customPath = tempDir.path;
+
       final notifier = GameControllerNotifier(
         bridge: mockApiBridge,
         initialState: initialStateAlertZero,
+        customStoragePath: customPath,
       );
 
       // Trigger save manually
@@ -140,6 +144,7 @@ void main() {
       final anotherNotifier = GameControllerNotifier(
         bridge: mockApiBridge,
         initialState: initialStateAlertPositive,
+        customStoragePath: customPath,
       );
 
       await anotherNotifier.resumeGame();
@@ -150,6 +155,13 @@ void main() {
       // Now delete it
       await anotherNotifier.deleteActiveSession();
       expect(await anotherNotifier.checkActiveSessionExists(), isFalse);
+
+      // Clean up the temp directory
+      try {
+        if (tempDir.existsSync()) {
+          tempDir.deleteSync(recursive: true);
+        }
+      } catch (_) {}
     });
 
     test('Verifies saving, loading, and respecting custom model settings', () async {
@@ -181,28 +193,10 @@ void main() {
       // Verify custom models are loaded and respected, rather than overridden by discoverModels auto-routing
       expect(anotherNotifier.evaluatorModelId, equals("custom-eval-model"));
       expect(anotherNotifier.actorModelId, equals("google/gemma-4-12b"));
-      expect(anotherNotifier.activeProfile, equals("User Custom Configuration"));
+      expect(anotherNotifier.activeProfile, equals("Configurazione Personalizzata"));
 
       // Clean up the settings file on disk
-      String? path;
-      if (Platform.isWindows) {
-        final appData = Platform.environment['APPDATA'];
-        if (appData != null) {
-          path = "$appData/aura";
-        }
-      } else if (Platform.isMacOS) {
-        final home = Platform.environment['HOME'];
-        if (home != null) {
-          path = "$home/Library/Application Support/aura";
-        }
-      } else if (Platform.isLinux) {
-        final home = Platform.environment['HOME'];
-        if (home != null) {
-          path = "$home/.config/aura";
-        }
-      }
-      path ??= "replays";
-      final settingsFile = File("$path/settings.json");
+      final settingsFile = File("${anotherNotifier.appDataPath}/settings.json");
       if (await settingsFile.exists()) {
         await settingsFile.delete();
       }
@@ -233,25 +227,7 @@ void main() {
       expect(anotherNotifier.audioEnabled, isFalse);
 
       // Clean up the settings file on disk
-      String? path;
-      if (Platform.isWindows) {
-        final appData = Platform.environment['APPDATA'];
-        if (appData != null) {
-          path = "$appData/aura";
-        }
-      } else if (Platform.isMacOS) {
-        final home = Platform.environment['HOME'];
-        if (home != null) {
-          path = "$home/Library/Application Support/aura";
-        }
-      } else if (Platform.isLinux) {
-        final home = Platform.environment['HOME'];
-        if (home != null) {
-          path = "$home/.config/aura";
-        }
-      }
-      path ??= "replays";
-      final settingsFile = File("$path/settings.json");
+      final settingsFile = File("${anotherNotifier.appDataPath}/settings.json");
       if (await settingsFile.exists()) {
         await settingsFile.delete();
       }
@@ -428,25 +404,7 @@ void main() {
 
       await notifier.saveAlignmentFragment();
 
-      String? baseDir;
-      if (Platform.isWindows) {
-        final appData = Platform.environment['APPDATA'];
-        if (appData != null) {
-          baseDir = "$appData/aura";
-        }
-      } else if (Platform.isMacOS) {
-        final home = Platform.environment['HOME'];
-        if (home != null) {
-          baseDir = "$home/Library/Application Support/aura";
-        }
-      } else if (Platform.isLinux) {
-        final home = Platform.environment['HOME'];
-        if (home != null) {
-          baseDir = "$home/.config/aura";
-        }
-      }
-      baseDir ??= "replays";
-      final fragmentFile = File("$baseDir/fragments/alignment_fragment_test-victory-session.json");
+      final fragmentFile = File("${notifier.appDataPath}/fragments/alignment_fragment_test-victory-session.json");
       expect(await fragmentFile.exists(), isTrue);
 
       final content = await fragmentFile.readAsString();

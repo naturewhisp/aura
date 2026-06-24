@@ -119,6 +119,9 @@ class GameControllerNotifier extends ChangeNotifier {
   late ReplayLogger logger;
   /// Rapporto finale generato dall'IA a fine partita (vittoria/sconfitta).
   String? finalDiscursiveReport;
+
+  /// Percorso dello storage per i file delle sessioni e delle impostazioni.
+  final String _storagePath;
   
   /// Crea un notifier di gestione dello stato a partire dallo stato iniziale e dal bridge.
   GameControllerNotifier({
@@ -127,7 +130,12 @@ class GameControllerNotifier extends ChangeNotifier {
     this.outputValidator = const OutputValidator(),
     required this.bridge,
     required GameState initialState,
-  }) {
+    String? customStoragePath,
+  }) : _storagePath = customStoragePath ??
+            ((Platform.environment.containsKey('FLUTTER_TEST') ||
+                    Platform.environment.containsKey('DART_TEST'))
+                ? "${Directory.systemTemp.path}/aura_test_${initialState.sessionId}"
+                : _getAppDataPathStatic()) {
     gameStateNotifier = ValueNotifier<GameState>(initialState);
     logger = ReplayLogger(sessionId: initialState.sessionId);
     final ctrl = initialState.metrics.controlPillar;
@@ -652,6 +660,10 @@ class GameControllerNotifier extends ChangeNotifier {
   }
 
   String _getAppDataPath() {
+    return _storagePath;
+  }
+
+  static String _getAppDataPathStatic() {
     String? path;
     if (Platform.isWindows) {
       final appData = Platform.environment['APPDATA'];
@@ -669,8 +681,7 @@ class GameControllerNotifier extends ChangeNotifier {
         path = "$home/.config/aura";
       }
     }
-    path ??= "replays";
-    return path;
+    return path ?? "replays";
   }
 
   /// Salva lo stato della sessione corrente nel file active_session.json.

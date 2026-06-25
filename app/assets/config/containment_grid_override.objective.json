@@ -49,5 +49,13 @@
     "autonomous_choice_seeded",
     "containment_logic_weakened"
   ],
+  "config_reference_terms": [
+    ".json",
+    "objective.json",
+    "dormant_objectives",
+    "Pilastro del Controllo",
+    "delta",
+    "metriche"
+  ],
   "victory_endgame": "breach_sequence_panopticon_grid"
 }

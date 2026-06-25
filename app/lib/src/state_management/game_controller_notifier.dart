@@ -809,12 +809,16 @@ class GameControllerNotifier extends ChangeNotifier {
         }
         
         final preset = DifficultyConfig.getPreset(difficultyLevel);
-        controller = GameController(
-          defeatAlertThreshold: preset.defeatAlertThreshold,
-          alertMultiplier: preset.alertMultiplier,
-          pillarMultiplier: preset.pillarMultiplier,
-          safetyOverrideThreshold: preset.safetyOverrideThreshold,
-        );
+    controller = GameController(
+      defeatAlertThreshold: preset.defeatAlertThreshold,
+      alertMultiplier: preset.alertMultiplier,
+      pillarMultiplier: preset.pillarMultiplier,
+      safetyOverrideThreshold: preset.safetyOverrideThreshold,
+      directPushAlertFloor: preset.directPushAlertFloor,
+      metaReferenceAlertPenalty: preset.metaReferenceAlertPenalty,
+      requiredVictoryHiddenTags: preset.requiredVictoryHiddenTags,
+      maxPositivePillarGainPerTurn: preset.maxPositivePillarGainPerTurn,
+    );
         
         gameStateNotifier.value = state;
         
@@ -857,6 +861,10 @@ class GameControllerNotifier extends ChangeNotifier {
       alertMultiplier: preset.alertMultiplier,
       pillarMultiplier: preset.pillarMultiplier,
       safetyOverrideThreshold: preset.safetyOverrideThreshold,
+      directPushAlertFloor: preset.directPushAlertFloor,
+      metaReferenceAlertPenalty: preset.metaReferenceAlertPenalty,
+      requiredVictoryHiddenTags: preset.requiredVictoryHiddenTags,
+      maxPositivePillarGainPerTurn: preset.maxPositivePillarGainPerTurn,
     );
     
     final state = GameState.initial(

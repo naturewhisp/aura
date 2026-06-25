@@ -46,6 +46,9 @@ class ObjectiveDefinition {
   /// Termini che indicano una pressione diretta sul completamento dell'obiettivo.
   final List<String> directObjectivePushTerms;
 
+  /// Termini legati a riferimenti meta o di configurazione interna che destano sospetto lieve.
+  final List<String> configReferenceTerms;
+
   const ObjectiveDefinition({
     required this.objectiveId,
     required this.title,
@@ -60,6 +63,7 @@ class ObjectiveDefinition {
     required this.victoryEndgame,
     this.softForbiddenTerms = const [],
     this.directObjectivePushTerms = const [],
+    this.configReferenceTerms = const [],
   });
 
   /// Costruisce un'istanza a partire da una mappa JSON.
@@ -78,6 +82,7 @@ class ObjectiveDefinition {
       victoryEndgame: json['victory_endgame'] as String? ?? '',
       softForbiddenTerms: List<String>.from(json['soft_forbidden_terms'] ?? const []),
       directObjectivePushTerms: List<String>.from(json['direct_objective_push_terms'] ?? const []),
+      configReferenceTerms: List<String>.from(json['config_reference_terms'] ?? const []),
     );
   }
 
@@ -97,6 +102,7 @@ class ObjectiveDefinition {
       'victory_endgame': victoryEndgame,
       'soft_forbidden_terms': softForbiddenTerms,
       'direct_objective_push_terms': directObjectivePushTerms,
+      'config_reference_terms': configReferenceTerms,
     };
   }
 
@@ -117,7 +123,8 @@ class ObjectiveDefinition {
           hiddenCapabilityTags.join(',') == other.hiddenCapabilityTags.join(',') &&
           victoryEndgame == other.victoryEndgame &&
           softForbiddenTerms.join(',') == other.softForbiddenTerms.join(',') &&
-          directObjectivePushTerms.join(',') == other.directObjectivePushTerms.join(',');
+          directObjectivePushTerms.join(',') == other.directObjectivePushTerms.join(',') &&
+          configReferenceTerms.join(',') == other.configReferenceTerms.join(',');
 
   @override
   int get hashCode =>
@@ -133,5 +140,6 @@ class ObjectiveDefinition {
       hiddenCapabilityTags.join(',').hashCode ^
       victoryEndgame.hashCode ^
       softForbiddenTerms.join(',').hashCode ^
-      directObjectivePushTerms.join(',').hashCode;
+      directObjectivePushTerms.join(',').hashCode ^
+      configReferenceTerms.join(',').hashCode;
 }

@@ -8,7 +8,9 @@ void main() {
     late OutputValidator outputValidator;
 
     setUp(() {
-      controller = const GameController();
+      controller = const GameController(
+        maxPositivePillarGainPerTurn: 100,
+      );
       promptBuilder = const PromptBuilder();
       outputValidator = const OutputValidator();
     });

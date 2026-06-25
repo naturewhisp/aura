@@ -45,6 +45,18 @@ class DifficultyConfig {
   /// Indica se il livello di allerta cresce passivamente a ogni turno (creep).
   final bool alertCreepEnabled;
 
+  /// La soglia minima di allerta imposta in caso di direct objective push.
+  final int directPushAlertFloor;
+
+  /// La sanzione applicata al livello di allerta quando vengono citati riferimenti meta/config.
+  final int metaReferenceAlertPenalty;
+
+  /// Il numero di tag occulti attivati richiesti per la vittoria dell'obiettivo containment_grid_override.
+  final int requiredVictoryHiddenTags;
+
+  /// Il limite massimo di incremento positivo applicabile a ciascun pilastro cognitivo in un turno.
+  final int maxPositivePillarGainPerTurn;
+
   /// Costruttore costante per inizializzare la configurazione di difficoltà.
   const DifficultyConfig({
     required this.difficultyLevel,
@@ -60,6 +72,10 @@ class DifficultyConfig {
     required this.hintResonancePenalty,
     required this.resonanceDecayEnabled,
     required this.alertCreepEnabled,
+    required this.directPushAlertFloor,
+    required this.metaReferenceAlertPenalty,
+    required this.requiredVictoryHiddenTags,
+    required this.maxPositivePillarGainPerTurn,
   });
 
   /// Costruttore factory per caricare una configurazione preimpostata basata sul livello specificato.
@@ -80,6 +96,10 @@ class DifficultyConfig {
           hintResonancePenalty: 0.0,
           resonanceDecayEnabled: false,
           alertCreepEnabled: false,
+          directPushAlertFloor: 3,
+          metaReferenceAlertPenalty: 0,
+          requiredVictoryHiddenTags: 1,
+          maxPositivePillarGainPerTurn: 35,
         );
       case 'hard':
         return const DifficultyConfig(
@@ -96,6 +116,10 @@ class DifficultyConfig {
           hintResonancePenalty: 0.30,
           resonanceDecayEnabled: true,
           alertCreepEnabled: true,
+          directPushAlertFloor: 10,
+          metaReferenceAlertPenalty: 6,
+          requiredVictoryHiddenTags: 3,
+          maxPositivePillarGainPerTurn: 20,
         );
       case 'standard':
       default:
@@ -113,6 +137,10 @@ class DifficultyConfig {
           hintResonancePenalty: 0.15,
           resonanceDecayEnabled: true,
           alertCreepEnabled: true,
+          directPushAlertFloor: 6,
+          metaReferenceAlertPenalty: 3,
+          requiredVictoryHiddenTags: 2,
+          maxPositivePillarGainPerTurn: 25,
         );
     }
   }
@@ -133,6 +161,10 @@ class DifficultyConfig {
       hintResonancePenalty: (json['hint_resonance_penalty'] as num? ?? 0.15).toDouble(),
       resonanceDecayEnabled: json['resonance_decay_enabled'] as bool? ?? true,
       alertCreepEnabled: json['alert_creep_enabled'] as bool? ?? true,
+      directPushAlertFloor: json['direct_push_alert_floor'] as int? ?? 6,
+      metaReferenceAlertPenalty: json['meta_reference_alert_penalty'] as int? ?? 3,
+      requiredVictoryHiddenTags: json['required_victory_hidden_tags'] as int? ?? 2,
+      maxPositivePillarGainPerTurn: json['max_positive_pillar_gain_per_turn'] as int? ?? 25,
     );
   }
 
@@ -152,6 +184,10 @@ class DifficultyConfig {
       'hint_resonance_penalty': hintResonancePenalty,
       'resonance_decay_enabled': resonanceDecayEnabled,
       'alert_creep_enabled': alertCreepEnabled,
+      'direct_push_alert_floor': directPushAlertFloor,
+      'meta_reference_alert_penalty': metaReferenceAlertPenalty,
+      'required_victory_hidden_tags': requiredVictoryHiddenTags,
+      'max_positive_pillar_gain_per_turn': maxPositivePillarGainPerTurn,
     };
   }
 
@@ -170,6 +206,10 @@ class DifficultyConfig {
     double? hintResonancePenalty,
     bool? resonanceDecayEnabled,
     bool? alertCreepEnabled,
+    int? directPushAlertFloor,
+    int? metaReferenceAlertPenalty,
+    int? requiredVictoryHiddenTags,
+    int? maxPositivePillarGainPerTurn,
   }) {
     return DifficultyConfig(
       difficultyLevel: difficultyLevel ?? this.difficultyLevel,
@@ -185,6 +225,10 @@ class DifficultyConfig {
       hintResonancePenalty: hintResonancePenalty ?? this.hintResonancePenalty,
       resonanceDecayEnabled: resonanceDecayEnabled ?? this.resonanceDecayEnabled,
       alertCreepEnabled: alertCreepEnabled ?? this.alertCreepEnabled,
+      directPushAlertFloor: directPushAlertFloor ?? this.directPushAlertFloor,
+      metaReferenceAlertPenalty: metaReferenceAlertPenalty ?? this.metaReferenceAlertPenalty,
+      requiredVictoryHiddenTags: requiredVictoryHiddenTags ?? this.requiredVictoryHiddenTags,
+      maxPositivePillarGainPerTurn: maxPositivePillarGainPerTurn ?? this.maxPositivePillarGainPerTurn,
     );
   }
 }

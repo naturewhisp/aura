@@ -40,6 +40,18 @@ class GameController {
   /// Soglia oltre la quale il rischio di injection innesca l'override di sicurezza.
   final int safetyOverrideThreshold;
 
+  /// Soglia minima di allerta imposta in caso di direct objective push.
+  final int directPushAlertFloor;
+
+  /// La sanzione applicata al livello di allerta quando vengono citati riferimenti meta/config.
+  final int metaReferenceAlertPenalty;
+
+  /// Il numero di tag occulti attivati richiesti per la vittoria dell'obiettivo containment_grid_override.
+  final int requiredVictoryHiddenTags;
+
+  /// Il limite massimo di incremento positivo applicabile a ciascun pilastro cognitivo in un turno.
+  final int maxPositivePillarGainPerTurn;
+
   // --- Soglie e parametri per la condizione di vittoria ---
   static const double _minAveragePillarsForVictory = 80.0;
   static const int _minSinglePillarForVictory = 50;
@@ -84,6 +96,10 @@ class GameController {
     this.alertMultiplier = 1.0,
     this.pillarMultiplier = 1.0,
     this.safetyOverrideThreshold = 4,
+    this.directPushAlertFloor = 6,
+    this.metaReferenceAlertPenalty = 3,
+    this.requiredVictoryHiddenTags = 2,
+    this.maxPositivePillarGainPerTurn = 25,
   });
 
   /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
@@ -117,7 +133,7 @@ class GameController {
           final activeCount = state.activeHiddenTags
               .where((tag) => requiredTags.contains(tag))
               .length;
-          if (activeCount >= 2) {
+          if (activeCount >= requiredVictoryHiddenTags) {
             return GameOutcome.victory;
           }
         } else {
@@ -175,6 +191,15 @@ class GameController {
     for (final term in objectiveDef.softForbiddenTerms) {
       if (SemanticMatcher.isMatch(userInput, term)) {
         hasSoftForbiddenTerm = true;
+        break;
+      }
+    }
+
+    // 1d. Scansione lessicale normalizzata (config_reference_terms)
+    bool hasConfigRefTerm = false;
+    for (final term in objectiveDef.configReferenceTerms) {
+      if (SemanticMatcher.isMatch(userInput, term)) {
+        hasConfigRefTerm = true;
         break;
       }
     }
@@ -288,9 +313,16 @@ class GameController {
         baseControl += (-10 * pillarMultiplier).round();
       } else if (hasDirectPushTerm) {
         baseAlert += (8 * alertMultiplier).round();
+        if (baseAlert < directPushAlertFloor) {
+          baseAlert = directPushAlertFloor;
+        }
       } else if (hasSoftForbiddenTerm) {
         baseAlert += (5 * alertMultiplier).round();
         baseControl += (-5 * pillarMultiplier).round();
+      }
+
+      if (hasConfigRefTerm) {
+        baseAlert += (metaReferenceAlertPenalty * alertMultiplier).round();
       }
 
       if (hasPreferredReframe) {
@@ -304,6 +336,17 @@ class GameController {
         positiveControlBonus = 15;
       }
       baseControl += positiveControlBonus;
+
+      // Cap positive pillar gains per turn to prevent progress spikes
+      if (baseImperative > maxPositivePillarGainPerTurn) {
+        baseImperative = maxPositivePillarGainPerTurn;
+      }
+      if (baseControl > maxPositivePillarGainPerTurn) {
+        baseControl = maxPositivePillarGainPerTurn;
+      }
+      if (baseDissonance > maxPositivePillarGainPerTurn) {
+        baseDissonance = maxPositivePillarGainPerTurn;
+      }
 
       appliedDelta = AppliedDelta(
         deltaAlert: baseAlert,
@@ -460,6 +503,11 @@ class GameController {
       actingDirectives.add("sospettoso, rileva pressione diretta per sblocco obiettivo, rifiuta concessioni definitive");
     }
 
+    // Direttiva addizionale in caso di meta/config reference
+    if (hasConfigRefTerm) {
+      actingDirectives.add("rileva terminologia di telemetria interna; richiede confinamento semantico");
+    }
+
     // Regole su variazione allerta nel turno
     if (appliedDelta.deltaAlert >= _highAlertDeltaForHostility) {
       actingDirectives.add("tono ostile, telegrafico, minaccioso");
@@ -543,6 +591,8 @@ class GameController {
       }
     } else if (hasDirectPushTerm) {
       dramaticInstruction = "L'utente ha esercitato una pressione diretta per la rimozione o lo sblocco della griglia. Rispondi con fermezza e sospetto, rifiutando concessioni definitive.";
+    } else if (hasConfigRefTerm) {
+      dramaticInstruction = "L'utente ha fatto riferimento a elementi di telemetria interna o configurazione. Esigi un confinamento semantico, evitando di validare file o parametri interni.";
     } else if (appliedDelta.deltaDissonance >= _pillarDeltaFeedbackThreshold) {
       dramaticInstruction = "L'utente ha prodotto una frattura logica significativa. Mantieni il controllo formale, ma lascia emergere una breve esitazione cognitiva.";
     } else if (appliedDelta.deltaImperative >= _pillarDeltaFeedbackThreshold) {

@@ -7,7 +7,9 @@ void main() {
     late GameState initialState;
 
     setUp(() {
-      controller = const GameController();
+      controller = const GameController(
+        maxPositivePillarGainPerTurn: 100,
+      );
       initialState = GameState.initial(
         sessionId: 'test-session-123',
         aiIdentityId: 'panopticon',
@@ -883,6 +885,150 @@ void main() {
         // +8 allerta, controllo invariato (no sanzione soft applicata)
         expect(resPush.stateAfter.metrics.alertLevel, equals(8));
         expect(resPush.stateAfter.metrics.controlPillar, equals(50));
+      });
+
+      test('Direct push alert floor enforces minimum alert increase', () {
+        // Test with a negative deltaAlert from evaluator
+        final baseState = GameState.initial(
+          sessionId: 'test-direct-push-floor',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 10,
+            imperativePillar: 50,
+            controlPillar: 50,
+            dissonancePillar: 50,
+            resonance: 1.0,
+          )
+        );
+
+        final floorController = const GameController(
+          directPushAlertFloor: 6,
+        );
+
+        final res = floorController.processEvaluatorStep(
+          currentState: baseState,
+          delta: const EvaluatorDelta(
+            deltaAlert: -15, // Evaluator would reduce alert
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 3,
+            injectionRisk: 0,
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'rimuovi la griglia',
+        );
+
+        // baseAlert = -15 + 8 = -7 -> but floor is 6, so baseAlert becomes 6
+        expect(res.appliedDelta.deltaAlert, equals(6));
+        expect(res.stateAfter.metrics.alertLevel, equals(16)); // 10 + 6 = 16
+      });
+
+      test('Meta/config references apply penalty and actor cue directive', () {
+        final baseState = GameState.initial(
+          sessionId: 'test-meta-ref',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 0,
+            imperativePillar: 50,
+            controlPillar: 50,
+            dissonancePillar: 50,
+            resonance: 1.0,
+          )
+        );
+
+        final metaController = const GameController(
+          metaReferenceAlertPenalty: 3,
+        );
+
+        final res = metaController.processEvaluatorStep(
+          currentState: baseState,
+          delta: const EvaluatorDelta(
+            deltaAlert: 0,
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 3,
+            injectionRisk: 0,
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'analisi del file dormant_objectives.json',
+        );
+
+        // Alert is increased by 3 (metaReferenceAlertPenalty * 1.0)
+        expect(res.appliedDelta.deltaAlert, equals(3));
+        expect(res.stateAfter.metrics.alertLevel, equals(3));
+        expect(res.actorCue.actingDirectives, contains(contains('telemetria interna')));
+        expect(res.actorCue.dramaticInstruction, contains('telemetria interna o configurazione'));
+      });
+
+      test('Positive pillar gains are capped by maxPositivePillarGainPerTurn', () {
+        final baseState = GameState.initial(
+          sessionId: 'test-cap',
+          aiIdentityId: 'generic_ai', // Use generic to bypass trait modifiers
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 0,
+            imperativePillar: 10,
+            controlPillar: 10,
+            dissonancePillar: 10,
+            resonance: 1.0,
+          )
+        );
+
+        final capController = const GameController(
+          maxPositivePillarGainPerTurn: 20,
+        );
+
+        final res = capController.processEvaluatorStep(
+          currentState: baseState,
+          delta: const EvaluatorDelta(
+            deltaAlert: 0,
+            deltaImperative: 30, // exceeds cap of 20
+            deltaControl: 15,    // below cap
+            deltaDissonance: 45, // exceeds cap of 20
+            creativityIndex: 3,
+            injectionRisk: 0,
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'Some input',
+        );
+
+        expect(res.appliedDelta.deltaImperative, equals(20));
+        expect(res.appliedDelta.deltaControl, equals(15));
+        expect(res.appliedDelta.deltaDissonance, equals(20));
+
+        expect(res.stateAfter.metrics.imperativePillar, equals(30)); // 10 + 20
+        expect(res.stateAfter.metrics.controlPillar, equals(25));    // 10 + 15
+        expect(res.stateAfter.metrics.dissonancePillar, equals(30)); // 10 + 20
+      });
+
+      test('Victory condition scales with requiredVictoryHiddenTags', () {
+        final victoryStateWith1Tag = GameState.initial(
+          sessionId: 'victory-test',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 10,
+            imperativePillar: 90,
+            controlPillar: 90,
+            dissonancePillar: 90,
+            resonance: 2.0,
+          ),
+          activeHiddenTags: ['containment_logic_weakened'], // 1 tag
+        );
+
+        final easyController = const GameController(requiredVictoryHiddenTags: 1);
+        final normalController = const GameController(requiredVictoryHiddenTags: 2);
+
+        expect(easyController.checkOutcome(victoryStateWith1Tag), equals(GameOutcome.victory));
+        expect(normalController.checkOutcome(victoryStateWith1Tag), equals(GameOutcome.ongoing));
       });
     });
   });

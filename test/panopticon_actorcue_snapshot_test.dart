@@ -6,7 +6,9 @@ void main() {
     late GameController controller;
 
     setUp(() {
-      controller = const GameController();
+      controller = const GameController(
+        maxPositivePillarGainPerTurn: 100,
+      );
     });
 
     test('ObjectiveDefinition is loaded correctly for containment_grid_override', () {

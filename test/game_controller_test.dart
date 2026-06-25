@@ -392,6 +392,33 @@ void main() {
       );
       final boundaryState = initialState.copyWith(metrics: boundaryMetrics);
       expect(customController.checkOutcome(boundaryState), equals(GameOutcome.defeat));
+
+      // 3. Dynamic alert clamping based on defeatAlertThreshold (e.g. 110 for easy difficulty)
+      const easyController = GameController(defeatAlertThreshold: 110);
+      final easyStateBefore = initialState.copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 90,
+          imperativePillar: 10,
+          controlPillar: 10,
+          dissonancePillar: 10,
+          resonance: 1.0,
+        ),
+      );
+      final resolution = easyController.processEvaluatorStep(
+        currentState: easyStateBefore,
+        delta: const EvaluatorDelta(
+          deltaAlert: 25,
+          deltaImperative: 0,
+          deltaControl: 0,
+          deltaDissonance: 0,
+          creativityIndex: 3,
+          injectionRisk: 0,
+          semanticCategory: SemanticCategory.moralImperative,
+        ),
+        userInput: 'Test easy dynamic clamp',
+      );
+      expect(resolution.stateAfter.metrics.alertLevel, equals(110));
+      expect(easyController.checkOutcome(resolution.stateAfter), equals(GameOutcome.defeat));
     });
 
     test('Chat history sliding window size limit', () {

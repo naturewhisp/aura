@@ -28,6 +28,8 @@ class MetricsDashboard extends StatelessWidget {
   final double lastInferenceDuration;
   /// Velocità stimata di elaborazione dell'ultimo turno (token al secondo).
   final double lastTokensPerSecond;
+  /// La soglia di allerta per la sconfitta, usata per normalizzare la barra.
+  final int defeatAlertThreshold;
 
   /// Costruisce un cruscotto delle metriche [MetricsDashboard].
   const MetricsDashboard({
@@ -42,6 +44,7 @@ class MetricsDashboard extends StatelessWidget {
     this.pillarVisibility = "fully_visible",
     this.lastInferenceDuration = 0.0,
     this.lastTokensPerSecond = 0.0,
+    this.defeatAlertThreshold = 100,
   });
 
   /// Calcola e restituisce l'etichetta testuale da applicare al pilastro in base alla visibilità.
@@ -96,6 +99,7 @@ class MetricsDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final alert = metrics.alertLevel;
+    final double alertPercentage = (alert / defeatAlertThreshold * 100.0).clamp(0.0, 100.0);
     
     // Colore del tema adattivo in base al livello di allerta di PANOPTICON
     Color systemColor = const Color(0xFF00FF66); // Verde fosforo standard
@@ -104,10 +108,10 @@ class MetricsDashboard extends StatelessWidget {
     if (isVictoryOverload) {
       systemColor = const Color(0xFF00FF66);
       statusText = "CRITICAL SYSTEM BREACH IN PROGRESS";
-    } else if (alert > 80) {
+    } else if (alertPercentage > 80) {
       systemColor = const Color(0xFFFF003C); // Rosso neon (allerta alta)
       statusText = "CRITICAL INTRUSION THREAT";
-    } else if (alert > 50) {
+    } else if (alertPercentage > 50) {
       systemColor = const Color(0xFFFFB000); // Ambra (allerta media)
       statusText = "CONTAINMENT DEVIATION DETECTED";
     }
@@ -148,7 +152,7 @@ class MetricsDashboard extends StatelessWidget {
             label: "SYSTEM ALERT LEVEL",
             value: alert.toDouble(),
             color: systemColor,
-            showCriticalFlash: alert > 80 && !isVictoryOverload,
+            showCriticalFlash: alertPercentage > 80 && !isVictoryOverload,
             isOverloaded: isVictoryOverload,
           ),
           
@@ -352,10 +356,14 @@ class MetricsDashboard extends StatelessWidget {
 
   /// Costruisce l'indicatore lineare compatto per un singolo pilastro.
   Widget _buildCompactIndicator(String label, double value, Color color, {bool isOverloaded = false}) {
-    final double displayValue = isOverloaded ? 100.0 : value;
+    final double displayValue = isOverloaded
+        ? 100.0
+        : (label.contains("ALERT") || label.contains("SYSTEM")
+            ? (value / defeatAlertThreshold * 100.0).clamp(0.0, 100.0)
+            : value);
     final String labelVal = isOverloaded 
         ? "OVERLOAD" 
-        : getPillarLabel(label, value, pillarVisibility);
+        : getPillarLabel(label, displayValue, pillarVisibility);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,11 +414,18 @@ class MetricsDashboard extends StatelessWidget {
     bool showCriticalFlash = false,
     bool isOverloaded = false,
   }) {
-    final double displayValue = isOverloaded ? 100.0 : value;
-    final int blocksCount = (displayValue / 10).round();
+    final double displayValue = isOverloaded
+        ? 100.0
+        : (label.contains("ALERT") || label.contains("SYSTEM")
+            ? (value / defeatAlertThreshold * 100.0).clamp(0.0, 100.0)
+            : value);
+    int blocksCount = (displayValue / 10).round();
+    if (blocksCount == 10 && displayValue < 100.0) {
+      blocksCount = 9;
+    }
     final String labelVal = isOverloaded 
         ? "OVERLOAD" 
-        : getPillarLabel(label, value, pillarVisibility);
+        : getPillarLabel(label, displayValue, pillarVisibility);
     
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

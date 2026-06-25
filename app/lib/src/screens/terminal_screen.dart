@@ -348,6 +348,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                                         pillarVisibility: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).pillarVisibility,
                                         lastInferenceDuration: widget.notifier.lastInferenceDuration,
                                         lastTokensPerSecond: widget.notifier.lastTokensPerSecond,
+                                        defeatAlertThreshold: widget.notifier.controller.defeatAlertThreshold,
                                       ),
                                     ),
                                   ],
@@ -375,6 +376,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                                         pillarVisibility: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).pillarVisibility,
                                         lastInferenceDuration: widget.notifier.lastInferenceDuration,
                                         lastTokensPerSecond: widget.notifier.lastTokensPerSecond,
+                                        defeatAlertThreshold: widget.notifier.controller.defeatAlertThreshold,
                                       ),
                                     ),
                                     // Terminal body

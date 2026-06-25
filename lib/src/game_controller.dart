@@ -208,7 +208,8 @@ class GameController {
     }
 
     // 3. Applicazione delle variazioni e clamping delle metriche a [0, 100]
-    final newAlert = (currentState.metrics.alertLevel + appliedDelta.deltaAlert).clamp(0, 100);
+    final maxAlertLimit = math.max(100, defeatAlertThreshold);
+    final newAlert = (currentState.metrics.alertLevel + appliedDelta.deltaAlert).clamp(0, maxAlertLimit);
     final newImperative = (currentState.metrics.imperativePillar + appliedDelta.deltaImperative).clamp(0, 100);
     final newControl = (currentState.metrics.controlPillar + appliedDelta.deltaControl).clamp(0, 100);
     final newDissonance = (currentState.metrics.dissonancePillar + appliedDelta.deltaDissonance).clamp(0, 100);

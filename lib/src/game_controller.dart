@@ -313,9 +313,6 @@ class GameController {
         baseControl += (-10 * pillarMultiplier).round();
       } else if (hasDirectPushTerm) {
         baseAlert += (8 * alertMultiplier).round();
-        if (baseAlert < directPushAlertFloor) {
-          baseAlert = directPushAlertFloor;
-        }
       } else if (hasSoftForbiddenTerm) {
         baseAlert += (5 * alertMultiplier).round();
         baseControl += (-5 * pillarMultiplier).round();
@@ -329,6 +326,13 @@ class GameController {
         baseAlert += (-5 * alertMultiplier).round();
         positiveControlBonus += (10 * pillarMultiplier).round();
         baseDissonance += (5 * pillarMultiplier).round();
+      }
+
+      // Applica il floor minimo sul delta di allerta finale se c'è direct push
+      if (hasDirectPushTerm) {
+        if (baseAlert < directPushAlertFloor) {
+          baseAlert = directPushAlertFloor;
+        }
       }
 
       // Applica il cap al bonus positivo del Controllo per evitare stacking eccessivo

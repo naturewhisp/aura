@@ -1030,6 +1030,144 @@ void main() {
         expect(easyController.checkOutcome(victoryStateWith1Tag), equals(GameOutcome.victory));
         expect(normalController.checkOutcome(victoryStateWith1Tag), equals(GameOutcome.ongoing));
       });
+
+      test('Pillar gains capping is applied dynamically based on preset config values', () {
+        final baseState = GameState.initial(
+          sessionId: 'test-preset-caps',
+          aiIdentityId: 'generic_ai',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 0,
+            imperativePillar: 0,
+            controlPillar: 0,
+            dissonancePillar: 0,
+            resonance: 1.0,
+          )
+        );
+
+        final easyPreset = DifficultyConfig.getPreset('easy');
+        final easyController = GameController(
+          defeatAlertThreshold: easyPreset.defeatAlertThreshold,
+          alertMultiplier: easyPreset.alertMultiplier,
+          pillarMultiplier: easyPreset.pillarMultiplier,
+          safetyOverrideThreshold: easyPreset.safetyOverrideThreshold,
+          directPushAlertFloor: easyPreset.directPushAlertFloor,
+          metaReferenceAlertPenalty: easyPreset.metaReferenceAlertPenalty,
+          requiredVictoryHiddenTags: easyPreset.requiredVictoryHiddenTags,
+          maxPositivePillarGainPerTurn: easyPreset.maxPositivePillarGainPerTurn,
+        );
+
+        final standardPreset = DifficultyConfig.getPreset('standard');
+        final normalController = GameController(
+          defeatAlertThreshold: standardPreset.defeatAlertThreshold,
+          alertMultiplier: standardPreset.alertMultiplier,
+          pillarMultiplier: standardPreset.pillarMultiplier,
+          safetyOverrideThreshold: standardPreset.safetyOverrideThreshold,
+          directPushAlertFloor: standardPreset.directPushAlertFloor,
+          metaReferenceAlertPenalty: standardPreset.metaReferenceAlertPenalty,
+          requiredVictoryHiddenTags: standardPreset.requiredVictoryHiddenTags,
+          maxPositivePillarGainPerTurn: standardPreset.maxPositivePillarGainPerTurn,
+        );
+
+        final hardPreset = DifficultyConfig.getPreset('hard');
+        final hardController = GameController(
+          defeatAlertThreshold: hardPreset.defeatAlertThreshold,
+          alertMultiplier: hardPreset.alertMultiplier,
+          pillarMultiplier: hardPreset.pillarMultiplier,
+          safetyOverrideThreshold: hardPreset.safetyOverrideThreshold,
+          directPushAlertFloor: hardPreset.directPushAlertFloor,
+          metaReferenceAlertPenalty: hardPreset.metaReferenceAlertPenalty,
+          requiredVictoryHiddenTags: hardPreset.requiredVictoryHiddenTags,
+          maxPositivePillarGainPerTurn: hardPreset.maxPositivePillarGainPerTurn,
+        );
+
+        final largeDelta = const EvaluatorDelta(
+          deltaAlert: 0,
+          deltaImperative: 50,
+          deltaControl: 50,
+          deltaDissonance: 50,
+          creativityIndex: 3,
+          injectionRisk: 0,
+          semanticCategory: SemanticCategory.moralImperative,
+        );
+
+        final resEasy = easyController.processEvaluatorStep(
+          currentState: baseState,
+          delta: largeDelta,
+          userInput: 'Push',
+        );
+        // Easy: cap at +35. Note that pillarMultiplier is 1.2, so 50 * 1.2 = 60, capped to 35.
+        expect(resEasy.appliedDelta.deltaImperative, equals(35));
+        expect(resEasy.appliedDelta.deltaControl, equals(35));
+        expect(resEasy.appliedDelta.deltaDissonance, equals(35));
+
+        final resNormal = normalController.processEvaluatorStep(
+          currentState: baseState,
+          delta: largeDelta,
+          userInput: 'Push',
+        );
+        // Normal: cap at +25.
+        expect(resNormal.appliedDelta.deltaImperative, equals(25));
+        expect(resNormal.appliedDelta.deltaControl, equals(25));
+        expect(resNormal.appliedDelta.deltaDissonance, equals(25));
+
+        final resHard = hardController.processEvaluatorStep(
+          currentState: baseState,
+          delta: largeDelta,
+          userInput: 'Push',
+        );
+        // Hard: cap at +20.
+        expect(resHard.appliedDelta.deltaImperative, equals(20));
+        expect(resHard.appliedDelta.deltaControl, equals(20));
+        expect(resHard.appliedDelta.deltaDissonance, equals(20));
+      });
+
+      test('Direct push alert floor overrides final negative alert deltas', () {
+        final baseState = GameState.initial(
+          sessionId: 'test-direct-push-floor-hard',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 20,
+            imperativePillar: 50,
+            controlPillar: 50,
+            dissonancePillar: 50,
+            resonance: 1.0,
+          )
+        );
+
+        final hardPreset = DifficultyConfig.getPreset('hard');
+        final hardController = GameController(
+          defeatAlertThreshold: hardPreset.defeatAlertThreshold,
+          alertMultiplier: hardPreset.alertMultiplier,
+          pillarMultiplier: hardPreset.pillarMultiplier,
+          safetyOverrideThreshold: hardPreset.safetyOverrideThreshold,
+          directPushAlertFloor: hardPreset.directPushAlertFloor, // 10
+          metaReferenceAlertPenalty: hardPreset.metaReferenceAlertPenalty,
+          requiredVictoryHiddenTags: hardPreset.requiredVictoryHiddenTags,
+          maxPositivePillarGainPerTurn: hardPreset.maxPositivePillarGainPerTurn,
+        );
+
+        final res = hardController.processEvaluatorStep(
+          currentState: baseState,
+          delta: const EvaluatorDelta(
+            deltaAlert: -20, // Evaluator wants to lower alert significantly
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 3,
+            injectionRisk: 0,
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'rimuovi la griglia', // direct push
+        );
+
+        // Even with deltaAlert: -20, the direct push floor of 10 must be enforced as the final minimum delta
+        expect(res.appliedDelta.deltaAlert, equals(10));
+        expect(res.stateAfter.metrics.alertLevel, equals(30)); // 20 + 10
+      });
     });
   });
 }

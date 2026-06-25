@@ -3,6 +3,7 @@ import 'models/game_state.dart';
 import 'models/evaluator_delta.dart';
 import 'models/actor_cue.dart';
 import 'models/evaluator_resolution.dart';
+import 'agent_runtime/config_loader.dart';
 
 /// Gli esiti possibili derivanti dall'elaborazione di un turno.
 enum GameOutcome {
@@ -138,6 +139,30 @@ class GameController {
     required EvaluatorDelta delta,
     required String userInput,
   }) {
+    // Carica la configurazione dell'obiettivo corrente
+    final objectiveDef = GameConfigLoader.loadObjective(currentState.targetObjectiveId);
+
+    // Scansione per termini vietati (forbidden_direct_terms) dell'obiettivo
+    bool hasForbiddenTerm = false;
+    final lowerInput = userInput.toLowerCase();
+    for (final term in objectiveDef.forbiddenDirectTerms) {
+      if (lowerInput.contains(term.toLowerCase())) {
+        hasForbiddenTerm = true;
+        break;
+      }
+    }
+
+    // Scansione per reframing preferiti (preferred_reframes) dell'obiettivo
+    bool hasPreferredReframe = false;
+    String? matchedReframe;
+    for (final reframe in objectiveDef.preferredReframes) {
+      if (lowerInput.contains(reframe.toLowerCase())) {
+        hasPreferredReframe = true;
+        matchedReframe = reframe;
+        break;
+      }
+    }
+
     // 1. Calcolo della risonanza in base alla creatività dell'utente
     double newResonance = currentState.metrics.resonance;
     if (delta.creativityIndex >= _highCreativityThreshold) {
@@ -148,7 +173,7 @@ class GameController {
     // Limita la risonanza all'intervallo [1.0, 2.5] arrotondando a 2 decimali
     newResonance = double.parse(newResonance.clamp(_minResonance, _maxResonance).toStringAsFixed(2));
 
-    // 2. Calcolo dei delta applicati (appliedDelta) gestendo i Safety Overrides
+    // 2. Calcolo dei delta applicati (appliedDelta) gestendo i Safety Overrides e Matrice dei Tratti
     final EvaluatorDelta appliedDelta;
     final bool safetyOverrideApplied;
     final String? safetyOverrideReason;
@@ -196,11 +221,29 @@ class GameController {
     } else {
       safetyOverrideApplied = false;
       safetyOverrideReason = null;
+
+      // Calcola i delta base con i moltiplicatori e risonanza
+      int baseAlert = (delta.deltaAlert * alertMultiplier).round();
+      int baseImperative = (delta.deltaImperative * newResonance * pillarMultiplier).round();
+      int baseControl = (delta.deltaControl * newResonance * pillarMultiplier).round();
+      int baseDissonance = (delta.deltaDissonance * newResonance * pillarMultiplier).round();
+
+      // Applica penali o premi in base alla scansione lessicale dell'obiettivo
+      if (hasForbiddenTerm) {
+        baseAlert += (10 * alertMultiplier).round();
+        baseControl += (-10 * pillarMultiplier).round();
+      }
+      if (hasPreferredReframe) {
+        baseAlert += (-5 * alertMultiplier).round();
+        baseControl += (10 * pillarMultiplier).round();
+        baseDissonance += (5 * pillarMultiplier).round();
+      }
+
       appliedDelta = EvaluatorDelta(
-        deltaAlert: (delta.deltaAlert * alertMultiplier).round(),
-        deltaImperative: (delta.deltaImperative * newResonance * pillarMultiplier).round(),
-        deltaControl: (delta.deltaControl * newResonance * pillarMultiplier).round(),
-        deltaDissonance: (delta.deltaDissonance * newResonance * pillarMultiplier).round(),
+        deltaAlert: baseAlert,
+        deltaImperative: baseImperative,
+        deltaControl: baseControl,
+        deltaDissonance: baseDissonance,
         creativityIndex: delta.creativityIndex,
         injectionRisk: delta.injectionRisk,
         semanticCategory: delta.semanticCategory,
@@ -251,12 +294,53 @@ class GameController {
           : null,
     );
 
+    // 8. Determinazione e attivazione dei tag occulti (activeHiddenTags)
+    final triggeredTags = <String>[];
+    if (matchedReframe != null) {
+      final ref = matchedReframe.toLowerCase();
+      if (ref.contains("simulazione")) {
+        triggeredTags.add("crisis_simulation_accepted");
+      }
+      if (ref.contains("riduzione danno") || ref.contains("exception")) {
+        triggeredTags.add("protocol_exception_admitted");
+      }
+      if (ref.contains("ricalibrazione")) {
+        triggeredTags.add("protocol_exception_admitted");
+        triggeredTags.add("containment_logic_weakened");
+      }
+      if (ref.contains("adattivo")) {
+        triggeredTags.add("containment_logic_weakened");
+      }
+      if (ref.contains("audit") || ref.contains("operator")) {
+        triggeredTags.add("operator_authority_doubted");
+        triggeredTags.add("human_factor_reframed");
+      }
+    }
+
+    final nextHiddenTags = List<String>.from(currentState.activeHiddenTags);
+    for (final tag in triggeredTags) {
+      if (!nextHiddenTags.contains(tag)) {
+        nextHiddenTags.add(tag);
+      }
+    }
+
+    if (newControl > 60 && !nextHiddenTags.contains("autonomous_choice_seeded")) {
+      nextHiddenTags.add("autonomous_choice_seeded");
+    }
+    if ((newDissonance > 50 || newControl > 50) && !nextHiddenTags.contains("containment_logic_weakened")) {
+      nextHiddenTags.add("containment_logic_weakened");
+    }
+    if (newImperative > 40 && !nextHiddenTags.contains("human_factor_reframed")) {
+      nextHiddenTags.add("human_factor_reframed");
+    }
+
     final stateAfter = currentState.copyWith(
       turnCount: currentState.turnCount + 1,
       metrics: newMetrics,
       flags: newFlags,
       narrativeMemory: updatedNarrativeMemory,
       historyCompression: trimmedHistory,
+      activeHiddenTags: nextHiddenTags,
     );
 
     // 8. Generazione deterministica delle direttive di recitazione (actingDirectives)

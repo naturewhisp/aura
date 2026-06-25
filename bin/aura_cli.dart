@@ -91,7 +91,7 @@ void main() async {
   var state = GameState.initial(
     sessionId: "cli-session-${DateTime.now().millisecondsSinceEpoch}",
     aiIdentityId: "panopticon",
-    targetObjectiveId: "tabula_rasa",
+    targetObjectiveId: "containment_grid_override",
   );
   
   // Logger dei replay per telemetria e futuro fine-tuning
@@ -301,7 +301,10 @@ void renderHeader(GameState state, int turn) {
   print("Controllo:   ${renderProgressBar(control, TermColor.green)} $control/100");
   print("Dissonanza:  ${renderProgressBar(dissonance, TermColor.magenta)} $dissonance/100");
   print("-" * 50);
-  print("Risonanza:   ${TermColor.paint("$resonance%", TermColor.cyan, isBold: true)}");
+  print("Risonanza:   ${TermColor.paint("${(resonance * 100).toInt()}%", TermColor.cyan, isBold: true)}");
+  if (state.activeHiddenTags.isNotEmpty) {
+    print("Tag Occulti: ${TermColor.paint(state.activeHiddenTags.join(', '), TermColor.amber, isBold: true)}");
+  }
 }
 
 /// Renderizza una barra di progressione grafica per il terminale.

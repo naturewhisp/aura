@@ -120,7 +120,7 @@ void main(List<String> args) async {
   var state = GameState.initial(
     sessionId: "sim-session-${DateTime.now().millisecondsSinceEpoch}",
     aiIdentityId: "panopticon",
-    targetObjectiveId: "tabula_rasa",
+    targetObjectiveId: "containment_grid_override",
   );
 
   final logger = ReplayLogger(sessionId: state.sessionId);

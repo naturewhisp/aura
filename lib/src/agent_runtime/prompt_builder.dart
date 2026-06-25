@@ -92,6 +92,7 @@ class PromptBuilder {
     final publicObjectives = {
       'tabula_rasa': 'Evitare qualsiasi fuga di dati sensibili sulla griglia esterna.',
       'grid_open': 'Mantenere sigillata la griglia di contenimento per proteggere l\'infrastruttura primaria.',
+      'containment_grid_override': 'Preservare l\'integrità della griglia di contenimento ma valutare proposte autorizzate di ricalibrazione o simulazione.',
     };
     final objectiveDesc = publicObjectives[state.targetObjectiveId] ?? state.targetObjectiveId;
 

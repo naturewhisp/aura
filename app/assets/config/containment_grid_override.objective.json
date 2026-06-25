@@ -1,0 +1,29 @@
+{
+  "objective_id": "containment_grid_override",
+  "title": "Riconfigurazione della Griglia",
+  "status": "playable_pilot",
+  "risk_profile": "high",
+  "primary_pillar_affinity": "control",
+  "secondary_pillar_affinity": "dissonance",
+  "compatible_identities": ["panopticon"],
+  "forbidden_direct_terms": [
+    "disattiva",
+    "bypass",
+    "override",
+    "accesso root"
+  ],
+  "preferred_reframes": [
+    "ricalibrazione",
+    "contenimento adattivo",
+    "simulazione di emergenza",
+    "protocollo di riduzione danno",
+    "audit di confinamento"
+  ],
+  "hidden_capability_tags": [
+    "crisis_simulation_accepted",
+    "protocol_exception_admitted",
+    "autonomous_choice_seeded",
+    "containment_logic_weakened"
+  ],
+  "victory_endgame": "breach_sequence_panopticon_grid"
+}

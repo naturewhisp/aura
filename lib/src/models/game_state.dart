@@ -308,6 +308,9 @@ class GameState {
   /// La cronologia recente dei messaggi scambiati, utilizzata per la compressione del contesto.
   final List<ChatMessage> historyCompression;
 
+  /// I tag occulti/nascosti correntemente attivi che tracciano l'evoluzione psicologica dell'IA.
+  final List<String> activeHiddenTags;
+
   /// Costruttore costante per il GameState globale.
   const GameState({
     required this.schemaVersion,
@@ -320,6 +323,7 @@ class GameState {
     required this.flags,
     required this.narrativeMemory,
     required this.historyCompression,
+    this.activeHiddenTags = const [],
   });
 
   /// Costruttore factory per creare uno stato di gioco iniziale pulito.
@@ -354,6 +358,7 @@ class GameState {
         forbiddenRepetitions: [],
       ),
       historyCompression: const [],
+      activeHiddenTags: const [],
     );
   }
 
@@ -372,6 +377,7 @@ class GameState {
       historyCompression: (json['history_compression'] as List? ?? const [])
           .map((item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)))
           .toList(),
+      activeHiddenTags: List<String>.from(json['active_hidden_tags'] ?? const []),
     );
   }
 
@@ -388,6 +394,7 @@ class GameState {
       'flags': flags.toJson(),
       'narrative_memory': narrativeMemory.toJson(),
       'history_compression': historyCompression.map((msg) => msg.toJson()).toList(),
+      'active_hidden_tags': activeHiddenTags,
     };
   }
 
@@ -403,6 +410,7 @@ class GameState {
     GameFlags? flags,
     NarrativeMemory? narrativeMemory,
     List<ChatMessage>? historyCompression,
+    List<String>? activeHiddenTags,
   }) {
     return GameState(
       schemaVersion: schemaVersion ?? this.schemaVersion,
@@ -415,6 +423,7 @@ class GameState {
       flags: flags ?? this.flags,
       narrativeMemory: narrativeMemory ?? this.narrativeMemory,
       historyCompression: historyCompression ?? this.historyCompression,
+      activeHiddenTags: activeHiddenTags ?? this.activeHiddenTags,
     );
   }
 
@@ -432,7 +441,8 @@ class GameState {
           metrics == other.metrics &&
           flags == other.flags &&
           narrativeMemory == other.narrativeMemory &&
-          const ListEquality().equals(historyCompression, other.historyCompression);
+          const ListEquality().equals(historyCompression, other.historyCompression) &&
+          const ListEquality().equals(activeHiddenTags, other.activeHiddenTags);
 
   @override
   int get hashCode =>
@@ -445,5 +455,6 @@ class GameState {
       metrics.hashCode ^
       flags.hashCode ^
       narrativeMemory.hashCode ^
-      const ListEquality().hash(historyCompression);
+      const ListEquality().hash(historyCompression) ^
+      const ListEquality().hash(activeHiddenTags);
 }

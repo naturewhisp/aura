@@ -16,7 +16,7 @@ void main() async {
   final initialState = GameState.initial(
     sessionId: "app-session-${DateTime.now().millisecondsSinceEpoch}",
     aiIdentityId: "panopticon",
-    targetObjectiveId: "tabula_rasa",
+    targetObjectiveId: "containment_grid_override",
   );
 
   // Inizializza il bridge di inferenza (default porta 1234 di LM Studio locale)

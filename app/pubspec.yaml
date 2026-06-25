@@ -24,5 +24,7 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/config/
   shaders:
     - assets/shaders/glitch.frag

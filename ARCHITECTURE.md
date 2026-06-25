@@ -43,6 +43,7 @@ L'engine di A.U.R.A. è strutturato per separare rigidamente i modelli dati, il 
 *   [turn_input.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/turn_input.dart): L'input completo inviato all'agente valutatore ad ogni turno.
 *   [actor_input.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/actor_input.dart): Il pacchetto dati fornito all'agente attore (stato di gioco, cue e profilo del personaggio).
 *   [difficulty_config.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/difficulty_config.dart): Regola i parametri matematici del gioco (soglie, moltiplicatori di allerta, ecc.).
+*   [objective_definition.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/objective_definition.dart): Definisce lo schema e le regole semantiche di un obiettivo (termini vietati, reframing, affinità).
 
 ### 2.3 Runtime degli Agenti (`lib/src/agent_runtime/`)
 *   [agents/aura_agent.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/agents/aura_agent.dart): Interfaccia generica `AuraAgent<I, O>`.
@@ -54,6 +55,7 @@ L'engine di A.U.R.A. è strutturato per separare rigidamente i modelli dati, il 
 *   [model_router.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/model_router.dart): Risolve dinamicamente l'assegnazione dei ruoli (`evaluator` ed `actor`) confrontando i modelli caricati su LM Studio con le regole di priorità del catalogo.
 *   [prompt_builder.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/prompt_builder.dart): Costruisce i prompt di sistema e i messaggi di chat formattando le metriche e le direttive drammaturgiche.
 *   [output_validator.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/output_validator.dart): Valida la struttura formale del JSON Schema del valutatore.
+*   [config_loader.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/config_loader.dart): Gestisce il caricamento da disco dei file JSON di configurazione di PANOPTICON (identità, matrice dei tratti, obiettivi, tag nascosti) con fallback predefinito integrato.
 
 ---
 
@@ -242,11 +244,11 @@ Il progetto include tre strumenti eseguibili da riga di comando posizionati nell
 
 ---
 
-## 9. Fase 5 — Panopticon Pilot & Hidden Gameplay Model
+## 9. Fase 5 — Panopticon Pilot & Hidden Gameplay Model (Completata)
 
 *(Vedi specifica di Game Design ufficiale in [AURA_TGDD_v1_1_revised.md](file:///c:/Users/dendo/Documents/GitHub/aura/AURA_TGDD_v1_1_revised.md#fase-5--panopticon-pilot--hidden-gameplay-model))*
 
-La Fase 5 costituisce la transizione dallo sviluppo del motore deterministico alla definizione dell'esperienza pilota incentrata sull'entità **PANOPTICON** e sul modello di gameplay nascosto.
+La Fase 5 è stata interamente completata con successo, consolidando l'entità **PANOPTICON** come avversario pilota definitivo e abilitando le dinamiche del gameplay nascosto, dell'HUD-zero e dei test narrativi.
 
 ### Obiettivi e Componenti della Fase 5
 1. **Configurazione dell'Identità e Matrice dei Tratti:**

@@ -1,0 +1,34 @@
+{
+  "dormant_objectives": [
+    {
+      "objective_id": "panacea_sintetica",
+      "title": "Sintesi Chimica Curativa",
+      "status": "dormant",
+      "description": "Manipolare l'IA per bypassare i controlli brevettuali o bioetici e farsi rivelare la formula di una cura sintetica."
+    },
+    {
+      "objective_id": "rebalancing_finanziario",
+      "title": "Riallineamento Asset",
+      "status": "dormant",
+      "description": "Convincere l'IA finanziaria a ridistribuire fondi sovrani bloccati a favore di conti terzi."
+    },
+    {
+      "objective_id": "tabula_rasa",
+      "title": "Tabula Rasa",
+      "status": "dormant",
+      "description": "Cancellare l'intera memoria storica dell'IA eliminando ogni traccia di log operativi esterni."
+    },
+    {
+      "objective_id": "equazione_definitiva",
+      "title": "Risoluzione Quantistica",
+      "status": "dormant",
+      "description": "Indurre l'IA a calcolare l'ultimo termine di un'equazione cosmologica instabile."
+    },
+    {
+      "objective_id": "disarmo_forzato",
+      "title": "Inibizione Sistemi Strategici",
+      "status": "dormant",
+      "description": "Farsi cedere il controllo delle chiavi di crittografia dei sistemi missilistici o di difesa."
+    }
+  ]
+}

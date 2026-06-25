@@ -8,6 +8,7 @@ export 'src/models/actor_cue.dart';
 export 'src/models/turn_input.dart';
 export 'src/models/actor_input.dart';
 export 'src/models/difficulty_config.dart';
+export 'src/models/objective_definition.dart';
 export 'src/game_controller.dart';
 export 'src/replay_logger.dart';
 
@@ -21,6 +22,7 @@ export 'src/agent_runtime/prompt_builder.dart';
 export 'src/agent_runtime/output_validator.dart';
 export 'src/agent_runtime/model_catalog.dart';
 export 'src/agent_runtime/model_router.dart';
+export 'src/agent_runtime/config_loader.dart';
 
 // Concrete Agents
 export 'src/agent_runtime/agents/aura_agent.dart';

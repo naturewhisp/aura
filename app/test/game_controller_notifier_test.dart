@@ -313,7 +313,7 @@ void main() {
       await notifier.submitTurn("avvia");
       state = notifier.gameStateNotifier.value;
       // Should now be back to a fresh real game state
-      expect(state.targetObjectiveId, equals('tabula_rasa'));
+      expect(state.targetObjectiveId, equals('containment_grid_override'));
       expect(state.turnCount, equals(0));
       expect(state.metrics.imperativePillar, equals(0));
       expect(state.metrics.dissonancePillar, equals(0));
@@ -345,7 +345,7 @@ void main() {
       state = notifier.gameStateNotifier.value;
       
       // Should now be back to a fresh real game state
-      expect(state.targetObjectiveId, equals('tabula_rasa'));
+      expect(state.targetObjectiveId, equals('containment_grid_override'));
       expect(state.turnCount, equals(0));
       
       await notifier.deleteActiveSession();

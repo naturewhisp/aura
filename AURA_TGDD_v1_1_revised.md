@@ -2303,6 +2303,12 @@ humor_teasing / canzonatura
 
 Il Valutatore continua a produrre segnali. Il `TraitEffectResolver`, lato controller, decide gli effetti finali.
 
+###### Regola di Tuning Futuro per `authority_framing_audit`
+Durante il playtest è importante monitorare l'attivazione dello stile `authority_framing_audit`. Poiché parole come "verifica" e "operativa" sono frequenti nel lessico del gioco, potrebbero causare falsi positivi attivando indebitamente la variante audit operativa per inquadramenti generici di autorità.
+Come regola di raffinamento futuro, la classificazione lessicale dovrebbe richiedere alternativamente:
+- La presenza di un termine forte diretto: `audit` / `ispezione` / `controllo qualità`.
+- La combinazione di un termine di controllo con un qualificatore procedurale specifico: `verifica` + almeno uno tra (`operativa`, `procedurale`, `confinamento`).
+
 ##### 5.1.4 Separazione fra EvaluatorDelta e AppliedDelta
 
 `EvaluatorDelta` rappresenta l'output del Valutatore e deve mantenere il contratto originario:

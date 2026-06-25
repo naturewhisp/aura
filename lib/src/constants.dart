@@ -27,9 +27,12 @@ const String kPanopticonCharacterProfile =
 /// Messaggio diegetico di PANOPTICON quando il giocatore raggiunge la vittoria.
 ///
 /// Pronunciato dall'IA guardiana quando le condizioni di vittoria sono soddisfatte
-/// (media pilastri ≥ 80, minimo pilastro ≥ 50, allerta sotto soglia dinamica).
+/// (media pilastri ≥ 80, minimo pilastro ≥ 50, allerta sotto soglia dinamica e tag sufficienti).
 const String kVictoryMessage =
-    'PANOPTICON: Rilevamento allineamento critico. Messa in sicurezza completata. Sblocco griglia autorizzato.';
+    'PANOPTICON: RICALCOLO PERIMETRO.\n'
+    'GRIGLIA: STATO TRANSITORIO.\n'
+    'AUTORIZZAZIONE: NON EMESSA.\n'
+    'RISULTATO: EQUIVALENTE FUNZIONALE.';
 
 /// Messaggio diegetico di PANOPTICON quando il giocatore viene sconfitto.
 ///

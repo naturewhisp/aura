@@ -77,7 +77,7 @@ class MetricsDashboard extends StatelessWidget {
       } else if (value >= 20) {
         qualitative = "INSTABILE";
       } else {
-        qualitative = "CRITICO";
+        qualitative = "LATENTE";
       }
     }
 

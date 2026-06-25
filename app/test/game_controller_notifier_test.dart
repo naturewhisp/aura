@@ -212,7 +212,7 @@ void main() {
     test('Verifies saving, loading, and respecting audio settings', () async {
       final notifier = GameControllerNotifier(
         bridge: mockApiBridge,
-        initialState: initialStateAlertZero,
+        initialState: initialStateAlertZero.copyWith(sessionId: 'test-session-audio'),
       );
 
       // Verify defaults
@@ -225,7 +225,7 @@ void main() {
       // Now create a new notifier and load settings
       final anotherNotifier = GameControllerNotifier(
         bridge: mockApiBridge,
-        initialState: initialStateAlertZero,
+        initialState: initialStateAlertZero.copyWith(sessionId: 'test-session-audio'),
       );
 
       await anotherNotifier.loadSettings();

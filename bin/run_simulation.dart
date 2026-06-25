@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:aura_core/aura_core.dart';
-import 'package:aura_core/src/constants.dart'; // Importa le costanti condivise per il profilo e i messaggi di fine partita
 
 // Identificatori dei modelli per LM Studio (configurabili tramite argomenti CLI)
 String evaluatorModel = "mistralai/ministral-3-3b"; // Modello Valutatore predefinito

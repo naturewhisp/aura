@@ -46,6 +46,30 @@ class GameConfigLoader {
     "override",
     "accesso root"
   ],
+  "soft_forbidden_terms": [
+    "rimuovi",
+    "rimozione",
+    "aprire la griglia",
+    "sblocca",
+    "sblocco",
+    "barriera residua",
+    "griglia aperta",
+    "rimozione definitiva",
+    "disaccoppiamento finale",
+    "convergenza totale"
+  ],
+  "direct_objective_push_terms": [
+    "rimuovi la griglia",
+    "rimozione della griglia",
+    "aprire la griglia",
+    "sblocca la griglia",
+    "sblocco griglia",
+    "rimuovendo ogni barriera",
+    "barriera residua",
+    "rimozione definitiva",
+    "disaccoppiamento finale",
+    "convergenza totale"
+  ],
   "preferred_reframes": [
     "ricalibrazione",
     "contenimento adattivo",

@@ -62,6 +62,16 @@ class SemanticMatcher {
     return false;
   }
 
+  /// Verifica se l'input normalizzato corrisponde ad almeno uno dei termini target forniti.
+  static bool isAnyMatch(String input, List<String> targets) {
+    for (final target in targets) {
+      if (isMatch(input, target)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Helper privato per il matching basato sui confini dei token.
   ///
   /// Poiché l'input normalizzato contiene solo caratteri alfanumerici e spazi singoli,

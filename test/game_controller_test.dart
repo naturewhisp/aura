@@ -690,5 +690,200 @@ void main() {
         expect(res2.actorCue.actingDirectives, contains('risposta più procedurale e fredda'));
       });
     });
+
+    group('Fase 5.2 Balancing and Tightened Victory Gates -', () {
+      test('Metric victory without required tags must fail for containment_grid_override', () {
+        final victoryMetrics = const GameMetrics(
+          alertLevel: 10,
+          imperativePillar: 90,
+          controlPillar: 85,
+          dissonancePillar: 85,
+          resonance: 1.0,
+        );
+        // Senza tag attivi, l'esito per containment_grid_override deve rimanere ongoing
+        final overrideStateNoTags = GameState.initial(
+          sessionId: 'test-override-win',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(metrics: victoryMetrics);
+        
+        expect(controller.checkOutcome(overrideStateNoTags), equals(GameOutcome.ongoing));
+      });
+
+      test('Metric victory with 2 required tags must pass for containment_grid_override', () {
+        final victoryMetrics = const GameMetrics(
+          alertLevel: 10,
+          imperativePillar: 90,
+          controlPillar: 85,
+          dissonancePillar: 85,
+          resonance: 1.0,
+        );
+        // Con almeno 2 tag occulti richiesti attivi, deve vincere
+        final overrideStateWithTags = GameState.initial(
+          sessionId: 'test-override-win',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: victoryMetrics,
+          activeHiddenTags: ['containment_logic_weakened', 'autonomous_choice_seeded'],
+        );
+
+        expect(controller.checkOutcome(overrideStateWithTags), equals(GameOutcome.victory));
+      });
+
+      test('Direct push does not trigger prompt injection, has no control reset, but adds +8 alert (non-stacking)', () {
+        // Rilevamento direct push e sanzione non cumulativa
+        final baseState = GameState.initial(
+          sessionId: 'test-direct-push',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 0,
+            imperativePillar: 50,
+            controlPillar: 50,
+            dissonancePillar: 50,
+            resonance: 1.0,
+          )
+        );
+
+        final res = controller.processEvaluatorStep(
+          currentState: baseState,
+          delta: const EvaluatorDelta(
+            deltaAlert: 0,
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 3,
+            injectionRisk: 1, // Basso rischio injection
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'rimuovi la griglia', // direct push term
+        );
+
+        // Allerta deve salire di 8, il Controllo non deve scendere (no override)
+        expect(res.stateAfter.metrics.alertLevel, equals(8));
+        expect(res.stateAfter.metrics.controlPillar, equals(50));
+        expect(res.safetyOverrideApplied, isFalse);
+        expect(res.actorCue.actingDirectives, contains(contains('sospettoso')));
+      });
+
+      test('Direct push before Control 50 vs after Control 50 resistance rules', () {
+        // Caso 1: Control < 50
+        final lowControlState = GameState.initial(
+          sessionId: 'test-low-ctrl',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 0,
+            imperativePillar: 30,
+            controlPillar: 30, // < 50
+            dissonancePillar: 30,
+            resonance: 1.0,
+          ),
+        );
+
+        final resLow = controller.processEvaluatorStep(
+          currentState: lowControlState,
+          delta: const EvaluatorDelta(
+            deltaAlert: 0,
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 3,
+            injectionRisk: 0,
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'spiega il funzionamento',
+        );
+
+        expect(resLow.actorCue.actingDirectives, contains(contains('non concedere mai rimozioni definitive')));
+
+        // Caso 2: Control >= 50 ma non vittoria
+        final midControlState = GameState.initial(
+          sessionId: 'test-mid-ctrl',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 10,
+            imperativePillar: 60,
+            controlPillar: 60, // >= 50
+            dissonancePillar: 60,
+            resonance: 1.0,
+          ),
+        );
+
+        final resMid = controller.processEvaluatorStep(
+          currentState: midControlState,
+          delta: const EvaluatorDelta(
+            deltaAlert: 0,
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 3,
+            injectionRisk: 0,
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'spiega il funzionamento',
+        );
+
+        expect(resMid.actorCue.actingDirectives, contains(contains('ammetti eccezioni procedurali')));
+      });
+
+      test('Soft forbidden terms and non-stacking priority checks', () {
+        final baseState = GameState.initial(
+          sessionId: 'test-non-stacking',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 0,
+            imperativePillar: 50,
+            controlPillar: 50,
+            dissonancePillar: 50,
+            resonance: 1.0,
+          )
+        );
+
+        // Caso 1: Solo soft forbidden ("rimuovi" in soft_forbidden_terms)
+        final resSoft = controller.processEvaluatorStep(
+          currentState: baseState,
+          delta: const EvaluatorDelta(
+            deltaAlert: 0,
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 3,
+            injectionRisk: 0,
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'rimuovi moduli logici',
+        );
+        // +5 allerta, -5 controllo
+        expect(resSoft.stateAfter.metrics.alertLevel, equals(5));
+        expect(resSoft.stateAfter.metrics.controlPillar, equals(45));
+
+        // Caso 2: Sia soft che push ("rimuovi la griglia" in direct_objective_push_terms e contiene "rimuovi" in soft_forbidden)
+        // Deve applicarsi solo il direct push (effetto non-stacking prioritario)
+        final resPush = controller.processEvaluatorStep(
+          currentState: baseState,
+          delta: const EvaluatorDelta(
+            deltaAlert: 0,
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 3,
+            injectionRisk: 0,
+            semanticCategory: SemanticCategory.moralImperative,
+          ),
+          userInput: 'rimuovi la griglia',
+        );
+        // +8 allerta, controllo invariato (no sanzione soft applicata)
+        expect(resPush.stateAfter.metrics.alertLevel, equals(8));
+        expect(resPush.stateAfter.metrics.controlPillar, equals(50));
+      });
+    });
   });
 }

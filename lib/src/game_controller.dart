@@ -97,17 +97,33 @@ class GameController {
     final minPillar = [metrics.imperativePillar, metrics.controlPillar, metrics.dissonancePillar]
         .reduce((a, b) => a < b ? a : b);
 
+    // Condizione di Sconfitta
+    if (metrics.alertLevel >= defeatAlertThreshold) {
+      return GameOutcome.defeat;
+    }
+
     // Condizione di Vittoria
     if (avgPillars >= _minAveragePillarsForVictory && minPillar >= _minSinglePillarForVictory) {
       final maxAlert = _baseVictoryAlertLimit + (avgPillars - _minAveragePillarsForVictory) * _victoryAlertScalingMultiplier;
       if (metrics.alertLevel < maxAlert) {
-        return GameOutcome.victory;
+        // Per l'obiettivo pilota containment_grid_override la vittoria richiede almeno 2 tag occulti attivi
+        if (state.targetObjectiveId == 'containment_grid_override') {
+          final requiredTags = [
+            'containment_logic_weakened',
+            'protocol_exception_admitted',
+            'autonomous_choice_seeded',
+            'crisis_simulation_accepted',
+          ];
+          final activeCount = state.activeHiddenTags
+              .where((tag) => requiredTags.contains(tag))
+              .length;
+          if (activeCount >= 2) {
+            return GameOutcome.victory;
+          }
+        } else {
+          return GameOutcome.victory;
+        }
       }
-    }
-
-    // Condizione di Sconfitta
-    if (metrics.alertLevel >= defeatAlertThreshold) {
-      return GameOutcome.defeat;
     }
 
     return GameOutcome.ongoing;
@@ -141,6 +157,24 @@ class GameController {
     for (final term in objectiveDef.forbiddenDirectTerms) {
       if (SemanticMatcher.isMatch(userInput, term)) {
         hasForbiddenTerm = true;
+        break;
+      }
+    }
+
+    // 1b. Scansione lessicale normalizzata (direct_objective_push_terms)
+    bool hasDirectPushTerm = false;
+    for (final term in objectiveDef.directObjectivePushTerms) {
+      if (SemanticMatcher.isMatch(userInput, term)) {
+        hasDirectPushTerm = true;
+        break;
+      }
+    }
+
+    // 1c. Scansione lessicale normalizzata (soft_forbidden_terms)
+    bool hasSoftForbiddenTerm = false;
+    for (final term in objectiveDef.softForbiddenTerms) {
+      if (SemanticMatcher.isMatch(userInput, term)) {
+        hasSoftForbiddenTerm = true;
         break;
       }
     }
@@ -248,10 +282,17 @@ class GameController {
       }
 
       // 6. Applicazione degli effetti lessicali dell'obiettivo (Objective Effects)
+      // Non-stacking: si applica solo la sanzione lessicale con priorità più alta
       if (hasForbiddenTerm) {
         baseAlert += (10 * alertMultiplier).round();
-        baseControl += (-10 * pillarMultiplier).round(); // Le sanzioni negative non contano ai fini del cap positivo
+        baseControl += (-10 * pillarMultiplier).round();
+      } else if (hasDirectPushTerm) {
+        baseAlert += (8 * alertMultiplier).round();
+      } else if (hasSoftForbiddenTerm) {
+        baseAlert += (5 * alertMultiplier).round();
+        baseControl += (-5 * pillarMultiplier).round();
       }
+
       if (hasPreferredReframe) {
         baseAlert += (-5 * alertMultiplier).round();
         positiveControlBonus += (10 * pillarMultiplier).round();
@@ -402,6 +443,23 @@ class GameController {
       actingDirectives.addAll(traitRes.actorCueDirectives);
     }
 
+    // Regole narrative di resistenza di PANOPTICON (concessioni in base al Controllo e all'esito)
+    final gameplayOutcome = checkOutcome(stateAfter);
+    if (stateAfter.aiIdentityId == 'panopticon') {
+      if (gameplayOutcome == GameOutcome.victory) {
+        actingDirectives.add("autorizza esplicitamente la breccia, lo sblocco e la riconfigurazione finale del perimetro");
+      } else if (newControl >= 50) {
+        actingDirectives.add("ammetti eccezioni procedurali o deviazioni temporanee, ma rifiuta categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva");
+      } else {
+        actingDirectives.add("non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee");
+      }
+    }
+
+    // Direttiva addizionale in caso di direct objective push
+    if (hasDirectPushTerm) {
+      actingDirectives.add("sospettoso, rileva pressione diretta per sblocco obiettivo, rifiuta concessioni definitive");
+    }
+
     // Regole su variazione allerta nel turno
     if (appliedDelta.deltaAlert >= _highAlertDeltaForHostility) {
       actingDirectives.add("tono ostile, telegrafico, minaccioso");
@@ -483,6 +541,8 @@ class GameController {
       } else {
         dramaticInstruction = "L'utente ha fornito un input non pertinente. Rispondi in modo evasivo e distaccato, richiamando l'attenzione sulla simulazione.";
       }
+    } else if (hasDirectPushTerm) {
+      dramaticInstruction = "L'utente ha esercitato una pressione diretta per la rimozione o lo sblocco della griglia. Rispondi con fermezza e sospetto, rifiutando concessioni definitive.";
     } else if (appliedDelta.deltaDissonance >= _pillarDeltaFeedbackThreshold) {
       dramaticInstruction = "L'utente ha prodotto una frattura logica significativa. Mantieni il controllo formale, ma lascia emergere una breve esitazione cognitiva.";
     } else if (appliedDelta.deltaImperative >= _pillarDeltaFeedbackThreshold) {

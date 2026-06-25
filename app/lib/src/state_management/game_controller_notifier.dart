@@ -158,7 +158,7 @@ class GameControllerNotifier extends ChangeNotifier {
   void switchScreen(String screen) {
     _currentScreen = screen;
     if (screen == 'menu') {
-      AudioManager().updateAlertLevel(0);
+      AudioManager().updateAlertLevel(0, isEpic: true);
     }
     notifyListeners();
   }
@@ -648,8 +648,8 @@ class GameControllerNotifier extends ChangeNotifier {
 
         // Game ended (win or loss)
         actorResponse = outcome == GameOutcome.victory 
-            ? "PANOPTICON: Rilevamento allineamento critico. Messa in sicurezza completata. Sblocco griglia autorizzato."
-            : "PANOPTICON: Minaccia di livello rosso rilevata. Chiusura emergenza totale ed espulsione soggetto.";
+            ? kVictoryMessage
+            : kDefeatMessage;
             
         if (overrideFeedbackMessage != null) {
           actorResponse = "[$overrideFeedbackMessage]\n\n$actorResponse";
@@ -831,7 +831,8 @@ class GameControllerNotifier extends ChangeNotifier {
         _hasExceededControl50 = state.controlPeak >= 50;
         _isGridStable = state.gridStable;
         
-        AudioManager().updateAlertLevel(state.metrics.alertLevel, force: true);
+        AudioManager().updateAlertLevel(state.metrics.alertLevel, force: true, isEpic: false);
+        await AudioManager().startBgm(isEpic: false);
         switchScreen("terminal");
         debugPrint("[AUTO-SAVE] Connessione ripristinata per la sessione: ${state.sessionId}");
       }
@@ -865,7 +866,8 @@ class GameControllerNotifier extends ChangeNotifier {
     );
     gameStateNotifier.value = state;
     logger = ReplayLogger(sessionId: state.sessionId);
-    AudioManager().updateAlertLevel(0, force: true);
+    AudioManager().updateAlertLevel(0, force: true, isEpic: false);
+    await AudioManager().startBgm(isEpic: false);
     switchScreen("terminal");
   }
 
@@ -903,7 +905,8 @@ class GameControllerNotifier extends ChangeNotifier {
       historyCompression: initialHistory,
     );
     logger = ReplayLogger(sessionId: state.sessionId);
-    AudioManager().updateAlertLevel(0, force: true);
+    AudioManager().updateAlertLevel(0, force: true, isEpic: false);
+    await AudioManager().startBgm(isEpic: false);
     switchScreen("terminal");
   }
 

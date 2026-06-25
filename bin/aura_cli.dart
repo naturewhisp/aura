@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:aura_core/aura_core.dart';
-import 'package:aura_core/src/constants.dart'; // Importa le costanti condivise (profilo e messaggi di fine partita)
 import 'package:http/http.dart' as http;
 
 /// Helper per la formattazione dei colori ANSI nel terminale.

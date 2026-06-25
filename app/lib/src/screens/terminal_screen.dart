@@ -195,6 +195,9 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       _defeatSequenceActive = false;
     });
 
+    // Cambia la musica in bgm_epic
+    AudioManager().updateAlertLevel(0, isEpic: true);
+
     _hexScrollTimer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
       _generateHexLine();
     });
@@ -221,6 +224,9 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       _victorySequenceActive = false;
       _lockoutCountdown = 15;
     });
+
+    // Forza la traccia Tense a volume massimo e disattiva la modalità Epic prima della schermata di sconfitta
+    AudioManager().updateAlertLevel(100, isEpic: false);
 
     // Play retro alert sound immediately
     AudioManager().playAlert();
@@ -512,7 +518,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                     setState(() {
                       _showSummaryOverlay = true;
                     });
-                    AudioManager().updateAlertLevel(0);
+                    AudioManager().updateAlertLevel(0, isEpic: true);
+                    AudioManager().startBgm(isEpic: true);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00FF66),
@@ -661,7 +668,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                       setState(() {
                         _showSummaryOverlay = true;
                       });
-                      AudioManager().updateAlertLevel(0);
+                      AudioManager().updateAlertLevel(0, isEpic: false);
+                      AudioManager().startBgm(isEpic: false);
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF003C),

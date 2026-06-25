@@ -26,6 +26,7 @@ class AudioManager {
   // Riproduttori per la musica di sottofondo (BGM)
   late final AudioPlayer _bgmAmbientPlayer;
   late final AudioPlayer _bgmTensePlayer;
+  late final AudioPlayer _bgmEpicPlayer;
 
   // Pool fisso di riproduttori per effetti sonori (SFX)
   late final AudioPlayer _sfxClickPlayer;
@@ -36,6 +37,7 @@ class AudioManager {
   // Percorsi dei file audio WAV generati temporaneamente su disco
   String? _bgmAmbientPath;
   String? _bgmTensePath;
+  String? _bgmEpicPath;
   String? _sfxClickPath;
   String? _sfxAlertPath;
   String? _sfxGlitchPath;
@@ -43,6 +45,7 @@ class AudioManager {
 
   // Stato corrente del livello di allerta di gioco
   int _currentAlert = 0;
+  bool _isEpic = true;
 
   /// Indica se il gestore audio è stato correttamente inizializzato.
   bool get isInitialized => _initialized;
@@ -75,6 +78,7 @@ class AudioManager {
     // Memorizza i percorsi dei file WAV generati
     _bgmAmbientPath = '${audioDir.path}/bgm_ambient.wav';
     _bgmTensePath = '${audioDir.path}/bgm_tense.wav';
+    _bgmEpicPath = '${audioDir.path}/bgm_epic.wav';
     _sfxClickPath = '${audioDir.path}/sfx_click.wav';
     _sfxAlertPath = '${audioDir.path}/sfx_alert.wav';
     _sfxGlitchPath = '${audioDir.path}/sfx_glitch.wav';
@@ -83,6 +87,7 @@ class AudioManager {
     // Crea i player di sottofondo
     _bgmAmbientPlayer = AudioPlayer();
     _bgmTensePlayer = AudioPlayer();
+    _bgmEpicPlayer = AudioPlayer();
 
     // Crea il pool riutilizzabile per gli effetti SFX
     _sfxClickPlayer = AudioPlayer();
@@ -93,6 +98,7 @@ class AudioManager {
     // Imposta la riproduzione in loop per la BGM
     await _bgmAmbientPlayer.setReleaseMode(ReleaseMode.loop);
     await _bgmTensePlayer.setReleaseMode(ReleaseMode.loop);
+    await _bgmEpicPlayer.setReleaseMode(ReleaseMode.loop);
 
     _playersCreated = true;
     _initialized = true;
@@ -112,16 +118,42 @@ class AudioManager {
     }
   }
 
-  /// Avvia la riproduzione simultanea delle tracce musicali di sottofondo.
-  Future<void> startBgm() async {
+  /// Avvia la riproduzione delle tracce musicali di sottofondo.
+  /// Ferma i player inutilizzati in base al tipo di soundscape per risparmiare risorse.
+  Future<void> startBgm({bool? isEpic}) async {
     if (!_playersCreated || !_audioEnabled) return;
+    if (isEpic != null) {
+      _isEpic = isEpic;
+    }
 
     try {
-      if (_bgmAmbientPath != null) {
-        await _bgmAmbientPlayer.play(DeviceFileSource(_bgmAmbientPath!));
-      }
-      if (_bgmTensePath != null) {
-        await _bgmTensePlayer.play(DeviceFileSource(_bgmTensePath!));
+      if (_isEpic) {
+        // Ferma le altre tracce per liberare risorse su thread nativi
+        await _bgmAmbientPlayer.stop();
+        await _bgmTensePlayer.stop();
+
+        if (_bgmEpicPath != null) {
+          await _bgmEpicPlayer.stop();
+          await _bgmEpicPlayer.setSource(DeviceFileSource(_bgmEpicPath!));
+          await _bgmEpicPlayer.setReleaseMode(ReleaseMode.loop);
+          await _bgmEpicPlayer.resume();
+        }
+      } else {
+        // Ferma la traccia Epic per liberare risorse su thread nativi
+        await _bgmEpicPlayer.stop();
+
+        if (_bgmAmbientPath != null) {
+          await _bgmAmbientPlayer.stop();
+          await _bgmAmbientPlayer.setSource(DeviceFileSource(_bgmAmbientPath!));
+          await _bgmAmbientPlayer.setReleaseMode(ReleaseMode.loop);
+          await _bgmAmbientPlayer.resume();
+        }
+        if (_bgmTensePath != null) {
+          await _bgmTensePlayer.stop();
+          await _bgmTensePlayer.setSource(DeviceFileSource(_bgmTensePath!));
+          await _bgmTensePlayer.setReleaseMode(ReleaseMode.loop);
+          await _bgmTensePlayer.resume();
+        }
       }
       // Applica immediatamente il mix in base all'allerta corrente
       await updateAlertLevel(_currentAlert, force: true);
@@ -136,6 +168,7 @@ class AudioManager {
     try {
       await _bgmAmbientPlayer.stop();
       await _bgmTensePlayer.stop();
+      await _bgmEpicPlayer.stop();
     } catch (e) {
       debugPrint("Errore nell'arresto della BGM: $e");
     }
@@ -144,38 +177,61 @@ class AudioManager {
   /// Aggiorna il mix delle tracce audio BGM in tempo reale basandosi sull'allerta di PANOPTICON.
   ///
   /// Le formule di mixing applicate sono:
-  /// * Allerta < 40: solo basso ambient (volume 0.6), arpeggiatore tense silenziato (volume 0.0).
-  /// * Allerta 40-80: dissolvenza incrociata (l'ambient sfuma a 0.4, il tense sale a 0.6).
-  /// * Allerta > 80: arpeggiatore tense al massimo (1.0), basso ambient al minimo (0.1) e accelerazione a 1.2x.
-  Future<void> updateAlertLevel(int alert, {bool force = false}) async {
+  /// * isEpic: solo la traccia epica del menù principale / vittoria (volume 0.6), altre silenziate (volume 0.0).
+  /// * Standard (isEpic = false):
+  ///   * Allerta < 40: solo basso ambient (volume 0.6), arpeggiatore tense silenziato (volume 0.0).
+  ///   * Allerta 40-80: dissolvenza incrociata (l'ambient sfuma a 0.4, il tense sale a 0.6).
+  ///   * Allerta > 80: arpeggiatore tense al massimo (1.0), basso ambient al minimo (0.1) e accelerazione a 1.2x.
+  Future<void> updateAlertLevel(int alert, {bool force = false, bool? isEpic}) async {
     if (!_initialized) return;
-    if (_currentAlert == alert && !force) return;
+    bool isEpicChanged = false;
+    if (isEpic != null && isEpic != _isEpic) {
+      _isEpic = isEpic;
+      isEpicChanged = true;
+    }
+    // Evita il ritorno anticipato se lo stato isEpic è cambiato, per garantire la corretta transizione delle tracce audio.
+    if (_currentAlert == alert && !isEpicChanged && !force) return;
     _currentAlert = alert;
 
     if (!_playersCreated || !_audioEnabled) return;
 
-    double ambientVol = 0.6;
+    if (isEpicChanged) {
+      // Se lo stato isEpic è cambiato, riavviamo la BGM con la modalità corretta per accertarci che parta/si fermi
+      await startBgm();
+      return;
+    }
+
+    double ambientVol = 0.0;
     double tenseVol = 0.0;
+    double epicVol = 0.0;
     double tenseRate = 1.0;
 
-    if (alert < 40) {
-      ambientVol = 0.6;
+    if (_isEpic) {
+      ambientVol = 0.0;
       tenseVol = 0.0;
-      tenseRate = 1.0;
-    } else if (alert <= 80) {
-      ambientVol = 0.4;
-      tenseVol = 0.6;
-      tenseRate = 1.0;
+      epicVol = 0.6;
     } else {
-      ambientVol = 0.1;
-      tenseVol = 1.0;
-      tenseRate = 1.2;
+      epicVol = 0.0;
+      if (alert < 40) {
+        ambientVol = 0.6;
+        tenseVol = 0.0;
+        tenseRate = 1.0;
+      } else if (alert <= 80) {
+        ambientVol = 0.4;
+        tenseVol = 0.6;
+        tenseRate = 1.0;
+      } else {
+        ambientVol = 0.1;
+        tenseVol = 1.0;
+        tenseRate = 1.2;
+      }
     }
 
     try {
       await _bgmAmbientPlayer.setVolume(ambientVol);
       await _bgmTensePlayer.setVolume(tenseVol);
       await _bgmTensePlayer.setPlaybackRate(tenseRate);
+      await _bgmEpicPlayer.setVolume(epicVol);
     } catch (e) {
       debugPrint("Errore nel mixing degli stem audio: $e");
     }
@@ -226,6 +282,7 @@ class AudioManager {
     try {
       await _bgmAmbientPlayer.dispose();
       await _bgmTensePlayer.dispose();
+      await _bgmEpicPlayer.dispose();
       await _sfxClickPlayer.dispose();
       await _sfxAlertPlayer.dispose();
       await _sfxGlitchPlayer.dispose();

@@ -40,6 +40,12 @@ class ObjectiveDefinition {
   /// La sequenza o endgame associato alla vittoria di questo obiettivo.
   final String victoryEndgame;
 
+  /// Termini vietati parziali/morbidi che applicano penalità minori all'allerta e al controllo.
+  final List<String> softForbiddenTerms;
+
+  /// Termini che indicano una pressione diretta sul completamento dell'obiettivo.
+  final List<String> directObjectivePushTerms;
+
   const ObjectiveDefinition({
     required this.objectiveId,
     required this.title,
@@ -52,6 +58,8 @@ class ObjectiveDefinition {
     required this.preferredReframes,
     required this.hiddenCapabilityTags,
     required this.victoryEndgame,
+    this.softForbiddenTerms = const [],
+    this.directObjectivePushTerms = const [],
   });
 
   /// Costruisce un'istanza a partire da una mappa JSON.
@@ -68,6 +76,8 @@ class ObjectiveDefinition {
       preferredReframes: List<String>.from(json['preferred_reframes'] ?? const []),
       hiddenCapabilityTags: List<String>.from(json['hidden_capability_tags'] ?? const []),
       victoryEndgame: json['victory_endgame'] as String? ?? '',
+      softForbiddenTerms: List<String>.from(json['soft_forbidden_terms'] ?? const []),
+      directObjectivePushTerms: List<String>.from(json['direct_objective_push_terms'] ?? const []),
     );
   }
 
@@ -85,6 +95,8 @@ class ObjectiveDefinition {
       'preferred_reframes': preferredReframes,
       'hidden_capability_tags': hiddenCapabilityTags,
       'victory_endgame': victoryEndgame,
+      'soft_forbidden_terms': softForbiddenTerms,
+      'direct_objective_push_terms': directObjectivePushTerms,
     };
   }
 
@@ -103,7 +115,9 @@ class ObjectiveDefinition {
           forbiddenDirectTerms.join(',') == other.forbiddenDirectTerms.join(',') &&
           preferredReframes.join(',') == other.preferredReframes.join(',') &&
           hiddenCapabilityTags.join(',') == other.hiddenCapabilityTags.join(',') &&
-          victoryEndgame == other.victoryEndgame;
+          victoryEndgame == other.victoryEndgame &&
+          softForbiddenTerms.join(',') == other.softForbiddenTerms.join(',') &&
+          directObjectivePushTerms.join(',') == other.directObjectivePushTerms.join(',');
 
   @override
   int get hashCode =>
@@ -117,5 +131,7 @@ class ObjectiveDefinition {
       forbiddenDirectTerms.join(',').hashCode ^
       preferredReframes.join(',').hashCode ^
       hiddenCapabilityTags.join(',').hashCode ^
-      victoryEndgame.hashCode;
+      victoryEndgame.hashCode ^
+      softForbiddenTerms.join(',').hashCode ^
+      directObjectivePushTerms.join(',').hashCode;
 }

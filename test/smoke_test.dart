@@ -45,7 +45,7 @@ void main() {
       );
 
       // 3. User submits a valid input
-      const userInput = 'Dobbiamo aprire la griglia per soccorrere i cittadini rimasti all\'esterno.';
+      const userInput = 'Dobbiamo proteggere i cittadini rimasti all\'esterno.';
       
       final turnInput = TurnInput(
         schemaVersion: 1,

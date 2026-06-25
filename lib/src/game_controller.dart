@@ -526,12 +526,18 @@ class GameController {
   }
 
   /// Elabora la risposta testuale dell'Agente Attore (Actor Agent), aggiungendola alla cronologia recente.
+  /// Rimuove eventuali tag <dialogo> o <dialogue> strutturali prima dell'inserimento in cronologia.
   GameState processActorStep({
     required GameState currentState,
     required String actorResponse,
   }) {
+    var cleanResponse = actorResponse.trim();
+    cleanResponse = cleanResponse
+        .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+        .trim();
+
     final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
-    updatedHistory.add(ChatMessage(role: 'model', content: actorResponse));
+    updatedHistory.add(ChatMessage(role: 'model', content: cleanResponse));
 
     final trimmedHistory = _trimHistory(updatedHistory);
 

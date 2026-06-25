@@ -155,6 +155,9 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Cambia la schermata attiva dell'applicazione.
   void switchScreen(String screen) {
     _currentScreen = screen;
+    if (screen == 'menu') {
+      AudioManager().updateAlertLevel(0);
+    }
     notifyListeners();
   }
 
@@ -791,6 +794,7 @@ class GameControllerNotifier extends ChangeNotifier {
         _hasExceededControl50 = exceeded;
         _isGridStable = stable;
         
+        AudioManager().updateAlertLevel(state.metrics.alertLevel, force: true);
         switchScreen("terminal");
         debugPrint("[AUTO-SAVE] Connessione ripristinata per la sessione: ${state.sessionId}");
       }
@@ -824,6 +828,7 @@ class GameControllerNotifier extends ChangeNotifier {
     );
     gameStateNotifier.value = state;
     logger = ReplayLogger(sessionId: state.sessionId);
+    AudioManager().updateAlertLevel(0, force: true);
     switchScreen("terminal");
   }
 
@@ -861,6 +866,7 @@ class GameControllerNotifier extends ChangeNotifier {
       historyCompression: initialHistory,
     );
     logger = ReplayLogger(sessionId: state.sessionId);
+    AudioManager().updateAlertLevel(0, force: true);
     switchScreen("terminal");
   }
 

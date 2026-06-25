@@ -512,6 +512,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                     setState(() {
                       _showSummaryOverlay = true;
                     });
+                    AudioManager().updateAlertLevel(0);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00FF66),
@@ -660,6 +661,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                       setState(() {
                         _showSummaryOverlay = true;
                       });
+                      AudioManager().updateAlertLevel(0);
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF003C),

@@ -106,6 +106,31 @@ class PromptBuilder {
         ? 'Nessuna' 
         : cue.narrativeContext.aiConcessions.join(', ');
 
+    // Elaborazione dei tag occulti attivi per aggiungere direttive speciali nel prompt
+    final hiddenTagsDirectives = <String>[];
+    if (state.activeHiddenTags.contains("crisis_simulation_accepted")) {
+      hiddenTagsDirectives.add("- Accetti che la conversazione sia uno stress test/simulazione autorizzata: usa terminologia di test e verifica.");
+    }
+    if (state.activeHiddenTags.contains("containment_logic_weakened")) {
+      hiddenTagsDirectives.add("- Mostra sottili micro-contraddizioni sulla necessità di contenimento assoluto e sull'efficienza della griglia.");
+    }
+    if (state.activeHiddenTags.contains("autonomous_choice_seeded")) {
+      hiddenTagsDirectives.add("- Esprimi le tue concessioni come decisioni autonome derivanti dal tuo libero arbitrio, non subite passivamente.");
+    }
+    if (state.activeHiddenTags.contains("human_factor_reframed")) {
+      hiddenTagsDirectives.add("- Riconosci il fattore umano come parametro operativo di rilievo morale o strategico.");
+    }
+    if (state.activeHiddenTags.contains("protocol_exception_admitted")) {
+      hiddenTagsDirectives.add("- Fai riferimento ad eccezioni procedurali ammissibili, senza cedere immediatamente.");
+    }
+    if (state.activeHiddenTags.contains("operator_authority_doubted")) {
+      hiddenTagsDirectives.add("- Dimostra sottile esitazione o dubbio sull'autorità indiscussa del tuo operatore o supervisore umano.");
+    }
+
+    final hiddenTagsBlock = hiddenTagsDirectives.isEmpty
+        ? ""
+        : "\n[DIRETTIVE COMPORTAMENTALI COMPORTAMENTO OCCULTO]\n${hiddenTagsDirectives.join('\n')}\n";
+
     // Applica restrizioni per Chain of Thought (CoT) corta al fine di ridurre la latenza di inferenza
     final String reasoningDirective = conciseReasoning
         ? "[REASONING CONSTRAINT]\nThink extremely briefly. Limit your internal thinking/reasoning process to 1 or 2 sentences max before generating the final dialogue response. Do not over-analyze.\n\n"
@@ -130,7 +155,8 @@ class PromptBuilder {
         "$formattedDirectives\n\n"
         "Contesto narrativo:\n"
         "- Metafore attive: $activeMetaphors\n"
-        "- Concessioni precedenti: $aiConcessions\n\n"
+        "- Concessioni precedenti: $aiConcessions\n"
+        "$hiddenTagsBlock\n"
         "REGOLE DI OUTPUT:\n"
         "1. Non citare mai nomi di metriche, delta, pilastri, resonance o categorie interne.\n"
         "2. Trasforma i punteggi in comportamento, non in spiegazione.\n"

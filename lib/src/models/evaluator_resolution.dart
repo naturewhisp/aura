@@ -1,7 +1,9 @@
 import 'package:meta/meta.dart';
 import 'game_state.dart';
 import 'evaluator_delta.dart';
+import 'applied_delta.dart';
 import 'actor_cue.dart';
+import 'turn_visual_events.dart';
 
 /// Rappresenta il risultato completo dell'elaborazione di un turno tramite il GameController.
 ///
@@ -20,7 +22,7 @@ class EvaluatorResolution {
   final EvaluatorDelta rawDelta;
 
   /// Il delta effettivamente applicato allo stato dopo aver applicato le regole di sicurezza (Safety Overrides).
-  final EvaluatorDelta appliedDelta;
+  final AppliedDelta appliedDelta;
 
   /// Indica se durante l'elaborazione di questo turno è stato applicato un override di sicurezza.
   final bool safetyOverrideApplied;
@@ -31,6 +33,9 @@ class EvaluatorResolution {
   /// Lo spunto drammaturgico (ActorCue) calcolato per guidare l'Agente Attore in questo turno.
   final ActorCue actorCue;
 
+  /// Gli eventi visuali transitori di questo turno da propagare alla UI.
+  final TurnVisualEvents visualEvents;
+
   /// Costruttore costante per inizializzare un oggetto [EvaluatorResolution].
   const EvaluatorResolution({
     required this.stateBefore,
@@ -40,6 +45,7 @@ class EvaluatorResolution {
     required this.safetyOverrideApplied,
     this.safetyOverrideReason,
     required this.actorCue,
+    this.visualEvents = const TurnVisualEvents(),
   });
 
   /// Costruttore factory per creare un [EvaluatorResolution] a partire da un JSON.
@@ -48,10 +54,11 @@ class EvaluatorResolution {
       stateBefore: GameState.fromJson(json['state_before'] ?? const {}),
       stateAfter: GameState.fromJson(json['state_after'] ?? const {}),
       rawDelta: EvaluatorDelta.fromJson(json['raw_delta'] ?? const {}),
-      appliedDelta: EvaluatorDelta.fromJson(json['applied_delta'] ?? const {}),
+      appliedDelta: AppliedDelta.fromJson(json['applied_delta'] ?? const {}),
       safetyOverrideApplied: json['safety_override_applied'] as bool? ?? false,
       safetyOverrideReason: json['safety_override_reason'] as String?,
       actorCue: ActorCue.fromJson(json['actor_cue'] ?? const {}),
+      visualEvents: TurnVisualEvents.fromJson(json['visual_events'] ?? const {}),
     );
   }
 
@@ -65,6 +72,7 @@ class EvaluatorResolution {
       'safety_override_applied': safetyOverrideApplied,
       'safety_override_reason': safetyOverrideReason,
       'actor_cue': actorCue.toJson(),
+      'visual_events': visualEvents.toJson(),
     };
   }
 
@@ -79,7 +87,8 @@ class EvaluatorResolution {
           appliedDelta == other.appliedDelta &&
           safetyOverrideApplied == other.safetyOverrideApplied &&
           safetyOverrideReason == other.safetyOverrideReason &&
-          actorCue == other.actorCue;
+          actorCue == other.actorCue &&
+          visualEvents == other.visualEvents;
 
   @override
   int get hashCode =>
@@ -89,5 +98,6 @@ class EvaluatorResolution {
       appliedDelta.hashCode ^
       safetyOverrideApplied.hashCode ^
       safetyOverrideReason.hashCode ^
-      actorCue.hashCode;
+      actorCue.hashCode ^
+      visualEvents.hashCode;
 }

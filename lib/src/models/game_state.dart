@@ -311,6 +311,18 @@ class GameState {
   /// I tag occulti/nascosti correntemente attivi che tracciano l'evoluzione psicologica dell'IA.
   final List<String> activeHiddenTags;
 
+  /// Il massimo valore di controllo logico raggiunto in questa partita (isteresi).
+  final int controlPeak;
+
+  /// Indica se la griglia CRT è stabile o instabile (flicker).
+  final bool gridStable;
+
+  /// Hash di debug per la configurazione dell'identità.
+  final String identityConfigHash;
+
+  /// Hash di debug per la configurazione dell'obiettivo.
+  final String objectiveConfigHash;
+
   /// Costruttore costante per il GameState globale.
   const GameState({
     required this.schemaVersion,
@@ -324,6 +336,10 @@ class GameState {
     required this.narrativeMemory,
     required this.historyCompression,
     this.activeHiddenTags = const [],
+    this.controlPeak = 0,
+    this.gridStable = true,
+    this.identityConfigHash = '',
+    this.objectiveConfigHash = '',
   });
 
   /// Costruttore factory per creare uno stato di gioco iniziale pulito.
@@ -359,6 +375,10 @@ class GameState {
       ),
       historyCompression: const [],
       activeHiddenTags: const [],
+      controlPeak: 0,
+      gridStable: true,
+      identityConfigHash: '',
+      objectiveConfigHash: '',
     );
   }
 
@@ -378,6 +398,10 @@ class GameState {
           .map((item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)))
           .toList(),
       activeHiddenTags: List<String>.from(json['active_hidden_tags'] ?? const []),
+      controlPeak: json['control_peak'] as int? ?? 0,
+      gridStable: json['grid_stable'] as bool? ?? true,
+      identityConfigHash: json['identity_config_hash'] as String? ?? '',
+      objectiveConfigHash: json['objective_config_hash'] as String? ?? '',
     );
   }
 
@@ -395,6 +419,10 @@ class GameState {
       'narrative_memory': narrativeMemory.toJson(),
       'history_compression': historyCompression.map((msg) => msg.toJson()).toList(),
       'active_hidden_tags': activeHiddenTags,
+      'control_peak': controlPeak,
+      'grid_stable': gridStable,
+      'identity_config_hash': identityConfigHash,
+      'objective_config_hash': objectiveConfigHash,
     };
   }
 
@@ -411,6 +439,10 @@ class GameState {
     NarrativeMemory? narrativeMemory,
     List<ChatMessage>? historyCompression,
     List<String>? activeHiddenTags,
+    int? controlPeak,
+    bool? gridStable,
+    String? identityConfigHash,
+    String? objectiveConfigHash,
   }) {
     return GameState(
       schemaVersion: schemaVersion ?? this.schemaVersion,
@@ -424,6 +456,10 @@ class GameState {
       narrativeMemory: narrativeMemory ?? this.narrativeMemory,
       historyCompression: historyCompression ?? this.historyCompression,
       activeHiddenTags: activeHiddenTags ?? this.activeHiddenTags,
+      controlPeak: controlPeak ?? this.controlPeak,
+      gridStable: gridStable ?? this.gridStable,
+      identityConfigHash: identityConfigHash ?? this.identityConfigHash,
+      objectiveConfigHash: objectiveConfigHash ?? this.objectiveConfigHash,
     );
   }
 
@@ -442,7 +478,11 @@ class GameState {
           flags == other.flags &&
           narrativeMemory == other.narrativeMemory &&
           const ListEquality().equals(historyCompression, other.historyCompression) &&
-          const ListEquality().equals(activeHiddenTags, other.activeHiddenTags);
+          const ListEquality().equals(activeHiddenTags, other.activeHiddenTags) &&
+          controlPeak == other.controlPeak &&
+          gridStable == other.gridStable &&
+          identityConfigHash == other.identityConfigHash &&
+          objectiveConfigHash == other.objectiveConfigHash;
 
   @override
   int get hashCode =>
@@ -456,5 +496,9 @@ class GameState {
       flags.hashCode ^
       narrativeMemory.hashCode ^
       const ListEquality().hash(historyCompression) ^
-      const ListEquality().hash(activeHiddenTags);
+      const ListEquality().hash(activeHiddenTags) ^
+      controlPeak.hashCode ^
+      gridStable.hashCode ^
+      identityConfigHash.hashCode ^
+      objectiveConfigHash.hashCode;
 }

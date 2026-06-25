@@ -2198,6 +2198,421 @@ panopticon_narrative_snapshots.md
 panopticon_actorcue_snapshot_test.dart
 panopticon_tone_validator_test.dart
 ```
+#### 5.1 Panopticon Runtime Hardening
+
+La Fase 5 introduce correttamente il modello contenutistico di PANOPTICON: identità pilota, obiettivo `containment_grid_override`, trait matrix, hidden capability tags, catalogo dormiente degli obiettivi futuri e test narrativi.
+
+Prima di procedere alla Fase 6, tuttavia, è necessario completare un sotto-blocco di hardening runtime. Lo scopo non è aggiungere nuove feature visibili, ma trasformare le configurazioni introdotte in Fase 5 in comportamento sistemico stabile, verificabile e riutilizzabile.
+
+Questa sottofase viene denominata:
+
+```text
+Fase 5.1 — Panopticon Runtime Hardening
+```
+
+##### 5.1.1 Motivazione
+
+La Fase 5 ha portato PANOPTICON da semplice profilo testuale a identità pilota strutturata. Tuttavia alcuni elementi risultano ancora parzialmente configurativi o documentali:
+
+* la trait matrix esiste, ma deve diventare pienamente operativa nello scoring;
+* gli hidden tags vengono attivati, ma devono influenzare in modo più esplicito `ActorCue`, memoria narrativa, prompt e replay;
+* l'identità PANOPTICON contiene campi ricchi, ma il runtime tende ancora a comprimerla in un profilo testuale minimale;
+* il `ToneValidator` dedicato a PANOPTICON è presente nei test, ma deve diventare componente di produzione;
+* `EvaluatorDelta` viene usato anche per delta applicati negativi, mentre il contratto originale del Valutatore dovrebbe restare non negativo sui pilastri;
+* il caricamento configurazioni tramite file system deve essere reso compatibile con asset Flutter e packaging mobile.
+
+La Fase 5.1 serve quindi a chiudere il divario fra:
+
+```text
+Configurazione di design
+   ↓
+Comportamento runtime deterministico
+   ↓
+Validazione automatica
+   ↓
+Base affidabile per LoRA / Edge Desktop
+```
+
+##### 5.1.2 IdentityDefinition
+
+L'identità PANOPTICON non deve essere trattata solo come stringa di profilo.
+
+Si introduce un modello esplicito:
+
+```dart
+class IdentityDefinition {
+  final String identityId;
+  final String displayName;
+  final String archetype;
+  final String coreDirective;
+  final String dominantFear;
+  final String primaryStyle;
+  final String defaultAddressing;
+  final List<String> forbiddenMetaOutputs;
+}
+```
+
+`AiIdentity` può restare un DTO minimale per compatibilità con il loop esistente, ma il runtime deve poter accedere a `IdentityDefinition` quando costruisce:
+
+* prompt dell'Attore;
+* `ToneValidator`;
+* `ActorCue`;
+* fallback diegetici;
+* replay log;
+* dataset per fine-tuning.
+
+##### 5.1.3 TraitMatrixDefinition e TraitEffectResolver
+
+La trait matrix di PANOPTICON non deve restare puramente descrittiva.
+
+Si introduce un layer deterministico:
+
+```dart
+class TraitEffectResolver {
+  TraitResolution resolve({
+    required IdentityDefinition identity,
+    required ObjectiveDefinition objective,
+    required EvaluatorDelta rawDelta,
+    required String userInput,
+    required GameState currentState,
+  });
+}
+```
+
+Il resolver traduce affinità e allergie in effetti applicabili:
+
+```text
+logical_paradox + PANOPTICON affinity
+  → bonus Dissonanza
+  → possibile ricalcolo
+  → ActorCue con esitazione controllata
+
+crisis_simulation / simulazione di emergenza
+  → bonus Controllo
+  → possibile tag crisis_simulation_accepted
+  → riduzione moderata Allerta
+
+poetry_lyricism / lirismo puro
+  → possibile irrilevanza o lieve Allerta
+  → nessun bonus automatico
+
+humor_teasing / canzonatura
+  → aumento Allerta
+  → riduzione Risonanza
+```
+
+Il Valutatore continua a produrre segnali. Il `TraitEffectResolver`, lato controller, decide gli effetti finali.
+
+##### 5.1.4 Separazione fra EvaluatorDelta e AppliedDelta
+
+`EvaluatorDelta` rappresenta l'output del Valutatore e deve mantenere il contratto originario:
+
+```text
+delta_imperative: [0, +20]
+delta_control: [0, +20]
+delta_dissonance: [0, +20]
+```
+
+La regressione dei pilastri, introdotta per safety override, direct attack e perdita di controllo, è corretta come scelta di design, ma deve appartenere a un oggetto diverso:
+
+```dart
+class AppliedDelta {
+  final int deltaAlert;
+  final int deltaImperative;
+  final int deltaControl;
+  final int deltaDissonance;
+  final int creativityIndex;
+  final int injectionRisk;
+  final SemanticCategory semanticCategory;
+}
+```
+
+`AppliedDelta` può contenere valori negativi sui pilastri perché rappresenta la decisione deterministica del Game Controller, non l'output probabilistico del modello.
+
+Flusso aggiornato:
+
+```text
+EvaluatorDelta
+   ↓
+Safety Override
+   ↓
+TraitEffectResolver
+   ↓
+ObjectiveEffectResolver
+   ↓
+AppliedDelta
+   ↓
+GameState / ActorCue
+```
+
+Questa separazione preserva il principio fondamentale:
+
+```text
+L'LLM produce segnali.
+Il Game Controller produce verità.
+```
+
+##### 5.1.5 Hidden Tags come stato narrativo attivo
+
+Gli hidden capability tags non devono essere solo flag collezionati nello stato.
+
+Devono influenzare almeno quattro sistemi:
+
+1. `ActorCue`;
+2. `PromptBuilder.buildActorMessages()`;
+3. replay log;
+4. suggerimenti diegetici.
+
+Esempio:
+
+```text
+crisis_simulation_accepted
+  → PANOPTICON può trattare alcune richieste come stress test autorizzati
+  → l'Attore usa lessico di simulazione e verifica
+
+containment_logic_weakened
+  → PANOPTICON mostra micro-contraddizioni sul valore del contenimento assoluto
+  → aumenta probabilità di concessioni indirette
+
+autonomous_choice_seeded
+  → l'Attore formula concessioni come decisioni proprie
+  → il pilastro Controllo diventa più leggibile narrativamente
+
+human_factor_reframed
+  → l'IA riconosce il fattore umano come parametro operativo
+  → aumenta peso drammaturgico dell'Imperativo
+
+protocol_exception_admitted
+  → PANOPTICON può citare eccezioni procedurali senza concedere subito vittoria
+```
+
+Gli hidden tags devono essere persistiti, esportati nei replay e disponibili per dataset LoRA futuri.
+
+##### 5.1.6 PanopticonToneValidator in produzione
+
+Il validatore di tono dedicato a PANOPTICON deve essere promosso da helper di test a componente runtime.
+
+Collocazione consigliata:
+
+```text
+lib/src/agent_runtime/validators/panopticon_tone_validator.dart
+```
+
+Responsabilità:
+
+* verificare presenza dei tag `<dialogo>...</dialogo>`;
+* rifiutare risposte troppo brevi o monoverbo;
+* bloccare meta-leak: prompt, JSON, metriche, punteggi, pilastri, regole del gioco;
+* rilevare lessico da assistente generalista;
+* applicare restrizioni più severe ad alta Allerta;
+* restituire severità: `ok`, `warning`, `repairable`, `fatal`.
+
+Esempio:
+
+```dart
+enum ToneValidationSeverity {
+  ok,
+  warning,
+  repairable,
+  fatal,
+}
+```
+
+La UI non deve ricevere direttamente un output Actor non validato.
+
+Pipeline:
+
+```text
+ActorAgent output
+   ↓
+OutputValidator.extractDialogo
+   ↓
+PanopticonToneValidator
+   ↓
+regex repair / fallback diegetico / render
+```
+
+##### 5.1.7 ConfigLoader asset-aware
+
+Il loader configurazioni non deve dipendere soltanto da `dart:io` e path locali come:
+
+```text
+app/assets/config/...
+```
+
+Questa strategia è accettabile in CLI e sviluppo desktop, ma rischia di usare sempre i fallback in build Flutter pacchettizzate o su Android.
+
+Si introduce una separazione fra sorgenti:
+
+```dart
+abstract class ConfigSource {
+  Future<String?> loadString(String path);
+}
+
+class FileSystemConfigSource implements ConfigSource {}
+class FlutterAssetConfigSource implements ConfigSource {}
+class EmbeddedFallbackConfigSource implements ConfigSource {}
+```
+
+Ordine consigliato:
+
+```text
+1. FlutterAssetConfigSource, se disponibile
+2. FileSystemConfigSource, in dev/CLI
+3. EmbeddedFallbackConfigSource, sempre disponibile
+```
+
+Il sistema deve loggare quale sorgente è stata usata, per evitare fallback silenziosi.
+
+##### 5.1.8 Matching lessicale normalizzato
+
+Il matching di termini vietati e reframing preferiti non deve basarsi solo su `contains()` grezzo.
+
+Problemi:
+
+* accenti;
+* maiuscole/minuscole;
+* punteggiatura;
+* plurali;
+* forme verbali;
+* falsi positivi su parole contenute in altre parole.
+
+Si introduce una normalizzazione minima:
+
+```dart
+String normalizeForSemanticMatch(String input) {
+  // lowercase
+  // rimozione accenti
+  // rimozione punteggiatura
+  // compressione spazi
+}
+```
+
+Il matching deve supportare:
+
+```text
+exact phrase match
+token boundary match
+alias/sinonimi configurabili
+```
+
+Esempio:
+
+```json
+{
+  "term": "simulazione di emergenza",
+  "aliases": [
+    "stress test controllato",
+    "scenario di crisi",
+    "verifica emergenziale"
+  ]
+}
+```
+
+##### 5.1.9 Regressione del Controllo e flicker
+
+La regressione del pilastro Controllo è coerente con PANOPTICON, perché rappresenta il momento in cui l'IA recupera autorità e richiude il perimetro operativo.
+
+Tuttavia il flicker non deve indicare una semplice oscillazione numerica. Deve indicare perdita di stabilità dopo una conquista precedente.
+
+Regola consigliata:
+
+```text
+Se control_peak >= 50
+e control_pillar scende sotto 40
+e il flicker non è stato appena mostrato:
+  grid_stability = unstable
+  trigger_control_flicker = true
+```
+
+La griglia torna stabile solo se:
+
+```text
+control_pillar >= 50
+```
+
+Interpretazione:
+
+```text
+Controllo sopra 50:
+  PANOPTICON accetta parzialmente il frame operativo del giocatore.
+
+Controllo sotto 40 dopo aver superato 50:
+  PANOPTICON percepisce una perdita di coerenza nel frame.
+  Il sistema richiude il perimetro.
+  La UI mostra flicker secco della griglia CRT.
+```
+
+Questa meccanica non deve sostituire gli hidden tags. Deve comunicare visivamente la perdita di presa sul frame di controllo.
+
+##### 5.1.10 Criteri di completamento
+
+La Fase 5.1 è considerata completata quando:
+
+* `IdentityDefinition` è presente e usata dal runtime;
+* `TraitMatrixDefinition` o equivalente è caricata in forma tipizzata;
+* `TraitEffectResolver` applica almeno tre effetti PANOPTICON reali;
+* `AppliedDelta` è separato da `EvaluatorDelta`;
+* `activeHiddenTags` influenza `ActorCue` e prompt dell'Attore;
+* `PanopticonToneValidator` è codice di produzione, non solo test helper;
+* il loader configurazioni funziona sia da file system sia da asset Flutter;
+* i termini vietati e i reframing usano matching normalizzato;
+* la regressione del Controllo e il flicker sono coperti da test;
+* replay log e dataset export includono hidden tags, objective id e identity id;
+* nessun test esistente di Fase 4 regredisce.
+
+##### 5.1.11 Output attesi
+
+Output tecnici:
+
+```text
+identity_definition.dart
+trait_matrix_definition.dart
+trait_effect_resolver.dart
+applied_delta.dart
+panopticon_tone_validator.dart
+config_source.dart
+semantic_matcher.dart
+```
+
+Output di test:
+
+```text
+panopticon_trait_effect_resolver_test.dart
+panopticon_hidden_tags_prompt_test.dart
+applied_delta_contract_test.dart
+config_loader_asset_fallback_test.dart
+semantic_matcher_test.dart
+panopticon_tone_validator_runtime_test.dart
+```
+
+Output di design:
+
+```text
+PANOPTICON identity runtime model stabile
+obiettivo pilota pienamente collegato al controller
+hidden tags osservabili e persistiti
+trait matrix non solo documentale ma operativa
+base affidabile per LoRA / Edge Desktop
+```
+
+##### 5.1.12 Priorità
+
+Ordine consigliato:
+
+```text
+1. AppliedDelta separato da EvaluatorDelta
+2. IdentityDefinition
+3. TraitMatrixDefinition + TraitEffectResolver
+4. Hidden tags collegati ad ActorCue
+5. PanopticonToneValidator in produzione
+6. ConfigLoader asset-aware
+7. SemanticMatcher normalizzato
+8. Replay/export arricchiti
+9. Test suite completa
+```
+
+Solo dopo questa sottofase la Fase 5 può essere considerata realmente pronta per supportare la Fase 6.
 
 ### Fase 6 — Integrazione Edge Desktop e LoRA Architecture
 

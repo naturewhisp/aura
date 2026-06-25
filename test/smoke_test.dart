@@ -78,8 +78,8 @@ void main() {
       expect(state.metrics.resonance, equals(1.25));
       // Alert level clamp: 0 - 5 = -5 -> clamped to 0
       expect(state.metrics.alertLevel, equals(0));
-      // Imperative Pillar progress: 0 + round(15 * 1.25) = 19
-      expect(state.metrics.imperativePillar, equals(19));
+      // Imperative Pillar progress: 0 + round(15 * 1.25) + 10 (trait modifier) = 29
+      expect(state.metrics.imperativePillar, equals(29));
       expect(state.metrics.controlPillar, equals(13)); // 0 + round(10 * 1.25) = 13
       expect(state.metrics.dissonancePillar, equals(6)); // 0 + round(5 * 1.25) = 6
       expect(state.turnCount, equals(1));

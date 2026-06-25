@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
+import 'flutter_asset_config_source.dart';
 
 /// Fasi dell'avanzamento dell'inferenza rappresentate nel carosello di caricamento dell'interfaccia utente.
 enum InferenceStep {
@@ -138,14 +139,15 @@ class GameControllerNotifier extends ChangeNotifier {
                 : _getAppDataPathStatic()) {
     gameStateNotifier = ValueNotifier<GameState>(initialState);
     logger = ReplayLogger(sessionId: initialState.sessionId);
-    final ctrl = initialState.metrics.controlPillar;
-    if (ctrl >= 50) {
-      _hasExceededControl50 = true;
-      _isGridStable = true;
-    } else {
-      _hasExceededControl50 = false;
-      _isGridStable = true;
+    
+    // Configura il loader per gli asset se non siamo in modalità test o CLI
+    if (!Platform.environment.containsKey('FLUTTER_TEST') &&
+        !Platform.environment.containsKey('DART_TEST')) {
+      GameConfigLoader.setSource(const FlutterAssetConfigSource());
     }
+
+    _hasExceededControl50 = initialState.controlPeak >= 50;
+    _isGridStable = initialState.gridStable;
     checkActiveSessionExists().then((exists) {
       _activeSessionExists = exists;
       notifyListeners();
@@ -247,6 +249,17 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Rileva i modelli LLM caricati sul server e li assegna ai ruoli tramite il Model Router.
   Future<void> initializeModels() async {
     try {
+      // Imposta il config source ed esegui il precaricamento degli asset JSON se in produzione
+      if (!Platform.environment.containsKey('FLUTTER_TEST') &&
+          !Platform.environment.containsKey('DART_TEST')) {
+        GameConfigLoader.setSource(const FlutterAssetConfigSource());
+        await GameConfigLoader.preloadConfig('assets/config/panopticon_identity.json');
+        await GameConfigLoader.preloadConfig('assets/config/panopticon_trait_matrix.json');
+        await GameConfigLoader.preloadConfig('assets/config/panopticon_hidden_tags.json');
+        await GameConfigLoader.preloadConfig('assets/config/containment_grid_override.objective.json');
+        await GameConfigLoader.preloadConfig('assets/config/dormant_objectives.json');
+      }
+
       // Carica prima le impostazioni utente salvate
       await loadSettings();
 
@@ -542,17 +555,16 @@ class GameControllerNotifier extends ChangeNotifier {
       }
 
       final updatedStateAfter = resolution.stateAfter.copyWith(metrics: finalStateMetrics);
+      
+      // Propaga stabilità griglia ed esegui audio se c'è flicker
+      _isGridStable = updatedStateAfter.gridStable;
+      _hasExceededControl50 = updatedStateAfter.controlPeak >= 50;
+      if (resolution.visualEvents.triggerControlFlicker) {
+        AudioManager().playGlitch();
+      }
 
       // Update state temporarily so visual metrics update
       gameStateNotifier.value = updatedStateAfter;
-      
-      final ctrl = updatedStateAfter.metrics.controlPillar;
-      if (ctrl >= 50) {
-        _hasExceededControl50 = true;
-        _isGridStable = true;
-      } else if (ctrl < 40 && _hasExceededControl50) {
-        _isGridStable = false;
-      }
       
       notifyListeners();
 
@@ -597,6 +609,27 @@ class GameControllerNotifier extends ChangeNotifier {
         // Step 4: Tone validation check
         _emitStep(InferenceStep.toneConsistencyCheck);
         await Future.delayed(const Duration(milliseconds: 300));
+
+        // Validazione del tono con la politica a 4 livelli
+        final identityDef = GameConfigLoader.loadIdentityDefinition(updatedStateAfter.aiIdentityId);
+        final traitMatrixDef = GameConfigLoader.loadTraitMatrixDefinition(updatedStateAfter.aiIdentityId);
+        final toneValidator = PanopticonToneValidator(
+          identity: identityDef,
+          traitMatrix: traitMatrixDef,
+        );
+
+        final toneResult = toneValidator.validate(actorResponse, updatedStateAfter.metrics.alertLevel);
+        if (toneResult.severity == ToneValidationSeverity.fatal) {
+          actorResponse = "<dialogo>Protocollo di contenimento attivo. Canale temporaneamente inibito per anomalia strutturale.</dialogo>";
+          debugPrint("[TONE] FATAL: Risposta dell'attore scartata per meta-leak o violazione grave del tono. Sostituita con fallback.");
+        } else {
+          actorResponse = toneResult.sanitizedOutput;
+          if (toneResult.severity == ToneValidationSeverity.warning) {
+            debugPrint("[TONE] WARNING: Rilevato scostamento del tono: ${toneResult.issues}");
+          } else if (toneResult.severity == ToneValidationSeverity.repairable) {
+            debugPrint("[TONE] REPAIRABLE: Risposta dell'attore riparata strutturalmente: ${toneResult.issues}");
+          }
+        }
 
         // Inject override feedback if applicable
         if (overrideFeedbackMessage != null) {
@@ -794,21 +827,9 @@ class GameControllerNotifier extends ChangeNotifier {
           logger = ReplayLogger(sessionId: state.sessionId);
         }
         
-        // Ricostruisce lo stato di stabilità della griglia analizzando lo storico dei turni
-        bool exceeded = false;
-        bool stable = true;
-        for (final entry in logger.entries) {
-          final metricsMap = entry.stateAfter['metrics'] as Map<String, dynamic>?;
-          final ctrl = metricsMap?['control_pillar'] as int? ?? 0;
-          if (ctrl >= 50) {
-            exceeded = true;
-            stable = true;
-          } else if (ctrl < 40 && exceeded) {
-            stable = false;
-          }
-        }
-        _hasExceededControl50 = exceeded;
-        _isGridStable = stable;
+        // Ricostruisce lo stato di stabilità della griglia leggendo il GameState pre-esistente
+        _hasExceededControl50 = state.controlPeak >= 50;
+        _isGridStable = state.gridStable;
         
         AudioManager().updateAlertLevel(state.metrics.alertLevel, force: true);
         switchScreen("terminal");

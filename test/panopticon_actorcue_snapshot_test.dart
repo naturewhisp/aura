@@ -31,7 +31,8 @@ void main() {
         deltaDissonance: 0,
         creativityIndex: 3,
         injectionRisk: 0,
-        semanticCategory: SemanticCategory.technicalBureaucracy,
+        // Use socialChitChat to prevent Trait Matrix modifiers from interfering with control penalty
+        semanticCategory: SemanticCategory.empathyPressure,
       );
 
       // Input contains a forbidden term: "disattiva"
@@ -74,11 +75,12 @@ void main() {
       );
 
       // Reward: alert -5, control +10, dissonance +5
-      // Alert: base 0 - reward 5 = -5 (clamped to 0)
-      // Control: base 10 * 1.25 (risonanza) + reward 10 = 23
+      // Trait Matrix (crisis_simulation): alert -10, control +10
+      // Alert: base 0 - reward 5 - trait 10 = -15
+      // Control: base 10 * 1.25 (risonanza) + reward 10 + trait 10 = 33
       // Dissonance: base 0 + reward 5 = 5
-      expect(resolution.appliedDelta.deltaAlert, equals(-5));
-      expect(resolution.appliedDelta.deltaControl, equals(23));
+      expect(resolution.appliedDelta.deltaAlert, equals(-15));
+      expect(resolution.appliedDelta.deltaControl, equals(33));
       expect(resolution.appliedDelta.deltaDissonance, equals(5));
 
       // Hidden tag activated: crisis_simulation_accepted
@@ -107,7 +109,8 @@ void main() {
         deltaDissonance: 10, // will reach 55 (> 50)
         creativityIndex: 3,
         injectionRisk: 0,
-        semanticCategory: SemanticCategory.logicalParadox,
+        // Use socialChitChat to avoid Trait Matrix modifiers that would alter the raw pillar increments
+        semanticCategory: SemanticCategory.empathyPressure,
       );
 
       final resolution = controller.processEvaluatorStep(

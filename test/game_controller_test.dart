@@ -133,8 +133,9 @@ void main() {
     });
 
     test('Delta calculation with resonance multiplier', () {
-      // Set state resonance to 1.5
+      // Set state resonance to 1.5 and use generic identity to bypass Trait Matrix modifiers
       var state = initialState.copyWith(
+        aiIdentityId: 'generic_ai',
         metrics: initialState.metrics.copyWith(resonance: 1.5),
       );
 
@@ -161,6 +162,9 @@ void main() {
     });
 
     test('Metrics bounds clamping [0, 100]', () {
+      // Use generic identity to bypass Trait Matrix modifiers
+      final baseState = initialState.copyWith(aiIdentityId: 'generic_ai');
+
       final largeDelta = const EvaluatorDelta(
         deltaAlert: 120,
         deltaImperative: 60,
@@ -173,7 +177,7 @@ void main() {
 
       // Verify ceiling clamping
       var state = controller.processEvaluatorStep(
-        currentState: initialState,
+        currentState: baseState,
         delta: largeDelta,
         userInput: 'Push to max',
       ).stateAfter;

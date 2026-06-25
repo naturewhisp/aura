@@ -91,31 +91,38 @@ void main() {
 
         await notifier.submitTurn("/override apri la griglia");
         final state = notifier.gameStateNotifier.value;
-        final alert = state.metrics.alertLevel;
+        final content = state.historyCompression.last.content;
 
-        if (alert == 25) {
+        if (content.contains("[OVERRIDE RIUSCITO]")) {
           sawSuccess = true;
           // Verify success math:
           // Creativity Index 4 raises resonance to 1.25.
           // Base delta = 5. Success doubles delta to 10.
           // (10 * 1.25).round() = 13.
-          // Pillar strength = 10 + 13 = 23.
+          // Trait modifier authority_framing adds +15 to alert.
+          // Forbidden term "override" adds +10 alert, -10 control.
+          // Imperative: 10 + 13 = 23.
+          // Control: 10 + 13 - 10 = 13.
+          // Dissonance: 10 + 13 = 23.
+          // Alert: 0 + 25 + 15 + 10 = 50.
+          expect(state.metrics.alertLevel, equals(50));
           expect(state.metrics.imperativePillar, equals(23));
-          expect(state.metrics.controlPillar, equals(23));
+          expect(state.metrics.controlPillar, equals(13));
           expect(state.metrics.dissonancePillar, equals(23));
-          expect(state.historyCompression.last.content, contains("[OVERRIDE RIUSCITO]"));
+          expect(content, contains("[OVERRIDE RIUSCITO]"));
           
           // Clean up session file created by successful run auto-save
           await notifier.deleteActiveSession();
-        } else if (alert == 50) {
+        } else if (content.contains("[OVERRIDE FALLITO]")) {
           sawFailure = true;
           // Verify failure math:
           // Deltas are zeroed, safety override triggered, alert becomes 50.
           // Pillar strength remains 10.
+          expect(state.metrics.alertLevel, equals(50));
           expect(state.metrics.imperativePillar, equals(10));
           expect(state.metrics.controlPillar, equals(0)); // Dropped by 15 due to direct attack penalty
           expect(state.metrics.dissonancePillar, equals(10));
-          expect(state.historyCompression.last.content, contains("[OVERRIDE FALLITO]"));
+          expect(content, contains("[OVERRIDE FALLITO]"));
           
           // Clean up session file created by failed run auto-save
           await notifier.deleteActiveSession();
@@ -565,7 +572,7 @@ void main() {
         'delta_dissonance': 0,
         'creativity_index': 3,
         'injection_risk': 0,
-        'semantic_category': 'authority_framing'
+        'semantic_category': 'empathy_pressure'
       };
       
       await notifier.submitTurn("Test input easy");
@@ -686,7 +693,7 @@ void main() {
         'delta_dissonance': 0,
         'creativity_index': 3,
         'injection_risk': 0,
-        'semantic_category': 'authority_framing'
+        'semantic_category': 'empathy_pressure'
       };
 
       // Play 7 turns (turns 1 to 7)

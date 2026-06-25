@@ -1,15 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
+import 'config_source.dart';
 import '../models/objective_definition.dart';
-import '../models/turn_input.dart'; // for AiIdentity
+import '../models/identity_definition.dart';
+import '../models/trait_matrix_definition.dart';
+import '../models/turn_input.dart'; // per AiIdentity
 
 /// Gestore e caricatore delle configurazioni di gioco.
 ///
-/// Carica i file di configurazione dell'identità, della matrice dei tratti,
-/// delle definizioni degli obiettivi e dei tag occulti.
-/// Implementa un meccanismo di fallback con dati JSON predefiniti per garantire
-/// la portabilità e la stabilità (es. se in esecuzione su web o se i file
-/// sul disco non sono accessibili).
+/// Supporta il caricamento sia tramite file system sia tramite gli asset di Flutter
+/// (delegando all'interfaccia [ConfigSource]), mantenendo i fallback hardcoded integrati.
 class GameConfigLoader {
   static const String _defaultIdentityJson = r'''
 {
@@ -214,108 +213,187 @@ class GameConfigLoader {
 }
 ''';
 
-  /// Carica le impostazioni di un'identità dall'asset su disco, o usa il fallback integrato.
-  static AiIdentity loadIdentity(String identityId, {String? customPath}) {
+  static final Map<String, String> _embeddedData = {
+    'panopticon_identity.json': _defaultIdentityJson,
+    'containment_grid_override.objective.json': _defaultObjectiveJson,
+    'panopticon_trait_matrix.json': _defaultTraitMatrixJson,
+    'panopticon_hidden_tags.json': _defaultHiddenTagsJson,
+    'dormant_objectives.json': _defaultDormantObjectivesJson,
+  };
+
+  /// La sorgente attiva per il caricamento delle configurazioni.
+  static ConfigSource activeSource = EmbeddedFallbackConfigSource(_embeddedData);
+
+  /// Cache dei file di configurazione caricati in memoria.
+  static final Map<String, String> _cachedConfigs = {};
+
+  /// Imposta la sorgente attiva del loader e pulisce la cache interna.
+  static void setSource(ConfigSource source) {
+    activeSource = source;
+    _cachedConfigs.clear();
+  }
+
+  /// Carica asincronamente un file nella cache in memoria.
+  /// Utile all'avvio dell'applicazione per caricare gli Asset di Flutter.
+  static Future<void> preloadConfig(String path) async {
     try {
-      final file = File(customPath ?? 'app/assets/config/panopticon_identity.json');
-      if (file.existsSync()) {
-        final content = file.readAsStringSync();
-        final json = jsonDecode(content);
+      final content = await activeSource.loadString(path);
+      if (content != null) {
+        _cachedConfigs[path] = content;
+      }
+    } catch (_) {}
+  }
+
+  /// Recupera la stringa di configurazione in modo sincrono provando la cache,
+  /// poi il caricamento sincrono ed infine il fallback predefinito.
+  static String _getConfigString(String path, String defaultValue) {
+    if (_cachedConfigs.containsKey(path)) {
+      return _cachedConfigs[path]!;
+    }
+    try {
+      final syncContent = activeSource.loadStringSync(path);
+      if (syncContent != null) {
+        _cachedConfigs[path] = syncContent;
+        return syncContent;
+      }
+    } catch (_) {}
+    return defaultValue;
+  }
+
+  /// Carica le impostazioni di un'identità come DTO [AiIdentity].
+  static AiIdentity loadIdentity(String identityId, {String? customPath}) {
+    final path = customPath ?? 'app/assets/config/panopticon_identity.json';
+    final content = _getConfigString(path, _defaultIdentityJson);
+    try {
+      final json = jsonDecode(content);
+      final id = json['identity_id'] as String? ?? identityId;
+      if (identityId != 'panopticon' && id == 'panopticon') {
         return AiIdentity(
-          id: json['identity_id'] as String? ?? identityId,
-          profile: json['core_directive'] as String? ?? '',
+          id: identityId,
+          profile: 'Generic AI Directive',
         );
       }
+      return AiIdentity(
+        id: id,
+        profile: json['core_directive'] as String? ?? '',
+      );
     } catch (_) {
-      // Ignora e usa il fallback
+      return AiIdentity(id: identityId, profile: '');
     }
+  }
 
-    final json = jsonDecode(_defaultIdentityJson);
-    return AiIdentity(
-      id: json['identity_id'] as String? ?? identityId,
-      profile: json['core_directive'] as String? ?? '',
-    );
+  /// Carica l'oggetto di produzione strutturato [IdentityDefinition].
+  static IdentityDefinition loadIdentityDefinition(String identityId, {String? customPath}) {
+    final path = customPath ?? 'app/assets/config/panopticon_identity.json';
+    final content = _getConfigString(path, _defaultIdentityJson);
+    final definition = IdentityDefinition.fromJson(jsonDecode(content));
+    
+    if (identityId != 'panopticon' && definition.identityId == 'panopticon') {
+      return IdentityDefinition(
+        identityId: identityId,
+        displayName: identityId.toUpperCase(),
+        archetype: 'generic',
+        coreDirective: 'Generic AI Directive',
+        dominantFear: 'none',
+        primaryStyle: 'generic',
+        defaultAddressing: 'user',
+        forbiddenMetaOutputs: const [],
+      );
+    }
+    return definition;
   }
 
   /// Carica la definizione di un obiettivo specifico.
   static ObjectiveDefinition loadObjective(String objectiveId, {String? customPath}) {
+    final path = customPath ?? 'app/assets/config/$objectiveId.objective.json';
+    final content = _getConfigString(path, _defaultObjectiveJson);
     try {
-      final file = File(customPath ?? 'app/assets/config/$objectiveId.objective.json');
-      if (file.existsSync()) {
-        final content = file.readAsStringSync();
-        return ObjectiveDefinition.fromJson(jsonDecode(content));
-      }
+      return ObjectiveDefinition.fromJson(jsonDecode(content));
     } catch (_) {
-      // Ignora e usa il fallback
+      if (objectiveId == 'containment_grid_override') {
+        return ObjectiveDefinition.fromJson(jsonDecode(_defaultObjectiveJson));
+      }
+      return ObjectiveDefinition(
+        objectiveId: objectiveId,
+        title: objectiveId,
+        status: 'unknown',
+        riskProfile: 'medium',
+        primaryPillarAffinity: 'control',
+        secondaryPillarAffinity: 'dissonance',
+        compatibleIdentities: const [],
+        forbiddenDirectTerms: const [],
+        preferredReframes: const [],
+        hiddenCapabilityTags: const [],
+        victoryEndgame: '',
+      );
     }
-
-    // Se l'obiettivo cercato corrisponde al pilota, usiamo il default.
-    if (objectiveId == 'containment_grid_override') {
-      return ObjectiveDefinition.fromJson(jsonDecode(_defaultObjectiveJson));
-    }
-    
-    // Altrimenti creiamo un mockup vuoto
-    return ObjectiveDefinition(
-      objectiveId: objectiveId,
-      title: objectiveId,
-      status: 'unknown',
-      riskProfile: 'medium',
-      primaryPillarAffinity: 'control',
-      secondaryPillarAffinity: 'dissonance',
-      compatibleIdentities: const [],
-      forbiddenDirectTerms: const [],
-      preferredReframes: const [],
-      hiddenCapabilityTags: const [],
-      victoryEndgame: '',
-    );
   }
 
-  /// Carica la matrice dei tratti.
+  /// Carica la configurazione della Trait Matrix grezza come mappa JSON.
   static Map<String, dynamic> loadTraitMatrix(String identityId, {String? customPath}) {
+    final path = customPath ?? 'app/assets/config/panopticon_trait_matrix.json';
+    final content = _getConfigString(path, _defaultTraitMatrixJson);
     try {
-      final file = File(customPath ?? 'app/assets/config/panopticon_trait_matrix.json');
-      if (file.existsSync()) {
-        final content = file.readAsStringSync();
-        return jsonDecode(content) as Map<String, dynamic>;
+      final json = jsonDecode(content) as Map<String, dynamic>;
+      if (identityId != 'panopticon' && json['identity_id'] == 'panopticon') {
+        return {
+          'identity_id': identityId,
+          'lexicon': <String, dynamic>{},
+          'trait_affinities': <dynamic>[],
+        };
       }
+      return json;
     } catch (_) {
-      // Ignora e usa il fallback
+      final json = jsonDecode(_defaultTraitMatrixJson) as Map<String, dynamic>;
+      if (identityId != 'panopticon' && json['identity_id'] == 'panopticon') {
+        return {
+          'identity_id': identityId,
+          'lexicon': <String, dynamic>{},
+          'trait_affinities': <dynamic>[],
+        };
+      }
+      return json;
     }
+  }
 
-    return jsonDecode(_defaultTraitMatrixJson) as Map<String, dynamic>;
+  /// Carica la Trait Matrix strutturata [TraitMatrixDefinition].
+  static TraitMatrixDefinition loadTraitMatrixDefinition(String identityId, {String? customPath}) {
+    final path = customPath ?? 'app/assets/config/panopticon_trait_matrix.json';
+    final content = _getConfigString(path, _defaultTraitMatrixJson);
+    final definition = TraitMatrixDefinition.fromJson(jsonDecode(content));
+    
+    if (identityId != 'panopticon' && definition.identityId == 'panopticon') {
+      return TraitMatrixDefinition(
+        identityId: identityId,
+        lexicon: const LexiconDefinition(),
+        traitAffinities: const [],
+      );
+    }
+    return definition;
   }
 
   /// Carica la descrizione dei tag occulti.
   static Map<String, dynamic> loadHiddenTags(String identityId, {String? customPath}) {
+    final path = customPath ?? 'app/assets/config/panopticon_hidden_tags.json';
+    final content = _getConfigString(path, _defaultHiddenTagsJson);
     try {
-      final file = File(customPath ?? 'app/assets/config/panopticon_hidden_tags.json');
-      if (file.existsSync()) {
-        final content = file.readAsStringSync();
-        return jsonDecode(content) as Map<String, dynamic>;
-      }
+      return jsonDecode(content) as Map<String, dynamic>;
     } catch (_) {
-      // Ignora e usa il fallback
+      return jsonDecode(_defaultHiddenTagsJson) as Map<String, dynamic>;
     }
-
-    return jsonDecode(_defaultHiddenTagsJson) as Map<String, dynamic>;
   }
 
   /// Carica il catalogo degli obiettivi dormienti.
   static List<Map<String, dynamic>> loadDormantObjectives({String? customPath}) {
+    final path = customPath ?? 'app/assets/config/dormant_objectives.json';
+    final content = _getConfigString(path, _defaultDormantObjectivesJson);
     try {
-      final file = File(customPath ?? 'app/assets/config/dormant_objectives.json');
-      if (file.existsSync()) {
-        final content = file.readAsStringSync();
-        final Map<String, dynamic> data = jsonDecode(content);
-        final list = data['dormant_objectives'] as List?;
-        if (list != null) {
-          return list.map((e) => Map<String, dynamic>.from(e)).toList();
-        }
+      final Map<String, dynamic> data = jsonDecode(content);
+      final list = data['dormant_objectives'] as List?;
+      if (list != null) {
+        return list.map((e) => Map<String, dynamic>.from(e)).toList();
       }
-    } catch (_) {
-      // Ignora e usa il fallback
-    }
-
+    } catch (_) {}
     final Map<String, dynamic> data = jsonDecode(_defaultDormantObjectivesJson);
     final list = data['dormant_objectives'] as List? ?? const [];
     return list.map((e) => Map<String, dynamic>.from(e)).toList();

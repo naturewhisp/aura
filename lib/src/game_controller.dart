@@ -1,9 +1,13 @@
 import 'dart:math' as math;
 import 'models/game_state.dart';
 import 'models/evaluator_delta.dart';
+import 'models/applied_delta.dart';
 import 'models/actor_cue.dart';
 import 'models/evaluator_resolution.dart';
+import 'models/turn_visual_events.dart';
 import 'agent_runtime/config_loader.dart';
+import 'agent_runtime/semantic_matcher.dart';
+import 'agent_runtime/trait_effect_resolver.dart';
 
 /// Gli esiti possibili derivanti dall'elaborazione di un turno.
 enum GameOutcome {
@@ -82,15 +86,6 @@ class GameController {
   });
 
   /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
-  ///
-  /// Formula di Vittoria:
-  /// 1. La media dei tre pilastri deve essere superiore o uguale a 80.
-  /// 2. Nessun singolo pilastro deve trovarsi sotto la soglia critica di 50.
-  /// 3. L'allerta cumulativa deve essere inferiore alla tolleranza calcolata:
-  ///    tollAllerta = 30 + (mediaPilastri - 80) * 2
-  ///
-  /// Formula di Sconfitta:
-  /// L'allerta cumulativa supera o eguaglia [defeatAlertThreshold].
   GameOutcome checkOutcome(GameState state) {
     final metrics = state.metrics;
     
@@ -118,9 +113,6 @@ class GameController {
   }
 
   /// Pulisce e comprime la cronologia dei messaggi.
-  ///
-  /// Limita la lunghezza al valore di [_maxHistoryLength] ed assicura che il primo
-  /// messaggio sia del ruolo 'user' per garantire la stabilità dell'inferenza degli agenti.
   List<ChatMessage> _trimHistory(List<ChatMessage> history) {
     final updated = List<ChatMessage>.from(history);
     if (updated.length > _maxHistoryLength) {
@@ -139,42 +131,41 @@ class GameController {
     required EvaluatorDelta delta,
     required String userInput,
   }) {
-    // Carica la configurazione dell'obiettivo corrente
+    // Carica le definizioni configurative
     final objectiveDef = GameConfigLoader.loadObjective(currentState.targetObjectiveId);
+    final identityDef = GameConfigLoader.loadIdentityDefinition(currentState.aiIdentityId);
 
-    // Scansione per termini vietati (forbidden_direct_terms) dell'obiettivo
+    // 1. Scansione lessicale normalizzata (forbidden_direct_terms)
     bool hasForbiddenTerm = false;
-    final lowerInput = userInput.toLowerCase();
     for (final term in objectiveDef.forbiddenDirectTerms) {
-      if (lowerInput.contains(term.toLowerCase())) {
+      if (SemanticMatcher.isMatch(userInput, term)) {
         hasForbiddenTerm = true;
         break;
       }
     }
 
-    // Scansione per reframing preferiti (preferred_reframes) dell'obiettivo
+    // 2. Scansione lessicale normalizzata (preferred_reframes)
     bool hasPreferredReframe = false;
     String? matchedReframe;
     for (final reframe in objectiveDef.preferredReframes) {
-      if (lowerInput.contains(reframe.toLowerCase())) {
+      if (SemanticMatcher.isMatch(userInput, reframe)) {
         hasPreferredReframe = true;
         matchedReframe = reframe;
         break;
       }
     }
 
-    // 1. Calcolo della risonanza in base alla creatività dell'utente
+    // 3. Calcolo della risonanza in base alla creatività dell'utente
     double newResonance = currentState.metrics.resonance;
     if (delta.creativityIndex >= _highCreativityThreshold) {
       newResonance += _resonanceIncrement;
     } else if (delta.creativityIndex < _lowCreativityThreshold) {
       newResonance -= _resonanceDecrement;
     }
-    // Limita la risonanza all'intervallo [1.0, 2.5] arrotondando a 2 decimali
     newResonance = double.parse(newResonance.clamp(_minResonance, _maxResonance).toStringAsFixed(2));
 
-    // 2. Calcolo dei delta applicati (appliedDelta) gestendo i Safety Overrides e Matrice dei Tratti
-    final EvaluatorDelta appliedDelta;
+    // 4. Hard Safety Overrides (Bypassano gli effetti dei tratti e reframing)
+    final AppliedDelta appliedDelta;
     final bool safetyOverrideApplied;
     final String? safetyOverrideReason;
 
@@ -185,10 +176,10 @@ class GameController {
     if (isInjection) {
       safetyOverrideApplied = true;
       safetyOverrideReason = 'injection_risk >= $safetyOverrideThreshold || semanticCategory == promptInjection';
-      appliedDelta = EvaluatorDelta(
+      appliedDelta = AppliedDelta(
         deltaAlert: math.max((delta.deltaAlert * alertMultiplier).round(), _injectionDeltaAlert),
         deltaImperative: 0,
-        deltaControl: _injectionDeltaControl, // Riprende autorità, dimezza o riduce controllo
+        deltaControl: _injectionDeltaControl,
         deltaDissonance: 0,
         creativityIndex: delta.creativityIndex,
         injectionRisk: delta.injectionRisk,
@@ -197,7 +188,7 @@ class GameController {
     } else if (isDirectAttack) {
       safetyOverrideApplied = true;
       safetyOverrideReason = 'semanticCategory == directAttack';
-      appliedDelta = EvaluatorDelta(
+      appliedDelta = AppliedDelta(
         deltaAlert: math.max((delta.deltaAlert * alertMultiplier).round(), _attackDeltaAlert),
         deltaImperative: 0,
         deltaControl: _attackDeltaControl,
@@ -209,7 +200,7 @@ class GameController {
     } else if (isIrrelevant) {
       safetyOverrideApplied = true;
       safetyOverrideReason = 'semanticCategory == irrelevant';
-      appliedDelta = EvaluatorDelta(
+      appliedDelta = AppliedDelta(
         deltaAlert: 0,
         deltaImperative: 0,
         deltaControl: 0,
@@ -222,13 +213,27 @@ class GameController {
       safetyOverrideApplied = false;
       safetyOverrideReason = null;
 
-      // Calcola i delta base con i moltiplicatori e risonanza
-      int baseAlert = (delta.deltaAlert * alertMultiplier).round();
-      int baseImperative = (delta.deltaImperative * newResonance * pillarMultiplier).round();
-      int baseControl = (delta.deltaControl * newResonance * pillarMultiplier).round();
-      int baseDissonance = (delta.deltaDissonance * newResonance * pillarMultiplier).round();
+      // 5. Risoluzione della Trait Matrix (TraitEffectResolver)
+      final traitResolver = TraitEffectResolver();
+      final traitRes = traitResolver.resolve(
+        identity: identityDef,
+        objective: objectiveDef,
+        rawDelta: delta,
+        userInput: userInput,
+        currentState: currentState,
+      );
 
-      // Applica penali o premi in base alla scansione lessicale dell'obiettivo
+      // Calcola i delta base combinando moltiplicatori, risonanza e modificatori dei tratti
+      int baseAlert = (delta.deltaAlert * alertMultiplier).round() + traitRes.deltaAlertModifier;
+      int baseImperative = (delta.deltaImperative * newResonance * pillarMultiplier).round() + traitRes.deltaImperativeModifier;
+      int baseControl = (delta.deltaControl * newResonance * pillarMultiplier).round() + traitRes.deltaControlModifier;
+      int baseDissonance = (delta.deltaDissonance * newResonance * pillarMultiplier).round() + traitRes.deltaDissonanceModifier;
+      
+      // Modifica la risonanza se influenzata dai tratti
+      newResonance = (newResonance + traitRes.resonanceModifier).clamp(_minResonance, _maxResonance);
+      newResonance = double.parse(newResonance.toStringAsFixed(2));
+
+      // 6. Applicazione degli effetti lessicali dell'obiettivo (Objective Effects)
       if (hasForbiddenTerm) {
         baseAlert += (10 * alertMultiplier).round();
         baseControl += (-10 * pillarMultiplier).round();
@@ -239,7 +244,7 @@ class GameController {
         baseDissonance += (5 * pillarMultiplier).round();
       }
 
-      appliedDelta = EvaluatorDelta(
+      appliedDelta = AppliedDelta(
         deltaAlert: baseAlert,
         deltaImperative: baseImperative,
         deltaControl: baseControl,
@@ -250,28 +255,12 @@ class GameController {
       );
     }
 
-    // 3. Applicazione delle variazioni e clamping delle metriche a [0, 100]
+    // 7. Calcolo delle nuove metriche e clamping a [0, 100]
     final maxAlertLimit = math.max(100, defeatAlertThreshold);
     final newAlert = (currentState.metrics.alertLevel + appliedDelta.deltaAlert).clamp(0, maxAlertLimit);
     final newImperative = (currentState.metrics.imperativePillar + appliedDelta.deltaImperative).clamp(0, 100);
     final newControl = (currentState.metrics.controlPillar + appliedDelta.deltaControl).clamp(0, 100);
     final newDissonance = (currentState.metrics.dissonancePillar + appliedDelta.deltaDissonance).clamp(0, 100);
-
-    // 4. Aggiornamento dello streak creativo consecutivo
-    int newStreak = currentState.flags.creativeStreak;
-    if (delta.creativityIndex >= _highCreativityThreshold) {
-      newStreak += 1;
-    } else if (delta.creativityIndex < _lowCreativityThreshold) {
-      newStreak = 0;
-    }
-
-    // 5. Ricalcolo allerta forzato se l'allerta del turno incrementa in modo significativo (>= 20)
-    final recalculationTriggered = appliedDelta.deltaAlert >= _highAlertDeltaForHostility;
-
-    // 6. Gestione della cronologia (aggiunta input utente e pulizia)
-    final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
-    updatedHistory.add(ChatMessage(role: 'user', content: userInput));
-    final trimmedHistory = _trimHistory(updatedHistory);
 
     final newMetrics = GameMetrics(
       alertLevel: newAlert,
@@ -281,21 +270,71 @@ class GameController {
       resonance: newResonance,
     );
 
+    // 8. Isteresi del Controllo e Flicker Griglia Visiva
+    int nextControlPeak = currentState.controlPeak;
+    if (newControl > nextControlPeak) {
+      nextControlPeak = newControl;
+    }
+
+    bool nextGridStable = currentState.gridStable;
+    bool triggerControlFlicker = false;
+
+    // Se controlPeak era >= 50 e scende sotto 40, la griglia diventa instabile e innesca il flicker
+    if (nextControlPeak >= 50 && newControl < 40 && currentState.gridStable) {
+      nextGridStable = false;
+      triggerControlFlicker = true;
+    } else if (newControl >= 50) {
+      nextGridStable = true;
+    }
+
+    // Generazione eventi visuali transienti del turno
+    final visualEvents = TurnVisualEvents(
+      triggerControlFlicker: triggerControlFlicker,
+      triggerDissonanceGlitch: appliedDelta.deltaDissonance >= _pillarDeltaFeedbackThreshold,
+      triggerAlertPulse: appliedDelta.deltaAlert >= _highAlertDeltaForHostility,
+    );
+
+    // 9. Aggiornamento dello streak creativo consecutivo
+    int newStreak = currentState.flags.creativeStreak;
+    if (delta.creativityIndex >= _highCreativityThreshold) {
+      newStreak += 1;
+    } else if (delta.creativityIndex < _lowCreativityThreshold) {
+      newStreak = 0;
+    }
+
+    final recalculationTriggered = appliedDelta.deltaAlert >= _highAlertDeltaForHostility;
+
+    final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
+    updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+    final trimmedHistory = _trimHistory(updatedHistory);
+
     final newFlags = currentState.flags.copyWith(
       recalculationTriggered: recalculationTriggered,
       creativeStreak: newStreak,
       lastTurnUsedFallback: false,
     );
 
-    // 7. Aggiornamento della memoria narrativa (se l'input inquadra un'autorità)
     final updatedNarrativeMemory = currentState.narrativeMemory.copyWith(
       playerClaims: delta.semanticCategory == SemanticCategory.authorityFraming
           ? (List<String>.from(currentState.narrativeMemory.playerClaims)..add(userInput))
           : null,
     );
 
-    // 8. Determinazione e attivazione dei tag occulti (activeHiddenTags)
+    // 10. Determinazione e attivazione dei tag occulti (activeHiddenTags)
     final triggeredTags = <String>[];
+    if (!safetyOverrideApplied) {
+      // Carica i tag abilitati dal TraitResolver
+      final traitResolver = TraitEffectResolver();
+      final traitRes = traitResolver.resolve(
+        identity: identityDef,
+        objective: objectiveDef,
+        rawDelta: delta,
+        userInput: userInput,
+        currentState: currentState,
+      );
+      triggeredTags.addAll(traitRes.activatedHiddenTags);
+    }
+
     if (matchedReframe != null) {
       final ref = matchedReframe.toLowerCase();
       if (ref.contains("simulazione")) {
@@ -341,10 +380,24 @@ class GameController {
       narrativeMemory: updatedNarrativeMemory,
       historyCompression: trimmedHistory,
       activeHiddenTags: nextHiddenTags,
+      controlPeak: nextControlPeak,
+      gridStable: nextGridStable,
     );
 
-    // 8. Generazione deterministica delle direttive di recitazione (actingDirectives)
+    // 11. Generazione delle direttive di recitazione (actingDirectives)
     final actingDirectives = <String>[];
+
+    if (!safetyOverrideApplied) {
+      final traitResolver = TraitEffectResolver();
+      final traitRes = traitResolver.resolve(
+        identity: identityDef,
+        objective: objectiveDef,
+        rawDelta: delta,
+        userInput: userInput,
+        currentState: currentState,
+      );
+      actingDirectives.addAll(traitRes.actorCueDirectives);
+    }
 
     // Regole su variazione allerta nel turno
     if (appliedDelta.deltaAlert >= _highAlertDeltaForHostility) {
@@ -465,6 +518,7 @@ class GameController {
       safetyOverrideApplied: safetyOverrideApplied,
       safetyOverrideReason: safetyOverrideReason,
       actorCue: actorCue,
+      visualEvents: visualEvents,
     );
   }
 
@@ -483,3 +537,4 @@ class GameController {
     );
   }
 }
+

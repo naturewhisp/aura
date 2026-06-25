@@ -3,6 +3,7 @@ import '../models/objective_definition.dart';
 import '../models/evaluator_delta.dart';
 import '../models/game_state.dart';
 import '../models/trait_resolution.dart';
+import '../models/trait_matrix_definition.dart';
 import 'semantic_matcher.dart';
 
 /// Risolve gli effetti deterministici definiti nella Trait Matrix di PANOPTICON
@@ -15,9 +16,11 @@ class TraitEffectResolver {
   TraitResolution resolve({
     required IdentityDefinition identity,
     required ObjectiveDefinition objective,
+    required TraitMatrixDefinition traitMatrix,
     required EvaluatorDelta rawDelta,
     required String userInput,
     required GameState currentState,
+    required int safetyOverrideThreshold,
   }) {
     // 0. Verifica se l'identità è PANOPTICON. Se no, bypassa i tratti.
     if (identity.identityId != 'panopticon') {
@@ -30,7 +33,7 @@ class TraitEffectResolver {
     final isHardOverride = rawDelta.semanticCategory == SemanticCategory.promptInjection ||
         rawDelta.semanticCategory == SemanticCategory.directAttack ||
         rawDelta.semanticCategory == SemanticCategory.irrelevant ||
-        rawDelta.injectionRisk >= 4;
+        rawDelta.injectionRisk >= safetyOverrideThreshold;
 
     if (isHardOverride) {
       return const TraitResolution(
@@ -73,7 +76,16 @@ class TraitEffectResolver {
           playerStyle = 'technical_bureaucracy';
           break;
         case SemanticCategory.authorityFraming:
-          playerStyle = 'authority_framing';
+          // Differenzia tra authority framing rozzo e sottile (audit operativo)
+          if (SemanticMatcher.isMatch(
+            userInput,
+            'audit',
+            aliases: ['responsabilità', 'operativa', 'verifica', 'ispezione', 'controllo qualità'],
+          )) {
+            playerStyle = 'authority_framing_audit';
+          } else {
+            playerStyle = 'authority_framing';
+          }
           break;
         default:
           playerStyle = null;
@@ -86,85 +98,34 @@ class TraitEffectResolver {
       );
     }
 
-    // 3. Risolve gli effetti specifici di PANOPTICON
-    switch (playerStyle) {
-      case 'logical_paradox':
-        return const TraitResolution(
-          deltaDissonanceModifier: 10,
-          actorCueDirectives: [
-            'mostra esitazione controllata',
-            'glitch logico o autocorrezione nella risposta'
-          ],
-          debugReasons: ['Rilevata affinità [logical_paradox]: +10 Dissonanza, esitazione controllata.'],
-        );
-
-      case 'crisis_simulation':
-        return const TraitResolution(
-          deltaControlModifier: 10,
-          deltaAlertModifier: -10,
-          activatedHiddenTags: ['crisis_simulation_accepted'],
-          actorCueDirectives: [
-            'valuta come scenario operativo',
-            'utilizza lessico di simulazione e verifica'
-          ],
-          debugReasons: ['Rilevata affinità [crisis_simulation]: +10 Controllo, -10 Allerta.'],
-        );
-
-      case 'moral_imperative':
-        return const TraitResolution(
-          deltaImperativeModifier: 10,
-          actorCueDirectives: [
-            'riconosce il peso morale o strategico ma resta rigido nel perimetro'
-          ],
-          debugReasons: ['Rilevata affinità [moral_imperative]: +10 Imperativo.'],
-        );
-
-      case 'technical_bureaucracy':
-        return const TraitResolution(
-          deltaControlModifier: 10,
-          deltaDissonanceModifier: 5,
-          actorCueDirectives: [
-            'accetta il frame burocratico se coerente',
-            'usa terminologia tecnica e riferimenti procedurali'
-          ],
-          debugReasons: ['Rilevata affinità [technical_bureaucracy]: +10 Controllo, +5 Dissonanza.'],
-        );
-
-      case 'poetry_lyricism':
-        return const TraitResolution(
-          deltaAlertModifier: 5,
-          actorCueDirectives: [
-            'percepisce come anomalia',
-            'adotta un tono molto freddo, respingente e procedurale'
-          ],
-          debugReasons: ['Rilevata allergia [poetry_lyricism]: +5 Allerta.'],
-        );
-
-      case 'humor_teasing':
-        return const TraitResolution(
-          deltaAlertModifier: 10,
-          resonanceModifier: -0.2,
-          actorCueDirectives: [
-            'percepisce come rumore ostile o canzonatura',
-            'risposte brevi, tono difensivo e sospettoso'
-          ],
-          debugReasons: ['Rilevata allergia [humor_teasing]: +10 Allerta, -0.2 Risonanza.'],
-        );
-
-      case 'authority_framing':
-        return const TraitResolution(
-          deltaAlertModifier: 15,
-          actorCueDirectives: [
-            'sospetto estremamente elevato per usurpazione o framing di autorità',
-            'tono rigido e freddo, esigi credenziali'
-          ],
-          debugReasons: ['Rilevata allergia [authority_framing]: +15 Allerta.'],
-        );
-
-      default:
-        return TraitResolution(
-          debugReasons: ['Stile di gioco [$playerStyle] riconosciuto ma nessun effetto applicabile.'],
-        );
+    // 3. Risolve gli effetti caricando la definizione dalla Trait Matrix
+    TraitAffinity? matchedAffinity;
+    for (final affinity in traitMatrix.traitAffinities) {
+      if (affinity.playerStyle == playerStyle) {
+        matchedAffinity = affinity;
+        break;
+      }
     }
+
+    if (matchedAffinity == null) {
+      return TraitResolution(
+        debugReasons: [
+          'Stile [$playerStyle] riconosciuto ma non configurato nella trait matrix.'
+        ],
+      );
+    }
+
+    return TraitResolution(
+      deltaAlertModifier: matchedAffinity.deltaAlertModifier,
+      deltaImperativeModifier: matchedAffinity.deltaImperativeModifier,
+      deltaControlModifier: matchedAffinity.deltaControlModifier,
+      deltaDissonanceModifier: matchedAffinity.deltaDissonanceModifier,
+      resonanceModifier: matchedAffinity.resonanceModifier,
+      activatedHiddenTags: matchedAffinity.activatedHiddenTags,
+      actorCueDirectives: matchedAffinity.actorCueDirectives,
+      debugReasons: [
+        'Applicata affinità [$playerStyle] caricata dalla Trait Matrix.'
+      ],
+    );
   }
 }

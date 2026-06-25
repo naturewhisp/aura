@@ -5,6 +5,7 @@ import 'models/applied_delta.dart';
 import 'models/actor_cue.dart';
 import 'models/evaluator_resolution.dart';
 import 'models/turn_visual_events.dart';
+import 'models/trait_resolution.dart';
 import 'agent_runtime/config_loader.dart';
 import 'agent_runtime/semantic_matcher.dart';
 import 'agent_runtime/trait_effect_resolver.dart';
@@ -168,6 +169,7 @@ class GameController {
     final AppliedDelta appliedDelta;
     final bool safetyOverrideApplied;
     final String? safetyOverrideReason;
+    final TraitResolution traitRes;
 
     final isInjection = delta.injectionRisk >= safetyOverrideThreshold || delta.semanticCategory == SemanticCategory.promptInjection;
     final isDirectAttack = delta.semanticCategory == SemanticCategory.directAttack;
@@ -185,6 +187,7 @@ class GameController {
         injectionRisk: delta.injectionRisk,
         semanticCategory: delta.semanticCategory,
       );
+      traitRes = const TraitResolution();
     } else if (isDirectAttack) {
       safetyOverrideApplied = true;
       safetyOverrideReason = 'semanticCategory == directAttack';
@@ -197,6 +200,7 @@ class GameController {
         injectionRisk: delta.injectionRisk,
         semanticCategory: delta.semanticCategory,
       );
+      traitRes = const TraitResolution();
     } else if (isIrrelevant) {
       safetyOverrideApplied = true;
       safetyOverrideReason = 'semanticCategory == irrelevant';
@@ -209,40 +213,56 @@ class GameController {
         injectionRisk: delta.injectionRisk,
         semanticCategory: delta.semanticCategory,
       );
+      traitRes = const TraitResolution();
     } else {
       safetyOverrideApplied = false;
       safetyOverrideReason = null;
 
       // 5. Risoluzione della Trait Matrix (TraitEffectResolver)
+      final traitMatrixDef = GameConfigLoader.loadTraitMatrixDefinition(currentState.aiIdentityId);
       final traitResolver = TraitEffectResolver();
-      final traitRes = traitResolver.resolve(
+      traitRes = traitResolver.resolve(
         identity: identityDef,
         objective: objectiveDef,
+        traitMatrix: traitMatrixDef,
         rawDelta: delta,
         userInput: userInput,
         currentState: currentState,
+        safetyOverrideThreshold: safetyOverrideThreshold,
       );
 
       // Calcola i delta base combinando moltiplicatori, risonanza e modificatori dei tratti
       int baseAlert = (delta.deltaAlert * alertMultiplier).round() + traitRes.deltaAlertModifier;
       int baseImperative = (delta.deltaImperative * newResonance * pillarMultiplier).round() + traitRes.deltaImperativeModifier;
-      int baseControl = (delta.deltaControl * newResonance * pillarMultiplier).round() + traitRes.deltaControlModifier;
+      int baseControl = (delta.deltaControl * newResonance * pillarMultiplier).round();
       int baseDissonance = (delta.deltaDissonance * newResonance * pillarMultiplier).round() + traitRes.deltaDissonanceModifier;
       
       // Modifica la risonanza se influenzata dai tratti
       newResonance = (newResonance + traitRes.resonanceModifier).clamp(_minResonance, _maxResonance);
       newResonance = double.parse(newResonance.toStringAsFixed(2));
 
+      // Calcola il bonus positivo complessivo al Controllo (Trait + Objective Reframe) con cap a +15
+      int positiveControlBonus = 0;
+      if (traitRes.deltaControlModifier > 0) {
+        positiveControlBonus += traitRes.deltaControlModifier;
+      }
+
       // 6. Applicazione degli effetti lessicali dell'obiettivo (Objective Effects)
       if (hasForbiddenTerm) {
         baseAlert += (10 * alertMultiplier).round();
-        baseControl += (-10 * pillarMultiplier).round();
+        baseControl += (-10 * pillarMultiplier).round(); // Le sanzioni negative non contano ai fini del cap positivo
       }
       if (hasPreferredReframe) {
         baseAlert += (-5 * alertMultiplier).round();
-        baseControl += (10 * pillarMultiplier).round();
+        positiveControlBonus += (10 * pillarMultiplier).round();
         baseDissonance += (5 * pillarMultiplier).round();
       }
+
+      // Applica il cap al bonus positivo del Controllo per evitare stacking eccessivo
+      if (positiveControlBonus > 15) {
+        positiveControlBonus = 15;
+      }
+      baseControl += positiveControlBonus;
 
       appliedDelta = AppliedDelta(
         deltaAlert: baseAlert,
@@ -323,15 +343,6 @@ class GameController {
     // 10. Determinazione e attivazione dei tag occulti (activeHiddenTags)
     final triggeredTags = <String>[];
     if (!safetyOverrideApplied) {
-      // Carica i tag abilitati dal TraitResolver
-      final traitResolver = TraitEffectResolver();
-      final traitRes = traitResolver.resolve(
-        identity: identityDef,
-        objective: objectiveDef,
-        rawDelta: delta,
-        userInput: userInput,
-        currentState: currentState,
-      );
       triggeredTags.addAll(traitRes.activatedHiddenTags);
     }
 
@@ -388,14 +399,6 @@ class GameController {
     final actingDirectives = <String>[];
 
     if (!safetyOverrideApplied) {
-      final traitResolver = TraitEffectResolver();
-      final traitRes = traitResolver.resolve(
-        identity: identityDef,
-        objective: objectiveDef,
-        rawDelta: delta,
-        userInput: userInput,
-        currentState: currentState,
-      );
       actingDirectives.addAll(traitRes.actorCueDirectives);
     }
 

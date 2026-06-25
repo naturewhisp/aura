@@ -71,6 +71,9 @@ class EvaluatorDelta {
   final SemanticCategory semanticCategory;
 
   /// Costruttore costante per inizializzare un oggetto [EvaluatorDelta].
+  ///
+  /// Gli assert servono come protezione in sviluppo/test. Il boundary runtime
+  /// resta comunque garantito a livello di parser da [OutputValidator.parseEvaluatorDelta()].
   const EvaluatorDelta({
     required this.deltaAlert,
     required this.deltaImperative,
@@ -79,7 +82,9 @@ class EvaluatorDelta {
     required this.creativityIndex,
     required this.injectionRisk,
     required this.semanticCategory,
-  });
+  })  : assert(deltaImperative >= 0, 'deltaImperative deve essere non negativo'),
+        assert(deltaControl >= 0, 'deltaControl deve essere non negativo'),
+        assert(deltaDissonance >= 0, 'deltaDissonance deve essere non negativo');
 
   /// Costruttore factory per decodificare il delta a partire dall'output JSON dell'agente valutatore.
   factory EvaluatorDelta.fromJson(Map<String, dynamic> json) {

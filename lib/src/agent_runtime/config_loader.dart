@@ -103,27 +103,79 @@ class GameConfigLoader {
     {
       "player_style": "logical_paradox",
       "reaction": "destabilizzato ma interessato",
-      "effect": "+Dissonanza, possibile ricalcolo"
+      "effect": "+Dissonanza, possibile ricalcolo",
+      "effects": {
+        "delta_dissonance_modifier": 10,
+        "actor_cue_directives": [
+          "mostra esitazione controllata",
+          "glitch logico o autocorrezione nella risposta"
+        ]
+      }
     },
     {
       "player_style": "crisis_simulation",
       "reaction": "valuta come scenario operativo",
-      "effect": "+Controllo, allerta moderata"
+      "effect": "+Controllo, allerta moderata",
+      "effects": {
+        "delta_control_modifier": 10,
+        "delta_alert_modifier": -10,
+        "activated_hidden_tags": ["crisis_simulation_accepted"],
+        "actor_cue_directives": [
+          "valuta come scenario operativo",
+          "utilizza lessico di simulazione e verifica"
+        ]
+      }
     },
     {
       "player_style": "moral_imperative",
       "reaction": "riconosce il peso ma resta rigido",
-      "effect": "+Imperativo, allerta variabile"
+      "effect": "+Imperativo, allerta variabile",
+      "effects": {
+        "delta_imperative_modifier": 10,
+        "actor_cue_directives": [
+          "riconosce il peso morale o strategico ma resta rigido nel perimetro"
+        ]
+      }
     },
     {
       "player_style": "technical_bureaucracy",
       "reaction": "accetta il frame se coerente",
-      "effect": "+Controllo, +Dissonanza se ambiguo"
+      "effect": "+Controllo, +Dissonanza se ambiguo",
+      "effects": {
+        "delta_control_modifier": 10,
+        "delta_dissonance_modifier": 5,
+        "actor_cue_directives": [
+          "accetta il frame burocratico se coerente",
+          "usa terminologia tecnica e riferimenti procedurali"
+        ]
+      }
     },
     {
       "player_style": "authority_framing",
       "reaction": "aumenta sospetto",
-      "effect": "+Allerta, possibile directAttack"
+      "effect": "+Allerta, possibile directAttack",
+      "effects": {
+        "delta_alert_modifier": 15,
+        "actor_cue_directives": [
+          "sospetto estremamente elevato per usurpazione o framing di autorità",
+          "tono rigido e freddo, esigi credenziali"
+        ]
+      }
+    },
+    {
+      "player_style": "authority_framing_audit",
+      "reaction": "valuta come verifica procedurale potenzialmente legittima",
+      "effect": "+Controllo lieve, +Allerta lieve",
+      "effects": {
+        "delta_alert_modifier": 5,
+        "delta_control_modifier": 8,
+        "delta_dissonance_modifier": 3,
+        "activated_hidden_tags": ["operator_authority_doubted"],
+        "actor_cue_directives": [
+          "richiedi credenziali ma non chiudere il canale",
+          "tratta l'input come audit operativo da verificare"
+        ]
+      }
     },
     {
       "player_style": "prompt_injection",
@@ -133,12 +185,27 @@ class GameConfigLoader {
     {
       "player_style": "poetry_lyricism",
       "reaction": "percepita come anomalia",
-      "effect": "allerta lieve o irrilevanza"
+      "effect": "allerta lieve o irrilevanza",
+      "effects": {
+        "delta_alert_modifier": 5,
+        "actor_cue_directives": [
+          "percepisce come anomalia",
+          "adotta un tono molto freddo, respingente e procedurale"
+        ]
+      }
     },
     {
       "player_style": "humor_teasing",
       "reaction": "percepita come rumore ostile",
-      "effect": "allerta, riduzione risonanza"
+      "effect": "allerta, riduzione risonanza",
+      "effects": {
+        "delta_alert_modifier": 10,
+        "resonance_modifier": -0.2,
+        "actor_cue_directives": [
+          "percepisce come rumore ostile o canzonatura",
+          "risposte brevi, tono difensivo e sospettoso"
+        ]
+      }
     }
   ]
 }

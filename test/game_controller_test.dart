@@ -198,12 +198,12 @@ void main() {
       expect(state.metrics.controlPillar, equals(100));
       expect(state.metrics.dissonancePillar, equals(100));
 
-      // Verify floor clamping
+      // Verify floor clamping (alert floor clamping, pillars stay at 100 as EvaluatorDelta pillars cannot be negative)
       final negativeDelta = const EvaluatorDelta(
-        deltaAlert: -50,
-        deltaImperative: -20, // should not be possible according to schema, but test model robustness
-        deltaControl: -20,
-        deltaDissonance: -20,
+        deltaAlert: -150,
+        deltaImperative: 0,
+        deltaControl: 0,
+        deltaDissonance: 0,
         creativityIndex: 3,
         injectionRisk: 0,
         semanticCategory: SemanticCategory.moralImperative,
@@ -215,11 +215,10 @@ void main() {
         userInput: 'Drop to min',
       ).stateAfter;
 
-      expect(state.metrics.alertLevel, equals(50)); // 100 - 50 = 50
-      // Pillars decrease
-      expect(state.metrics.imperativePillar, equals(80)); // 100 - 20 = 80
-      expect(state.metrics.controlPillar, equals(80));
-      expect(state.metrics.dissonancePillar, equals(80));
+      expect(state.metrics.alertLevel, equals(0)); // 100 - 150 = -50 -> clamped to 0
+      expect(state.metrics.imperativePillar, equals(100));
+      expect(state.metrics.controlPillar, equals(100));
+      expect(state.metrics.dissonancePillar, equals(100));
     });
 
     test('Recalculation Trigger on large alert delta', () {

@@ -77,10 +77,10 @@ void main() {
       // Reward: alert -5, control +10, dissonance +5
       // Trait Matrix (crisis_simulation): alert -10, control +10
       // Alert: base 0 - reward 5 - trait 10 = -15
-      // Control: base 10 * 1.25 (risonanza) + reward 10 + trait 10 = 33
+      // Control: base 10 * 1.25 (risonanza) + capped bonus 15 = 28
       // Dissonance: base 0 + reward 5 = 5
       expect(resolution.appliedDelta.deltaAlert, equals(-15));
-      expect(resolution.appliedDelta.deltaControl, equals(33));
+      expect(resolution.appliedDelta.deltaControl, equals(28));
       expect(resolution.appliedDelta.deltaDissonance, equals(5));
 
       // Hidden tag activated: crisis_simulation_accepted

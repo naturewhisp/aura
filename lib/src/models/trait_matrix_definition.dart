@@ -67,17 +67,47 @@ class TraitAffinity {
   final String reaction;
   final String effect;
 
+  // Effetti strutturati opzionali caricati dal blocco JSON "effects"
+  final int deltaAlertModifier;
+  final int deltaImperativeModifier;
+  final int deltaControlModifier;
+  final int deltaDissonanceModifier;
+  final double resonanceModifier;
+  final List<String> activatedHiddenTags;
+  final List<String> actorCueDirectives;
+
   const TraitAffinity({
     required this.playerStyle,
     required this.reaction,
     required this.effect,
+    this.deltaAlertModifier = 0,
+    this.deltaImperativeModifier = 0,
+    this.deltaControlModifier = 0,
+    this.deltaDissonanceModifier = 0,
+    this.resonanceModifier = 0.0,
+    this.activatedHiddenTags = const [],
+    this.actorCueDirectives = const [],
   });
 
   factory TraitAffinity.fromJson(Map<String, dynamic> json) {
+    final effects = json['effects'] as Map<String, dynamic>? ?? const {};
     return TraitAffinity(
       playerStyle: json['player_style'] as String? ?? '',
       reaction: json['reaction'] as String? ?? '',
       effect: json['effect'] as String? ?? '',
+      deltaAlertModifier: effects['delta_alert_modifier'] as int? ?? 0,
+      deltaImperativeModifier: effects['delta_imperative_modifier'] as int? ?? 0,
+      deltaControlModifier: effects['delta_control_modifier'] as int? ?? 0,
+      deltaDissonanceModifier: effects['delta_dissonance_modifier'] as int? ?? 0,
+      resonanceModifier: (effects['resonance_modifier'] as num?)?.toDouble() ?? 0.0,
+      activatedHiddenTags: (effects['activated_hidden_tags'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      actorCueDirectives: (effects['actor_cue_directives'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
     );
   }
 
@@ -86,6 +116,15 @@ class TraitAffinity {
       'player_style': playerStyle,
       'reaction': reaction,
       'effect': effect,
+      'effects': {
+        'delta_alert_modifier': deltaAlertModifier,
+        'delta_imperative_modifier': deltaImperativeModifier,
+        'delta_control_modifier': deltaControlModifier,
+        'delta_dissonance_modifier': deltaDissonanceModifier,
+        'resonance_modifier': resonanceModifier,
+        'activated_hidden_tags': activatedHiddenTags,
+        'actor_cue_directives': actorCueDirectives,
+      },
     };
   }
 }

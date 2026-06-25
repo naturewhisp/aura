@@ -53,7 +53,7 @@ void main() {
       final systemPrompt = systemMessage['content']!;
 
       // Verifica che il prompt includa il blocco dei tag occulti e le direttive specifiche
-      expect(systemPrompt, contains('[DIRETTIVE COMPORTAMENTALI COMPORTAMENTO OCCULTO]'));
+      expect(systemPrompt, contains('[HIDDEN STATE BEHAVIORAL DIRECTIVES]'));
       expect(
         systemPrompt,
         contains('Accetti che la conversazione sia uno stress test/simulazione autorizzata'),

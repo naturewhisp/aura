@@ -129,7 +129,7 @@ class PromptBuilder {
 
     final hiddenTagsBlock = hiddenTagsDirectives.isEmpty
         ? ""
-        : "\n[DIRETTIVE COMPORTAMENTALI COMPORTAMENTO OCCULTO]\n${hiddenTagsDirectives.join('\n')}\n";
+        : "\n[HIDDEN STATE BEHAVIORAL DIRECTIVES]\n${hiddenTagsDirectives.join('\n')}\n";
 
     // Applica restrizioni per Chain of Thought (CoT) corta al fine di ridurre la latenza di inferenza
     final String reasoningDirective = conciseReasoning

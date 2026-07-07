@@ -480,7 +480,12 @@ Responsabilità principali:
 - ConfigLoader asset-aware;
 - SemanticMatcher normalizzato;
 - victory gate e bilanciamento direct-push difficulty-aware;
-- cap dinamico dei pilastri;
+- cap dinamico dei pilastri (maxPositivePillarGainPerTurn);
+- sanzione di allerta/risonanza e blocco selettivo dei tag per riferimenti diretti (meta-reference);
+- floor minimo di allerta (directPushAlertFloor) per direct push e termini vietati;
+- gate lessicale e inasprimento della soglia (> 60) per human_factor_reframed;
+- eccezioni procedurali (protocol_exception_admitted) sbloccabili narrativamente;
+- telemetria ReplayEntry arricchita con eventId, eventType, gameplayTurnId, sequenceId;
 - replay arricchito con identity/objective/hidden tags.
 ```
 

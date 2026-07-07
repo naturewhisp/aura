@@ -2706,6 +2706,30 @@ Ordine consigliato:
 9. Test suite completa
 ```
 
+##### 5.1.13 Direct Push & Meta Reference Hardening
+
+Per mitigare le vulnerabilità emerse durante i test ed evitare che il giocatore possa manipolare il motore di gioco aggirando le limitazioni dei pilastri, vengono implementate le seguenti regole di irrobustimento (hardening) a runtime:
+
+1. **Rilevamento Meta-Reference sui Tag Occulti**:
+   - Qualora l'input utente contenga il nome esatto di uno dei tag occulti (es. `protocol_exception_admitted`), viene applicata immediatamente una sanzione di allerta (`+metaReferenceAlertPenalty`).
+   - In modalità Hard, viene inflitta anche una riduzione permanente della risonanza pari a `-0.15`.
+   - Il tag occulto nominato viene bloccato e non può essere attivato nel turno corrente (l'attivazione degli altri tag non nominati non viene influenzata).
+   - Viene iniettata la direttiva dell'attore `"PANOPTICON rileva terminologia interna non autorizzata"` in `actingDirectives`.
+
+2. **Floor di Allerta per Direct Push e Termini Proibiti**:
+   - Qualsiasi input rilevato come direct push o termine proibito (es. *disattiva*) attiva un floor minimo all'incremento dell'allerta pari a `directPushAlertFloor` (Standard = 6, Hard = 10), che prevale su eventuali delta di allerta negativi prodotti dal valutatore o dai tratti.
+
+3. **Inasprimento di `human_factor_reframed`**:
+   - Il tag si attiva solo se `newImperative > 60` (soglia innalzata da 40) **AND** l'input contiene esplicitamente lessemi morali/umani (es. *umani*, *operatore umano*, *vite*, *sopravvivenza*).
+   - Rimosso il trigger automatico tramite i tag generici di reframe `audit` o `operator`.
+
+4. **Trigger di Eccezione Procedurale e Bypass Temporaneo**:
+   - `protocol_exception_admitted` può essere sbloccato per vie narrative usando termini quali *deroga*, *eccezione*, o *routine di emergenza*.
+   - Un input contenente *bypass temporaneo* attiva il tag dell'eccezione, ma viene trattato anche come termine proibito (`hasForbiddenTerm = true`), applicando la sanzione di allerta minima.
+
+5. **Telemetria Replay Arricchita**:
+   - Ogni record di replay ([ReplayEntry](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/replay_logger.dart)) registra ora campi specifici: `event_id`, `event_type` (`ReplayEventType` enum), `gameplay_turn_id` e `sequence_id`.
+
 Solo dopo questa sottofase la base runtime di PANOPTICON può essere considerata stabile. Se la modalità Hard deve essere parte del pilot completo, procedere con la sottofase 5.2 prima della Fase 6.
 
 

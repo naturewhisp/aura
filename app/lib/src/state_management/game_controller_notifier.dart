@@ -823,6 +823,11 @@ class GameControllerNotifier extends ChangeNotifier {
           requiredVictoryHiddenTags: preset.requiredVictoryHiddenTags,
           maxPositivePillarGainPerTurn: preset.maxPositivePillarGainPerTurn,
           difficultyLevel: preset.difficultyLevel,
+          minAveragePillarsForVictory: preset.minAveragePillarsForVictory,
+          minSinglePillarForVictory: preset.minSinglePillarForVictory,
+          resonanceIncrement: preset.resonanceIncrement,
+          resonanceMax: preset.resonanceMax,
+          maxAlertRecoveryPerTurn: preset.maxAlertRecoveryPerTurn,
         );
         
         gameStateNotifier.value = state;
@@ -871,6 +876,11 @@ class GameControllerNotifier extends ChangeNotifier {
       requiredVictoryHiddenTags: preset.requiredVictoryHiddenTags,
       maxPositivePillarGainPerTurn: preset.maxPositivePillarGainPerTurn,
       difficultyLevel: preset.difficultyLevel,
+      minAveragePillarsForVictory: preset.minAveragePillarsForVictory,
+      minSinglePillarForVictory: preset.minSinglePillarForVictory,
+      resonanceIncrement: preset.resonanceIncrement,
+      resonanceMax: preset.resonanceMax,
+      maxAlertRecoveryPerTurn: preset.maxAlertRecoveryPerTurn,
     );
     
     final state = GameState.initial(

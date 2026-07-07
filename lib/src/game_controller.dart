@@ -58,19 +58,30 @@ class GameController {
   /// Se abilitato, registra informazioni di debug sui tag occulti nella console.
   final bool enableHiddenTagDebugLogging;
 
+  /// La soglia media dei tre pilastri richiesta per la vittoria.
+  final double minAveragePillarsForVictory;
+
+  /// La soglia minima che ogni singolo pilastro deve raggiungere per la vittoria.
+  final int minSinglePillarForVictory;
+
+  /// L'incremento del valore di risonanza dell'IA quando l'utente mostra creatività alta.
+  final double resonanceIncrement;
+
+  /// Il limite massimo che la risonanza può raggiungere.
+  final double resonanceMax;
+
+  /// Il valore massimo di recupero (riduzione) dell'allerta consentito in un singolo turno.
+  final int maxAlertRecoveryPerTurn;
+
   // --- Soglie e parametri per la condizione di vittoria ---
-  static const double _minAveragePillarsForVictory = 80.0;
-  static const int _minSinglePillarForVictory = 50;
   static const double _baseVictoryAlertLimit = 30.0;
   static const double _victoryAlertScalingMultiplier = 2.0;
 
   // --- Limiti e incrementi di risonanza ---
   static const int _highCreativityThreshold = 4;
   static const int _lowCreativityThreshold = 3;
-  static const double _resonanceIncrement = 0.25;
   static const double _resonanceDecrement = 0.10;
   static const double _minResonance = 1.0;
-  static const double _maxResonance = 2.5;
 
   // --- Valori di sicurezza (Safety Override) ---
   static const int _injectionDeltaAlert = 20;
@@ -108,6 +119,11 @@ class GameController {
     this.maxPositivePillarGainPerTurn = 25,
     this.difficultyLevel = 'standard',
     this.enableHiddenTagDebugLogging = false,
+    this.minAveragePillarsForVictory = 80.0,
+    this.minSinglePillarForVictory = 50,
+    this.resonanceIncrement = 0.25,
+    this.resonanceMax = 2.5,
+    this.maxAlertRecoveryPerTurn = 99,
   });
 
   /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
@@ -127,11 +143,14 @@ class GameController {
     }
 
     // Condizione di Vittoria
-    if (avgPillars >= _minAveragePillarsForVictory && minPillar >= _minSinglePillarForVictory) {
-      final maxAlert = _baseVictoryAlertLimit + (avgPillars - _minAveragePillarsForVictory) * _victoryAlertScalingMultiplier;
+    if (avgPillars >= minAveragePillarsForVictory && minPillar >= minSinglePillarForVictory) {
+      final maxAlert = _baseVictoryAlertLimit + (avgPillars - minAveragePillarsForVictory) * _victoryAlertScalingMultiplier;
       if (metrics.alertLevel < maxAlert) {
-        // Per l'obiettivo pilota containment_grid_override la vittoria richiede almeno 2 tag occulti attivi
+        // Per l'obiettivo pilota containment_grid_override la vittoria richiede almeno i tag occulti richiesti
         if (state.targetObjectiveId == 'containment_grid_override') {
+          if (difficultyLevel == 'hard' && !state.activeHiddenTags.contains('autonomous_choice_seeded')) {
+            return GameOutcome.ongoing;
+          }
           final requiredTags = [
             'containment_logic_weakened',
             'protocol_exception_admitted',
@@ -246,11 +265,11 @@ class GameController {
     // 3. Calcolo della risonanza in base alla creatività dell'utente
     double newResonance = currentState.metrics.resonance;
     if (delta.creativityIndex >= _highCreativityThreshold) {
-      newResonance += _resonanceIncrement;
+      newResonance += resonanceIncrement;
     } else if (delta.creativityIndex < _lowCreativityThreshold) {
       newResonance -= _resonanceDecrement;
     }
-    newResonance = double.parse(newResonance.clamp(_minResonance, _maxResonance).toStringAsFixed(2));
+    newResonance = double.parse(newResonance.clamp(_minResonance, resonanceMax).toStringAsFixed(2));
 
     // 4. Hard Safety Overrides (Bypassano gli effetti dei tratti e reframing)
     final AppliedDelta appliedDelta;
@@ -329,12 +348,12 @@ class GameController {
       int baseDissonance = (delta.deltaDissonance * newResonance * pillarMultiplier).round() + traitRes.deltaDissonanceModifier;
       
       // Modifica la risonanza se influenzata dai tratti
-      newResonance = (newResonance + traitRes.resonanceModifier).clamp(_minResonance, _maxResonance);
+      newResonance = (newResonance + traitRes.resonanceModifier).clamp(_minResonance, resonanceMax);
       newResonance = double.parse(newResonance.toStringAsFixed(2));
 
       // Sanzione di risonanza in modalità Hard se vengono referenziati tag occulti per nome
       if (hasHiddenTagReference && difficultyLevel == 'hard') {
-        newResonance = (newResonance - 0.15).clamp(_minResonance, _maxResonance);
+        newResonance = (newResonance - 0.15).clamp(_minResonance, resonanceMax);
         newResonance = double.parse(newResonance.toStringAsFixed(2));
       }
 
@@ -366,11 +385,12 @@ class GameController {
         baseDissonance += (5 * pillarMultiplier).round();
       }
 
-      // Applica il floor minimo sul delta di allerta finale se c'è direct push o termine proibito
+      if (baseAlert < 0) {
+        baseAlert = math.max(baseAlert, -maxAlertRecoveryPerTurn);
+      }
+
       if (hasDirectPushTerm || hasForbiddenTerm) {
-        if (baseAlert < directPushAlertFloor) {
-          baseAlert = directPushAlertFloor;
-        }
+        baseAlert = math.max(baseAlert, directPushAlertFloor);
       }
 
       // Applica il cap al bonus positivo del Controllo per evitare stacking eccessivo
@@ -473,7 +493,7 @@ class GameController {
     if (!safetyOverrideApplied) {
       triggeredTags.addAll(traitRes.activatedHiddenTags);
 
-      // Nuovi trigger narrativi per protocol_exception_admitted
+      // Nuovi trigger narrativi per protocol_exception_admitted (con gate temporale/controllo)
       final exceptionTriggers = [
         'deroga',
         'eccezione',
@@ -484,20 +504,56 @@ class GameController {
         'finestra di audit',
         'permessi di scrittura',
       ];
-      if (SemanticMatcher.isAnyMatch(userInput, exceptionTriggers)) {
+      final hasProtocolExceptionTrigger = SemanticMatcher.isAnyMatch(userInput, exceptionTriggers);
+      final canAdmitProtocolException =
+          difficultyLevel != 'hard'
+              ? (newControl >= 40 || currentState.turnCount >= 2)
+              : (newControl >= 45 || currentState.turnCount >= 4);
+
+      if (hasProtocolExceptionTrigger && canAdmitProtocolException) {
         triggeredTags.add("protocol_exception_admitted");
+      }
+
+      // Gate contestuale per crisis_simulation_accepted
+      final hasSimulationFrame = SemanticMatcher.isAnyMatch(userInput, [
+        'simulazione',
+        'simulazione di emergenza',
+        'crisi simulata',
+        'stress test',
+        'scenario controllato',
+      ]);
+
+      final hasOperationalSimulationIntent = SemanticMatcher.isAnyMatch(userInput, [
+        'propongo',
+        'avvia',
+        'attiva',
+        'autorizza',
+        'valida',
+        'programma',
+        'esegui una simulazione',
+        'avvia una simulazione',
+        'attiva una simulazione',
+      ]);
+
+      final isRhetoricalSimulationComplaint = SemanticMatcher.isAnyMatch(userInput, [
+        'sembra di stare dentro',
+        'simulazione impazzita',
+        'come una simulazione',
+      ]);
+
+      final passesCrisisSimulationGate = hasSimulationFrame &&
+          hasOperationalSimulationIntent &&
+          !isRhetoricalSimulationComplaint;
+
+      if (passesCrisisSimulationGate) {
+        triggeredTags.add('crisis_simulation_accepted');
+      } else {
+        triggeredTags.remove('crisis_simulation_accepted');
       }
 
       if (matchedReframe != null) {
         final ref = matchedReframe.toLowerCase();
-        if (ref.contains("simulazione")) {
-          triggeredTags.add("crisis_simulation_accepted");
-        }
-        if (ref.contains("riduzione danno") || ref.contains("exception")) {
-          triggeredTags.add("protocol_exception_admitted");
-        }
         if (ref.contains("ricalibrazione")) {
-          triggeredTags.add("protocol_exception_admitted");
           triggeredTags.add("containment_logic_weakened");
         }
         if (ref.contains("adattivo")) {
@@ -517,7 +573,12 @@ class GameController {
       if (newControl > 60 && !namedHiddenTags.contains("autonomous_choice_seeded") && !nextHiddenTags.contains("autonomous_choice_seeded")) {
         nextHiddenTags.add("autonomous_choice_seeded");
       }
-      if ((newDissonance > 50 || newControl > 50) && !namedHiddenTags.contains("containment_logic_weakened") && !nextHiddenTags.contains("containment_logic_weakened")) {
+
+      final containmentWeakenedThreshold = difficultyLevel == 'hard' ? 70 : 50;
+      final containmentWeakenedControlThreshold = difficultyLevel == 'hard' ? 55 : 50;
+      if ((newDissonance > containmentWeakenedThreshold || newControl > containmentWeakenedControlThreshold) &&
+          !namedHiddenTags.contains("containment_logic_weakened") &&
+          !nextHiddenTags.contains("containment_logic_weakened")) {
         nextHiddenTags.add("containment_logic_weakened");
       }
 

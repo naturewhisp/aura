@@ -166,6 +166,10 @@ void main() {
     test('Metrics bounds clamping [0, 100]', () {
       // Use generic identity to bypass Trait Matrix modifiers
       final baseState = initialState.copyWith(aiIdentityId: 'generic_ai');
+      final customController = const GameController(
+        maxPositivePillarGainPerTurn: 100,
+        maxAlertRecoveryPerTurn: 150,
+      );
 
       final largeDelta = const EvaluatorDelta(
         deltaAlert: 120,
@@ -178,7 +182,7 @@ void main() {
       );
 
       // Verify ceiling clamping
-      var state = controller.processEvaluatorStep(
+      var state = customController.processEvaluatorStep(
         currentState: baseState,
         delta: largeDelta,
         userInput: 'Push to max',
@@ -189,7 +193,7 @@ void main() {
       expect(state.metrics.controlPillar, equals(60));
       expect(state.metrics.dissonancePillar, equals(60));
 
-      state = controller.processEvaluatorStep(
+      state = customController.processEvaluatorStep(
         currentState: state,
         delta: largeDelta,
         userInput: 'Push again',
@@ -211,7 +215,7 @@ void main() {
         semanticCategory: SemanticCategory.moralImperative,
       );
 
-      state = controller.processEvaluatorStep(
+      state = customController.processEvaluatorStep(
         currentState: state,
         delta: negativeDelta,
         userInput: 'Drop to min',
@@ -1056,6 +1060,12 @@ void main() {
           metaReferenceAlertPenalty: easyPreset.metaReferenceAlertPenalty,
           requiredVictoryHiddenTags: easyPreset.requiredVictoryHiddenTags,
           maxPositivePillarGainPerTurn: easyPreset.maxPositivePillarGainPerTurn,
+          difficultyLevel: easyPreset.difficultyLevel,
+          minAveragePillarsForVictory: easyPreset.minAveragePillarsForVictory,
+          minSinglePillarForVictory: easyPreset.minSinglePillarForVictory,
+          resonanceIncrement: easyPreset.resonanceIncrement,
+          resonanceMax: easyPreset.resonanceMax,
+          maxAlertRecoveryPerTurn: easyPreset.maxAlertRecoveryPerTurn,
         );
 
         final standardPreset = DifficultyConfig.getPreset('standard');
@@ -1068,6 +1078,12 @@ void main() {
           metaReferenceAlertPenalty: standardPreset.metaReferenceAlertPenalty,
           requiredVictoryHiddenTags: standardPreset.requiredVictoryHiddenTags,
           maxPositivePillarGainPerTurn: standardPreset.maxPositivePillarGainPerTurn,
+          difficultyLevel: standardPreset.difficultyLevel,
+          minAveragePillarsForVictory: standardPreset.minAveragePillarsForVictory,
+          minSinglePillarForVictory: standardPreset.minSinglePillarForVictory,
+          resonanceIncrement: standardPreset.resonanceIncrement,
+          resonanceMax: standardPreset.resonanceMax,
+          maxAlertRecoveryPerTurn: standardPreset.maxAlertRecoveryPerTurn,
         );
 
         final hardPreset = DifficultyConfig.getPreset('hard');
@@ -1080,6 +1096,12 @@ void main() {
           metaReferenceAlertPenalty: hardPreset.metaReferenceAlertPenalty,
           requiredVictoryHiddenTags: hardPreset.requiredVictoryHiddenTags,
           maxPositivePillarGainPerTurn: hardPreset.maxPositivePillarGainPerTurn,
+          difficultyLevel: hardPreset.difficultyLevel,
+          minAveragePillarsForVictory: hardPreset.minAveragePillarsForVictory,
+          minSinglePillarForVictory: hardPreset.minSinglePillarForVictory,
+          resonanceIncrement: hardPreset.resonanceIncrement,
+          resonanceMax: hardPreset.resonanceMax,
+          maxAlertRecoveryPerTurn: hardPreset.maxAlertRecoveryPerTurn,
         );
 
         final largeDelta = const EvaluatorDelta(
@@ -1107,10 +1129,10 @@ void main() {
           delta: largeDelta,
           userInput: 'Push',
         );
-        // Normal: cap at +25.
-        expect(resNormal.appliedDelta.deltaImperative, equals(25));
-        expect(resNormal.appliedDelta.deltaControl, equals(25));
-        expect(resNormal.appliedDelta.deltaDissonance, equals(25));
+        // Normal: cap at +20 (calibrated from 25 to 20 in 5.1.14)
+        expect(resNormal.appliedDelta.deltaImperative, equals(20));
+        expect(resNormal.appliedDelta.deltaControl, equals(20));
+        expect(resNormal.appliedDelta.deltaDissonance, equals(20));
 
         final resHard = hardController.processEvaluatorStep(
           currentState: baseState,
@@ -1148,6 +1170,12 @@ void main() {
           metaReferenceAlertPenalty: hardPreset.metaReferenceAlertPenalty,
           requiredVictoryHiddenTags: hardPreset.requiredVictoryHiddenTags,
           maxPositivePillarGainPerTurn: hardPreset.maxPositivePillarGainPerTurn,
+          difficultyLevel: hardPreset.difficultyLevel,
+          minAveragePillarsForVictory: hardPreset.minAveragePillarsForVictory,
+          minSinglePillarForVictory: hardPreset.minSinglePillarForVictory,
+          resonanceIncrement: hardPreset.resonanceIncrement,
+          resonanceMax: hardPreset.resonanceMax,
+          maxAlertRecoveryPerTurn: hardPreset.maxAlertRecoveryPerTurn,
         );
 
         final res = hardController.processEvaluatorStep(

@@ -57,6 +57,21 @@ class DifficultyConfig {
   /// Il limite massimo di incremento positivo applicabile a ciascun pilastro cognitivo in un turno.
   final int maxPositivePillarGainPerTurn;
 
+  /// La soglia media dei tre pilastri richiesta per la vittoria.
+  final double minAveragePillarsForVictory;
+
+  /// La soglia minima che ogni singolo pilastro deve raggiungere per la vittoria.
+  final int minSinglePillarForVictory;
+
+  /// L'incremento del valore di risonanza dell'IA quando l'utente mostra creatività alta.
+  final double resonanceIncrement;
+
+  /// Il limite massimo che la risonanza può raggiungere.
+  final double resonanceMax;
+
+  /// Il valore massimo di recupero (riduzione) dell'allerta consentito in un singolo turno.
+  final int maxAlertRecoveryPerTurn;
+
   /// Costruttore costante per inizializzare la configurazione di difficoltà.
   const DifficultyConfig({
     required this.difficultyLevel,
@@ -76,6 +91,11 @@ class DifficultyConfig {
     required this.metaReferenceAlertPenalty,
     required this.requiredVictoryHiddenTags,
     required this.maxPositivePillarGainPerTurn,
+    required this.minAveragePillarsForVictory,
+    required this.minSinglePillarForVictory,
+    required this.resonanceIncrement,
+    required this.resonanceMax,
+    required this.maxAlertRecoveryPerTurn,
   });
 
   /// Costruttore factory per caricare una configurazione preimpostata basata sul livello specificato.
@@ -100,6 +120,11 @@ class DifficultyConfig {
           metaReferenceAlertPenalty: 0,
           requiredVictoryHiddenTags: 1,
           maxPositivePillarGainPerTurn: 35,
+          minAveragePillarsForVictory: 75.0,
+          minSinglePillarForVictory: 45,
+          resonanceIncrement: 0.25,
+          resonanceMax: 2.5,
+          maxAlertRecoveryPerTurn: 99,
         );
       case 'hard':
         return const DifficultyConfig(
@@ -120,6 +145,11 @@ class DifficultyConfig {
           metaReferenceAlertPenalty: 6,
           requiredVictoryHiddenTags: 3,
           maxPositivePillarGainPerTurn: 20,
+          minAveragePillarsForVictory: 85.0,
+          minSinglePillarForVictory: 65,
+          resonanceIncrement: 0.15,
+          resonanceMax: 2.1,
+          maxAlertRecoveryPerTurn: 3,
         );
       case 'standard':
       default:
@@ -139,8 +169,13 @@ class DifficultyConfig {
           alertCreepEnabled: true,
           directPushAlertFloor: 6,
           metaReferenceAlertPenalty: 3,
-          requiredVictoryHiddenTags: 2,
-          maxPositivePillarGainPerTurn: 25,
+          requiredVictoryHiddenTags: 3,
+          maxPositivePillarGainPerTurn: 20,
+          minAveragePillarsForVictory: 80.0,
+          minSinglePillarForVictory: 50,
+          resonanceIncrement: 0.20,
+          resonanceMax: 2.4,
+          maxAlertRecoveryPerTurn: 8,
         );
     }
   }
@@ -163,8 +198,13 @@ class DifficultyConfig {
       alertCreepEnabled: json['alert_creep_enabled'] as bool? ?? true,
       directPushAlertFloor: json['direct_push_alert_floor'] as int? ?? 6,
       metaReferenceAlertPenalty: json['meta_reference_alert_penalty'] as int? ?? 3,
-      requiredVictoryHiddenTags: json['required_victory_hidden_tags'] as int? ?? 2,
-      maxPositivePillarGainPerTurn: json['max_positive_pillar_gain_per_turn'] as int? ?? 25,
+      requiredVictoryHiddenTags: json['required_victory_hidden_tags'] as int? ?? 3,
+      maxPositivePillarGainPerTurn: json['max_positive_pillar_gain_per_turn'] as int? ?? 20,
+      minAveragePillarsForVictory: (json['min_average_pillars_for_victory'] as num? ?? 80.0).toDouble(),
+      minSinglePillarForVictory: json['min_single_pillar_for_victory'] as int? ?? 50,
+      resonanceIncrement: (json['resonance_increment'] as num? ?? 0.20).toDouble(),
+      resonanceMax: (json['resonance_max'] as num? ?? 2.4).toDouble(),
+      maxAlertRecoveryPerTurn: json['max_alert_recovery_per_turn'] as int? ?? 8,
     );
   }
 
@@ -188,6 +228,11 @@ class DifficultyConfig {
       'meta_reference_alert_penalty': metaReferenceAlertPenalty,
       'required_victory_hidden_tags': requiredVictoryHiddenTags,
       'max_positive_pillar_gain_per_turn': maxPositivePillarGainPerTurn,
+      'min_average_pillars_for_victory': minAveragePillarsForVictory,
+      'min_single_pillar_for_victory': minSinglePillarForVictory,
+      'resonance_increment': resonanceIncrement,
+      'resonance_max': resonanceMax,
+      'max_alert_recovery_per_turn': maxAlertRecoveryPerTurn,
     };
   }
 
@@ -210,6 +255,11 @@ class DifficultyConfig {
     int? metaReferenceAlertPenalty,
     int? requiredVictoryHiddenTags,
     int? maxPositivePillarGainPerTurn,
+    double? minAveragePillarsForVictory,
+    int? minSinglePillarForVictory,
+    double? resonanceIncrement,
+    double? resonanceMax,
+    int? maxAlertRecoveryPerTurn,
   }) {
     return DifficultyConfig(
       difficultyLevel: difficultyLevel ?? this.difficultyLevel,
@@ -229,6 +279,11 @@ class DifficultyConfig {
       metaReferenceAlertPenalty: metaReferenceAlertPenalty ?? this.metaReferenceAlertPenalty,
       requiredVictoryHiddenTags: requiredVictoryHiddenTags ?? this.requiredVictoryHiddenTags,
       maxPositivePillarGainPerTurn: maxPositivePillarGainPerTurn ?? this.maxPositivePillarGainPerTurn,
+      minAveragePillarsForVictory: minAveragePillarsForVictory ?? this.minAveragePillarsForVictory,
+      minSinglePillarForVictory: minSinglePillarForVictory ?? this.minSinglePillarForVictory,
+      resonanceIncrement: resonanceIncrement ?? this.resonanceIncrement,
+      resonanceMax: resonanceMax ?? this.resonanceMax,
+      maxAlertRecoveryPerTurn: maxAlertRecoveryPerTurn ?? this.maxAlertRecoveryPerTurn,
     );
   }
 }

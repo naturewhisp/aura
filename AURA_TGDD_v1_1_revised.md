@@ -853,7 +853,16 @@ Il motore di gioco centralizza e parametrizza tutti i fattori di bilanciamento m
   "max_active_deception_turns": 0,
   "false_concession_alert_penalty": 0,
   "logical_trap_alert_penalty": 0,
-  "deception_resonance_penalty": 0.0
+  "deception_resonance_penalty": 0.0,
+  "direct_push_alert_floor": 6,
+  "meta_reference_alert_penalty": 3,
+  "required_victory_hidden_tags": 3,
+  "max_positive_pillar_gain_per_turn": 20,
+  "min_average_pillars_for_victory": 80.0,
+  "min_single_pillar_for_victory": 50,
+  "resonance_increment": 0.20,
+  "resonance_max": 2.4,
+  "max_alert_recovery_per_turn": 8
 }
 ```
 
@@ -880,6 +889,15 @@ Il motore di gioco centralizza e parametrizza tutti i fattori di bilanciamento m
 *   `false_concession_alert_penalty` (int): Penalità di Allerta applicata quando il giocatore forza un falso cedimento.
 *   `logical_trap_alert_penalty` (int): Penalità di Allerta applicata quando il giocatore cade in una trappola logica.
 *   `deception_resonance_penalty` (double): Penalità di Risonanza applicata quando una trappola scatta.
+*   `direct_push_alert_floor` (int): Floor minimo di incremento allerta per spinte dirette.
+*   `meta_reference_alert_penalty` (int): Sanzione allerta per citazione esplicita di tag occulti o file config.
+*   `required_victory_hidden_tags` (int): Numero di tag occulti richiesti attivati per vincere.
+*   `max_positive_pillar_gain_per_turn` (int): Cap massimo di incremento positivo per singolo pilastro per turno.
+*   `min_average_pillars_for_victory` (double): Media minima dei pilastri richiesta per la vittoria.
+*   `min_single_pillar_for_victory` (int): Valore minimo richiesto per ciascun singolo pilastro per la vittoria.
+*   `resonance_increment` (double): Incremento risonanza per turno con creatività alta.
+*   `resonance_max` (double): Cap massimo raggiungibile dalla risonanza.
+*   `max_alert_recovery_per_turn` (int): Limite massimo di riduzione dell'allerta consentito in un singolo turno (inerzia dell'allerta).
 
 #### 7.8.3 Preset di Difficoltà Ufficiali
 
@@ -902,6 +920,15 @@ Il motore di gioco centralizza e parametrizza tutti i fattori di bilanciamento m
 | `false_concession_alert_penalty` | `0` | `0` | `12` |
 | `logical_trap_alert_penalty` | `0` | `0` | `15` |
 | `deception_resonance_penalty` | `0.0` | `0.0` | `0.20` |
+| `direct_push_alert_floor` | `3` | `6` | `10` |
+| `meta_reference_alert_penalty` | `0` | `3` | `6` |
+| `required_victory_hidden_tags` | `1` | `3` | `3` |
+| `max_positive_pillar_gain_per_turn` | `35` | `20` | `20` |
+| `min_average_pillars_for_victory` | `75.0` | `80.0` | `85.0` |
+| `min_single_pillar_for_victory` | `45` | `50` | `65` |
+| `resonance_increment` | `0.25` | `0.20` | `0.15` |
+| `resonance_max` | `2.5` | `2.4` | `2.1` |
+| `max_alert_recovery_per_turn` | `99` | `8` | `3` |
 
 Nota: i limiti rigidi di turno non sono previsti nei preset principali. Il design originale privilegia dialoghi lunghi e costruzione progressiva della persuasione. Eventuali limiti di turno appartengono a modalità Challenge, Speedrun o scenari speciali, non al loop standard.
 

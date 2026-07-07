@@ -320,12 +320,14 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                                     state.metrics.controlPillar +
                                     state.metrics.dissonancePillar) /
                                 3.0;
-                            // Sotto 50 → sfondo quasi opaco (0.92); da 50 a 90 → trasparenza progressiva; sopra 90 → quasi trasparente (0.15)
-                            final double bgAlpha = avgPillars >= 90
+                            // Sotto 50 → sfondo quasi opaco (0.92); da 50 a 90 → trasparenza progressiva; sopra 90 o in vittoria → quasi trasparente (0.15)
+                            final double bgAlpha = _victorySequenceActive
                                 ? 0.15
-                                : avgPillars >= 50
-                                    ? 0.92 - ((avgPillars - 50) / 40.0) * 0.77
-                                    : 0.92;
+                                : (avgPillars >= 90
+                                    ? 0.15
+                                    : avgPillars >= 50
+                                        ? 0.92 - ((avgPillars - 50) / 40.0) * 0.77
+                                        : 0.92);
                             return Container(
                               color: Colors.black.withValues(alpha: bgAlpha),
                           child: LayoutBuilder(

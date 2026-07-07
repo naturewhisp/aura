@@ -427,7 +427,7 @@ class MetricsDashboard extends StatelessWidget {
         ? "OVERLOAD" 
         : getPillarLabel(label, displayValue, pillarVisibility);
     
-    return Column(
+    final Widget gaugeContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
@@ -475,6 +475,11 @@ class MetricsDashboard extends StatelessWidget {
         ),
       ],
     );
+
+    if (showCriticalFlash) {
+      return _BlinkingWidget(child: gaugeContent);
+    }
+    return gaugeContent;
   }
 }
 

@@ -121,7 +121,7 @@ class MetricsDashboard extends StatelessWidget {
     }
 
     Widget dashboardContent = Container(
-      color: Colors.black,
+      color: Colors.transparent,
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,7 +269,7 @@ class MetricsDashboard extends StatelessWidget {
   /// Costruisce una versione ridotta del cruscotto telemetrico per schermi stretti.
   Widget _buildCompactDashboard(BuildContext context, Color systemColor, String statusText) {
     Widget compactContent = Container(
-      color: Colors.black,
+      color: Colors.transparent,
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

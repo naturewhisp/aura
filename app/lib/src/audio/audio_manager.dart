@@ -52,6 +52,9 @@ class AudioManager {
   String? _currentBgmTrack;
   DateTime _trackStartTime = DateTime.now();
 
+  // Future per tracciare le transizioni attive ed evitare race condition e sovrapposizioni audio.
+  Future<void>? _activeTransition;
+
   /// Indica se il gestore audio è stato correttamente inizializzato.
   bool get isInitialized => _initialized;
   /// Indica se la riproduzione audio è abilitata.
@@ -154,6 +157,25 @@ class AudioManager {
   /// Avvia la riproduzione delle tracce musicali di sottofondo.
   /// Ferma i player inutilizzati in base al tipo di soundscape per risparmiare risorse.
   Future<void> startBgm({bool? isEpic, bool? isVictory}) async {
+    // Se c'è una transizione in corso, attendiamo che finisca per evitare conflitti sui canali audio.
+    if (_activeTransition != null) {
+      try {
+        await _activeTransition;
+      } catch (_) {}
+    }
+
+    final transition = _startBgmInternal(isEpic: isEpic, isVictory: isVictory);
+    _activeTransition = transition;
+    try {
+      await transition;
+    } finally {
+      if (_activeTransition == transition) {
+        _activeTransition = null;
+      }
+    }
+  }
+
+  Future<void> _startBgmInternal({bool? isEpic, bool? isVictory}) async {
     if (!_playersCreated || !_audioEnabled) return;
 
     final bool targetEpic = isEpic ?? _isEpic;

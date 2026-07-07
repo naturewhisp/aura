@@ -288,8 +288,7 @@ class AudioManager {
   /// * isEpic: solo la traccia epica del menù principale / vittoria (volume 0.6), altre silenziate (volume 0.0).
   /// * Standard (isEpic = false):
   ///   * Allerta < 40: solo basso ambient (volume 0.6), arpeggiatore tense silenziato (volume 0.0).
-  ///   * Allerta 40-80: dissolvenza incrociata (l'ambient sfuma a 0.4, il tense sale a 0.6).
-  ///   * Allerta > 80: arpeggiatore tense al massimo (1.0), basso ambient al minimo (0.1) e accelerazione a 1.2x.
+  ///   * Allerta >= 40: la traccia Tense ha priorità assoluta (volume 0.6 o 1.0), l'ambient viene completamente silenziato (volume 0.0) per evitare sovrapposizioni. Allerta > 80 accelera a 1.2x.
   Future<void> updateAlertLevel(int alert, {bool force = false, bool? isEpic, bool? isVictory}) async {
     if (!_initialized) return;
     bool isEpicChanged = false;
@@ -337,14 +336,11 @@ class AudioManager {
         ambientVol = 0.6;
         tenseVol = 0.0;
         tenseRate = 1.0;
-      } else if (alert <= 80) {
-        ambientVol = 0.4;
-        tenseVol = 0.6;
-        tenseRate = 1.0;
       } else {
-        ambientVol = 0.1;
-        tenseVol = 1.0;
-        tenseRate = 1.2;
+        // Sistema di priorità: Tense ha priorità assoluta su Ambient (Ambient viene silenziato a 0.0)
+        ambientVol = 0.0;
+        tenseVol = alert <= 80 ? 0.6 : 1.0;
+        tenseRate = alert <= 80 ? 1.0 : 1.2;
       }
     }
 

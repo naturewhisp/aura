@@ -354,8 +354,9 @@ class AudioManager {
   void _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) {
     if (!_playersCreated || !_audioEnabled || path == null) return;
     player.stop().then((_) {
-      player.setVolume(volume);
-      player.play(DeviceFileSource(path));
+      player.play(DeviceFileSource(path)).then((_) {
+        player.setVolume(volume);
+      });
     }).catchError((e) {
       debugPrint("Errore durante la riproduzione dell'SFX: $e");
     });

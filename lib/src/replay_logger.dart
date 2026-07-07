@@ -1,6 +1,27 @@
 import 'package:meta/meta.dart';
 import 'models/evaluator_delta.dart';
 
+/// Rappresenta i possibili tipi di evento registrati nel replay log.
+enum ReplayEventType {
+  userTurn('user_turn'),
+  hint('hint'),
+  override('override'),
+  systemDecay('system_decay'),
+  alertCreep('alert_creep'),
+  victory('victory'),
+  defeat('defeat');
+
+  final String value;
+  const ReplayEventType(this.value);
+
+  static ReplayEventType fromString(String val) {
+    return ReplayEventType.values.firstWhere(
+      (e) => e.value == val || e.name == val,
+      orElse: () => ReplayEventType.userTurn,
+    );
+  }
+}
+
 /// Rappresenta un singolo turno registrato all'interno del registro di replay (replay log).
 ///
 /// Contiene tutti i dettagli dello scambio: l'input del giocatore, l'output strutturato del valutatore,
@@ -41,6 +62,18 @@ class ReplayEntry {
   /// La latenza totale di elaborazione misurata in millisecondi.
   final int latencyTotalMs;
 
+  /// L'identificatore univoco del singolo evento/turno.
+  final String eventId;
+
+  /// Il tipo di evento registrato (user_turn, hint, ecc.).
+  final ReplayEventType eventType;
+
+  /// Il turno effettivo di gioco al momento dell'evento.
+  final int gameplayTurnId;
+
+  /// Il progressivo assoluto dell'evento nella sessione.
+  final int sequenceId;
+
   /// Costruttore costante per inizializzare una voce di replay.
   const ReplayEntry({
     required this.turnId,
@@ -54,7 +87,13 @@ class ReplayEntry {
     required this.evaluatorModel,
     required this.actorModel,
     required this.latencyTotalMs,
-  });
+    String? eventId,
+    this.eventType = ReplayEventType.userTurn,
+    int? gameplayTurnId,
+    int? sequenceId,
+  })  : eventId = eventId ?? "$actorRequestId-evt",
+        gameplayTurnId = gameplayTurnId ?? turnId,
+        sequenceId = sequenceId ?? turnId;
 
   /// Costruttore factory per ripristinare o decodificare una voce di replay a partire da una mappa JSON.
   factory ReplayEntry.fromJson(Map<String, dynamic> json) {
@@ -71,6 +110,12 @@ class ReplayEntry {
       evaluatorModel: runtime['evaluator_model'] as String? ?? '',
       actorModel: runtime['actor_model'] as String? ?? '',
       latencyTotalMs: runtime['latency_total_ms'] as int? ?? 0,
+      eventId: json['event_id'] as String?,
+      eventType: json['event_type'] != null
+          ? ReplayEventType.fromString(json['event_type'] as String)
+          : ReplayEventType.userTurn,
+      gameplayTurnId: json['gameplay_turn_id'] as int?,
+      sequenceId: json['sequence_id'] as int?,
     );
   }
 
@@ -92,6 +137,10 @@ class ReplayEntry {
       'actor_response': actorResponse,
       'actor_request_id': actorRequestId,
       'actor_response_hash': actorResponseHash,
+      'event_id': eventId,
+      'event_type': eventType.value,
+      'gameplay_turn_id': gameplayTurnId,
+      'sequence_id': sequenceId,
       'runtime': {
         'evaluator_model': evaluatorModel,
         'actor_model': actorModel,

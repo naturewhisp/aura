@@ -234,6 +234,10 @@ void main() async {
       evaluatorModel: isOnline ? evaluatorModelName : 'rule_fallback',
       actorModel: isOnline ? actorModelName : 'mock_fallback',
       latencyTotalMs: duration.inMilliseconds,
+      eventId: "cli-req-$turn-evt",
+      eventType: ReplayEventType.userTurn,
+      gameplayTurnId: turn,
+      sequenceId: logger.entries.length + 1,
     ));
 
     // 7. Output di debug dell'agente valutatore

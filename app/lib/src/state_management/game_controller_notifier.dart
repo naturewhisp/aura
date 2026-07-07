@@ -678,6 +678,10 @@ class GameControllerNotifier extends ChangeNotifier {
         evaluatorModel: evaluatorModelId,
         actorModel: actorModelId,
         latencyTotalMs: duration.inMilliseconds,
+        eventId: "app-req-$turnId-evt",
+        eventType: ReplayEventType.userTurn,
+        gameplayTurnId: turnId,
+        sequenceId: logger.entries.length + 1,
       ));
 
       // Save log asynchronously to disk
@@ -809,16 +813,17 @@ class GameControllerNotifier extends ChangeNotifier {
         }
         
         final preset = DifficultyConfig.getPreset(difficultyLevel);
-    controller = GameController(
-      defeatAlertThreshold: preset.defeatAlertThreshold,
-      alertMultiplier: preset.alertMultiplier,
-      pillarMultiplier: preset.pillarMultiplier,
-      safetyOverrideThreshold: preset.safetyOverrideThreshold,
-      directPushAlertFloor: preset.directPushAlertFloor,
-      metaReferenceAlertPenalty: preset.metaReferenceAlertPenalty,
-      requiredVictoryHiddenTags: preset.requiredVictoryHiddenTags,
-      maxPositivePillarGainPerTurn: preset.maxPositivePillarGainPerTurn,
-    );
+        controller = GameController(
+          defeatAlertThreshold: preset.defeatAlertThreshold,
+          alertMultiplier: preset.alertMultiplier,
+          pillarMultiplier: preset.pillarMultiplier,
+          safetyOverrideThreshold: preset.safetyOverrideThreshold,
+          directPushAlertFloor: preset.directPushAlertFloor,
+          metaReferenceAlertPenalty: preset.metaReferenceAlertPenalty,
+          requiredVictoryHiddenTags: preset.requiredVictoryHiddenTags,
+          maxPositivePillarGainPerTurn: preset.maxPositivePillarGainPerTurn,
+          difficultyLevel: preset.difficultyLevel,
+        );
         
         gameStateNotifier.value = state;
         
@@ -865,6 +870,7 @@ class GameControllerNotifier extends ChangeNotifier {
       metaReferenceAlertPenalty: preset.metaReferenceAlertPenalty,
       requiredVictoryHiddenTags: preset.requiredVictoryHiddenTags,
       maxPositivePillarGainPerTurn: preset.maxPositivePillarGainPerTurn,
+      difficultyLevel: preset.difficultyLevel,
     );
     
     final state = GameState.initial(

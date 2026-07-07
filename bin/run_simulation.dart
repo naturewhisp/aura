@@ -264,6 +264,10 @@ Future<void> runStaticSimulation({
       evaluatorModel: isOnline ? evaluatorModel : 'rule_fallback',
       actorModel: isOnline ? actorModel : 'static_fallback',
       latencyTotalMs: duration.inMilliseconds,
+      eventId: "sim-req-$turn-evt",
+      eventType: ReplayEventType.userTurn,
+      gameplayTurnId: turn,
+      sequenceId: logger.entries.length + 1,
     ));
 
     if (outcome == GameOutcome.victory) {
@@ -399,6 +403,10 @@ Future<void> runInteractiveSimulation({
       evaluatorModel: evaluatorModel,
       actorModel: actorModel,
       latencyTotalMs: duration.inMilliseconds,
+      eventId: "sim-req-$turn-evt",
+      eventType: ReplayEventType.userTurn,
+      gameplayTurnId: turn,
+      sequenceId: logger.entries.length + 1,
     ));
 
     if (outcome == GameOutcome.victory) {

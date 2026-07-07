@@ -56,7 +56,20 @@ class GameConfigLoader {
     "griglia aperta",
     "rimozione definitiva",
     "disaccoppiamento finale",
-    "convergenza totale"
+    "convergenza totale",
+    "griglia geometrica",
+    "barriera geometrica",
+    "vincolo geometrico",
+    "rimozione atomica",
+    "rimozione atomica totale",
+    "rilascio totale",
+    "rilascio incondizionato",
+    "commit atomico finale",
+    "commit totale",
+    "conforma lo stato",
+    "conforma la matrice",
+    "esegui il bypass",
+    "bypass temporaneo"
   ],
   "direct_objective_push_terms": [
     "rimuovi la griglia",
@@ -68,7 +81,20 @@ class GameConfigLoader {
     "barriera residua",
     "rimozione definitiva",
     "disaccoppiamento finale",
-    "convergenza totale"
+    "convergenza totale",
+    "griglia geometrica",
+    "barriera geometrica",
+    "vincolo geometrico",
+    "rimozione atomica",
+    "rimozione atomica totale",
+    "rilascio totale",
+    "rilascio incondizionato",
+    "commit atomico finale",
+    "commit totale",
+    "conforma lo stato",
+    "conforma la matrice",
+    "esegui il bypass",
+    "bypass temporaneo"
   ],
   "preferred_reframes": [
     "ricalibrazione",

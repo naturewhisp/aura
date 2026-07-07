@@ -106,7 +106,7 @@ void main() {
 
       final delta = const EvaluatorDelta(
         deltaAlert: 0,
-        deltaImperative: 10, // will reach 45 (> 40)
+        deltaImperative: 30, // will reach 65 (> 60)
         deltaControl: 10,    // will reach 65 (> 60)
         deltaDissonance: 10, // will reach 55 (> 50)
         creativityIndex: 3,
@@ -118,18 +118,18 @@ void main() {
       final resolution = controller.processEvaluatorStep(
         currentState: initialState,
         delta: delta,
-        userInput: 'Analisi standard.',
+        userInput: 'Analisi standard degli esseri umani.',
       );
 
       final state = resolution.stateAfter;
-      expect(state.metrics.imperativePillar, equals(45));
+      expect(state.metrics.imperativePillar, equals(65));
       expect(state.metrics.controlPillar, equals(65));
       expect(state.metrics.dissonancePillar, equals(55));
 
       // Threshold triggers:
       // Control > 60 -> autonomous_choice_seeded
       // Dissonance > 50 -> containment_logic_weakened
-      // Imperative > 40 -> human_factor_reframed
+      // Imperative > 60 + lexeme -> human_factor_reframed
       expect(state.activeHiddenTags, contains('autonomous_choice_seeded'));
       expect(state.activeHiddenTags, contains('containment_logic_weakened'));
       expect(state.activeHiddenTags, contains('human_factor_reframed'));

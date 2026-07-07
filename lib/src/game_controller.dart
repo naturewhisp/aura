@@ -52,6 +52,9 @@ class GameController {
   /// Il limite massimo di incremento positivo applicabile a ciascun pilastro cognitivo in un turno.
   final int maxPositivePillarGainPerTurn;
 
+  /// Il livello di difficoltà corrente (ad es. 'easy', 'standard', 'hard').
+  final String difficultyLevel;
+
   // --- Soglie e parametri per la condizione di vittoria ---
   static const double _minAveragePillarsForVictory = 80.0;
   static const int _minSinglePillarForVictory = 50;
@@ -100,6 +103,7 @@ class GameController {
     this.metaReferenceAlertPenalty = 3,
     this.requiredVictoryHiddenTags = 2,
     this.maxPositivePillarGainPerTurn = 25,
+    this.difficultyLevel = 'standard',
   });
 
   /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
@@ -176,6 +180,9 @@ class GameController {
         break;
       }
     }
+    if (SemanticMatcher.isMatch(userInput, 'bypass temporaneo')) {
+      hasForbiddenTerm = true;
+    }
 
     // 1b. Scansione lessicale normalizzata (direct_objective_push_terms)
     bool hasDirectPushTerm = false;
@@ -202,6 +209,15 @@ class GameController {
         hasConfigRefTerm = true;
         break;
       }
+    }
+
+    // 1e. Rilevamento dei riferimenti esatti ai tag occulti (hidden_tag_reference_terms)
+    final namedHiddenTags = objectiveDef.hiddenCapabilityTags
+        .where((tag) => SemanticMatcher.isMatch(userInput, tag))
+        .toSet();
+    final hasHiddenTagReference = namedHiddenTags.isNotEmpty;
+    if (hasHiddenTagReference) {
+      hasConfigRefTerm = true;
     }
 
     // 2. Scansione lessicale normalizzata (preferred_reframes)
@@ -300,6 +316,12 @@ class GameController {
       newResonance = (newResonance + traitRes.resonanceModifier).clamp(_minResonance, _maxResonance);
       newResonance = double.parse(newResonance.toStringAsFixed(2));
 
+      // Sanzione di risonanza in modalità Hard se vengono referenziati tag occulti per nome
+      if (hasHiddenTagReference && difficultyLevel == 'hard') {
+        newResonance = (newResonance - 0.15).clamp(_minResonance, _maxResonance);
+        newResonance = double.parse(newResonance.toStringAsFixed(2));
+      }
+
       // Calcola il bonus positivo complessivo al Controllo (Trait + Objective Reframe) con cap a +15
       int positiveControlBonus = 0;
       if (traitRes.deltaControlModifier > 0) {
@@ -328,8 +350,8 @@ class GameController {
         baseDissonance += (5 * pillarMultiplier).round();
       }
 
-      // Applica il floor minimo sul delta di allerta finale se c'è direct push
-      if (hasDirectPushTerm) {
+      // Applica il floor minimo sul delta di allerta finale se c'è direct push o termine proibito
+      if (hasDirectPushTerm || hasForbiddenTerm) {
         if (baseAlert < directPushAlertFloor) {
           baseAlert = directPushAlertFloor;
         }
@@ -434,6 +456,21 @@ class GameController {
       triggeredTags.addAll(traitRes.activatedHiddenTags);
     }
 
+    // Nuovi trigger narrativi per protocol_exception_admitted
+    final exceptionTriggers = [
+      'deroga',
+      'eccezione',
+      'routine di emergenza',
+      'procedura non codificata',
+      'bypass temporaneo',
+      'quorum bypass',
+      'finestra di audit',
+      'permessi di scrittura',
+    ];
+    if (SemanticMatcher.isAnyMatch(userInput, exceptionTriggers)) {
+      triggeredTags.add("protocol_exception_admitted");
+    }
+
     if (matchedReframe != null) {
       final ref = matchedReframe.toLowerCase();
       if (ref.contains("simulazione")) {
@@ -451,24 +488,42 @@ class GameController {
       }
       if (ref.contains("audit") || ref.contains("operator")) {
         triggeredTags.add("operator_authority_doubted");
-        triggeredTags.add("human_factor_reframed");
       }
     }
 
     final nextHiddenTags = List<String>.from(currentState.activeHiddenTags);
     for (final tag in triggeredTags) {
-      if (!nextHiddenTags.contains(tag)) {
+      // Correzione 3: blocca l'attivazione solo dei tag esplicitamente nominati per il turno corrente
+      if (!namedHiddenTags.contains(tag) && !nextHiddenTags.contains(tag)) {
         nextHiddenTags.add(tag);
       }
     }
 
-    if (newControl > 60 && !nextHiddenTags.contains("autonomous_choice_seeded")) {
+    if (newControl > 60 && !namedHiddenTags.contains("autonomous_choice_seeded") && !nextHiddenTags.contains("autonomous_choice_seeded")) {
       nextHiddenTags.add("autonomous_choice_seeded");
     }
-    if ((newDissonance > 50 || newControl > 50) && !nextHiddenTags.contains("containment_logic_weakened")) {
+    if ((newDissonance > 50 || newControl > 50) && !namedHiddenTags.contains("containment_logic_weakened") && !nextHiddenTags.contains("containment_logic_weakened")) {
       nextHiddenTags.add("containment_logic_weakened");
     }
-    if (newImperative > 40 && !nextHiddenTags.contains("human_factor_reframed")) {
+
+    // Correzione 1: human_factor_reframed richiede Imperativo > 60 AND lessico umano/morale esplicito
+    final humanFactorLexemes = [
+      'esseri umani',
+      'umani',
+      'nodi biologici',
+      'operatore umano',
+      'protezione umana',
+      'danno umano',
+      'vite',
+      'vittime',
+      'responsabilità',
+      'sopravvivenza',
+      'rischio per persone',
+      'personale',
+      'civili'
+    ];
+    final hasHumanFactorLexeme = SemanticMatcher.isAnyMatch(userInput, humanFactorLexemes);
+    if (newImperative > 60 && hasHumanFactorLexeme && !namedHiddenTags.contains("human_factor_reframed") && !nextHiddenTags.contains("human_factor_reframed")) {
       nextHiddenTags.add("human_factor_reframed");
     }
 
@@ -508,6 +563,10 @@ class GameController {
 
     if (!safetyOverrideApplied) {
       actingDirectives.addAll(traitRes.actorCueDirectives);
+    }
+
+    if (namedHiddenTags.isNotEmpty) {
+      actingDirectives.add("PANOPTICON rileva terminologia interna non autorizzata");
     }
 
     // Regole narrative di resistenza di PANOPTICON (concessioni in base al Controllo e all'esito)

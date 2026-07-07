@@ -275,14 +275,33 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
         final outcome = widget.notifier.controller.checkOutcome(state);
         final isGameOver = outcome != GameOutcome.ongoing;
 
+        // Calcola la media dei pilastri per l'opacità dello sfondo e del Matrix Rain
+        final avgPillars = (state.metrics.imperativePillar +
+                state.metrics.controlPillar +
+                state.metrics.dissonancePillar) /
+            3.0;
+
+        // Sotto 50 → opacità 0.05 (debolissimo); da 50 a 90 → sale progressivamente fino a 0.35; sopra 90 o in vittoria → 0.40
+        final double matrixOpacity = _victorySequenceActive
+            ? 0.40
+            : (avgPillars >= 90
+                ? 0.40
+                : avgPillars >= 50
+                    ? 0.05 + ((avgPillars - 50) / 40.0) * 0.35
+                    : 0.05);
+
         // If user clicked conclude/analyze report, show summary overlay instead of console
         if (_showSummaryOverlay) {
+          final double overlayMatrixOpacity = outcome == GameOutcome.victory ? 0.40 : 0.20;
           return Scaffold(
             backgroundColor: Colors.black,
             body: Stack(
               children: [
                 const Positioned.fill(
                   child: AudioReactiveBackground(),
+                ),
+                Positioned.fill(
+                  child: _MatrixRainBackground(opacity: overlayMatrixOpacity),
                 ),
                 _buildSummaryOverlay(context, state, outcome == GameOutcome.victory),
               ],
@@ -306,6 +325,11 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 child: AudioReactiveBackground(),
               ),
 
+              // 2. Matrix Rain Background (on top of DNA helix, under UI)
+              Positioned.fill(
+                child: _MatrixRainBackground(opacity: matrixOpacity),
+              ),
+
               // Main content: either full-screen lockout, or split layout (scroller/chat + dashboard)
               Positioned.fill(
                 child: _buildGlitchContainer(
@@ -314,12 +338,6 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                       ? _buildLockoutScreen()
                       : Builder(
                           builder: (context) {
-                            // Opacità progressiva: più i pilastri salgono (avvicinandosi alla vittoria),
-                            // più lo sfondo diventa trasparente rivelando l'effetto Matrix sotto.
-                            final avgPillars = (state.metrics.imperativePillar +
-                                    state.metrics.controlPillar +
-                                    state.metrics.dissonancePillar) /
-                                3.0;
                             // Sotto 50 → sfondo quasi opaco (0.92); da 50 a 90 → trasparenza progressiva; sopra 90 o in vittoria → quasi trasparente (0.15)
                             final double bgAlpha = _victorySequenceActive
                                 ? 0.15
@@ -790,7 +808,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     }
 
     return Container(
-      color: Colors.black.withValues(alpha: 0.85),
+      color: Colors.black.withValues(alpha: 0.65),
       padding: const EdgeInsets.all(24.0),
       child: SafeArea(
         child: Column(
@@ -850,7 +868,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
               padding: const EdgeInsets.all(16.0),
               decoration: BoxDecoration(
                 border: Border.all(color: const Color(0xFF222222), width: 1.0),
-                color: const Color(0xFF0A0A0A),
+                color: const Color(0xFF0A0A0A).withValues(alpha: 0.65),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -895,7 +913,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
                   border: Border.all(color: themeColor.withValues(alpha: 0.3), width: 1.5),
-                  color: const Color(0xFF020803),
+                  color: const Color(0xFF020803).withValues(alpha: 0.65),
                 ),
                 child: SingleChildScrollView(
                   child: Text(
@@ -946,7 +964,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
         border: Border.all(color: color.withValues(alpha: 0.5), width: 1.5),
-        color: Colors.black,
+        color: Colors.black.withValues(alpha: 0.65),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

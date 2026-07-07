@@ -84,7 +84,7 @@ class _DnaHelixPainter extends CustomPainter {
     final double actualBpm = bpm > 0 ? bpm : 120.0;
     final double beatDuration = 60.0 / actualBpm;
 
-    // Calcola il tempo dall'avvio della traccia audio corrente
+    // Calcola il tempo reale dall'avvio della traccia audio corrente
     final DateTime trackStartTime = AudioManager().trackStartTime;
     final double t = DateTime.now().difference(trackStartTime).inMilliseconds / 1000.0;
 
@@ -108,12 +108,15 @@ class _DnaHelixPainter extends CustomPainter {
 
     final double centerY = size.height / 2.0;
     final double baseAmplitude = size.height * 0.15;
-    // L'ampiezza pulsa ritmicamente a tempo di musica
-    final double currentAmplitude = baseAmplitude * (0.7 + 0.4 * beatIntensity);
+    
+    // 1. ESPANSIONE/CONTRAZIONE (Dimensioni): l'ampiezza pulsa vistosamente sul kick (da 50% a 140% di baseAmplitude)
+    final double currentAmplitude = baseAmplitude * (0.5 + 0.9 * beatIntensity);
+    
+    // La frequenza spaziale dell'elica si allunga e contrae leggermente a tempo di musica
+    final double currentOmega = 0.015 * (1.0 - 0.2 * beatIntensity);
 
-    // Costanti per la frequenza spaziale e lo scorrimento
-    const double omega = 0.015;
-    final double currentPhase = -elapsedSeconds * 1.5;
+    // 2. SCATTO DI VELOCITÀ (Movimento): la fase orizzontale accelera bruscamente in corrispondenza del kick
+    final double currentPhase = -t * 1.5 - (1.2 * beatIntensity);
 
     // Spaziatura orizzontale dei punti
     const double spacing = 16.0;
@@ -138,7 +141,7 @@ class _DnaHelixPainter extends CustomPainter {
       final double wireOffset = wireOffsets[w];
       for (int i = 0; i < totalPoints; i++) {
         final double x = i * spacing;
-        final double angle = (x * omega) + currentPhase + wireOffset;
+        final double angle = (x * currentOmega) + currentPhase + wireOffset;
         final double y = centerY + currentAmplitude * math.sin(angle);
         final double z = math.cos(angle); // Z tra -1.0 (dietro) e 1.0 (davanti)
 
@@ -161,14 +164,26 @@ class _DnaHelixPainter extends CustomPainter {
       final double normalizedZ = (point.z + 1.0) / 2.0; // Normalizza in range 0.0 - 1.0
       
       // Calcola opacità e font size in base alla profondità Z
-      final double opacity = (normalizedZ * 0.7) + 0.3; // Minimo 0.3 di opacità dietro
+      final double baseOpacity = (normalizedZ * 0.6) + 0.2; // Minimo 0.2 di opacità dietro
+      // L'opacità globale dell'intera elica pulsa ritmicamente con il kick
+      final double opacity = (baseOpacity + 0.2 * beatIntensity).clamp(0.0, 1.0);
       final double fontSize = (normalizedZ * 6.0) + 8.0; // Dimensione font dinamica da 8px a 14px
 
-      final Color pointColor = mainColor.withValues(alpha: opacity);
+      Color pointColor = mainColor.withValues(alpha: opacity);
 
-      // Glow Effector basato sull'intensità del kick
-      final double glowRadius = beatIntensity * 8.0;
-      final Color glowColor = mainColor.withValues(alpha: opacity * beatIntensity);
+      // 3. LAMPI DI LUCE E GLOW (Luminosità): ad ogni kick, alcuni nodi sparsi lampeggiano di bianco brillante
+      final bool isFlashFrame = beatIntensity > 0.5;
+      final bool isFlashPoint = (point.pointIndex + elapsedIntSeconds) % 6 == 0;
+      
+      if (isFlashFrame && isFlashPoint) {
+        pointColor = Colors.white.withValues(alpha: opacity * 0.95);
+      }
+
+      // Il raggio del bagliore fluorescente si espande fino a 12px sul kick
+      final double glowRadius = beatIntensity * 12.0;
+      final Color glowColor = (isFlashFrame && isFlashPoint)
+          ? Colors.white.withValues(alpha: opacity * beatIntensity)
+          : mainColor.withValues(alpha: opacity * beatIntensity);
 
       // Scelta deterministica anti-flicker basata sulle coordinate e sui secondi passati
       final int charIndex = (point.pointIndex * 31 + point.wireIndex * 17 + elapsedIntSeconds * 7) % _matrixChars.length;
@@ -201,9 +216,9 @@ class _DnaHelixPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DnaHelixPainter oldDelegate) {
-    return oldDelegate.elapsedSeconds != elapsedSeconds ||
-        oldDelegate.alertLevel != alertLevel ||
-        oldDelegate.outcome != outcome;
+    // Ritorna sempre true per consentire l'avanzamento fluido dell'animazione
+    // basata sul tempo reale di sistema ed evitare scatti.
+    return true;
   }
 }
 

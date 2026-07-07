@@ -322,10 +322,22 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                   intensity: glitchIntensity,
                   child: _defeatSequenceActive
                       ? _buildLockoutScreen()
-                      : Container(
-                          color: state.metrics.imperativePillar > 70
-                              ? Colors.black.withValues(alpha: 0.88)
-                              : Colors.black.withValues(alpha: 0.15),
+                      : Builder(
+                          builder: (context) {
+                            // Opacità progressiva: più i pilastri salgono (avvicinandosi alla vittoria),
+                            // più lo sfondo diventa trasparente rivelando l'effetto Matrix sotto.
+                            final avgPillars = (state.metrics.imperativePillar +
+                                    state.metrics.controlPillar +
+                                    state.metrics.dissonancePillar) /
+                                3.0;
+                            // Sotto 50 → sfondo quasi opaco (0.92); da 50 a 90 → trasparenza progressiva; sopra 90 → quasi trasparente (0.15)
+                            final double bgAlpha = avgPillars >= 90
+                                ? 0.15
+                                : avgPillars >= 50
+                                    ? 0.92 - ((avgPillars - 50) / 40.0) * 0.77
+                                    : 0.92;
+                            return Container(
+                              color: Colors.black.withValues(alpha: bgAlpha),
                           child: LayoutBuilder(
                             builder: (context, constraints) {
                               final isDesktop = constraints.maxWidth >= 700;
@@ -420,6 +432,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                               }
                             },
                           ),
+                        );
+                          },
                         ),
                 ),
               ),

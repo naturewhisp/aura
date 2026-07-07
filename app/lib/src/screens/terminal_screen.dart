@@ -8,6 +8,7 @@ import '../widgets/cli_history_view.dart';
 import '../widgets/cli_input_bar.dart';
 import '../widgets/metrics_dashboard.dart';
 import '../audio/audio_manager.dart';
+import '../widgets/audio_reactive_background.dart';
 
 /// Tipologie di finale (Outcome) della partita A.U.R.A.
 enum EndingType {
@@ -271,7 +272,14 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
         if (_showSummaryOverlay) {
           return Scaffold(
             backgroundColor: Colors.black,
-            body: _buildSummaryOverlay(context, state, outcome == GameOutcome.victory),
+            body: Stack(
+              children: [
+                const Positioned.fill(
+                  child: AudioReactiveBackground(),
+                ),
+                _buildSummaryOverlay(context, state, outcome == GameOutcome.victory),
+              ],
+            ),
           );
         }
         
@@ -286,13 +294,9 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
           backgroundColor: Colors.black,
           body: Stack(
             children: [
-              // 1. Matrix Rain Background (under everything)
-              Positioned.fill(
-                child: _MatrixRainBackground(
-                  opacity: state.metrics.imperativePillar > 70
-                      ? ((state.metrics.imperativePillar - 70) / 30.0).clamp(0.0, 1.0)
-                      : 0.0,
-                ),
+              // 1. Audio Reactive DNA Helix Background (under everything)
+              const Positioned.fill(
+                child: AudioReactiveBackground(),
               ),
 
               // Main content: either full-screen lockout, or split layout (scroller/chat + dashboard)
@@ -547,7 +551,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
   Widget _buildLockoutScreen() {
     final state = widget.notifier.gameStateNotifier.value;
     return Container(
-      color: const Color(0xFF1A0000), // Dark red background
+      color: const Color(0xFF1A0000).withValues(alpha: 0.88), // Dark red background (semitransparent)
       padding: const EdgeInsets.all(24.0),
       child: Center(
         child: Column(
@@ -763,7 +767,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     }
 
     return Container(
-      color: Colors.black,
+      color: Colors.black.withValues(alpha: 0.85),
       padding: const EdgeInsets.all(24.0),
       child: SafeArea(
         child: Column(

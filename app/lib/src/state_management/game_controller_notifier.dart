@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 import 'flutter_asset_config_source.dart';
@@ -1194,3 +1194,22 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
     super.dispose();
   }
 }
+
+/// Provider per consentire ai widget della gerarchia di accedere a [GameControllerNotifier]
+/// senza doverlo passare manualmente attraverso i costruttori.
+class GameControllerProvider extends InheritedNotifier<GameControllerNotifier> {
+  /// Crea un'istanza di [GameControllerProvider].
+  const GameControllerProvider({
+    super.key,
+    required super.notifier,
+    required super.child,
+  });
+
+  /// Ottiene l'istanza di [GameControllerNotifier] più vicina nel contesto.
+  static GameControllerNotifier of(BuildContext context) {
+    final provider = context.dependOnInheritedWidgetOfExactType<GameControllerProvider>();
+    assert(provider != null, "Nessun GameControllerProvider trovato nel contesto.");
+    return provider!.notifier!;
+  }
+}
+

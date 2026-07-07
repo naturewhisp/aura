@@ -50,16 +50,42 @@ class AudioManager {
   bool _isEpic = true;
   bool _isVictory = false;
   String? _currentBgmTrack;
+  DateTime _trackStartTime = DateTime.now();
 
   /// Indica se il gestore audio è stato correttamente inizializzato.
   bool get isInitialized => _initialized;
   /// Indica se la riproduzione audio è abilitata.
   bool get audioEnabled => _audioEnabled;
 
+  /// Restituisce i BPM effettivi della traccia in esecuzione
+  double get currentBpm {
+    if (!_initialized || !_audioEnabled || _currentBgmTrack == null) return 0.0;
+    if (_currentBgmTrack == 'main' || _currentBgmTrack == 'epic') {
+      return 120.0;
+    }
+    if (_currentBgmTrack == 'game') {
+      if (_currentAlert >= 40) {
+        return _currentAlert > 80 ? 144.0 : 120.0;
+      } else {
+        return 60.0;
+      }
+    }
+    return 120.0;
+  }
+
+  /// Restituisce il timestamp di avvio della traccia attiva
+  DateTime get trackStartTime => _trackStartTime;
+
   /// Inizializza il modulo audio, genera i file WAV procedurali su disco e alloca il pool dei player.
   Future<void> initialize(String appDataPath, {bool audioEnabled = true}) async {
     if (_initialized) return;
     _audioEnabled = audioEnabled;
+
+    if (!audioEnabled) {
+      _playersCreated = false;
+      _initialized = true;
+      return;
+    }
 
     // Avviso specifico per la piattaforma Windows
     if (Platform.isWindows) {
@@ -159,6 +185,7 @@ class AudioManager {
       _isVictory = isVictory;
     }
     _currentBgmTrack = targetTrack;
+    _trackStartTime = DateTime.now();
 
     try {
       if (_isEpic) {

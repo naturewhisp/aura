@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
+import '../widgets/audio_reactive_background.dart';
 
 /// Schermata iniziale di Boot e Menu Principale dell'applicazione A.U.R.A.
 ///
@@ -349,11 +350,18 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
           onKeyEvent: _handleKeyEvent,
           child: Scaffold(
             backgroundColor: Colors.black,
-            body: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: _buildCurrentSubScreen(),
-              ),
+            body: Stack(
+              children: [
+                const Positioned.fill(
+                  child: AudioReactiveBackground(),
+                ),
+                SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: _buildCurrentSubScreen(),
+                  ),
+                ),
+              ],
             ),
           ),
         );

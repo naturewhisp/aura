@@ -52,9 +52,11 @@ class AuraApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'A.U.R.A.',
-      debugShowCheckedModeBanner: false,
+    return GameControllerProvider(
+      notifier: notifier,
+      child: MaterialApp(
+        title: 'A.U.R.A.',
+        debugShowCheckedModeBanner: false,
       // Configurazione del tema grafico retro terminale
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -82,6 +84,6 @@ class AuraApp extends StatelessWidget {
           }
         },
       ),
-    );
+    ),);
   }
 }

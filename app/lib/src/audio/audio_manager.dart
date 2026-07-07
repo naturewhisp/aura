@@ -326,16 +326,15 @@ class AudioManager {
     }
   }
 
-  /// Esegue la riproduzione interna di un file SFX, fermando le riproduzioni precedenti sullo stesso player.
-  Future<void> _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) async {
+  /// Esegue la riproduzione interna di un file SFX in modalità Fire-and-Forget per prevenire micro-freeze dell'UI thread.
+  void _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) {
     if (!_playersCreated || !_audioEnabled || path == null) return;
-    try {
-      await player.stop();
-      await player.setVolume(volume);
-      await player.play(DeviceFileSource(path));
-    } catch (e) {
+    player.stop().then((_) {
+      player.setVolume(volume);
+      player.play(DeviceFileSource(path));
+    }).catchError((e) {
       debugPrint("Errore durante la riproduzione dell'SFX: $e");
-    }
+    });
   }
 
   /// Riproduce il suono di click della digitazione a schermo.

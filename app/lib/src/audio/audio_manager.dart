@@ -250,6 +250,8 @@ class AudioManager {
           await _bgmTensePlayer.resume();
         }
       }
+      // Attendi che il thread audio nativo si sia avviato per evitare che sovrascriva i volumi impostati
+      await Future.delayed(const Duration(milliseconds: 250));
       // Applica immediatamente il mix in base all'allerta corrente
       await updateAlertLevel(_currentAlert, force: true);
     } catch (e) {

@@ -308,7 +308,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                       : Container(
                           color: state.metrics.imperativePillar > 70
                               ? Colors.black.withValues(alpha: 0.88)
-                              : Colors.black,
+                              : Colors.black.withValues(alpha: 0.15),
                           child: LayoutBuilder(
                             builder: (context, constraints) {
                               final isDesktop = constraints.maxWidth >= 700;

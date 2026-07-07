@@ -18,6 +18,7 @@ class AudioReactiveBackground extends StatefulWidget {
 
 class _AudioReactiveBackgroundState extends State<AudioReactiveBackground> with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  DateTime? _lastTrackStartTime;
 
   @override
   void initState() {
@@ -42,6 +43,14 @@ class _AudioReactiveBackgroundState extends State<AudioReactiveBackground> with 
     final state = notifier.gameStateNotifier.value;
     final alertLevel = state.metrics.alertLevel;
     final outcome = notifier.controller.checkOutcome(state);
+
+    // Sincronizzazione Ticker: se la traccia audio è cambiata, riavvia il controller
+    final currentTrackStart = AudioManager().trackStartTime;
+    if (_lastTrackStartTime != currentTrackStart) {
+      _lastTrackStartTime = currentTrackStart;
+      _controller.reset();
+      _controller.repeat();
+    }
 
     return RepaintBoundary(
       child: AnimatedBuilder(
@@ -84,9 +93,9 @@ class _DnaHelixPainter extends CustomPainter {
     final double actualBpm = bpm > 0 ? bpm : 120.0;
     final double beatDuration = 60.0 / actualBpm;
 
-    // Calcola il tempo reale dall'avvio della traccia audio corrente
-    final DateTime trackStartTime = AudioManager().trackStartTime;
-    final double t = DateTime.now().difference(trackStartTime).inMilliseconds / 1000.0;
+    // Usiamo elapsedSeconds fornito dal Ticker continuo di Flutter
+    // Questo è continuo ad ogni frame (60/120 Hz) ed elimina del tutto DateTime.now()
+    final double t = elapsedSeconds;
 
     // Calcola l'intensità del battito con un decadimento esponenziale (simulazione del kick)
     final double beatIntensity = math.exp(-6.0 * (t % beatDuration));

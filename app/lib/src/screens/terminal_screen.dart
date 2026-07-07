@@ -448,7 +448,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
 
   Widget _buildHexScroller() {
     return Container(
-      color: Colors.black,
+      color: Colors.transparent,
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

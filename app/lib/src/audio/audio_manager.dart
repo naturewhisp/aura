@@ -317,8 +317,6 @@ class AudioManager {
     double tenseVol = 0.0;
     double mainVol = 0.0;
     double epicVol = 0.0;
-    double tenseRate = 1.0;
-
     if (_isEpic) {
       ambientVol = 0.0;
       tenseVol = 0.0;
@@ -335,19 +333,16 @@ class AudioManager {
       if (alert < 40) {
         ambientVol = 0.6;
         tenseVol = 0.0;
-        tenseRate = 1.0;
       } else {
         // Sistema di priorità: Tense ha priorità assoluta su Ambient (Ambient viene silenziato a 0.0)
         ambientVol = 0.0;
         tenseVol = alert <= 80 ? 0.6 : 1.0;
-        tenseRate = alert <= 80 ? 1.0 : 1.2;
       }
     }
 
     try {
       await _bgmAmbientPlayer.setVolume(ambientVol);
       await _bgmTensePlayer.setVolume(tenseVol);
-      await _bgmTensePlayer.setPlaybackRate(tenseRate);
       await _bgmMainPlayer.setVolume(mainVol);
       await _bgmEpicPlayer.setVolume(epicVol);
     } catch (e) {

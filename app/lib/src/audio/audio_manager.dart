@@ -237,18 +237,27 @@ class AudioManager {
         await _bgmEpicPlayer.stop();
         await _bgmMainPlayer.stop();
 
+        // Prepariamo i due player di gioco
         if (_bgmAmbientPath != null) {
           await _bgmAmbientPlayer.stop();
           await _bgmAmbientPlayer.setSource(DeviceFileSource(_bgmAmbientPath!));
           await _bgmAmbientPlayer.setReleaseMode(ReleaseMode.loop);
-          await _bgmAmbientPlayer.resume();
         }
         if (_bgmTensePath != null) {
           await _bgmTensePlayer.stop();
           await _bgmTensePlayer.setSource(DeviceFileSource(_bgmTensePath!));
           await _bgmTensePlayer.setReleaseMode(ReleaseMode.loop);
-          await _bgmTensePlayer.resume();
         }
+
+        // Avviamo la riproduzione in parallelo (Future.wait) per massimizzare il sync dei beat
+        final resumeFutures = <Future<void>>[];
+        if (_bgmAmbientPath != null) {
+          resumeFutures.add(_bgmAmbientPlayer.resume());
+        }
+        if (_bgmTensePath != null) {
+          resumeFutures.add(_bgmTensePlayer.resume());
+        }
+        await Future.wait(resumeFutures);
       }
       // Attendi che il thread audio nativo si sia avviato per evitare che sovrascriva i volumi impostati
       await Future.delayed(const Duration(milliseconds: 250));

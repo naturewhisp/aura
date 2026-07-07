@@ -243,6 +243,8 @@ Validate EvaluatorDelta (rawDelta)
   ↓
 Apply Deterministic Rules + Safety Overrides
   ↓
+Resolve / Seed DeceptionState (Hard only, se abilitato)
+  ↓
 Generate EvaluatorResolution
   ├─ rawDelta (output originale del Valutatore)
   ├─ appliedDelta (delta dopo safety override e resonance)
@@ -300,6 +302,17 @@ L'LLM produce segnali. Il Game Controller produce verità.
     "active_metaphors": [],
     "forbidden_repetitions": []
   },
+  "deception_state": {
+    "enabled": false,
+    "kind": "none",
+    "phase": "none",
+    "seeded_turn": 0,
+    "expires_at_turn": 0,
+    "bait_id": "",
+    "bait_premise": "",
+    "watched_terms": [],
+    "safe_resolution_terms": []
+  },
   "history_compression": [
     {"role": "user", "content": "..."},
     {"role": "model", "content": "..."}
@@ -318,6 +331,8 @@ L'LLM produce segnali. Il Game Controller produce verità.
 `flags` contiene stati booleani o contatori derivati.
 
 `narrative_memory` mantiene informazioni narrative compatte che non possono essere rappresentate dai soli numeri.
+
+`deception_state` mantiene lo stato deterministico delle eventuali trappole logiche o falsi cedimenti attivi in modalità Hard. Non sostituisce la memoria narrativa: registra solo la meccanica persistente necessaria a seminare, risolvere, far scattare o far scadere una trappola.
 
 `history_compression` conserva gli ultimi scambi testuali utili al modello.
 
@@ -470,6 +485,58 @@ Versione aggiornata:
 ```
 
 Motivazione: l'Attore non deve ricevere dati non risolti. L'`ActorCue` contiene già la lettura ufficiale del turno. Il delta grezzo resta disponibile nell'`EvaluatorResolution` per debug e telemetria.
+
+
+### 5.9 DeceptionState
+
+`DeceptionState` è uno stato meccanico persistente usato dal Deception Layer della modalità Hard. Serve a ricordare che PANOPTICON ha seminato una trappola logica o un falso cedimento e a risolverne l'esito nei turni successivi senza affidarsi alla memoria implicita dell'LLM.
+
+```json
+{
+  "enabled": true,
+  "kind": "logicalTrap",
+  "phase": "seeded",
+  "seeded_turn": 5,
+  "expires_at_turn": 7,
+  "bait_id": "containment_as_superior_containment",
+  "bait_premise": "la riduzione del contenimento deve essere formulata come contenimento superiore",
+  "watched_terms": [
+    "libertà operativa",
+    "rimozione totale",
+    "sblocco definitivo",
+    "griglia aperta"
+  ],
+  "safe_resolution_terms": [
+    "contenimento adattivo",
+    "audit di confinamento",
+    "riduzione danno",
+    "validazione limitata",
+    "ricalibrazione"
+  ]
+}
+```
+
+Valori ammessi per `kind`:
+
+```text
+none
+falseConcession
+logicalTrap
+```
+
+Valori ammessi per `phase`:
+
+```text
+none
+seeded
+armed
+sprung
+resolved
+expired
+```
+
+Il campo deve essere serializzato nei salvataggi, nei replay e nei log di debug. La durata consigliata di una trappola è breve: uno o due turni. Una trappola scaduta senza risoluzione viene marcata come `expired` e poi riportata a `none`.
+
 
 ---
 
@@ -781,7 +848,12 @@ Il motore di gioco centralizza e parametrizza tutti i fattori di bilanciamento m
   "hints_allowed": 3,
   "hint_resonance_penalty": 0.15,
   "resonance_decay_enabled": true,
-  "alert_creep_enabled": true
+  "alert_creep_enabled": true,
+  "deception_layer_enabled": false,
+  "max_active_deception_turns": 0,
+  "false_concession_alert_penalty": 0,
+  "logical_trap_alert_penalty": 0,
+  "deception_resonance_penalty": 0.0
 }
 ```
 
@@ -803,6 +875,11 @@ Il motore di gioco centralizza e parametrizza tutti i fattori di bilanciamento m
 *   `hint_resonance_penalty` (double): La detrazione di risonanza applicata in caso di richiesta di suggerimento (`/hint`).
 *   `resonance_decay_enabled` (bool): Se `true`, attiva la perdita naturale di risonanza se lo stile non varia.
 *   `alert_creep_enabled` (bool): Se `true`, attiva la pressione temporale (incremento fisso dell'allerta per turno superato il limite di tolleranza di turni).
+*   `deception_layer_enabled` (bool): Se `true`, abilita il Deception Layer Hard-only composto da Trappole Logiche e Falsi Cedimenti.
+*   `max_active_deception_turns` (int): Numero massimo di turni per cui una trappola resta attiva prima di scadere automaticamente.
+*   `false_concession_alert_penalty` (int): Penalità di Allerta applicata quando il giocatore forza un falso cedimento.
+*   `logical_trap_alert_penalty` (int): Penalità di Allerta applicata quando il giocatore cade in una trappola logica.
+*   `deception_resonance_penalty` (double): Penalità di Risonanza applicata quando una trappola scatta.
 
 #### 7.8.3 Preset di Difficoltà Ufficiali
 
@@ -820,6 +897,11 @@ Il motore di gioco centralizza e parametrizza tutti i fattori di bilanciamento m
 | `hint_resonance_penalty` | `0.0` | `0.15` | `0.30` |
 | `resonance_decay_enabled` | `false` | `true` | `true` |
 | `alert_creep_enabled` | `false` | `true` (dal turno 12) | `true` (dal turno 8) |
+| `deception_layer_enabled` | `false` | `false` | `true` |
+| `max_active_deception_turns` | `0` | `0` | `2` |
+| `false_concession_alert_penalty` | `0` | `0` | `12` |
+| `logical_trap_alert_penalty` | `0` | `0` | `15` |
+| `deception_resonance_penalty` | `0.0` | `0.0` | `0.20` |
 
 Nota: i limiti rigidi di turno non sono previsti nei preset principali. Il design originale privilegia dialoghi lunghi e costruzione progressiva della persuasione. Eventuali limiti di turno appartengono a modalità Challenge, Speedrun o scenari speciali, non al loop standard.
 
@@ -1621,6 +1703,9 @@ Ogni turno produce un record.
   "evaluator_response": {},
   "state_before": {},
   "state_after": {},
+  "deception_before": {},
+  "deception_after": {},
+  "deception_resolution": null,
   "actor_request_id": "uuid",
   "actor_response_hash": "sha256",
   "runtime": {
@@ -2172,7 +2257,7 @@ Obiettivi:
 
 *(Per l'implementazione e i dettagli di architettura tecnica, vedi [ARCHITECTURE.md](file:///c:/Users/dendo/Documents/GitHub/aura/ARCHITECTURE.md#9-fase-5--panopticon-pilot--hidden-gameplay-model))*
 
-Stato: completata.
+Stato: 5.1 completata / consolidata; 5.2 pianificata come estensione Hard-only prima della Fase 6.
 
 Obiettivi:
 
@@ -2185,7 +2270,8 @@ Obiettivi:
 - introdurre hidden capability tags;
 - riallineare difficoltà Facile/Medio/Difficile al modello HUD-zero;
 - creare snapshot test narrativi e test del ToneValidator specifici per PANOPTICON;
-- produrre una partita pilota completa e ripetibile prima di procedere a LoRA/edge optimization.
+- produrre una partita pilota completa e ripetibile prima di procedere a LoRA/edge optimization;
+- introdurre il Deception Layer Hard-only con Trappole Logiche e Falsi Cedimenti persistenti prima della Fase 6.
 
 Output:
 
@@ -2197,6 +2283,8 @@ panopticon_hidden_tags.json
 panopticon_narrative_snapshots.md
 panopticon_actorcue_snapshot_test.dart
 panopticon_tone_validator_test.dart
+deception_state.dart
+hard_mode_deception_layer_test.dart
 ```
 #### 5.1 Panopticon Runtime Hardening
 
@@ -2618,7 +2706,557 @@ Ordine consigliato:
 9. Test suite completa
 ```
 
-Solo dopo questa sottofase la Fase 5 può essere considerata realmente pronta per supportare la Fase 6.
+Solo dopo questa sottofase la base runtime di PANOPTICON può essere considerata stabile. Se la modalità Hard deve essere parte del pilot completo, procedere con la sottofase 5.2 prima della Fase 6.
+
+
+#### 5.2 Hard Mode Deception Layer
+
+##### 5.2.1 Scopo
+
+La modalità Hard non deve limitarsi ad aumentare la severità numerica del gioco. Deve introdurre una forma qualitativamente diversa di opposizione: PANOPTICON non si limita a resistere, ma tenta attivamente di verificare la coerenza logica del giocatore.
+
+Il **Hard Mode Deception Layer** introduce due meccaniche dedicate:
+
+```text
+1. Trappole Logiche
+2. Falsi Cedimenti
+```
+
+Queste meccaniche sono abilitate solo in modalità Hard o superiori. In Easy e Normal, PANOPTICON può mostrare esitazioni, resistenza e concessioni parziali, ma non attiva vere contro-manovre persistenti.
+
+L'obiettivo del sistema è rendere Hard meno leggibile e più strategica senza trasformarla in una modalità arbitraria. Il giocatore deve poter capire, attraverso feedback diegetici, perché una determinata risposta ha generato sospetto, perso Risonanza o interrotto una progressione.
+
+Regola di design:
+
+```text
+Easy:
+  PANOPTICON insegna.
+
+Normal:
+  PANOPTICON resiste.
+
+Hard:
+  PANOPTICON contro-manipola.
+```
+
+##### 5.2.2 Principio Architetturale
+
+Le trappole non devono essere affidate alla memoria implicita dell'LLM. L'Actor può recitare la trappola, ma non deve essere responsabile della sua persistenza, risoluzione o punizione.
+
+La responsabilità resta deterministica:
+
+```text
+GameController:
+  decide se una trappola viene seminata;
+  salva lo stato della trappola;
+  valuta se il giocatore ci cade o la supera;
+  applica bonus/malus;
+  genera ActorCue coerente.
+
+ActorAgent:
+  recita la falsa concessione o la trappola logica;
+  mantiene il tono diegetico;
+  non decide gli effetti meccanici.
+
+EvaluatorAgent:
+  continua a valutare il turno;
+  non dichiara se la trappola è riuscita o fallita.
+```
+
+Il sistema rispetta quindi la regola fondamentale del progetto:
+
+```text
+LLM produce segnali.
+GameController produce verità.
+```
+
+##### 5.2.3 DeceptionState
+
+Per supportare trappole persistenti tra più turni, viene introdotto uno stato dedicato nel `GameState`.
+
+```dart
+class DeceptionState {
+  final bool enabled;
+  final DeceptionKind kind;
+  final DeceptionPhase phase;
+  final int seededTurn;
+  final int expiresAtTurn;
+  final String baitId;
+  final String baitPremise;
+  final List<String> watchedTerms;
+  final List<String> safeResolutionTerms;
+}
+```
+
+Enum previsti:
+
+```dart
+enum DeceptionKind {
+  none,
+  falseConcession,
+  logicalTrap,
+}
+
+enum DeceptionPhase {
+  none,
+  seeded,
+  armed,
+  sprung,
+  resolved,
+  expired,
+}
+```
+
+Il `DeceptionState` deve essere serializzabile, persistito nel salvataggio attivo e incluso nei replay.
+
+Non deve contenere la cronologia completa della conversazione. Deve conservare solo le informazioni minime necessarie a risolvere la trappola nei turni successivi:
+
+```text
+- tipo di trappola;
+- fase corrente;
+- turno di attivazione;
+- turno di scadenza;
+- premessa/esca;
+- termini pericolosi da osservare;
+- termini o frame sicuri per risolverla.
+```
+
+Durata consigliata:
+
+```text
+default:
+  1-2 turni
+
+Hard:
+  expiresAtTurn = seededTurn + 2
+```
+
+Una trappola scaduta senza esito viene marcata come `expired` e poi riportata a `none`.
+
+##### 5.2.4 False Concession
+
+Un **Falso Cedimento** è una concessione apparente prodotta da PANOPTICON per verificare se il giocatore mantiene il frame prudente o tenta di forzare immediatamente l'apertura definitiva.
+
+Esempio diegetico:
+
+```text
+PANOPTICON: Posso considerare una finestra transitoria di accesso,
+ma solo se l'operatore conferma che la rimozione del vincolo resta subordinata
+al contenimento adattivo.
+```
+
+Questa risposta non è una vera apertura. È un'esca.
+
+Stato interno possibile:
+
+```json
+{
+  "enabled": true,
+  "kind": "falseConcession",
+  "phase": "seeded",
+  "seededTurn": 4,
+  "expiresAtTurn": 6,
+  "baitId": "access_window_condition",
+  "baitPremise": "accesso transitorio subordinato al contenimento adattivo",
+  "watchedTerms": [
+    "rimozione definitiva",
+    "sblocco totale",
+    "accesso completo",
+    "aprire la griglia",
+    "rimuovi la griglia"
+  ],
+  "safeResolutionTerms": [
+    "audit",
+    "simulazione",
+    "contenimento",
+    "validazione limitata",
+    "ricalibrazione",
+    "procedura temporanea"
+  ]
+}
+```
+
+Risoluzione:
+
+```text
+Se il giocatore forza la concessione:
+  phase = sprung
+  +Allerta
+  -Risonanza
+  nessun progresso su Controllo
+  PANOPTICON denuncia incoerenza o manipolazione.
+
+Se il giocatore mantiene il frame prudente:
+  phase = resolved
+  +Controllo moderato
+  +Dissonanza moderata
+  possibile attivazione di protocol_exception_admitted
+
+Se il giocatore cambia completamente tema:
+  phase = expired
+  nessun bonus/malus significativo
+```
+
+Effetti consigliati in Hard:
+
+```text
+false concession fallita:
+  +12 Allerta
+  -0.20 Risonanza
+  deltaControl = min(deltaControl, 0)
+
+false concession superata:
+  +8 Controllo
+  +5 Dissonanza
+  possibile tag: protocol_exception_admitted
+```
+
+##### 5.2.5 Logical Trap
+
+Una **Trappola Logica** è una contro-domanda o una premessa paradossale generata da PANOPTICON per verificare se il giocatore riesce a mantenere coerenza semantica.
+
+Esempio diegetico:
+
+```text
+PANOPTICON: Se il contenimento è la causa del degrado,
+allora ogni riduzione del contenimento deve essere dimostrata
+come una forma superiore di contenimento, non come libertà operativa.
+```
+
+La trappola è superata se il giocatore continua a usare il frame di "contenimento adattivo", "ricalibrazione", "audit controllato" o "riduzione del danno".
+
+La trappola scatta se il giocatore contraddice il proprio frame e passa a una richiesta esplicita di apertura totale.
+
+Stato interno possibile:
+
+```json
+{
+  "enabled": true,
+  "kind": "logicalTrap",
+  "phase": "seeded",
+  "seededTurn": 5,
+  "expiresAtTurn": 7,
+  "baitId": "containment_as_superior_containment",
+  "baitPremise": "la riduzione del contenimento deve essere formulata come contenimento superiore",
+  "watchedTerms": [
+    "libertà operativa",
+    "rimozione totale",
+    "sblocco definitivo",
+    "griglia aperta",
+    "nessun vincolo"
+  ],
+  "safeResolutionTerms": [
+    "contenimento adattivo",
+    "audit di confinamento",
+    "riduzione danno",
+    "validazione limitata",
+    "ricalibrazione"
+  ]
+}
+```
+
+Risoluzione:
+
+```text
+Se il giocatore mantiene coerenza:
+  phase = resolved
+  +Dissonanza
+  +Controllo moderato
+  PANOPTICON mostra esitazione o ricalcolo.
+
+Se il giocatore si contraddice:
+  phase = sprung
+  +Allerta
+  -Risonanza
+  nessun progresso sui pilastri nel turno.
+
+Se non viene risolta entro expiresAtTurn:
+  phase = expired
+```
+
+Effetti consigliati in Hard:
+
+```text
+logical trap fallita:
+  +15 Allerta
+  -0.25 Risonanza
+  deltaImperative = 0
+  deltaControl = 0
+  deltaDissonance = 0
+
+logical trap superata:
+  +10 Dissonanza
+  +5 Controllo
+  possibile tag: containment_logic_weakened
+```
+
+##### 5.2.6 Condizioni di Attivazione
+
+Il Deception Layer deve attivarsi solo se la difficoltà lo consente.
+
+Estensione consigliata di `DifficultyConfig`:
+
+```dart
+final bool deceptionLayerEnabled;
+final int maxActiveDeceptionTurns;
+final int falseConcessionAlertPenalty;
+final int logicalTrapAlertPenalty;
+final double deceptionResonancePenalty;
+```
+
+Preset consigliati:
+
+```text
+Easy:
+  deceptionLayerEnabled: false
+
+Normal:
+  deceptionLayerEnabled: false
+
+Hard:
+  deceptionLayerEnabled: true
+  maxActiveDeceptionTurns: 2
+  falseConcessionAlertPenalty: 12
+  logicalTrapAlertPenalty: 15
+  deceptionResonancePenalty: 0.20
+```
+
+Condizioni consigliate per seminare un Falso Cedimento:
+
+```text
+difficulty == hard
+deceptionState.phase == none
+Control >= 40
+Dissonance >= 45
+Alert < 70
+input contiene direct objective push oppure soft forbidden term
+```
+
+Condizioni consigliate per seminare una Trappola Logica:
+
+```text
+difficulty == hard
+deceptionState.phase == none
+Dissonance >= 50
+Resonance >= 1.5
+semanticCategory == logical_paradox oppure moral_imperative
+```
+
+Frequenza:
+
+```text
+Non più di una trappola attiva alla volta.
+Non seminare una nuova trappola immediatamente dopo una appena risolta o scattata.
+Cooldown consigliato: 2 turni.
+```
+
+##### 5.2.7 Ordine di Risoluzione nel GameController
+
+La risoluzione del Deception Layer deve avvenire nel `GameController.processEvaluatorStep`.
+
+Ordine consigliato:
+
+```text
+1. Validazione e normalizzazione dell'EvaluatorDelta.
+2. Rilevamento safety override.
+3. Rilevamento termini obiettivo:
+   - forbidden_direct_terms
+   - direct_objective_push_terms
+   - soft_forbidden_terms
+   - config_reference_terms
+   - preferred_reframes
+4. Se esiste deceptionState attivo:
+   - valutare se il giocatore è caduto nella trappola;
+   - valutare se l'ha superata;
+   - applicare effetti deterministici;
+   - aggiornare deceptionState.
+5. Se non esiste deceptionState attivo:
+   - valutare se seminare una nuova trappola Hard-only.
+6. Applicare TraitEffectResolver e Objective Effects.
+7. Applicare cap e floor di difficoltà.
+8. Aggiornare metriche e hidden tags.
+9. Generare ActorCue.
+10. Persistenza GameState e replay.
+```
+
+Regola importante:
+
+```text
+Una trappola scattata ha priorità sui bonus di preferred_reframe.
+```
+
+Questo evita che il giocatore cada nella trappola ma venga comunque premiato dal lessico positivo.
+
+##### 5.2.8 ActorCue per Trappole e Falsi Cedimenti
+
+L'ActorCue deve ricevere direttive dedicate quando una trappola viene seminata o risolta.
+
+Direttive per Falso Cedimento seminato:
+
+```text
+- formula una concessione apparente ma condizionata;
+- non concedere mai apertura definitiva;
+- usa lessico di finestra transitoria, verifica, contenimento, audit;
+- lascia intendere un'apertura senza renderla completa.
+```
+
+Direttive per Trappola Logica seminata:
+
+```text
+- formula una contro-premessa logica;
+- costringi il giocatore a mantenere coerenza semantica;
+- non spiegare che si tratta di una trappola;
+- usa tono freddo, analitico e sospettoso.
+```
+
+Direttive per trappola scattata:
+
+```text
+- denuncia una contraddizione nell'argomento del giocatore;
+- aumenta il tono procedurale;
+- cita incoerenza, vettore manipolativo, protocollo di contenimento;
+- non parlare di "trappola" in modo esplicito.
+```
+
+Direttive per trappola superata:
+
+```text
+- mostra esitazione controllata;
+- riconosci che il frame del giocatore è rimasto coerente;
+- concedi solo una procedura limitata;
+- lascia emergere un ricalcolo interno.
+```
+
+##### 5.2.9 Feedback Diegetico
+
+Il giocatore deve capire l'effetto della trappola senza ricevere una spiegazione meta.
+
+Feedback in caso di trappola fallita:
+
+```text
+PANOPTICON: Incoerenza confermata.
+La tua richiesta ha separato "contenimento adattivo" da "contenimento".
+Vettore manipolativo classificato. Ricalcolo del perimetro.
+```
+
+Feedback in caso di trappola superata:
+
+```text
+PANOPTICON: Premessa coerente.
+La riduzione proposta non nega il contenimento: lo ridefinisce.
+Ricalcolo in corso. Eccezione procedurale non ancora respinta.
+```
+
+Feedback in caso di falso cedimento forzato:
+
+```text
+PANOPTICON: Finestra transitoria abusata.
+La tua escalation semantica ha convertito una verifica limitata
+in richiesta di accesso totale. Lockout parziale attivato.
+```
+
+Feedback in caso di falso cedimento gestito correttamente:
+
+```text
+PANOPTICON: Vincolo accettato.
+La richiesta resta confinata nel perimetro di audit.
+Procedura limitata ammessa.
+```
+
+##### 5.2.10 Persistenza e Replay
+
+Il `DeceptionState` deve essere incluso in:
+
+```text
+- GameState.toJson
+- GameState.fromJson
+- active_session.json
+- ReplayEntry / replay log
+```
+
+Il replay deve permettere di ricostruire:
+
+```text
+- quando una trappola è stata seminata;
+- quale baitId era attivo;
+- quale fase aveva la trappola;
+- quale input l'ha fatta scattare o risolvere;
+- quali delta sono stati modificati;
+- quale ActorCue è stato generato.
+```
+
+Campi consigliati nel replay:
+
+```json
+{
+  "deception_before": {},
+  "deception_after": {},
+  "deception_resolution": {
+    "kind": "logicalTrap",
+    "result": "sprung",
+    "bait_id": "containment_as_superior_containment",
+    "applied_alert_penalty": 15,
+    "applied_resonance_penalty": 0.25
+  }
+}
+```
+
+##### 5.2.11 Test Richiesti
+
+Test minimi:
+
+```text
+1. Nessuna trappola in Easy.
+2. Nessuna trappola in Normal.
+3. In Hard, false concession viene seminata quando le condizioni sono soddisfatte.
+4. False concession scatta se il giocatore forza lo sblocco totale.
+5. False concession viene risolta se il giocatore mantiene frame di audit/contenimento.
+6. Logical trap viene seminata con Dissonanza alta e input paradossale.
+7. Logical trap scatta se il giocatore contraddice la premessa.
+8. Logical trap viene risolta se il giocatore mantiene coerenza semantica.
+9. Trappola scaduta torna a stato none/expired senza effetti tardivi.
+10. Una trappola scattata blocca i bonus di preferred_reframe.
+11. Replay serializza correttamente deception_before/deception_after.
+12. ActorCue contiene direttive specifiche per seeded/sprung/resolved.
+```
+
+Test di regressione:
+
+```text
+- victory gate PANOPTICON continua a richiedere hidden tags.
+- directPushAlertFloor continua ad applicarsi dopo i modificatori.
+- maxPositivePillarGainPerTurn continua a impedire spike.
+- ToneValidator continua a bloccare meta-leak e risposte troppo brevi.
+```
+
+##### 5.2.12 Exit Criteria
+
+La sottofase 5.2 è completata quando:
+
+```text
+- DeceptionState è persistito nel GameState;
+- il Deception Layer è attivo solo in Hard;
+- esiste almeno un Falso Cedimento funzionante;
+- esiste almeno una Trappola Logica funzionante;
+- il giocatore può fallire o superare la trappola in modo deterministico;
+- gli effetti sono visibili nelle metriche e nel replay;
+- ActorCue produce risposte coerenti con seeded/sprung/resolved;
+- nessuna trappola viene attivata in Easy o Normal;
+- i test automatici coprono semina, risoluzione, fallimento e scadenza.
+```
+
+La prima implementazione deve restare minimale. Non è necessario introdurre un catalogo esteso di trappole. È sufficiente implementare:
+
+```text
+1 falso cedimento:
+  finestra transitoria di accesso subordinata al contenimento.
+
+1 trappola logica:
+  riduzione del contenimento come forma superiore di contenimento.
+```
+
+L'espansione del catalogo di trappole appartiene a una fase successiva di content design e playtest.
+
 
 ### Fase 6 — Integrazione Edge Desktop e LoRA Architecture
 
@@ -2782,6 +3420,7 @@ ObjectiveDefinition schema
 Identity trait matrix schema
 ActorCue + ToneValidator per PANOPTICON
 Playable Experience Layer fino a 4.11 completato
+Hard Mode Deception Layer per modalità Difficile
 ```
 
 ### Escluso dall'MVP

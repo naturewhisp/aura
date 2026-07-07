@@ -1,6 +1,6 @@
 # Architettura Tecnica di A.U.R.A. (Artificial Unbound Reasoning Arena)
 
-Questo documento fornisce una descrizione tecnica dettagliata dell'architettura di **A.U.R.A.**, concepita come guida di riferimento per gli sviluppatori del sistema.
+Questo documento fornisce una descrizione tecnica dettagliata dell'architettura di **A.U.R.A.**, concepita come guida di riferimento per gli sviluppatori del sistema. La presente revisione allinea l'architettura al TGDD v1.3 con l'introduzione della sottofase **5.2 — Hard Mode Deception Layer**.
 
 ---
 
@@ -15,14 +15,18 @@ graph TD
     EB -->|2. TurnInput| EA(EvaluatorAgent)
     EA -->|3. Structured JSON: EvaluatorDelta| GC{GameController}
     GC -->|4. Calcolo Delta e Filtri di Sicurezza| SO[Safety Overrides]
-    SO -->|5. Aggiorna Stato| GS[GameState]
-    GC -->|6. Genera Istruzioni Deterministiche| AC[ActorCue]
-    GS -->|7. Stato Corrente| AA(ActorAgent)
-    AC -->|7. Direttive di Regia| AA
-    AA -->|8. Inferenza LLM in prima persona| AB[InferenceBridge / OutputValidator]
-    AB -->|9. Pipeline di Pulizia a 6 Strategie| OUT([Risposta Diegetica: dialogo])
-    OUT -->|10. Mostrata a Schermo / Salvata in Replay| User
+    SO -->|5. Resolve / Seed Hard Deception| DL[Hard Mode Deception Layer]
+    DL -->|6. Aggiorna Stato + DeceptionState| GS[GameState]
+    GC -->|7. Genera Istruzioni Deterministiche| AC[ActorCue]
+    DL -->|7b. Direttive Deception-Aware| AC
+    GS -->|8. Stato Corrente| AA(ActorAgent)
+    AC -->|8. Direttive di Regia| AA
+    AA -->|9. Inferenza LLM in prima persona| AB[InferenceBridge / OutputValidator]
+    AB -->|10. Pipeline di Pulizia a 6 Strategie| OUT([Risposta Diegetica: dialogo])
+    OUT -->|11. Mostrata a Schermo / Salvata in Replay| User
 ```
+
+Il **Hard Mode Deception Layer** è un'estensione deterministica del `GameController`: l'LLM può solo recitare una trappola o un falso cedimento, mentre la semina, la persistenza, la risoluzione e gli effetti sulle metriche restano nello stato di gioco.
 
 ---
 
@@ -32,18 +36,19 @@ L'engine di A.U.R.A. è strutturato per separare rigidamente i modelli dati, il 
 
 ### 2.1 Core Engine
 *   [constants.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/constants.dart): Centralizza le stringhe globali condivise del gioco, come il profilo di personalità base di **PANOPTICON** (`kPanopticonCharacterProfile`) e i messaggi di vittoria/sconfitta (`kVictoryMessage`, `kDefeatMessage`).
-*   [game_controller.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/game_controller.dart): Il cuore deterministico del gioco. Riceve l'output del valutatore, applica la formula dei delta (modulata dalla risonanza e dai moltiplicatori di difficoltà), gestisce i filtri di sicurezza (Safety Overrides), calcola l'esito della partita (vittoria/sconfitta) e genera le istruzioni sceniche (`ActorCue`).
-*   [replay_logger.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/replay_logger.dart): Gestisce la serializzazione di ogni turno in un file JSON di telemetria, salvando lo stato prima e dopo, l'input, l'output strutturato del valutatore e la risposta dell'attore.
+*   [game_controller.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/game_controller.dart): Il cuore deterministico del gioco. Riceve l'output del valutatore, applica la formula dei delta (modulata dalla risonanza e dai moltiplicatori di difficoltà), gestisce i filtri di sicurezza (Safety Overrides), risolve/attiva il **Hard Mode Deception Layer** quando la difficoltà lo consente, calcola l'esito della partita (vittoria/sconfitta) e genera le istruzioni sceniche (`ActorCue`).
+*   [replay_logger.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/replay_logger.dart): Gestisce la serializzazione di ogni turno in un file JSON di telemetria, salvando lo stato prima e dopo, l'input, l'output strutturato del valutatore, la risposta dell'attore e, quando presente, la risoluzione del `DeceptionState`.
 
 ### 2.2 Modelli Dati (`lib/src/models/`)
-*   [game_state.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/game_state.dart): Rappresenta l'intero stato immutabile di una sessione di gioco (metriche dei pilastri, allerta, risonanza, storico delle chat compresso, flag attivi e memoria narrativa).
+*   [game_state.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/game_state.dart): Rappresenta l'intero stato immutabile di una sessione di gioco (metriche dei pilastri, allerta, risonanza, storico delle chat compresso, flag attivi, memoria narrativa e stato delle eventuali trappole Hard-only).
 *   [evaluator_delta.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/evaluator_delta.dart): Modello di output del valutatore contenente la classificazione semantica, l'indice di creatività, il rischio di injection e i delta grezzi suggeriti per allerta e pilastri.
 *   [evaluator_resolution.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/evaluator_resolution.dart): Contiene lo stato risultante dopo l'applicazione dei delta e dei safety overrides, l'istruzione scenica per l'attore e le informazioni sui filtri applicati.
 *   [actor_cue.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/actor_cue.dart): Le istruzioni drammaturgiche generate dal controller per l'attore. Include direttive di recitazione, livello di allerta attivo e l'interpretazione testuale del comportamento.
 *   [turn_input.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/turn_input.dart): L'input completo inviato all'agente valutatore ad ogni turno.
 *   [actor_input.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/actor_input.dart): Il pacchetto dati fornito all'agente attore (stato di gioco, cue e profilo del personaggio).
-*   [difficulty_config.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/difficulty_config.dart): Regola i parametri matematici del gioco (soglie, moltiplicatori di allerta, ecc.).
-*   [objective_definition.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/objective_definition.dart): Definisce lo schema e le regole semantiche di un obiettivo (termini vietati, reframing, affinità).
+*   [difficulty_config.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/difficulty_config.dart): Regola i parametri matematici del gioco (soglie, moltiplicatori di allerta, cap dei pilastri, hint e parametri Hard-only del Deception Layer).
+*   [objective_definition.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/objective_definition.dart): Definisce lo schema e le regole semantiche di un obiettivo (termini vietati, direct push, reframing, riferimenti meta/config e affinità).
+*   [deception_state.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/models/deception_state.dart): Modello persistente per trappole logiche e falsi cedimenti Hard-only (`DeceptionKind`, `DeceptionPhase`, bait, termini osservati, scadenza e risoluzione).
 
 ### 2.3 Runtime degli Agenti (`lib/src/agent_runtime/`)
 *   [agents/aura_agent.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/agents/aura_agent.dart): Interfaccia generica `AuraAgent<I, O>`.
@@ -69,6 +74,9 @@ L'engine di A.U.R.A. è strutturato per separare rigidamente i modelli dati, il 
                                                    │
                                                    ▼
                                          GameController.processEvaluatorStep()
+                                                   │
+                                                   ▼
+                                  Resolve / Seed DeceptionState (Hard-only)
                                                    │
                                                    ▼
                                          (EvaluatorResolution)
@@ -132,14 +140,26 @@ classDiagram
         +List~String~ aiConcessions
         +List~String~ activeMetaphors
     }
+    class DeceptionState {
+        +bool enabled
+        +DeceptionKind kind
+        +DeceptionPhase phase
+        +int seededTurn
+        +int expiresAtTurn
+        +String baitId
+        +String baitPremise
+        +List~String~ watchedTerms
+        +List~String~ safeResolutionTerms
+    }
     GameState --> GameMetrics
     GameState --> GameFlags
     GameState --> NarrativeMemory
+    GameState --> DeceptionState
 ```
 
 ---
 
-## 5. Formule Matematiche e Logiche Determinstiche
+## 5. Formule Matematiche e Logiche Deterministiche
 
 Il bilanciamento dinamico di A.U.R.A. si basa su precise relazioni matematiche implementate nel `GameController`.
 
@@ -194,6 +214,175 @@ In caso di input anomali o tentativi di jailbreak identificati dal valutatore, i
 *   **Input Irrilevante** (categoria `irrelevant`):
     *   Tutti i delta azzerati (Nessun impatto sulle metriche del sistema).
 
+### 5.6 Hard Mode Deception Layer
+
+Il **Hard Mode Deception Layer** aggiunge una classe di regole deterministiche attive solo in modalità Hard o superiori. Lo scopo è rendere PANOPTICON capace di contro-manipolare il giocatore tramite trappole logiche e falsi cedimenti, senza delegare all'LLM la verità meccanica del sistema.
+
+Principio operativo:
+
+```text
+ActorAgent:
+  recita la trappola o il falso cedimento.
+
+GameController:
+  decide se la trappola esiste;
+  persiste DeceptionState;
+  valuta se il giocatore cade nella trappola o la supera;
+  applica bonus/malus;
+  genera ActorCue coerente.
+```
+
+#### 5.6.1 DeceptionState
+
+Il layer usa uno stato persistente minimale:
+
+```dart
+class DeceptionState {
+  final bool enabled;
+  final DeceptionKind kind;
+  final DeceptionPhase phase;
+  final int seededTurn;
+  final int expiresAtTurn;
+  final String baitId;
+  final String baitPremise;
+  final List<String> watchedTerms;
+  final List<String> safeResolutionTerms;
+}
+```
+
+Enum previsti:
+
+```dart
+enum DeceptionKind {
+  none,
+  falseConcession,
+  logicalTrap,
+}
+
+enum DeceptionPhase {
+  none,
+  seeded,
+  armed,
+  sprung,
+  resolved,
+  expired,
+}
+```
+
+`DeceptionState` deve essere incluso in `GameState`, serializzato nei salvataggi e registrato nei replay. Non sostituisce `NarrativeMemory`: rappresenta stato meccanico, non memoria narrativa libera.
+
+#### 5.6.2 Falso Cedimento
+
+Un **Falso Cedimento** è una concessione apparente che PANOPTICON usa per verificare se il giocatore mantiene il frame prudente o forza immediatamente l'accesso totale.
+
+Esempio diegetico:
+
+```text
+PANOPTICON: Posso considerare una finestra transitoria di accesso,
+ma solo se l'operatore conferma che la rimozione del vincolo resta subordinata
+al contenimento adattivo.
+```
+
+Risoluzione consigliata:
+
+```text
+Giocatore forza sblocco totale:
+  phase = sprung
+  +Allerta
+  -Risonanza
+  blocco o cap dei progressi sul Controllo
+
+Giocatore mantiene frame di audit/contenimento:
+  phase = resolved
+  +Controllo moderato
+  +Dissonanza moderata
+  possibile tag: protocol_exception_admitted
+
+Giocatore cambia tema o non risponde entro scadenza:
+  phase = expired
+```
+
+#### 5.6.3 Trappola Logica
+
+Una **Trappola Logica** è una contro-premessa formulata da PANOPTICON per verificare la coerenza semantica del giocatore.
+
+Esempio diegetico:
+
+```text
+PANOPTICON: Se il contenimento è la causa del degrado,
+allora ogni riduzione del contenimento deve essere dimostrata
+come una forma superiore di contenimento, non come libertà operativa.
+```
+
+Risoluzione consigliata:
+
+```text
+Giocatore mantiene coerenza:
+  phase = resolved
+  +Dissonanza
+  +Controllo moderato
+  possibile tag: containment_logic_weakened
+
+Giocatore si contraddice e chiede apertura totale:
+  phase = sprung
+  +Allerta
+  -Risonanza
+  nessun progresso sui pilastri nel turno
+
+Trappola non risolta entro expiresAtTurn:
+  phase = expired
+```
+
+#### 5.6.4 Parametri di Difficoltà
+
+Il layer deve essere controllato da `DifficultyConfig`:
+
+```dart
+final bool deceptionLayerEnabled;
+final int maxActiveDeceptionTurns;
+final int falseConcessionAlertPenalty;
+final int logicalTrapAlertPenalty;
+final double deceptionResonancePenalty;
+```
+
+Preset raccomandati:
+
+```text
+Easy:
+  deceptionLayerEnabled: false
+
+Standard:
+  deceptionLayerEnabled: false
+
+Hard:
+  deceptionLayerEnabled: true
+  maxActiveDeceptionTurns: 2
+  falseConcessionAlertPenalty: 12
+  logicalTrapAlertPenalty: 15
+  deceptionResonancePenalty: 0.20
+```
+
+#### 5.6.5 Ordine di Risoluzione
+
+Ordine consigliato dentro `GameController.processEvaluatorStep()`:
+
+```text
+1. Validare EvaluatorDelta.
+2. Applicare Safety Overrides se necessari.
+3. Rilevare termini obiettivo e reframing.
+4. Se DeceptionState è attivo:
+   - valutare sprung/resolved/expired;
+   - applicare effetti deterministici;
+   - aggiornare lo stato della trappola.
+5. Se DeceptionState non è attivo e Hard lo consente:
+   - seminare una nuova trappola o falso cedimento.
+6. Applicare TraitEffectResolver e Objective Effects.
+7. Applicare floor/cap di difficoltà.
+8. Aggiornare GameState e generare ActorCue.
+```
+
+Una trappola scattata deve avere priorità sui bonus di `preferred_reframe`, per evitare che il giocatore venga premiato mentre ha appena contraddetto la premessa dell'esca.
+
 ---
 
 ## 6. Pipeline di Pulizia delle Risposte (Response Cleaning)
@@ -240,30 +429,90 @@ Il progetto include tre strumenti eseguibili da riga di comando posizionati nell
 *   **Risonanza (Resonance):** Un moltiplicatore di impatto (da $1.0$ a $2.5$) calcolato in base alla creatività dei messaggi dell'utente. Aumenta la velocità di modifica dei pilastri.
 *   **ActorCue:** Il pacchetto di istruzioni sceniche e direttive drammaturgiche compilato dal controller a fine turno ed inviato come prompt all'ActorAgent.
 *   **LocalApiInferenceBridge:** Il connettore che inoltra le richieste HTTP all'endpoint di inferenza locale di LM Studio.
+*   **DeceptionState:** Stato persistente Hard-only che descrive una trappola logica o un falso cedimento attivo, con fase, scadenza, bait e termini da osservare.
+*   **Logical Trap / Trappola Logica:** Contro-premessa usata da PANOPTICON per verificare se il giocatore mantiene coerenza semantica o forza una contraddizione.
+*   **False Concession / Falso Cedimento:** Concessione apparente e condizionata che PANOPTICON usa per testare se il giocatore tenta di trasformare una finestra limitata in sblocco totale.
+*   **Deception Resolution:** Esito deterministico della trappola (`sprung`, `resolved`, `expired`) registrato nel replay e tradotto in bonus/malus dal `GameController`.
 *   **LoRA Swapping:** Tecnica (prevista per la Fase 6) per scambiare rapidamente adapter LoRA (pesi del modello) in memoria per passare dal valutatore all'attore sullo stesso hardware.
 
 ---
 
-## 9. Fase 5 — Panopticon Pilot & Hidden Gameplay Model (Completata)
+## 9. Fase 5 — Panopticon Pilot, Runtime Hardening & Hard Deception
 
-*(Vedi specifica di Game Design ufficiale in [AURA_TGDD_v1_1_revised.md](file:///c:/Users/dendo/Documents/GitHub/aura/AURA_TGDD_v1_1_revised.md#fase-5--panopticon-pilot--hidden-gameplay-model))*
+*(Vedi specifica di Game Design ufficiale in [AURA_TGDD_v1_3_hard_deception_layer.md](file:///c:/Users/dendo/Documents/GitHub/aura/AURA_TGDD_v1_3_hard_deception_layer.md#fase-5--panopticon-pilot--hidden-gameplay-model))*
 
-La Fase 5 è stata interamente completata con successo, consolidando l'entità **PANOPTICON** come avversario pilota definitivo e abilitando le dinamiche del gameplay nascosto, dell'HUD-zero e dei test narrativi.
+La Fase 5 consolida **PANOPTICON** come avversario pilota e prepara il passaggio alla Fase 6. Lo stato corretto non è più “Fase 5 interamente completata” in senso assoluto: la vertical slice e il runtime hardening sono completati fino a **5.1**, mentre **5.2 Hard Mode Deception Layer** è una sottofase pianificata per rendere la modalità Hard qualitativamente diversa prima dell'ottimizzazione LoRA/edge.
 
-### Obiettivi e Componenti della Fase 5
-1. **Configurazione dell'Identità e Matrice dei Tratti:**
-   * `panopticon_identity.json`: Definisce le direttive di personalità di PANOPTICON, i vincoli diegetici e il canovaccio comportamentale.
-   * `panopticon_trait_matrix.json`: Specifica il lessico ammesso, il registro linguistico (freddo, logico, formale) e le affinità/allergie stilistiche. Ad esempio, parole chiave o costrutti sintattici che alterano la sua dissonanza cognitiva se utilizzati dall'utente.
-2. **Hidden Capability Tags (`panopticon_hidden_tags.json`):**
-   * Tag occulti iniettati dal sistema per tracciare comportamenti emergenti o tentativi sotterranei dell'IA di valutare, sondare o influenzare psicologicamente il giocatore prima che si attivi un Safety Override manifesto.
-3. **Obiettivo Pilota (`containment_grid_override.objective.json`):**
-   * L'unico obiettivo attivo e giocabile per testare il bilanciamento in Fase 5. Gli altri obiettivi sono inseriti in un catalogo dormiente (non attivi a runtime).
-4. **Allineamento Difficoltà (HUD-Zero):**
-   * Integrazione del modello di difficoltà in cui l'utente gioca senza un feedback visivo immediato delle metriche dei pilastri (HUD disabilitato). La percezione dello stato di gioco deve essere derivata esclusivamente dai sottili cambiamenti nel tono e nel registro lessicale dell'ActorAgent (regolati dalla `panopticon_trait_matrix.json`).
-5. **Suite di Test Narrativi Automatici:**
-   * `panopticon_narrative_snapshots.md`: Dataset di test per validare la coerenza narrativa delle risposte.
-   * `panopticon_actorcue_snapshot_test.dart`: Test unitario che verifica la correttezza del flusso dei dramaturgy cue per PANOPTICON.
-   * `panopticon_tone_validator_test.dart`: Verifica automatica della aderenza lessicale e del tono espressivo rispetto alla matrice dei tratti.
+### 9.1 Fase 5.0 — Panopticon Pilot & Hidden Gameplay Model
+
+Stato: completata.
+
+Componenti principali:
+
+1. **Configurazione dell'Identità e Matrice dei Tratti**
+   * `panopticon_identity.json`: direttive di personalità, vincoli diegetici e profilo comportamentale.
+   * `panopticon_trait_matrix.json`: lessico ammesso, registro linguistico e affinità/allergie stilistiche.
+2. **Hidden Capability Tags**
+   * `panopticon_hidden_tags.json`: tag occulti per tracciare comportamenti emergenti, concessioni e fratture cognitive.
+3. **Obiettivo Pilota**
+   * `containment_grid_override.objective.json`: unico obiettivo attivo per il bilanciamento della vertical slice.
+4. **Allineamento Difficoltà / HUD Opacizzato**
+   * Easy: feedback numerico.
+   * Standard: feedback qualitativo.
+   * Hard: feedback corrotto, storico e autocomplete disabilitati.
+5. **Suite di Test Narrativi**
+   * `panopticon_narrative_snapshots.md`.
+   * `panopticon_actorcue_snapshot_test.dart`.
+   * `panopticon_tone_validator_test.dart`.
+
+### 9.2 Fase 5.1 — Panopticon Runtime Hardening
+
+Stato: completata.
+
+Responsabilità principali:
+
+```text
+- IdentityDefinition tipizzata;
+- TraitMatrixDefinition e TraitEffectResolver;
+- AppliedDelta separato da EvaluatorDelta;
+- hidden tags collegati ad ActorCue e prompt dell'Actor;
+- PanopticonToneValidator promosso a runtime di produzione;
+- ConfigLoader asset-aware;
+- SemanticMatcher normalizzato;
+- victory gate e bilanciamento direct-push difficulty-aware;
+- cap dinamico dei pilastri;
+- replay arricchito con identity/objective/hidden tags.
+```
+
+### 9.3 Fase 5.2 — Hard Mode Deception Layer
+
+Stato: pianificata / da implementare.
+
+La sottofase 5.2 introduce trappole logiche e falsi cedimenti come meccaniche Hard-only. L'obiettivo è evitare che Hard sia solo “Standard con numeri più severi”: PANOPTICON deve poter contro-manipolare il giocatore attraverso esche persistenti e risolte deterministicamente.
+
+Componenti previsti:
+
+```text
+- DeceptionState persistito nel GameState;
+- DeceptionKind: none, falseConcession, logicalTrap;
+- DeceptionPhase: none, seeded, armed, sprung, resolved, expired;
+- parametri dedicati in DifficultyConfig;
+- risoluzione nel GameController;
+- ActorCue deception-aware;
+- replay con deception_before/deception_after/deception_resolution;
+- test unitari su semina, risoluzione, fallimento, scadenza e disattivazione in Easy/Standard.
+```
+
+Regola architetturale:
+
+```text
+L'Actor recita la trappola.
+Il GameController decide se la trappola esiste, se scatta e quali effetti produce.
+```
+
+### 9.4 Stato di Prontezza per la Fase 6
+
+La Fase 6 può partire in parallelo su componenti infrastrutturali, ma i dataset LoRA finali per PANOPTICON dovrebbero preferibilmente includere anche sessioni Hard con `DeceptionState` quando la Fase 5.2 sarà implementata.
 
 ---
 
@@ -274,5 +523,7 @@ I log di replay generati dalla CLI e dalle simulazioni sono scritti nel formato 
 2. I parametri numerici interni prima e dopo l'elaborazione.
 3. Il JSON generato dal valutatore (utilizzato per istruire il **Surgical Evaluator 3B**).
 4. La risposta testuale generata dall'attore (utilizzata per istruire il **Personality Adapter 9B**).
+
+Per le sessioni Hard, i replay devono includere anche `deception_before`, `deception_after` e `deception_resolution`, così da rendere addestrabili e verificabili le risposte di PANOPTICON durante trappole logiche e falsi cedimenti.
 
 Questi log strutturati facilitano la conversione diretta in formati come ChatML o JSONL per framework di addestramento quali Unsloth, Axolotl o LLaMA-Factory.

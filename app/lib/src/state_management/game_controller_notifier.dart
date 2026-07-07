@@ -333,7 +333,10 @@ class GameControllerNotifier extends ChangeNotifier {
       return;
     }
 
-    final turnId = currentState.historyCompression.length ~/ 2 + 1;
+    // Utilizza turnCount come source of truth monotonica per il turnId del replay.
+    // historyCompression è una sliding window troncata e non riflette il numero
+    // reale di turni giocati dopo che la finestra è piena.
+    final turnId = currentState.turnCount + 1;
 
     // Gestione del comando speciale /hint (richiesta di suggerimento diagnostico)
     if (userInput.trim().toLowerCase() == "/hint") {

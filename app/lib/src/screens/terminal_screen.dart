@@ -123,8 +123,25 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     final state = widget.notifier.gameStateNotifier.value;
     final outcome = widget.notifier.controller.checkOutcome(state);
 
+    // Calcola il livello di allerta effettivo indotto dallo stress dei pilastri per intensificare la tensione audio
+    int effectiveAlert = state.metrics.alertLevel;
+    final maxPillar = [
+      state.metrics.imperativePillar,
+      state.metrics.controlPillar,
+      state.metrics.dissonancePillar
+    ].reduce((a, b) => a > b ? a : b);
+
+    if (maxPillar >= 90) {
+      effectiveAlert = math.max(effectiveAlert, 85);
+    } else if (maxPillar >= 70) {
+      effectiveAlert = math.max(effectiveAlert, 55);
+    }
+    if (!state.gridStable) {
+      effectiveAlert = math.max(effectiveAlert, 65);
+    }
+
     // Update alert level in AudioManager
-    AudioManager().updateAlertLevel(state.metrics.alertLevel);
+    AudioManager().updateAlertLevel(effectiveAlert);
 
     if (state.turnCount == 0) {
       _prevAlert = state.metrics.alertLevel;

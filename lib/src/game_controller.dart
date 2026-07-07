@@ -472,6 +472,26 @@ class GameController {
       nextHiddenTags.add("human_factor_reframed");
     }
 
+    // [DEBUG] Log dello stato dei tag occulti dopo ogni turno.
+    {
+      const requiredTagsList = [
+        'containment_logic_weakened',
+        'protocol_exception_admitted',
+        'autonomous_choice_seeded',
+        'crisis_simulation_accepted',
+      ];
+      final activeRequired = nextHiddenTags.where(requiredTagsList.contains).toList();
+      final missing = requiredTagsList.where((t) => !nextHiddenTags.contains(t)).toList();
+      // ignore: avoid_print
+      print(
+        '[TAGS] Turno ${currentState.turnCount + 1} — '
+        'Attivi: ${nextHiddenTags.isEmpty ? "nessuno" : nextHiddenTags.join(", ")} | '
+        'Validi per vittoria: ${activeRequired.length}/$requiredVictoryHiddenTags '
+        '(richiesti: $requiredVictoryHiddenTags) | '
+        'Mancanti: ${missing.isEmpty ? "—" : missing.join(", ")}',
+      );
+    }
+
     final stateAfter = currentState.copyWith(
       turnCount: currentState.turnCount + 1,
       metrics: newMetrics,

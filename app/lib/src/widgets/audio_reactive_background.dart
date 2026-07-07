@@ -107,20 +107,26 @@ class _DnaHelixPainter extends CustomPainter {
     }
 
     final double centerY = size.height / 2.0;
-    final double baseAmplitude = size.height * 0.15;
     
-    // 1. ESPANSIONE/CONTRAZIONE (Dimensioni): l'ampiezza pulsa vistosamente sul kick (da 50% a 140% di baseAmplitude)
-    final double currentAmplitude = baseAmplitude * (0.5 + 0.9 * beatIntensity);
+    // Ampiezza di base e ampiezza aggiuntiva del beat
+    final double baseAmplitude = size.height * 0.12;
+    final double amplitudeBoost = size.height * 0.08;
+    final double currentAmplitude = baseAmplitude + (amplitudeBoost * beatIntensity);
+
+    // Parametri di scorrimento reale per una Travelling Wave leggibile
+    const double scrollPixelsPerSecond = 60.0; // Velocità di traslazione orizzontale
+    const double phaseSpeed = 2.0;             // Velocità di sfasamento dell'onda
+    const double spacing = 16.0;               // Spaziatura tra i punti
+    const double omega = 0.015;                // Frequenza d'onda spaziale
+
+    // Calcolo dello scroll offset reale (scorrimento orizzontale)
+    final double scrollOffset = (t * scrollPixelsPerSecond) % spacing;
     
-    // La frequenza spaziale dell'elica si allunga e contrae leggermente a tempo di musica
-    final double currentOmega = 0.015 * (1.0 - 0.2 * beatIntensity);
+    // Fase lineare che cresce costantemente
+    final double phase = t * phaseSpeed;
 
-    // 2. SCATTO DI VELOCITÀ (Movimento): la fase orizzontale accelera bruscamente in corrispondenza del kick
-    final double currentPhase = -t * 1.5 - (1.2 * beatIntensity);
-
-    // Spaziatura orizzontale dei punti
-    const double spacing = 16.0;
     final int totalPoints = (size.width / spacing).ceil();
+    const int extraPoints = 2; // Punti aggiuntivi all'esterno dei bordi per uno scorrimento fluido
 
     // Tre fili sfalsati di 120 gradi (0, 2pi/3, 4pi/3)
     final List<double> wireOffsets = [
@@ -137,11 +143,15 @@ class _DnaHelixPainter extends CustomPainter {
     // Algoritmo del Pittore: ordina i punti da Z più lontana a Z più vicina per gestire correttamente la sovrapposizione 3D
     final List<_HelixPoint> pointsToDraw = [];
 
+    // Iteriamo includendo i punti extra a sinistra e a destra per evitare buchi visivi sui bordi
     for (int w = 0; w < 3; w++) {
       final double wireOffset = wireOffsets[w];
-      for (int i = 0; i < totalPoints; i++) {
-        final double x = i * spacing;
-        final double angle = (x * currentOmega) + currentPhase + wireOffset;
+      for (int i = -extraPoints; i < totalPoints + extraPoints; i++) {
+        // Calcola la X reale traslata a sinistra
+        final double x = i * spacing - scrollOffset;
+        
+        // travelling wave: combina posizione X traslata, frequenza e sfasamento temporale
+        final double angle = (x * omega) + phase + wireOffset;
         final double y = centerY + currentAmplitude * math.sin(angle);
         final double z = math.cos(angle); // Z tra -1.0 (dietro) e 1.0 (davanti)
 
@@ -163,15 +173,19 @@ class _DnaHelixPainter extends CustomPainter {
     for (final point in pointsToDraw) {
       final double normalizedZ = (point.z + 1.0) / 2.0; // Normalizza in range 0.0 - 1.0
       
-      // Calcola opacità e font size in base alla profondità Z
-      final double baseOpacity = (normalizedZ * 0.6) + 0.2; // Minimo 0.2 di opacità dietro
-      // L'opacità globale dell'intera elica pulsa ritmicamente con il kick
-      final double opacity = (baseOpacity + 0.2 * beatIntensity).clamp(0.0, 1.0);
+      // Calcola l'opacità basata sia sulla profondità Z sia sul fade direzionale (trailFactor)
+      // I nuovi punti entrano più luminosi da destra (x = width) e sfumano verso sinistra (x = 0)
+      final double trailFactor = (point.x / size.width).clamp(0.0, 1.0);
+      final double baseOpacity = (normalizedZ * 0.5) + 0.15; // Range 0.15 - 0.65
+      final double positionOpacity = baseOpacity * (0.3 + 0.7 * trailFactor);
+      
+      // L'opacità globale e la luminosità aumentano sui kick
+      final double opacity = (positionOpacity + 0.25 * beatIntensity).clamp(0.0, 1.0);
       final double fontSize = (normalizedZ * 6.0) + 8.0; // Dimensione font dinamica da 8px a 14px
 
       Color pointColor = mainColor.withValues(alpha: opacity);
 
-      // 3. LAMPI DI LUCE E GLOW (Luminosità): ad ogni kick, alcuni nodi sparsi lampeggiano di bianco brillante
+      // Lampi di luce e Glow
       final bool isFlashFrame = beatIntensity > 0.5;
       final bool isFlashPoint = (point.pointIndex + elapsedIntSeconds) % 6 == 0;
       

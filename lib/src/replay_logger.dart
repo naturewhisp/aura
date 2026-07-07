@@ -76,12 +76,19 @@ class ReplayEntry {
 
   /// Converte la voce di replay in una mappa JSON conforme alla sezione 16.1 del TGDD.
   Map<String, dynamic> toJson() {
+    // Svuota il campo history_compression dagli stati prima e dopo per evitare
+    // l'esplosione quadratica della dimensione del log e prevenire freeze dell'UI thread.
+    final cleanBefore = Map<String, dynamic>.from(stateBefore)
+      ..['history_compression'] = const <dynamic>[];
+    final cleanAfter = Map<String, dynamic>.from(stateAfter)
+      ..['history_compression'] = const <dynamic>[];
+
     return {
       'turn_id': turnId,
       'user_input': userInput,
       'evaluator_output': evaluatorOutput.toJson(),
-      'state_before': stateBefore,
-      'state_after': stateAfter,
+      'state_before': cleanBefore,
+      'state_after': cleanAfter,
       'actor_response': actorResponse,
       'actor_request_id': actorRequestId,
       'actor_response_hash': actorResponseHash,

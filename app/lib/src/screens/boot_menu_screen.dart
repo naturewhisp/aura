@@ -97,6 +97,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
               widget.notifier.appDataPath,
               audioEnabled: widget.notifier.audioEnabled,
             );
+            await AudioManager().startBgm(isEpic: true, isVictory: false);
             if (mounted) {
               setState(() {
                 _bootLines.add("AURA_INIT> Model Router profile: [${widget.notifier.activeProfile}] loaded.");
@@ -107,7 +108,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
         }
       } else {
         timer.cancel();
-        AudioManager().startBgm();
+        AudioManager().startBgm(isEpic: true, isVictory: false);
         // Show ASCII art logo after a short delay
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {

@@ -196,7 +196,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     });
 
     // Cambia la musica in bgm_epic
-    AudioManager().updateAlertLevel(0, isEpic: true);
+    AudioManager().updateAlertLevel(0, isEpic: true, isVictory: true);
 
     _hexScrollTimer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
       _generateHexLine();
@@ -518,8 +518,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                     setState(() {
                       _showSummaryOverlay = true;
                     });
-                    AudioManager().updateAlertLevel(0, isEpic: true);
-                    AudioManager().startBgm(isEpic: true);
+                    AudioManager().updateAlertLevel(0, isEpic: true, isVictory: true);
+                    AudioManager().startBgm(isEpic: true, isVictory: true);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00FF66),

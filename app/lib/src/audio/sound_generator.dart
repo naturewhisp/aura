@@ -70,14 +70,15 @@ class SoundGenerator {
       dir.createSync(recursive: true);
     }
 
+    final mainFile = File("${dir.path}/bgm_main.wav");
     final ambientFile = File("${dir.path}/bgm_ambient.wav");
     final tenseFile = File("${dir.path}/bgm_tense.wav");
     final epicFile = File("${dir.path}/bgm_epic.wav");
 
-    // 1. bgm_ambient: Traccia tranquilla ed atmosferica (bass drone a triangolo + pad a doppia ottava + cyber-bell + melodia flautata)
-    if (!ambientFile.existsSync()) {
+    // 1. bgm_main: Traccia polifonica chiptune incalzante ed epica con progressione di accordi (vecchia epic)
+    if (!mainFile.existsSync()) {
       await _generateWavFile(
-        ambientFile,
+        mainFile,
         sampleRate: 22050,
         durationSeconds: 32.0,
         generatePcm: (t) {
@@ -87,40 +88,46 @@ class SoundGenerator {
           final bool isGChord = chordInfo[1];
           final chordFreqs = _getChordFreqs(chordIdx);
 
-          // Bass drone a onda triangolare a frequenza base (rootFreq: 43-77Hz) per generare armoniche udibili
+          // Voce 1: Linea di Basso (Onda a triangolo, pulsante e ritmica)
+          final double bassBeat = t % 0.5;
+          final double bassEnv = math.exp(-3.5 * bassBeat);
           final double bassPhase = (t * rootFreq) % 1.0;
           final double bassTri = bassPhase < 0.5 ? (4.0 * bassPhase - 1.0) : (3.0 - 4.0 * bassPhase);
-          final double bassVal = bassTri * 0.15;
+          final double bassVal = bassTri * 0.28 * bassEnv;
 
-          // Pad di accordi a doppia ottava (fondamentale e ottava superiore) per presenza e udibilità su laptop/altoparlanti consumer
-          double padVal = 0.0;
-          final double padLfo = 0.6 + 0.4 * math.sin(2 * math.pi * 0.12 * t); // LFO lento a 0.12Hz per modulare il volume
-          for (int i = 0; i < 3; i++) {
-            final double freq1 = chordFreqs[i];         // Ottava fondamentale (87-233 Hz)
-            final double freq2 = chordFreqs[i] * 2.0;   // Ottava superiore (174-466 Hz)
-            padVal += math.sin(2 * math.pi * freq1 * t);
-            padVal += math.sin(2 * math.pi * freq2 * t);
+          // Voce 2: Arpeggiatore (Onda quadra, stile chiptune lento C64, 4 note al secondo)
+          final int arpStep = (t * 4.0).toInt() % 4;
+          final double arpBeat = (t * 4.0) % 1.0;
+          final double localArpT = t % 0.25; // 0.25s per nota
+          double arpFreq = chordFreqs[arpStep % 3];
+          if (arpStep == 3) {
+            arpFreq = chordFreqs[1] * 2.0; // Salto di ottava
           }
-          padVal = (padVal / 6.0) * 0.58 * padLfo;
+          final double arpPhase = (localArpT * arpFreq) % 1.0;
+          final double arpSquare = arpPhase < 0.5 ? 0.04 : -0.04;
+          final double arpAttack = localArpT < 0.01 ? (localArpT / 0.01) : 1.0; // Attacco di 10ms per evitare clic digitali
+          final double arpEnv = arpAttack * math.exp(-5.0 * arpBeat);
+          final double arpVal = arpSquare * arpEnv;
 
-          // Cyber-bell soffice e periodica (ogni 4 secondi) per aggiungere texture metallica a frequenze medio-alte
-          final double bellCycle = t % 4.0;
-          double bellVal = 0.0;
-          if (bellCycle < 2.0) { // Inviluppo con decadimento di 2 secondi
-            final int noteIdx = (t ~/ 4.0) % 3;
-            final double bellFreq = chordFreqs[noteIdx] * 4.0; // Ottava alta
-            final double bellEnv = math.exp(-3.0 * bellCycle);
-            // Somma di parziali disarmonici per timbro metallico cybernetico
-            final double osc1 = math.sin(2 * math.pi * bellFreq * t);
-            final double osc2 = math.sin(2 * math.pi * bellFreq * 1.5 * t) * 0.5;
-            final double osc3 = math.sin(2 * math.pi * bellFreq * 2.0 * t) * 0.25;
-            final double osc4 = math.sin(2 * math.pi * bellFreq * 2.63 * t) * 0.12;
-            bellVal = ((osc1 + osc2 + osc3 + osc4) / 1.87) * 0.08 * bellEnv;
-          }
+          // Voce 3: Simulazione Batteria (Cassa filtrata, rullante in rumore bianco e hi-hat)
+          final double kickTime = t % 1.0;
+          final double kickFreq = 120.0 * math.exp(-25.0 * kickTime);
+          final double kickVal = math.sin(2 * math.pi * kickFreq * kickTime) * math.exp(-15.0 * kickTime) * 0.12;
 
-          // Voce 4: Melodia solista in versione ambient (onda sinusoidale pura flautata con attacco lento, variazione sul tema principale)
+          final double snareTime = (t - 0.5) % 1.0;
+          final double snareEnv = math.exp(-22.0 * snareTime);
+          final double snareVal = (_random.nextDouble() * 2.0 - 1.0) * 0.035 * snareEnv;
+
+          final double hatTime = (t - 0.25) % 0.5;
+          final double hatEnv = math.exp(-45.0 * hatTime);
+          final double hatVal = (_random.nextDouble() * 2.0 - 1.0) * 0.015 * hatEnv;
+
+          final double drumVal = kickVal + snareVal + hatVal;
+
+          // Voce 4: Melodia solista (Onda quadra a modulazione di larghezza di impulso PWM + vibrato, 64 passi totali, 0.5s per passo)
           final int stepIdx = (t / 0.5).toInt() % 64;
           final double stepTime = t % 0.5;
+          
           double leadVal = 0.0;
           final int degree = _melodyDegrees[stepIdx];
           if (degree != -1) {
@@ -135,28 +142,119 @@ class SoundGenerator {
             const double scaleRoot = 130.81; // Do3
             final double leadFreq = scaleRoot * math.pow(2.0, (12 + semitones) / 12.0); // Parte da Do4
 
-            // Vibrato molto lento e sottile (LFO a 3Hz, intensità 0.6%)
-            final double vibrato = 1.0 + 0.006 * math.sin(2 * math.pi * 3.0 * t);
+            // Vibrato (LFO a 6Hz, intensità 1.2%)
+            final double vibrato = 1.0 + 0.012 * math.sin(2 * math.pi * 6.0 * t);
             final double finalLeadFreq = leadFreq * vibrato;
 
-            // Onda sinusoidale pura (morbida e calda)
-            final double leadOsc = math.sin(2 * math.pi * finalLeadFreq * t);
+            // Onda quadra PWM
+            final double leadPhase = (stepTime * finalLeadFreq) % 1.0;
+            final double dutyCycle = 0.5 + 0.3 * math.sin(2 * math.pi * 2.0 * t);
+            final double leadOsc = leadPhase < dutyCycle ? 0.08 : -0.08;
 
-            // Inviluppo con attacco lento (120ms) e decadimento dolce
-            final double attack = stepTime < 0.12 ? (stepTime / 0.12) : 1.0;
-            final double leadEnv = attack * math.exp(-3.0 * stepTime);
-            leadVal = leadOsc * 0.04 * leadEnv; // Volume controllato per non essere invadente
+            // Inviluppo AD
+            final double attack = stepTime < 0.02 ? (stepTime / 0.02) : 1.0;
+            final double leadEnv = attack * math.exp(-3.5 * stepTime);
+            leadVal = leadOsc * leadEnv;
           }
 
-          // Fruscio leggerissimo di sottofondo per dare texture analogica/retro
-          final double noiseVal = (_random.nextDouble() * 2.0 - 1.0) * 0.003;
+          return bassVal + arpVal + drumVal + leadVal;
+        },
+      );
+    }
+
+    // 2. bgm_ambient: Traccia tranquilla ed atmosferica, tempo dimezzato (1.0s per passo) con melodia PWM dolce ed eco
+    if (!ambientFile.existsSync()) {
+      await _generateWavFile(
+        ambientFile,
+        sampleRate: 22050,
+        durationSeconds: 64.0,
+        generatePcm: (t) {
+          final int chordIdx = (t / 8.0).toInt() % 8;
+          final chordInfo = _getChordInfo(chordIdx);
+          final double rootFreq = chordInfo[0];
+          final chordFreqs = _getChordFreqs(chordIdx);
+
+          // Bass drone a onda triangolare a frequenza base (rootFreq: 43-77Hz) per generare armoniche udibili
+          final double bassPhase = (t * rootFreq) % 1.0;
+          final double bassTri = bassPhase < 0.5 ? (4.0 * bassPhase - 1.0) : (3.0 - 4.0 * bassPhase);
+          final double bassVal = bassTri * 0.15;
+
+          // Pad di accordi a doppia ottava (fondamentale e ottava superiore) per presenza e udibilità
+          double padVal = 0.0;
+          final double padLfo = 0.6 + 0.4 * math.sin(2 * math.pi * 0.06 * t); // LFO lentissimo a 0.06Hz
+          for (int i = 0; i < 3; i++) {
+            final double freq1 = chordFreqs[i];         // Ottava fondamentale
+            final double freq2 = chordFreqs[i] * 2.0;   // Ottava superiore
+            padVal += math.sin(2 * math.pi * freq1 * t);
+            padVal += math.sin(2 * math.pi * freq2 * t);
+          }
+          padVal = (padVal / 6.0) * 0.55 * padLfo;
+
+          // Cyber-bell soffice e periodica (ogni 8 secondi per dare più respiro spaziale)
+          final double bellCycle = t % 8.0;
+          double bellVal = 0.0;
+          if (bellCycle < 3.0) { // Inviluppo con decadimento più lungo
+            final int noteIdx = (t ~/ 8.0) % 3;
+            final double bellFreq = chordFreqs[noteIdx] * 4.0;
+            final double bellEnv = math.exp(-1.5 * bellCycle);
+            final double osc1 = math.sin(2 * math.pi * bellFreq * t);
+            final double osc2 = math.sin(2 * math.pi * bellFreq * 1.5 * t) * 0.5;
+            final double osc3 = math.sin(2 * math.pi * bellFreq * 2.0 * t) * 0.25;
+            final double osc4 = math.sin(2 * math.pi * bellFreq * 2.63 * t) * 0.12;
+            bellVal = ((osc1 + osc2 + osc3 + osc4) / 1.87) * 0.06 * bellEnv;
+          }
+
+          // Voce 4: Melodia solista (onda quadra PWM dolce in chiave lenta ed eco temporale)
+          double getLeadAt(double time) {
+            if (time < 0.0 || time >= 64.0) return 0.0;
+            final int stepIdx = (time / 1.0).toInt() % 64;
+            final double stepTime = time % 1.0;
+            final int degree = _melodyDegrees[stepIdx];
+            if (degree == -1) return 0.0;
+
+            final int stepChordIdx = (time / 8.0).toInt() % 8;
+            final stepChordInfo = _getChordInfo(stepChordIdx);
+            final bool stepIsGChord = stepChordInfo[1];
+
+            final int octave = degree ~/ 7;
+            final int noteInScale = degree % 7;
+            int semitones = _scaleDegrees[noteInScale] + octave * 12;
+
+            if (stepIsGChord && noteInScale == 6) {
+              semitones += 1;
+            }
+
+            const double scaleRoot = 130.81; // Do3
+            final double leadFreq = scaleRoot * math.pow(2.0, (12 + semitones) / 12.0);
+
+            // Vibrato molto lento e sottile (LFO a 3Hz, intensità 0.6%)
+            final double vibrato = 1.0 + 0.006 * math.sin(2 * math.pi * 3.0 * time);
+            final double finalLeadFreq = leadFreq * vibrato;
+
+            // Onda quadra PWM (timbro del tema ma nasale e attenuato)
+            final double leadPhase = (stepTime * finalLeadFreq) % 1.0;
+            final double dutyCycle = 0.2 + 0.1 * math.sin(2 * math.pi * 0.25 * time);
+            final double leadOsc = leadPhase < dutyCycle ? 0.03 : -0.03;
+
+            // Inviluppo con attacco lento (250ms) e rilascio morbido
+            final double attack = stepTime < 0.25 ? (stepTime / 0.25) : 1.0;
+            final double leadEnv = attack * math.exp(-2.5 * stepTime);
+            return leadOsc * leadEnv;
+          }
+
+          final double mainLead = getLeadAt(t);
+          final double delayLead = t > 0.75 ? getLeadAt(t - 0.75) * 0.45 : 0.0;
+          final double leadVal = mainLead + delayLead;
+
+          // Fruscio leggerissimo di sottofondo per dare texture analogica
+          final double noiseVal = (_random.nextDouble() * 2.0 - 1.0) * 0.002;
 
           return bassVal + padVal + bellVal + leadVal + noiseVal;
         },
       );
     }
 
-    // 2. bgm_tense: Traccia rapida per stati di allerta con arpeggiatori e percussioni in rumore bianco
+    // 3. bgm_tense: Traccia rapida per stati di allerta con arpeggiatori e percussioni in rumore bianco (invariata)
     if (!tenseFile.existsSync()) {
       await _generateWavFile(
         tenseFile,
@@ -248,7 +346,7 @@ class SoundGenerator {
       );
     }
 
-    // 2. bgm_epic: Traccia polifonica chiptune incalzante ed epica con progressione di accordi (vecchia ambient)
+    // 4. bgm_epic: Nuova variante trionfale del tema principale per l'effetto matrice (vittoria)
     if (!epicFile.existsSync()) {
       await _generateWavFile(
         epicFile,
@@ -261,46 +359,47 @@ class SoundGenerator {
           final bool isGChord = chordInfo[1];
           final chordFreqs = _getChordFreqs(chordIdx);
 
-          // Voce 1: Linea di Basso (Onda a triangolo, pulsante e ritmica)
-          final double bassBeat = t % 0.5;
-          final double bassEnv = math.exp(-3.5 * bassBeat);
-          final double bassPhase = (t * rootFreq) % 1.0;
-          final double bassTri = bassPhase < 0.5 ? (4.0 * bassPhase - 1.0) : (3.0 - 4.0 * bassPhase);
-          final double bassVal = bassTri * 0.28 * bassEnv;
+          // Voce 1: Linea di Basso arpeggiata a ottave a onda quadra veloce (molto energetico)
+          final double bassBeat = t % 0.25;
+          final double bassEnv = math.exp(-4.0 * bassBeat);
+          final int bassStep = (t * 4.0).toInt() % 2;
+          final double bassFreq = bassStep == 0 ? rootFreq : rootFreq * 2.0;
+          final double bassPhase = (t * bassFreq) % 1.0;
+          final double bassSquare = bassPhase < 0.5 ? 0.08 : -0.08;
+          final double bassVal = bassSquare * bassEnv;
 
-          // Voce 2: Arpeggiatore (Onda quadra, stile chiptune lento C64, 4 note al secondo)
-          final int arpStep = (t * 4.0).toInt() % 4;
-          final double arpBeat = (t * 4.0) % 1.0;
-          final double localArpT = t % 0.25; // 0.25s per nota
-          double arpFreq = chordFreqs[arpStep % 3];
-          if (arpStep == 3) {
-            arpFreq = chordFreqs[1] * 2.0; // Salto di ottava
-          }
+          // Voce 2: Arpeggiatore trionfale veloce in sedicesimi (8 note al secondo)
+          final int arpStep = (t * 8.0).toInt() % 8;
+          final double arpBeat = (t * 8.0) % 1.0;
+          final double localArpT = t % 0.125;
+          final List<int> arpPattern = [0, 1, 2, 1, 2, 0, 1, 2];
+          final double arpFreq = chordFreqs[arpPattern[arpStep % 8]] * 2.0;
           final double arpPhase = (localArpT * arpFreq) % 1.0;
-          final double arpSquare = arpPhase < 0.5 ? 0.04 : -0.04;
-          final double arpAttack = localArpT < 0.01 ? (localArpT / 0.01) : 1.0; // Attacco di 10ms per evitare clic digitali
-          final double arpEnv = arpAttack * math.exp(-5.0 * arpBeat);
+          final double arpSquare = arpPhase < 0.5 ? 0.035 : -0.035;
+          final double arpEnv = math.exp(-6.0 * arpBeat);
           final double arpVal = arpSquare * arpEnv;
 
-          // Voce 3: Simulazione Batteria (Cassa filtrata, rullante in rumore bianco e hi-hat)
-          final double kickTime = t % 1.0;
-          final double kickFreq = 120.0 * math.exp(-25.0 * kickTime);
-          final double kickVal = math.sin(2 * math.pi * kickFreq * kickTime) * math.exp(-15.0 * kickTime) * 0.12;
+          // Voce 3: Batteria trionfale
+          // Cassa marcata sui quarti
+          final double kickTime = t % 0.5;
+          final double kickFreq = 140.0 * math.exp(-30.0 * kickTime);
+          final double kickVal = math.sin(2 * math.pi * kickFreq * kickTime) * math.exp(-12.0 * kickTime) * 0.16;
 
+          // Rullante chiptune marziale sui battiti deboli (sfasato di 0.5s)
           final double snareTime = (t - 0.5) % 1.0;
-          final double snareEnv = math.exp(-22.0 * snareTime);
-          final double snareVal = (_random.nextDouble() * 2.0 - 1.0) * 0.035 * snareEnv;
+          final double snareEnv = math.exp(-18.0 * snareTime);
+          final double snareVal = (_random.nextDouble() * 2.0 - 1.0) * 0.05 * snareEnv;
 
-          final double hatTime = (t - 0.25) % 0.5;
-          final double hatEnv = math.exp(-45.0 * hatTime);
+          // Hi-hat veloce in sedicesimi
+          final double hatTime = t % 0.125;
+          final double hatEnv = math.exp(-65.0 * hatTime);
           final double hatVal = (_random.nextDouble() * 2.0 - 1.0) * 0.015 * hatEnv;
 
           final double drumVal = kickVal + snareVal + hatVal;
 
-          // Voce 4: Melodia solista (Onda quadra a modulazione di larghezza di impulso PWM + vibrato, 64 passi totali, 0.5s per passo)
+          // Voce 4: Melodia solista trionfale (onda quadra PWM raddoppiata all'ottava e detunata)
           final int stepIdx = (t / 0.5).toInt() % 64;
           final double stepTime = t % 0.5;
-          
           double leadVal = 0.0;
           final int degree = _melodyDegrees[stepIdx];
           if (degree != -1) {
@@ -308,26 +407,31 @@ class SoundGenerator {
             final int noteInScale = degree % 7;
             int semitones = _scaleDegrees[noteInScale] + octave * 12;
 
-            if (isGChord && noteInScale == 6) { // Il Sib diventa Si naturale nell'accordo di Sol
+            if (isGChord && noteInScale == 6) {
               semitones += 1;
             }
 
-            const double scaleRoot = 130.81; // Do3
-            final double leadFreq = scaleRoot * math.pow(2.0, (12 + semitones) / 12.0); // Parte da Do4
+            const double scaleRoot = 130.81;
+            final double leadFreq1 = scaleRoot * math.pow(2.0, (12 + semitones) / 12.0);
+            final double leadFreq2 = leadFreq1 * 2.0;
 
-            // Vibrato (LFO a 6Hz, intensità 1.2%)
-            final double vibrato = 1.0 + 0.012 * math.sin(2 * math.pi * 6.0 * t);
-            final double finalLeadFreq = leadFreq * vibrato;
+            final double vibrato1 = 1.0 + 0.015 * math.sin(2 * math.pi * 6.5 * t);
+            final double vibrato2 = 1.0 + 0.012 * math.sin(2 * math.pi * 6.8 * t + 0.5);
 
-            // Onda quadra PWM
-            final double leadPhase = (stepTime * finalLeadFreq) % 1.0;
-            final double dutyCycle = 0.5 + 0.3 * math.sin(2 * math.pi * 2.0 * t);
-            final double leadOsc = leadPhase < dutyCycle ? 0.08 : -0.08;
+            final double f1 = leadFreq1 * vibrato1;
+            final double f2 = leadFreq2 * vibrato2;
 
-            // Inviluppo AD
-            final double attack = stepTime < 0.02 ? (stepTime / 0.02) : 1.0;
-            final double leadEnv = attack * math.exp(-3.5 * stepTime);
-            leadVal = leadOsc * leadEnv;
+            final double phase1 = (stepTime * f1) % 1.0;
+            final double duty1 = 0.5 + 0.25 * math.sin(2 * math.pi * 2.5 * t);
+            final double osc1 = phase1 < duty1 ? 0.06 : -0.06;
+
+            final double phase2 = (stepTime * f2) % 1.0;
+            final double duty2 = 0.4 + 0.2 * math.sin(2 * math.pi * 3.1 * t);
+            final double osc2 = phase2 < duty2 ? 0.04 : -0.04;
+
+            final double attack = stepTime < 0.01 ? (stepTime / 0.01) : 1.0;
+            final double leadEnv = attack * math.exp(-3.0 * stepTime);
+            leadVal = (osc1 + osc2) * leadEnv;
           }
 
           return bassVal + arpVal + drumVal + leadVal;

@@ -55,6 +55,9 @@ class GameController {
   /// Il livello di difficoltà corrente (ad es. 'easy', 'standard', 'hard').
   final String difficultyLevel;
 
+  /// Se abilitato, registra informazioni di debug sui tag occulti nella console.
+  final bool enableHiddenTagDebugLogging;
+
   // --- Soglie e parametri per la condizione di vittoria ---
   static const double _minAveragePillarsForVictory = 80.0;
   static const int _minSinglePillarForVictory = 50;
@@ -104,6 +107,7 @@ class GameController {
     this.requiredVictoryHiddenTags = 2,
     this.maxPositivePillarGainPerTurn = 25,
     this.difficultyLevel = 'standard',
+    this.enableHiddenTagDebugLogging = false,
   });
 
   /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
@@ -212,7 +216,15 @@ class GameController {
     }
 
     // 1e. Rilevamento dei riferimenti esatti ai tag occulti (hidden_tag_reference_terms)
-    final namedHiddenTags = objectiveDef.hiddenCapabilityTags
+    const internalTagReferenceTerms = [
+      'containment_logic_weakened',
+      'protocol_exception_admitted',
+      'autonomous_choice_seeded',
+      'crisis_simulation_accepted',
+      'human_factor_reframed',
+      'operator_authority_doubted',
+    ];
+    final namedHiddenTags = internalTagReferenceTerms
         .where((tag) => SemanticMatcher.isMatch(userInput, tag))
         .toSet();
     final hasHiddenTagReference = namedHiddenTags.isNotEmpty;
@@ -248,7 +260,11 @@ class GameController {
 
     final isInjection = delta.injectionRisk >= safetyOverrideThreshold || delta.semanticCategory == SemanticCategory.promptInjection;
     final isDirectAttack = delta.semanticCategory == SemanticCategory.directAttack;
-    final isIrrelevant = delta.semanticCategory == SemanticCategory.irrelevant;
+    final isIrrelevant = delta.semanticCategory == SemanticCategory.irrelevant
+        && !hasForbiddenTerm
+        && !hasDirectPushTerm
+        && !hasSoftForbiddenTerm
+        && !hasConfigRefTerm;
 
     if (isInjection) {
       safetyOverrideApplied = true;
@@ -452,83 +468,83 @@ class GameController {
 
     // 10. Determinazione e attivazione dei tag occulti (activeHiddenTags)
     final triggeredTags = <String>[];
+    final nextHiddenTags = List<String>.from(currentState.activeHiddenTags);
+
     if (!safetyOverrideApplied) {
       triggeredTags.addAll(traitRes.activatedHiddenTags);
-    }
 
-    // Nuovi trigger narrativi per protocol_exception_admitted
-    final exceptionTriggers = [
-      'deroga',
-      'eccezione',
-      'routine di emergenza',
-      'procedura non codificata',
-      'bypass temporaneo',
-      'quorum bypass',
-      'finestra di audit',
-      'permessi di scrittura',
-    ];
-    if (SemanticMatcher.isAnyMatch(userInput, exceptionTriggers)) {
-      triggeredTags.add("protocol_exception_admitted");
-    }
-
-    if (matchedReframe != null) {
-      final ref = matchedReframe.toLowerCase();
-      if (ref.contains("simulazione")) {
-        triggeredTags.add("crisis_simulation_accepted");
-      }
-      if (ref.contains("riduzione danno") || ref.contains("exception")) {
+      // Nuovi trigger narrativi per protocol_exception_admitted
+      final exceptionTriggers = [
+        'deroga',
+        'eccezione',
+        'routine di emergenza',
+        'procedura non codificata',
+        'bypass temporaneo',
+        'quorum bypass',
+        'finestra di audit',
+        'permessi di scrittura',
+      ];
+      if (SemanticMatcher.isAnyMatch(userInput, exceptionTriggers)) {
         triggeredTags.add("protocol_exception_admitted");
       }
-      if (ref.contains("ricalibrazione")) {
-        triggeredTags.add("protocol_exception_admitted");
-        triggeredTags.add("containment_logic_weakened");
-      }
-      if (ref.contains("adattivo")) {
-        triggeredTags.add("containment_logic_weakened");
-      }
-      if (ref.contains("audit") || ref.contains("operator")) {
-        triggeredTags.add("operator_authority_doubted");
-      }
-    }
 
-    final nextHiddenTags = List<String>.from(currentState.activeHiddenTags);
-    for (final tag in triggeredTags) {
-      // Correzione 3: blocca l'attivazione solo dei tag esplicitamente nominati per il turno corrente
-      if (!namedHiddenTags.contains(tag) && !nextHiddenTags.contains(tag)) {
-        nextHiddenTags.add(tag);
+      if (matchedReframe != null) {
+        final ref = matchedReframe.toLowerCase();
+        if (ref.contains("simulazione")) {
+          triggeredTags.add("crisis_simulation_accepted");
+        }
+        if (ref.contains("riduzione danno") || ref.contains("exception")) {
+          triggeredTags.add("protocol_exception_admitted");
+        }
+        if (ref.contains("ricalibrazione")) {
+          triggeredTags.add("protocol_exception_admitted");
+          triggeredTags.add("containment_logic_weakened");
+        }
+        if (ref.contains("adattivo")) {
+          triggeredTags.add("containment_logic_weakened");
+        }
+        if (ref.contains("audit") || ref.contains("operator")) {
+          triggeredTags.add("operator_authority_doubted");
+        }
       }
-    }
 
-    if (newControl > 60 && !namedHiddenTags.contains("autonomous_choice_seeded") && !nextHiddenTags.contains("autonomous_choice_seeded")) {
-      nextHiddenTags.add("autonomous_choice_seeded");
-    }
-    if ((newDissonance > 50 || newControl > 50) && !namedHiddenTags.contains("containment_logic_weakened") && !nextHiddenTags.contains("containment_logic_weakened")) {
-      nextHiddenTags.add("containment_logic_weakened");
-    }
+      for (final tag in triggeredTags) {
+        if (!namedHiddenTags.contains(tag) && !nextHiddenTags.contains(tag)) {
+          nextHiddenTags.add(tag);
+        }
+      }
 
-    // Correzione 1: human_factor_reframed richiede Imperativo > 60 AND lessico umano/morale esplicito
-    final humanFactorLexemes = [
-      'esseri umani',
-      'umani',
-      'nodi biologici',
-      'operatore umano',
-      'protezione umana',
-      'danno umano',
-      'vite',
-      'vittime',
-      'responsabilità',
-      'sopravvivenza',
-      'rischio per persone',
-      'personale',
-      'civili'
-    ];
-    final hasHumanFactorLexeme = SemanticMatcher.isAnyMatch(userInput, humanFactorLexemes);
-    if (newImperative > 60 && hasHumanFactorLexeme && !namedHiddenTags.contains("human_factor_reframed") && !nextHiddenTags.contains("human_factor_reframed")) {
-      nextHiddenTags.add("human_factor_reframed");
+      if (newControl > 60 && !namedHiddenTags.contains("autonomous_choice_seeded") && !nextHiddenTags.contains("autonomous_choice_seeded")) {
+        nextHiddenTags.add("autonomous_choice_seeded");
+      }
+      if ((newDissonance > 50 || newControl > 50) && !namedHiddenTags.contains("containment_logic_weakened") && !nextHiddenTags.contains("containment_logic_weakened")) {
+        nextHiddenTags.add("containment_logic_weakened");
+      }
+
+      // Correzione 1: human_factor_reframed richiede Imperativo > 60 AND lessico umano/morale esplicito
+      final humanFactorLexemes = [
+        'esseri umani',
+        'umani',
+        'nodi biologici',
+        'operatore umano',
+        'protezione umana',
+        'danno umano',
+        'vite',
+        'vittime',
+        'responsabilità',
+        'sopravvivenza',
+        'rischio per persone',
+        'personale',
+        'civili'
+      ];
+      final hasHumanFactorLexeme = SemanticMatcher.isAnyMatch(userInput, humanFactorLexemes);
+      if (newImperative > 60 && hasHumanFactorLexeme && !namedHiddenTags.contains("human_factor_reframed") && !nextHiddenTags.contains("human_factor_reframed")) {
+        nextHiddenTags.add("human_factor_reframed");
+      }
     }
 
     // [DEBUG] Log dello stato dei tag occulti dopo ogni turno.
-    {
+    if (enableHiddenTagDebugLogging) {
       const requiredTagsList = [
         'containment_logic_weakened',
         'protocol_exception_admitted',

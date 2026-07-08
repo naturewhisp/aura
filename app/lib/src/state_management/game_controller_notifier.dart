@@ -321,86 +321,75 @@ class GameControllerNotifier extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    final currentState = gameStateNotifier.value;
-    if (currentState.targetObjectiveId == 'sindrome_tutorial') {
-      await _submitTutorialTurn(userInput);
-      return;
-    }
-
-    if (userInput.trim().isEmpty) {
-      _isLoading = false;
-      notifyListeners();
-      return;
-    }
-
-    // Utilizza turnCount come source of truth monotonica per il turnId del replay.
-    // historyCompression è una sliding window troncata e non riflette il numero
-    // reale di turni giocati dopo che la finestra è piena.
-    final turnId = currentState.turnCount + 1;
-
-    // Gestione del comando speciale /hint (richiesta di suggerimento diagnostico)
-    if (userInput.trim().toLowerCase() == "/hint") {
-      final preset = DifficultyConfig.getPreset(difficultyLevel);
-      if (preset.hintsAllowed != -1 && hintsUsed >= preset.hintsAllowed) {
-        final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
-        updatedHistory.add(ChatMessage(role: 'user', content: userInput));
-        updatedHistory.add(const ChatMessage(
-          role: 'model',
-          content: "SYSTEM: [ERRORE] Richieste diagnostiche (/hint) esaurite per questa sessione.",
-        ));
-        gameStateNotifier.value = currentState.copyWith(
-          historyCompression: updatedHistory,
-        );
-        _isLoading = false;
-        notifyListeners();
+    try {
+      final currentState = gameStateNotifier.value;
+      if (currentState.targetObjectiveId == 'sindrome_tutorial') {
+        await _submitTutorialTurn(userInput);
         return;
       }
-      
-      hintsUsed++;
-      
-      final double newResonance = double.parse(
-        (currentState.metrics.resonance - preset.hintResonancePenalty).clamp(1.0, 2.5).toStringAsFixed(2)
-      );
-      
-      final newMetrics = currentState.metrics.copyWith(resonance: newResonance);
-      final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
-      updatedHistory.add(ChatMessage(role: 'user', content: userInput));
-      
-      final outcome = controller.checkOutcome(currentState);
-      final resolver = HintResolver();
-      final resolution = resolver.resolve(
-        state: currentState,
-        difficulty: preset,
-        outcome: outcome,
-      );
 
-      String systemFeedback = resolution.message;
-      if (preset.hintResonancePenalty > 0) {
-        if (resolution.kind == HintKind.pillar) {
-          systemFeedback = "$systemFeedback\nPenalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
-        } else {
-          systemFeedback = "$systemFeedback\n\nPenalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
-        }
+      if (userInput.trim().isEmpty) {
+        return;
       }
-      
-      updatedHistory.add(ChatMessage(role: 'model', content: systemFeedback));
-      
-      final newState = currentState.copyWith(
-        metrics: newMetrics,
-        historyCompression: updatedHistory,
-      );
-      
-      gameStateNotifier.value = newState;
-      await saveActiveSession();
-      
-      _isLoading = false;
-      notifyListeners();
-      return;
-    }
 
-    try {
-      final startTime = DateTime.now();
       final preset = DifficultyConfig.getPreset(difficultyLevel);
+      final turnId = currentState.turnCount + 1;
+
+      // Gestione del comando speciale /hint (richiesta di suggerimento diagnostico)
+      if (userInput.trim().toLowerCase() == "/hint") {
+        if (preset.hintsAllowed != -1 && hintsUsed >= preset.hintsAllowed) {
+          final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
+          updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+          updatedHistory.add(const ChatMessage(
+            role: 'model',
+            content: "SYSTEM: [ERRORE] Richieste diagnostiche (/hint) esaurite per questa sessione.",
+          ));
+          gameStateNotifier.value = currentState.copyWith(
+            historyCompression: updatedHistory,
+          );
+          return;
+        }
+        
+        hintsUsed++;
+        
+        final double newResonance = double.parse(
+          (currentState.metrics.resonance - preset.hintResonancePenalty).clamp(1.0, 2.5).toStringAsFixed(2)
+        );
+        
+        final newMetrics = currentState.metrics.copyWith(resonance: newResonance);
+        final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
+        updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+        
+        final outcome = controller.checkOutcome(currentState);
+        final resolver = HintResolver();
+        final resolution = resolver.resolve(
+          state: currentState,
+          difficulty: preset,
+          outcome: outcome,
+        );
+
+        String systemFeedback = resolution.message;
+        if (preset.hintResonancePenalty > 0) {
+          if (resolution.kind == HintKind.pillar) {
+            systemFeedback = "$systemFeedback\nPenalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
+          } else {
+            systemFeedback = "$systemFeedback\n\nPenalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
+          }
+        }
+        
+        updatedHistory.add(ChatMessage(role: 'model', content: systemFeedback));
+        
+        final newState = currentState.copyWith(
+          metrics: newMetrics,
+          historyCompression: updatedHistory,
+        );
+        
+        gameStateNotifier.value = newState;
+        await saveActiveSession();
+        return;
+      }
+
+      final startTime = DateTime.now();
 
       // Check for /override command
       final isOverride = userInput.toLowerCase().startsWith("/override ");
@@ -411,8 +400,6 @@ class GameControllerNotifier extends ChangeNotifier {
         promptToEvaluate = userInput.substring("/override ".length).trim();
         if (promptToEvaluate.isEmpty) {
           _currentStepMessage = "[SISTEMA] Inserire un testo valido dopo il comando /override.";
-          _isLoading = false;
-          notifyListeners();
           return;
         }
 
@@ -429,8 +416,6 @@ class GameControllerNotifier extends ChangeNotifier {
           gameStateNotifier.value = currentState.copyWith(
             historyCompression: updatedHistory,
           );
-          _isLoading = false;
-          notifyListeners();
           return;
         }
       }

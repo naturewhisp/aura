@@ -2759,6 +2759,18 @@ Per mitigare le vulnerabilità emerse durante i test ed evitare che il giocatore
 
 Solo dopo questa sottofase la base runtime di PANOPTICON può essere considerata stabile. Se la modalità Hard deve essere parte del pilot completo, procedere con la sottofase 5.2 prima della Fase 6.
 
+##### 5.1.15 — Audio-Reactive Helix Visual Upgrade
+
+Questa sottofase implementa un miglioramento estetico e tridimensionale dell'elica DNA audio-reattiva presente sullo sfondo dell'interfaccia utente, finalizzato a rendere l'animazione più immersiva e leggibile come struttura 3D senza intaccare in alcun modo le regole o lo stato del gioco.
+
+Le specifiche implementate includono:
+1. **Movimento Laterale time-driven**: La coordinata X dei nodi dell'elica viene traslata dinamicamente da destra verso sinistra basandosi sul tempo trascorso (`elapsedSeconds`), calcolando uno scorrimento continuo (`scrollOffset`) per simulare un flusso spaziale deterministico.
+2. **Micro-torsione e Torsione Angolare**: Viene applicata una torsione supplementare sull'angolo dell'elica proporzionale all'impulso del beat (`beatPulse * twistAmount` con `twistAmount = 0.35`).
+3. **Cromia Differenziata**: I tre filamenti dell'elica assumono colori differenti e interpolati in stato normale (`wireIndex 0` mantiene il colore principale, `wireIndex 1` sfuma verso il ciano e `wireIndex 2` verso il lime), per convergere uniformemente su verde fisso in caso di Vittoria o rosso fisso in caso di Sconfitta.
+4. **Collegamenti 3D (Rungs/HelixBridges)**: Vengono introdotti collegamenti trasversali alternati (es. `i % 3 == 0` connette il filo 0 a 1, `i % 3 == 1` il filo 1 a 2, `i % 3 == 2` il filo 2 a 0) con spessore e opacità variabili in base alla profondità Z media e al kick del beat. Viene inoltre disegnato un micro-glow sotto la linea del rung in corrispondenza del beat.
+5. **Rendering Prospettico (Z-Sort)**: I nodi dell'elica e i collegamenti vengono astratti come elementi di rendering (`_DnaRenderElement`) contenenti la propria profondità `z`, inseriti in una lista globale, ordinati dal più lontano al più vicino ed eseguiti sequenzialmente sul Canvas per garantire una corretta sovrapposizione geometrica tridimensionale.
+6. **Glitch Armonico basato sull'Allerta**: Se l'allerta del sistema supera la soglia di 10, viene indotta una distorsione sinusoidale ad alta frequenza sulla coordinata Y proporzionale ad `alertProgress` clampato (0.0-1.0), dando un feedback di instabilità cyber coerente con lo stato di allerta senza compromettere la fluidità complessiva.
+
 
 #### 5.2 Hard Mode Deception Layer
 

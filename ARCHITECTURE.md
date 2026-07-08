@@ -486,7 +486,8 @@ Responsabilità principali:
 - gate lessicale e inasprimento della soglia (> 60) per human_factor_reframed;
 - eccezioni procedurali (protocol_exception_admitted) sbloccabili narrativamente;
 - telemetria ReplayEntry arricchita con eventId, eventType, gameplayTurnId, sequenceId;
-- replay arricchito con identity/objective/hidden tags.
+- replay arricchito con identity/objective/hidden tags;
+- upgrade grafico dell'elica DNA audio-reattiva tridimensionale con rungs alternati, Z-sorting e glitch armonico dell'Allerta (Fase 5.1.15).
 ```
 
 ### 9.3 Fase 5.2 — Hard Mode Deception Layer

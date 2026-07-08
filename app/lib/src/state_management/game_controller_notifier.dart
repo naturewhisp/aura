@@ -685,6 +685,7 @@ class GameControllerNotifier extends ChangeNotifier {
         eventType: ReplayEventType.userTurn,
         gameplayTurnId: turnId,
         sequenceId: logger.entries.length + 1,
+        deceptionResolution: resolution.deceptionResolution,
       ));
 
       // Save log asynchronously to disk

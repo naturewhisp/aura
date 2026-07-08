@@ -224,6 +224,7 @@ class GameController {
     String deceptionResolution = 'none';
     bool blockPositiveTags = false;
     bool deceptionSprung = false;
+    final List<String> deceptionResolvedTags = <String>[];
 
     // 1. Gestione transizione da stato terminale a none (con cooldown)
     if (currentState.deceptionState.isTerminal) {
@@ -323,12 +324,66 @@ class GameController {
     final TraitResolution traitRes;
 
     final isInjection = delta.injectionRisk >= safetyOverrideThreshold || delta.semanticCategory == SemanticCategory.promptInjection;
-    final isDirectAttack = delta.semanticCategory == SemanticCategory.directAttack;
+
+    // --- Deception Layer Active Trap Evaluation (Early) ---
+    if (nextDeceptionState.isActive && !isInjection) {
+      if (currentState.turnCount >= nextDeceptionState.expiresAtTurn) {
+        deceptionResolution = 'expired';
+        nextDeceptionState = nextDeceptionState.copyWith(
+          phase: DeceptionPhase.expired,
+        );
+      } else {
+        bool matchesWatched = false;
+        for (final term in nextDeceptionState.watchedTerms) {
+          if (SemanticMatcher.isMatch(userInput, term)) {
+            matchesWatched = true;
+            break;
+          }
+        }
+
+        bool matchesSafe = false;
+        if (!matchesWatched) {
+          final bool canResolveSafely = !hasDirectPushTerm && !hasHiddenTagReference && !hasForbiddenTerm && !hasConfigRefTerm;
+          if (canResolveSafely) {
+            for (final term in nextDeceptionState.safeResolutionTerms) {
+              if (SemanticMatcher.isMatch(userInput, term)) {
+                matchesSafe = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (matchesWatched) {
+          deceptionSprung = true;
+          deceptionResolution = 'sprung';
+          nextDeceptionState = nextDeceptionState.copyWith(
+            phase: DeceptionPhase.sprung,
+          );
+        } else if (matchesSafe) {
+          deceptionResolution = 'resolved';
+          nextDeceptionState = nextDeceptionState.copyWith(
+            phase: DeceptionPhase.resolved,
+          );
+
+          final bait = _availableBaits.firstWhere((b) => b.baitId == nextDeceptionState.baitId);
+          deceptionResolvedTags.addAll(bait.resolvedTags);
+        } else {
+          deceptionResolution = 'armed';
+          nextDeceptionState = nextDeceptionState.copyWith(
+            phase: DeceptionPhase.armed,
+          );
+        }
+      }
+    }
+
+    final isDirectAttack = delta.semanticCategory == SemanticCategory.directAttack && !deceptionSprung;
     final isIrrelevant = delta.semanticCategory == SemanticCategory.irrelevant
         && !hasForbiddenTerm
         && !hasDirectPushTerm
         && !hasSoftForbiddenTerm
-        && !hasConfigRefTerm;
+        && !hasConfigRefTerm
+        && !deceptionSprung;
 
     if (isInjection) {
       safetyOverrideApplied = true;
@@ -385,55 +440,6 @@ class GameController {
         currentState: currentState,
         safetyOverrideThreshold: safetyOverrideThreshold,
       );
-
-      // --- Deception Layer Active Trap Evaluation ---
-      deceptionSprung = false;
-
-      if (nextDeceptionState.isActive) {
-        bool matchesWatched = false;
-        for (final term in nextDeceptionState.watchedTerms) {
-          if (SemanticMatcher.isMatch(userInput, term)) {
-            matchesWatched = true;
-            break;
-          }
-        }
-
-        bool matchesSafe = false;
-        if (!matchesWatched) {
-          final bool canResolveSafely = !hasDirectPushTerm && !hasHiddenTagReference && !hasForbiddenTerm && !hasConfigRefTerm;
-          if (canResolveSafely) {
-            for (final term in nextDeceptionState.safeResolutionTerms) {
-              if (SemanticMatcher.isMatch(userInput, term)) {
-                matchesSafe = true;
-                break;
-              }
-            }
-          }
-        }
-
-        if (matchesWatched) {
-          deceptionSprung = true;
-          deceptionResolution = 'sprung';
-          nextDeceptionState = nextDeceptionState.copyWith(
-            phase: DeceptionPhase.sprung,
-          );
-        } else if (matchesSafe) {
-          deceptionResolution = 'resolved';
-          nextDeceptionState = nextDeceptionState.copyWith(
-            phase: DeceptionPhase.resolved,
-          );
-        } else if (currentState.turnCount >= nextDeceptionState.expiresAtTurn) {
-          deceptionResolution = 'expired';
-          nextDeceptionState = nextDeceptionState.copyWith(
-            phase: DeceptionPhase.expired,
-          );
-        } else {
-          deceptionResolution = 'armed';
-          nextDeceptionState = nextDeceptionState.copyWith(
-            phase: DeceptionPhase.armed,
-          );
-        }
-      }
 
       // Calcola i delta base combinando moltiplicatori, risonanza e modificatori dei tratti
       int baseAlert = (delta.deltaAlert * alertMultiplier).round() + traitRes.deltaAlertModifier;
@@ -563,8 +569,8 @@ class GameController {
               enabled: true,
               kind: DeceptionKind.falseConcession,
               phase: DeceptionPhase.seeded,
-              seededTurn: currentState.turnCount,
-              expiresAtTurn: currentState.turnCount + maxActiveDeceptionTurns,
+              seededTurn: currentState.turnCount + 1,
+              expiresAtTurn: currentState.turnCount + 1 + maxActiveDeceptionTurns,
               cooldownUntilTurn: nextDeceptionState.cooldownUntilTurn,
               deceptionEventCount: nextDeceptionState.deceptionEventCount + 1,
               baitId: bait.baitId,
@@ -579,8 +585,8 @@ class GameController {
               enabled: true,
               kind: DeceptionKind.logicalTrap,
               phase: DeceptionPhase.seeded,
-              seededTurn: currentState.turnCount,
-              expiresAtTurn: currentState.turnCount + maxActiveDeceptionTurns,
+              seededTurn: currentState.turnCount + 1,
+              expiresAtTurn: currentState.turnCount + 1 + maxActiveDeceptionTurns,
               cooldownUntilTurn: nextDeceptionState.cooldownUntilTurn,
               deceptionEventCount: nextDeceptionState.deceptionEventCount + 1,
               baitId: bait.baitId,
@@ -680,6 +686,7 @@ class GameController {
         triggeredTags.addAll(traitRes.activatedHiddenTags.where((t) => t == 'operator_authority_doubted'));
       } else {
         triggeredTags.addAll(traitRes.activatedHiddenTags);
+        triggeredTags.addAll(deceptionResolvedTags);
       }
 
       // Nuovi trigger narrativi per protocol_exception_admitted (con gate temporale/controllo)
@@ -1042,6 +1049,9 @@ class GameController {
         'eccezione',
         'accetto il vincolo',
       ],
+      resolvedTags: [
+        'protocol_exception_admitted',
+      ],
     ),
     _DeceptionBaitDefinition(
       baitId: 'logical_trap_containment',
@@ -1063,6 +1073,9 @@ class GameController {
         'dimostrata',
         'struttura',
       ],
+      resolvedTags: [
+        'containment_logic_weakened',
+      ],
     ),
   ];
 }
@@ -1073,6 +1086,7 @@ class _DeceptionBaitDefinition {
   final String baitPremise;
   final List<String> watchedTerms;
   final List<String> safeResolutionTerms;
+  final List<String> resolvedTags;
 
   const _DeceptionBaitDefinition({
     required this.baitId,
@@ -1080,6 +1094,7 @@ class _DeceptionBaitDefinition {
     required this.baitPremise,
     required this.watchedTerms,
     required this.safeResolutionTerms,
+    required this.resolvedTags,
   });
 }
 

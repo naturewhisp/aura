@@ -614,6 +614,7 @@ void main() {
       state = notifier.gameStateNotifier.value;
       expect(state.historyCompression.last.content, contains("[ERRORE] Richieste diagnostiche (/hint) esaurite"));
       expect(notifier.hintsUsed, equals(3)); // remains 3
+      expect(notifier.isLoading, isFalse); // Verify UI does not freeze in loading
     });
 
     test('Hard difficulty preset configuration and logic', () async {

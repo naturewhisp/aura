@@ -351,6 +351,8 @@ class GameControllerNotifier extends ChangeNotifier {
         gameStateNotifier.value = currentState.copyWith(
           historyCompression: updatedHistory,
         );
+        _isLoading = false;
+        notifyListeners();
         return;
       }
       

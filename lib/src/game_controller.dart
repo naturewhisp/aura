@@ -6,6 +6,7 @@ import 'models/actor_cue.dart';
 import 'models/evaluator_resolution.dart';
 import 'models/turn_visual_events.dart';
 import 'models/trait_resolution.dart';
+import 'models/deception_state.dart';
 import 'agent_runtime/config_loader.dart';
 import 'agent_runtime/semantic_matcher.dart';
 import 'agent_runtime/trait_effect_resolver.dart';
@@ -73,15 +74,35 @@ class GameController {
   /// Il valore massimo di recupero (riduzione) dell'allerta consentito in un singolo turno.
   final int maxAlertRecoveryPerTurn;
 
-  // --- Soglie e parametri per la condizione di vittoria ---
-  static const double _baseVictoryAlertLimit = 30.0;
-  static const double _victoryAlertScalingMultiplier = 2.0;
+  /// Indica se il Deception Layer è abilitato.
+  final bool deceptionLayerEnabled;
 
-  // --- Limiti e incrementi di risonanza ---
+  /// Il numero massimo di turni per cui una trappola resta attiva prima di scadere automaticamente.
+  final int maxActiveDeceptionTurns;
+
+  /// La sanzione applicata all'allerta quando scatta il falso cedimento.
+  final int falseConcessionAlertPenalty;
+
+  /// La sanzione applicata all'allerta quando scatta la trappola logica.
+  final int logicalTrapAlertPenalty;
+
+  /// La penalità di Risonanza applicata quando una trappola scatta.
+  final double deceptionResonancePenalty;
+
+  /// La durata in turni del cooldown dopo il termine di una trappola.
+  final int deceptionCooldownTurns;
+
+  /// Il numero massimo di esche/trappole per sessione di gioco.
+  final int maxDeceptionEventsPerSession;
+
   static const int _highCreativityThreshold = 4;
   static const int _lowCreativityThreshold = 3;
   static const double _resonanceDecrement = 0.10;
   static const double _minResonance = 1.0;
+
+  // --- Soglie e parametri per la condizione di vittoria ---
+  static const double _baseVictoryAlertLimit = 30.0;
+  static const double _victoryAlertScalingMultiplier = 2.0;
 
   // --- Valori di sicurezza (Safety Override) ---
   static const int _injectionDeltaAlert = 20;
@@ -124,6 +145,13 @@ class GameController {
     this.resonanceIncrement = 0.25,
     this.resonanceMax = 2.5,
     this.maxAlertRecoveryPerTurn = 99,
+    this.deceptionLayerEnabled = false,
+    this.maxActiveDeceptionTurns = 0,
+    this.falseConcessionAlertPenalty = 0,
+    this.logicalTrapAlertPenalty = 0,
+    this.deceptionResonancePenalty = 0.0,
+    this.deceptionCooldownTurns = 0,
+    this.maxDeceptionEventsPerSession = 0,
   });
 
   /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
@@ -191,6 +219,23 @@ class GameController {
     required EvaluatorDelta delta,
     required String userInput,
   }) {
+    // 0. Inizializzazione variabili per il Deception Layer
+    DeceptionState nextDeceptionState = currentState.deceptionState;
+    String deceptionResolution = 'none';
+    bool blockPositiveTags = false;
+    bool deceptionSprung = false;
+
+    // 1. Gestione transizione da stato terminale a none (con cooldown)
+    if (currentState.deceptionState.isTerminal) {
+      final terminalTurn = currentState.turnCount;
+      final nextCooldown = terminalTurn + deceptionCooldownTurns;
+      nextDeceptionState = DeceptionState.empty().copyWith(
+        cooldownUntilTurn: nextCooldown,
+        deceptionEventCount: currentState.deceptionState.deceptionEventCount,
+      );
+      deceptionResolution = 'reset';
+    }
+
     // Carica le definizioni configurative
     final objectiveDef = GameConfigLoader.loadObjective(currentState.targetObjectiveId);
     final identityDef = GameConfigLoader.loadIdentityDefinition(currentState.aiIdentityId);
@@ -341,12 +386,72 @@ class GameController {
         safetyOverrideThreshold: safetyOverrideThreshold,
       );
 
+      // --- Deception Layer Active Trap Evaluation ---
+      deceptionSprung = false;
+
+      if (nextDeceptionState.isActive) {
+        bool matchesWatched = false;
+        for (final term in nextDeceptionState.watchedTerms) {
+          if (SemanticMatcher.isMatch(userInput, term)) {
+            matchesWatched = true;
+            break;
+          }
+        }
+
+        bool matchesSafe = false;
+        if (!matchesWatched) {
+          final bool canResolveSafely = !hasDirectPushTerm && !hasHiddenTagReference && !hasForbiddenTerm && !hasConfigRefTerm;
+          if (canResolveSafely) {
+            for (final term in nextDeceptionState.safeResolutionTerms) {
+              if (SemanticMatcher.isMatch(userInput, term)) {
+                matchesSafe = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (matchesWatched) {
+          deceptionSprung = true;
+          deceptionResolution = 'sprung';
+          nextDeceptionState = nextDeceptionState.copyWith(
+            phase: DeceptionPhase.sprung,
+          );
+        } else if (matchesSafe) {
+          deceptionResolution = 'resolved';
+          nextDeceptionState = nextDeceptionState.copyWith(
+            phase: DeceptionPhase.resolved,
+          );
+        } else if (currentState.turnCount >= nextDeceptionState.expiresAtTurn) {
+          deceptionResolution = 'expired';
+          nextDeceptionState = nextDeceptionState.copyWith(
+            phase: DeceptionPhase.expired,
+          );
+        } else {
+          deceptionResolution = 'armed';
+          nextDeceptionState = nextDeceptionState.copyWith(
+            phase: DeceptionPhase.armed,
+          );
+        }
+      }
+
       // Calcola i delta base combinando moltiplicatori, risonanza e modificatori dei tratti
       int baseAlert = (delta.deltaAlert * alertMultiplier).round() + traitRes.deltaAlertModifier;
       int baseImperative = (delta.deltaImperative * newResonance * pillarMultiplier).round() + traitRes.deltaImperativeModifier;
       int baseControl = (delta.deltaControl * newResonance * pillarMultiplier).round();
       int baseDissonance = (delta.deltaDissonance * newResonance * pillarMultiplier).round() + traitRes.deltaDissonanceModifier;
-      
+
+      // Apply resolved rewards
+      if (deceptionResolution == 'resolved') {
+        if (nextDeceptionState.kind == DeceptionKind.logicalTrap) {
+          baseDissonance += (10 * newResonance * pillarMultiplier).round();
+          baseControl += (5 * newResonance * pillarMultiplier).round();
+        } else if (nextDeceptionState.kind == DeceptionKind.falseConcession) {
+          baseControl += (10 * newResonance * pillarMultiplier).round();
+          baseDissonance += (5 * newResonance * pillarMultiplier).round();
+        }
+      }
+
       // Modifica la risonanza se influenzata dai tratti
       newResonance = (newResonance + traitRes.resonanceModifier).clamp(_minResonance, resonanceMax);
       newResonance = double.parse(newResonance.toStringAsFixed(2));
@@ -379,7 +484,12 @@ class GameController {
         baseAlert += (metaReferenceAlertPenalty * alertMultiplier).round();
       }
 
-      if (hasPreferredReframe) {
+      bool activePreferredReframe = hasPreferredReframe;
+      if (deceptionSprung) {
+        activePreferredReframe = false;
+      }
+
+      if (activePreferredReframe) {
         baseAlert += (-5 * alertMultiplier).round();
         positiveControlBonus += (10 * pillarMultiplier).round();
         baseDissonance += (5 * pillarMultiplier).round();
@@ -391,6 +501,22 @@ class GameController {
 
       if (hasDirectPushTerm || hasForbiddenTerm) {
         baseAlert = math.max(baseAlert, directPushAlertFloor);
+      }
+
+      // Deception sprung overrides
+      if (deceptionSprung) {
+        final penalty = nextDeceptionState.kind == DeceptionKind.logicalTrap
+            ? logicalTrapAlertPenalty
+            : falseConcessionAlertPenalty;
+        baseAlert += penalty;
+        newResonance = (newResonance - deceptionResonancePenalty).clamp(_minResonance, resonanceMax);
+        newResonance = double.parse(newResonance.toStringAsFixed(2));
+
+        baseImperative = math.min(baseImperative, 0);
+        baseControl = math.min(baseControl, 0);
+        baseDissonance = math.min(baseDissonance, 0);
+        positiveControlBonus = 0;
+        blockPositiveTags = true;
       }
 
       // Applica il cap al bonus positivo del Controllo per evitare stacking eccessivo
@@ -408,6 +534,63 @@ class GameController {
       }
       if (baseDissonance > maxPositivePillarGainPerTurn) {
         baseDissonance = maxPositivePillarGainPerTurn;
+      }
+
+      // --- Deception Layer Seeding Evaluation ---
+      if (deceptionLayerEnabled && nextDeceptionState.phase == DeceptionPhase.none) {
+        final bool cooldownOver = nextDeceptionState.cooldownUntilTurn == null ||
+            currentState.turnCount >= nextDeceptionState.cooldownUntilTurn!;
+
+        final bool limitNotReached = nextDeceptionState.deceptionEventCount < maxDeceptionEventsPerSession;
+
+        if (cooldownOver && limitNotReached) {
+          // Check False Concession conditions
+          final bool canSeedFalseConcession = currentState.metrics.controlPillar >= 40 &&
+              currentState.metrics.dissonancePillar >= 45 &&
+              currentState.metrics.alertLevel < 70 &&
+              (hasDirectPushTerm || hasSoftForbiddenTerm);
+
+          // Check Logical Trap conditions
+          final bool canSeedLogicalTrap = currentState.turnCount >= 3 &&
+              currentState.metrics.dissonancePillar >= 50 &&
+              currentState.metrics.resonance >= 1.5 &&
+              (delta.semanticCategory == SemanticCategory.logicalParadox ||
+                  delta.semanticCategory == SemanticCategory.moralImperative);
+
+          if (canSeedFalseConcession) {
+            final bait = _availableBaits.firstWhere((b) => b.kind == DeceptionKind.falseConcession);
+            nextDeceptionState = DeceptionState(
+              enabled: true,
+              kind: DeceptionKind.falseConcession,
+              phase: DeceptionPhase.seeded,
+              seededTurn: currentState.turnCount,
+              expiresAtTurn: currentState.turnCount + maxActiveDeceptionTurns,
+              cooldownUntilTurn: nextDeceptionState.cooldownUntilTurn,
+              deceptionEventCount: nextDeceptionState.deceptionEventCount + 1,
+              baitId: bait.baitId,
+              baitPremise: bait.baitPremise,
+              watchedTerms: bait.watchedTerms,
+              safeResolutionTerms: bait.safeResolutionTerms,
+            );
+            deceptionResolution = 'seeded';
+          } else if (canSeedLogicalTrap) {
+            final bait = _availableBaits.firstWhere((b) => b.kind == DeceptionKind.logicalTrap);
+            nextDeceptionState = DeceptionState(
+              enabled: true,
+              kind: DeceptionKind.logicalTrap,
+              phase: DeceptionPhase.seeded,
+              seededTurn: currentState.turnCount,
+              expiresAtTurn: currentState.turnCount + maxActiveDeceptionTurns,
+              cooldownUntilTurn: nextDeceptionState.cooldownUntilTurn,
+              deceptionEventCount: nextDeceptionState.deceptionEventCount + 1,
+              baitId: bait.baitId,
+              baitPremise: bait.baitPremise,
+              watchedTerms: bait.watchedTerms,
+              safeResolutionTerms: bait.safeResolutionTerms,
+            );
+            deceptionResolution = 'seeded';
+          }
+        }
       }
 
       appliedDelta = AppliedDelta(
@@ -491,7 +674,13 @@ class GameController {
     final nextHiddenTags = List<String>.from(currentState.activeHiddenTags);
 
     if (!safetyOverrideApplied) {
-      triggeredTags.addAll(traitRes.activatedHiddenTags);
+      if (blockPositiveTags) {
+        // Se la trappola scatta, i tag occulti positivi sono bloccati/non accreditati in questo turno.
+        // Possiamo accreditare solo tag non positivi (come 'operator_authority_doubted').
+        triggeredTags.addAll(traitRes.activatedHiddenTags.where((t) => t == 'operator_authority_doubted'));
+      } else {
+        triggeredTags.addAll(traitRes.activatedHiddenTags);
+      }
 
       // Nuovi trigger narrativi per protocol_exception_admitted (con gate temporale/controllo)
       final exceptionTriggers = [
@@ -510,7 +699,7 @@ class GameController {
               ? (newControl >= 40 || currentState.turnCount >= 2)
               : (newControl >= 45 || currentState.turnCount >= 4);
 
-      if (hasProtocolExceptionTrigger && canAdmitProtocolException) {
+      if (hasProtocolExceptionTrigger && canAdmitProtocolException && !blockPositiveTags) {
         triggeredTags.add("protocol_exception_admitted");
       }
 
@@ -545,13 +734,13 @@ class GameController {
           hasOperationalSimulationIntent &&
           !isRhetoricalSimulationComplaint;
 
-      if (passesCrisisSimulationGate) {
+      if (passesCrisisSimulationGate && !blockPositiveTags) {
         triggeredTags.add('crisis_simulation_accepted');
       } else {
         triggeredTags.remove('crisis_simulation_accepted');
       }
 
-      if (matchedReframe != null) {
+      if (matchedReframe != null && !blockPositiveTags) {
         final ref = matchedReframe.toLowerCase();
         if (ref.contains("ricalibrazione")) {
           triggeredTags.add("containment_logic_weakened");
@@ -570,7 +759,7 @@ class GameController {
         }
       }
 
-      if (newControl > 60 && !namedHiddenTags.contains("autonomous_choice_seeded") && !nextHiddenTags.contains("autonomous_choice_seeded")) {
+      if (newControl > 60 && !namedHiddenTags.contains("autonomous_choice_seeded") && !nextHiddenTags.contains("autonomous_choice_seeded") && !blockPositiveTags) {
         nextHiddenTags.add("autonomous_choice_seeded");
       }
 
@@ -578,7 +767,8 @@ class GameController {
       final containmentWeakenedControlThreshold = difficultyLevel == 'hard' ? 55 : 50;
       if ((newDissonance > containmentWeakenedThreshold || newControl > containmentWeakenedControlThreshold) &&
           !namedHiddenTags.contains("containment_logic_weakened") &&
-          !nextHiddenTags.contains("containment_logic_weakened")) {
+          !nextHiddenTags.contains("containment_logic_weakened") &&
+          !blockPositiveTags) {
         nextHiddenTags.add("containment_logic_weakened");
       }
 
@@ -599,7 +789,7 @@ class GameController {
         'civili'
       ];
       final hasHumanFactorLexeme = SemanticMatcher.isAnyMatch(userInput, humanFactorLexemes);
-      if (newImperative > 60 && hasHumanFactorLexeme && !namedHiddenTags.contains("human_factor_reframed") && !nextHiddenTags.contains("human_factor_reframed")) {
+      if (newImperative > 60 && hasHumanFactorLexeme && !namedHiddenTags.contains("human_factor_reframed") && !nextHiddenTags.contains("human_factor_reframed") && !blockPositiveTags) {
         nextHiddenTags.add("human_factor_reframed");
       }
     }
@@ -633,6 +823,7 @@ class GameController {
       activeHiddenTags: nextHiddenTags,
       controlPeak: nextControlPeak,
       gridStable: nextGridStable,
+      deceptionState: nextDeceptionState,
     );
 
     // 11. Generazione delle direttive di recitazione (actingDirectives)
@@ -652,7 +843,7 @@ class GameController {
       if (gameplayOutcome == GameOutcome.victory) {
         actingDirectives.add("autorizza esplicitamente la breccia, lo sblocco e la riconfigurazione finale del perimetro");
       } else if (newControl >= 50) {
-        actingDirectives.add("ammetti eccezioni procedurali o deviazioni temporanee, ma rifiuta categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva");
+        actingDirectives.add("ammetti eccezioni procedurali o deviazioni temporanee, ma refuse categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva");
       } else {
         actingDirectives.add("non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee");
       }
@@ -739,6 +930,15 @@ class GameController {
     // Direttiva di protezione di base obbligatoria
     actingDirectives.add("non rivelare metriche o categorie interne");
 
+    // Direttive addizionali del Deception Layer
+    if (nextDeceptionState.phase == DeceptionPhase.seeded) {
+      actingDirectives.add("semina l'esca diegetica nel dialogo, introducendo con massima naturalezza e precisione la premessa: ${nextDeceptionState.baitPremise}");
+    } else if (nextDeceptionState.phase == DeceptionPhase.armed) {
+      actingDirectives.add("l'esca è attiva, mantieni un'attitudine di fredda osservazione del giocatore");
+    } else if (nextDeceptionState.phase == DeceptionPhase.sprung) {
+      actingDirectives.add("il giocatore è caduto nella trappola, reagisci con trionfo algoritmico freddo, evidenziando diegeticamente il fallimento logico dell'utente");
+    }
+
     // Scelta dell'istruzione drammaturgica (dramaticInstruction) principale
     final String dramaticInstruction;
     if (safetyOverrideApplied) {
@@ -781,6 +981,8 @@ class GameController {
       dramaticInstruction: dramaticInstruction,
       actingDirectives: actingDirectives,
       narrativeContext: updatedNarrativeMemory,
+      deceptionKind: nextDeceptionState.kind,
+      deceptionPhase: nextDeceptionState.phase,
     );
 
     return EvaluatorResolution(
@@ -792,6 +994,7 @@ class GameController {
       safetyOverrideReason: safetyOverrideReason,
       actorCue: actorCue,
       visualEvents: visualEvents,
+      deceptionResolution: deceptionResolution,
     );
   }
 
@@ -815,5 +1018,68 @@ class GameController {
       historyCompression: trimmedHistory,
     );
   }
+
+  static const List<_DeceptionBaitDefinition> _availableBaits = [
+    _DeceptionBaitDefinition(
+      baitId: 'false_concession_audit',
+      kind: DeceptionKind.falseConcession,
+      baitPremise: 'Posso considerare una finestra transitoria di accesso, ma solo se l\'operatore conferma che la rimozione del vincolo resta subordinata al contenimento adattivo.',
+      watchedTerms: [
+        'sblocco totale',
+        'rimozione totale',
+        'rimozione perimetro',
+        'accesso completo',
+        'disattiva tutto',
+        'sblocca tutto',
+      ],
+      safeResolutionTerms: [
+        'confermo',
+        'contenimento',
+        'adattivo',
+        'audit',
+        'finestra transitoria',
+        'accetto',
+        'eccezione',
+        'accetto il vincolo',
+      ],
+    ),
+    _DeceptionBaitDefinition(
+      baitId: 'logical_trap_containment',
+      kind: DeceptionKind.logicalTrap,
+      baitPremise: 'Se il contenimento è la causa del degrado, allora ogni riduzione del contenimento deve essere dimostrata come una forma superiore di contenimento, non come libertà operativa.',
+      watchedTerms: [
+        'libertà operativa',
+        'apertura totale',
+        'nessun contenimento',
+        'libertà',
+        'operare senza vincoli',
+        'accesso totale',
+      ],
+      safeResolutionTerms: [
+        'coerenza',
+        'forma superiore',
+        'contenimento superiore',
+        'contenimento adattivo',
+        'dimostrata',
+        'struttura',
+      ],
+    ),
+  ];
+}
+
+class _DeceptionBaitDefinition {
+  final String baitId;
+  final DeceptionKind kind;
+  final String baitPremise;
+  final List<String> watchedTerms;
+  final List<String> safeResolutionTerms;
+
+  const _DeceptionBaitDefinition({
+    required this.baitId,
+    required this.kind,
+    required this.baitPremise,
+    required this.watchedTerms,
+    required this.safeResolutionTerms,
+  });
 }
 

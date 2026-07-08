@@ -36,6 +36,9 @@ class EvaluatorResolution {
   /// Gli eventi visuali transitori di questo turno da propagare alla UI.
   final TurnVisualEvents visualEvents;
 
+  /// L'esito della risoluzione del Deception Layer in questo turno (es. 'none', 'seeded', 'sprung', 'resolved', 'expired', 'reset').
+  final String deceptionResolution;
+
   /// Costruttore costante per inizializzare un oggetto [EvaluatorResolution].
   const EvaluatorResolution({
     required this.stateBefore,
@@ -46,6 +49,7 @@ class EvaluatorResolution {
     this.safetyOverrideReason,
     required this.actorCue,
     this.visualEvents = const TurnVisualEvents(),
+    this.deceptionResolution = 'none',
   });
 
   /// Costruttore factory per creare un [EvaluatorResolution] a partire da un JSON.
@@ -59,6 +63,7 @@ class EvaluatorResolution {
       safetyOverrideReason: json['safety_override_reason'] as String?,
       actorCue: ActorCue.fromJson(json['actor_cue'] ?? const {}),
       visualEvents: TurnVisualEvents.fromJson(json['visual_events'] ?? const {}),
+      deceptionResolution: json['deception_resolution'] as String? ?? 'none',
     );
   }
 
@@ -73,6 +78,7 @@ class EvaluatorResolution {
       'safety_override_reason': safetyOverrideReason,
       'actor_cue': actorCue.toJson(),
       'visual_events': visualEvents.toJson(),
+      'deception_resolution': deceptionResolution,
     };
   }
 
@@ -88,7 +94,8 @@ class EvaluatorResolution {
           safetyOverrideApplied == other.safetyOverrideApplied &&
           safetyOverrideReason == other.safetyOverrideReason &&
           actorCue == other.actorCue &&
-          visualEvents == other.visualEvents;
+          visualEvents == other.visualEvents &&
+          deceptionResolution == other.deceptionResolution;
 
   @override
   int get hashCode =>
@@ -99,5 +106,6 @@ class EvaluatorResolution {
       safetyOverrideApplied.hashCode ^
       safetyOverrideReason.hashCode ^
       actorCue.hashCode ^
-      visualEvents.hashCode;
+      visualEvents.hashCode ^
+      deceptionResolution.hashCode;
 }

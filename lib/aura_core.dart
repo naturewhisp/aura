@@ -2,6 +2,7 @@ library aura_core;
 
 // Models & Core Controller
 export 'src/models/game_state.dart';
+export 'src/models/deception_state.dart';
 export 'src/models/evaluator_delta.dart';
 export 'src/models/applied_delta.dart';
 export 'src/models/evaluator_resolution.dart';

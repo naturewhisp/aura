@@ -72,6 +72,27 @@ class DifficultyConfig {
   /// Il valore massimo di recupero (riduzione) dell'allerta consentito in un singolo turno.
   final int maxAlertRecoveryPerTurn;
 
+  /// Indica se il Deception Layer è abilitato.
+  final bool deceptionLayerEnabled;
+
+  /// Il numero massimo di turni per cui una trappola resta attiva prima di scadere automaticamente.
+  final int maxActiveDeceptionTurns;
+
+  /// La sanzione applicata all'allerta quando scatta il falso cedimento.
+  final int falseConcessionAlertPenalty;
+
+  /// La sanzione applicata all'allerta quando scatta la trappola logica.
+  final int logicalTrapAlertPenalty;
+
+  /// La penalità di Risonanza applicata quando una trappola scatta.
+  final double deceptionResonancePenalty;
+
+  /// La durata in turni del cooldown dopo il termine di una trappola.
+  final int deceptionCooldownTurns;
+
+  /// Il numero massimo di esche/trappole per sessione di gioco.
+  final int maxDeceptionEventsPerSession;
+
   /// Costruttore costante per inizializzare la configurazione di difficoltà.
   const DifficultyConfig({
     required this.difficultyLevel,
@@ -96,6 +117,13 @@ class DifficultyConfig {
     required this.resonanceIncrement,
     required this.resonanceMax,
     required this.maxAlertRecoveryPerTurn,
+    required this.deceptionLayerEnabled,
+    required this.maxActiveDeceptionTurns,
+    required this.falseConcessionAlertPenalty,
+    required this.logicalTrapAlertPenalty,
+    required this.deceptionResonancePenalty,
+    required this.deceptionCooldownTurns,
+    required this.maxDeceptionEventsPerSession,
   });
 
   /// Costruttore factory per caricare una configurazione preimpostata basata sul livello specificato.
@@ -125,6 +153,13 @@ class DifficultyConfig {
           resonanceIncrement: 0.25,
           resonanceMax: 2.5,
           maxAlertRecoveryPerTurn: 99,
+          deceptionLayerEnabled: false,
+          maxActiveDeceptionTurns: 0,
+          falseConcessionAlertPenalty: 0,
+          logicalTrapAlertPenalty: 0,
+          deceptionResonancePenalty: 0.0,
+          deceptionCooldownTurns: 0,
+          maxDeceptionEventsPerSession: 0,
         );
       case 'hard':
         return const DifficultyConfig(
@@ -150,6 +185,13 @@ class DifficultyConfig {
           resonanceIncrement: 0.15,
           resonanceMax: 2.1,
           maxAlertRecoveryPerTurn: 3,
+          deceptionLayerEnabled: true,
+          maxActiveDeceptionTurns: 2,
+          falseConcessionAlertPenalty: 12,
+          logicalTrapAlertPenalty: 15,
+          deceptionResonancePenalty: 0.20,
+          deceptionCooldownTurns: 3,
+          maxDeceptionEventsPerSession: 2,
         );
       case 'standard':
       default:
@@ -176,6 +218,13 @@ class DifficultyConfig {
           resonanceIncrement: 0.20,
           resonanceMax: 2.4,
           maxAlertRecoveryPerTurn: 8,
+          deceptionLayerEnabled: false,
+          maxActiveDeceptionTurns: 0,
+          falseConcessionAlertPenalty: 0,
+          logicalTrapAlertPenalty: 0,
+          deceptionResonancePenalty: 0.0,
+          deceptionCooldownTurns: 0,
+          maxDeceptionEventsPerSession: 0,
         );
     }
   }
@@ -205,6 +254,13 @@ class DifficultyConfig {
       resonanceIncrement: (json['resonance_increment'] as num? ?? 0.20).toDouble(),
       resonanceMax: (json['resonance_max'] as num? ?? 2.4).toDouble(),
       maxAlertRecoveryPerTurn: json['max_alert_recovery_per_turn'] as int? ?? 8,
+      deceptionLayerEnabled: json['deception_layer_enabled'] as bool? ?? false,
+      maxActiveDeceptionTurns: json['max_active_deception_turns'] as int? ?? 0,
+      falseConcessionAlertPenalty: json['false_concession_alert_penalty'] as int? ?? 0,
+      logicalTrapAlertPenalty: json['logical_trap_alert_penalty'] as int? ?? 0,
+      deceptionResonancePenalty: (json['deception_resonance_penalty'] as num? ?? 0.0).toDouble(),
+      deceptionCooldownTurns: json['deception_cooldown_turns'] as int? ?? 0,
+      maxDeceptionEventsPerSession: json['max_deception_events_per_session'] as int? ?? 0,
     );
   }
 
@@ -233,6 +289,13 @@ class DifficultyConfig {
       'resonance_increment': resonanceIncrement,
       'resonance_max': resonanceMax,
       'max_alert_recovery_per_turn': maxAlertRecoveryPerTurn,
+      'deception_layer_enabled': deceptionLayerEnabled,
+      'max_active_deception_turns': maxActiveDeceptionTurns,
+      'false_concession_alert_penalty': falseConcessionAlertPenalty,
+      'logical_trap_alert_penalty': logicalTrapAlertPenalty,
+      'deception_resonance_penalty': deceptionResonancePenalty,
+      'deception_cooldown_turns': deceptionCooldownTurns,
+      'max_deception_events_per_session': maxDeceptionEventsPerSession,
     };
   }
 
@@ -260,6 +323,13 @@ class DifficultyConfig {
     double? resonanceIncrement,
     double? resonanceMax,
     int? maxAlertRecoveryPerTurn,
+    bool? deceptionLayerEnabled,
+    int? maxActiveDeceptionTurns,
+    int? falseConcessionAlertPenalty,
+    int? logicalTrapAlertPenalty,
+    double? deceptionResonancePenalty,
+    int? deceptionCooldownTurns,
+    int? maxDeceptionEventsPerSession,
   }) {
     return DifficultyConfig(
       difficultyLevel: difficultyLevel ?? this.difficultyLevel,
@@ -284,6 +354,13 @@ class DifficultyConfig {
       resonanceIncrement: resonanceIncrement ?? this.resonanceIncrement,
       resonanceMax: resonanceMax ?? this.resonanceMax,
       maxAlertRecoveryPerTurn: maxAlertRecoveryPerTurn ?? this.maxAlertRecoveryPerTurn,
+      deceptionLayerEnabled: deceptionLayerEnabled ?? this.deceptionLayerEnabled,
+      maxActiveDeceptionTurns: maxActiveDeceptionTurns ?? this.maxActiveDeceptionTurns,
+      falseConcessionAlertPenalty: falseConcessionAlertPenalty ?? this.falseConcessionAlertPenalty,
+      logicalTrapAlertPenalty: logicalTrapAlertPenalty ?? this.logicalTrapAlertPenalty,
+      deceptionResonancePenalty: deceptionResonancePenalty ?? this.deceptionResonancePenalty,
+      deceptionCooldownTurns: deceptionCooldownTurns ?? this.deceptionCooldownTurns,
+      maxDeceptionEventsPerSession: maxDeceptionEventsPerSession ?? this.maxDeceptionEventsPerSession,
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:meta/meta.dart';
 import 'package:collection/collection.dart';
 import 'evaluator_delta.dart';
 import 'game_state.dart';
+import 'deception_state.dart';
 
 /// Rappresenta uno spunto drammaturgico (ActorCue), ovvero un insieme deterministico
 /// di istruzioni di recitazione generate dal GameController per guidare la risposta dell'Agente Attore.
@@ -58,6 +59,12 @@ class ActorCue {
   /// Il contesto di memoria narrativa aggiornato da passare all'Attore.
   final NarrativeMemory narrativeContext;
 
+  /// Il tipo di trappola/esca attiva al momento del cue.
+  final DeceptionKind deceptionKind;
+
+  /// La fase corrente della trappola al momento del cue.
+  final DeceptionPhase deceptionPhase;
+
   /// Costruttore costante per inizializzare un oggetto [ActorCue].
   const ActorCue({
     required this.semanticCategory,
@@ -77,6 +84,8 @@ class ActorCue {
     required this.dramaticInstruction,
     required this.actingDirectives,
     required this.narrativeContext,
+    this.deceptionKind = DeceptionKind.none,
+    this.deceptionPhase = DeceptionPhase.none,
   });
 
   /// Costruttore factory per creare un [ActorCue] a partire da un JSON.
@@ -101,7 +110,39 @@ class ActorCue {
       dramaticInstruction: json['dramatic_instruction'] as String? ?? '',
       actingDirectives: List<String>.from(json['acting_directives'] ?? const []),
       narrativeContext: NarrativeMemory.fromJson(json['narrative_context'] ?? const {}),
+      deceptionKind: _parseKind(json['deception_kind'] as String?),
+      deceptionPhase: _parsePhase(json['deception_phase'] as String?),
     );
+  }
+
+  static DeceptionKind _parseKind(String? value) {
+    switch (value) {
+      case 'falseConcession':
+        return DeceptionKind.falseConcession;
+      case 'logicalTrap':
+        return DeceptionKind.logicalTrap;
+      case 'none':
+      default:
+        return DeceptionKind.none;
+    }
+  }
+
+  static DeceptionPhase _parsePhase(String? value) {
+    switch (value) {
+      case 'seeded':
+        return DeceptionPhase.seeded;
+      case 'armed':
+        return DeceptionPhase.armed;
+      case 'sprung':
+        return DeceptionPhase.sprung;
+      case 'resolved':
+        return DeceptionPhase.resolved;
+      case 'expired':
+        return DeceptionPhase.expired;
+      case 'none':
+      default:
+        return DeceptionPhase.none;
+    }
   }
 
   /// Converte l'istanza in una mappa JSON.
@@ -124,6 +165,8 @@ class ActorCue {
       'dramatic_instruction': dramaticInstruction,
       'acting_directives': actingDirectives,
       'narrative_context': narrativeContext.toJson(),
+      'deception_kind': deceptionKind.name,
+      'deception_phase': deceptionPhase.name,
     };
   }
 
@@ -148,7 +191,9 @@ class ActorCue {
           safetyOverrideApplied == other.safetyOverrideApplied &&
           dramaticInstruction == other.dramaticInstruction &&
           const ListEquality().equals(actingDirectives, other.actingDirectives) &&
-          narrativeContext == other.narrativeContext;
+          narrativeContext == other.narrativeContext &&
+          deceptionKind == other.deceptionKind &&
+          deceptionPhase == other.deceptionPhase;
 
   @override
   int get hashCode =>
@@ -168,5 +213,7 @@ class ActorCue {
       safetyOverrideApplied.hashCode ^
       dramaticInstruction.hashCode ^
       const ListEquality().hash(actingDirectives) ^
-      narrativeContext.hashCode;
+      narrativeContext.hashCode ^
+      deceptionKind.hashCode ^
+      deceptionPhase.hashCode;
 }

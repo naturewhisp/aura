@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 import 'package:collection/collection.dart';
+import 'deception_state.dart';
 
 /// Rappresenta le metriche di gioco dell'entità IA.
 ///
@@ -323,6 +324,9 @@ class GameState {
   /// Hash di debug per la configurazione dell'obiettivo.
   final String objectiveConfigHash;
 
+  /// Lo stato corrente di trappole/esche del Deception Layer.
+  final DeceptionState deceptionState;
+
   /// Costruttore costante per il GameState globale.
   const GameState({
     required this.schemaVersion,
@@ -340,6 +344,7 @@ class GameState {
     this.gridStable = true,
     this.identityConfigHash = '',
     this.objectiveConfigHash = '',
+    this.deceptionState = const DeceptionState.empty(),
   });
 
   /// Costruttore factory per creare uno stato di gioco iniziale pulito.
@@ -379,6 +384,7 @@ class GameState {
       gridStable: true,
       identityConfigHash: '',
       objectiveConfigHash: '',
+      deceptionState: const DeceptionState.empty(),
     );
   }
 
@@ -402,6 +408,9 @@ class GameState {
       gridStable: json['grid_stable'] as bool? ?? true,
       identityConfigHash: json['identity_config_hash'] as String? ?? '',
       objectiveConfigHash: json['objective_config_hash'] as String? ?? '',
+      deceptionState: json['deception_state'] != null
+          ? DeceptionState.fromJson(json['deception_state'])
+          : const DeceptionState.empty(),
     );
   }
 
@@ -423,6 +432,7 @@ class GameState {
       'grid_stable': gridStable,
       'identity_config_hash': identityConfigHash,
       'objective_config_hash': objectiveConfigHash,
+      'deception_state': deceptionState.toJson(),
     };
   }
 
@@ -443,6 +453,7 @@ class GameState {
     bool? gridStable,
     String? identityConfigHash,
     String? objectiveConfigHash,
+    DeceptionState? deceptionState,
   }) {
     return GameState(
       schemaVersion: schemaVersion ?? this.schemaVersion,
@@ -460,6 +471,7 @@ class GameState {
       gridStable: gridStable ?? this.gridStable,
       identityConfigHash: identityConfigHash ?? this.identityConfigHash,
       objectiveConfigHash: objectiveConfigHash ?? this.objectiveConfigHash,
+      deceptionState: deceptionState ?? this.deceptionState,
     );
   }
 
@@ -482,7 +494,8 @@ class GameState {
           controlPeak == other.controlPeak &&
           gridStable == other.gridStable &&
           identityConfigHash == other.identityConfigHash &&
-          objectiveConfigHash == other.objectiveConfigHash;
+          objectiveConfigHash == other.objectiveConfigHash &&
+          deceptionState == other.deceptionState;
 
   @override
   int get hashCode =>
@@ -500,5 +513,6 @@ class GameState {
       controlPeak.hashCode ^
       gridStable.hashCode ^
       identityConfigHash.hashCode ^
-      objectiveConfigHash.hashCode;
+      objectiveConfigHash.hashCode ^
+      deceptionState.hashCode;
 }

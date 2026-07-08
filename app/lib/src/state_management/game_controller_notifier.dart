@@ -831,6 +831,13 @@ class GameControllerNotifier extends ChangeNotifier {
           resonanceIncrement: preset.resonanceIncrement,
           resonanceMax: preset.resonanceMax,
           maxAlertRecoveryPerTurn: preset.maxAlertRecoveryPerTurn,
+          deceptionLayerEnabled: preset.deceptionLayerEnabled,
+          maxActiveDeceptionTurns: preset.maxActiveDeceptionTurns,
+          falseConcessionAlertPenalty: preset.falseConcessionAlertPenalty,
+          logicalTrapAlertPenalty: preset.logicalTrapAlertPenalty,
+          deceptionResonancePenalty: preset.deceptionResonancePenalty,
+          deceptionCooldownTurns: preset.deceptionCooldownTurns,
+          maxDeceptionEventsPerSession: preset.maxDeceptionEventsPerSession,
         );
         
         gameStateNotifier.value = state;
@@ -884,6 +891,13 @@ class GameControllerNotifier extends ChangeNotifier {
       resonanceIncrement: preset.resonanceIncrement,
       resonanceMax: preset.resonanceMax,
       maxAlertRecoveryPerTurn: preset.maxAlertRecoveryPerTurn,
+      deceptionLayerEnabled: preset.deceptionLayerEnabled,
+      maxActiveDeceptionTurns: preset.maxActiveDeceptionTurns,
+      falseConcessionAlertPenalty: preset.falseConcessionAlertPenalty,
+      logicalTrapAlertPenalty: preset.logicalTrapAlertPenalty,
+      deceptionResonancePenalty: preset.deceptionResonancePenalty,
+      deceptionCooldownTurns: preset.deceptionCooldownTurns,
+      maxDeceptionEventsPerSession: preset.maxDeceptionEventsPerSession,
     );
     
     final state = GameState.initial(

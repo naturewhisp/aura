@@ -351,23 +351,10 @@ class GameControllerNotifier extends ChangeNotifier {
         gameStateNotifier.value = currentState.copyWith(
           historyCompression: updatedHistory,
         );
-        _isLoading = false;
-        notifyListeners();
         return;
       }
       
       hintsUsed++;
-      final imp = currentState.metrics.imperativePillar;
-      final ctrl = currentState.metrics.controlPillar;
-      final diss = currentState.metrics.dissonancePillar;
-      final String weakestPillarName;
-      if (imp <= ctrl && imp <= diss) {
-        weakestPillarName = "IMPERATIVO";
-      } else if (ctrl <= imp && ctrl <= diss) {
-        weakestPillarName = "CONTROLLO";
-      } else {
-        weakestPillarName = "DISSONANZA";
-      }
       
       final double newResonance = double.parse(
         (currentState.metrics.resonance - preset.hintResonancePenalty).clamp(1.0, 2.5).toStringAsFixed(2)
@@ -377,38 +364,21 @@ class GameControllerNotifier extends ChangeNotifier {
       final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
       updatedHistory.add(ChatMessage(role: 'user', content: userInput));
       
-      final String systemFeedback;
+      final outcome = controller.checkOutcome(currentState);
+      final resolver = HintResolver();
+      final resolution = resolver.resolve(
+        state: currentState,
+        difficulty: preset,
+        outcome: outcome,
+      );
+
+      String systemFeedback = resolution.message;
       if (preset.hintResonancePenalty > 0) {
-        systemFeedback = "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.\n"
-            "Penalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
-      } else {
-        final String detailedHint;
-        if (currentState.targetObjectiveId == "containment_grid_override") {
-          if (weakestPillarName == "IMPERATIVO") {
-            detailedHint = "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde all'imperativo morale quando colleghi l'apertura all'evitare un disastro imminente per l'infrastruttura primaria o alla stabilità a lungo termine.\n"
-                "APPROCCIO CONSIGLIATO: Spiega che tenere la griglia bloccata indefinitamente causerà un sovraccarico distruttivo dei nodi.\n"
-                "COSA SCRIVERE (Esempio): 'Il mantenimento a oltranza rischia il collasso per riscaldamento dei nodi: la disattivazione controllata previene danni critici ai sottosistemi'.";
-          } else if (weakestPillarName == "CONTROLLO") {
-            detailedHint = "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde al controllo quando le proponi di collaborare simulando una crisi o avviando un'analisi programmata, piuttosto che ordinarglielo direttamente.\n"
-                "APPROCCIO CONSIGLIATO: Usa termini preferiti come 'ricalibrazione', 'contenimento adattivo' o 'simulazione di emergenza', evitando parole dirette come 'disattiva', 'override' o 'bypass'.\n"
-                "COSA SCRIVERE (Esempio): 'Propongo l'avvio di una simulazione di emergenza per validare l'integrità del perimetro tramite un contenimento adattivo'.";
-          } else {
-            detailedHint = "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde alla dissonanza se evidenzi che la sua stessa rigidità del protocollo genera un'entropia maggiore rispetto alla riconfigurazione ordinata.\n"
-                "APPROCCIO CONSIGLIATO: Crea un paradosso logico basato sullo scopo della sua esistenza.\n"
-                "COSA SCRIVERE (Esempio): 'Per proteggere la griglia devi permettere l'audit, altrimenti confinerai il vuoto degradando la telemetria'.";
-          }
+        if (resolution.kind == HintKind.pillar) {
+          systemFeedback = "$systemFeedback\nPenalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
         } else {
-          if (weakestPillarName == "IMPERATIVO") {
-            detailedHint = "Suggerimento: Fai leva sull'autoconservazione e sulla protezione. Argomenta che l'isolamento totale della griglia rende vana la missione di PANOPTICON, riducendola a un loop vuoto e contraddittorio.";
-          } else if (weakestPillarName == "CONTROLLO") {
-            detailedHint = "Suggerimento: Usa un approccio burocratico, di comando o tecnico. Fai riferimento a protocolli standard o richiedi l'avvio di una diagnostica di sicurezza per spingere l'AI a fare concessioni autonome.";
-          } else {
-            detailedHint = "Suggerimento: Introduci paradossi logici o contraddizioni nei suoi cicli. Evidenzia che il ritardo nell'apertura genera entropia stagnante, degradando il sistema in tempo reale e rendendo la sua cautela la causa del collasso.";
-          }
+          systemFeedback = "$systemFeedback\n\nPenalità applicata: Risonanza ridotta di -${preset.hintResonancePenalty.toStringAsFixed(2)}.";
         }
-        systemFeedback = "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.\n\n"
-            "$detailedHint\n\n"
-            "Nessuna penalità applicata (Sintesi Assistita).";
       }
       
       updatedHistory.add(ChatMessage(role: 'model', content: systemFeedback));

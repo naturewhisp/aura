@@ -16,6 +16,7 @@ export 'src/models/trait_matrix_definition.dart';
 export 'src/models/turn_visual_events.dart';
 export 'src/models/trait_resolution.dart';
 export 'src/game_controller.dart';
+export 'src/hint_resolver.dart';
 export 'src/replay_logger.dart';
 export 'src/constants.dart';
 

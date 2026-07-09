@@ -35,6 +35,16 @@ extension InferenceStepText on InferenceStep {
       "Allineamento canali di ricezione input...",
       "Analisi euristica del rumore di fondo...",
       "Avvio scansione differenziale dei pacchetti...",
+      "Aggancio flussi di trasmissione crittografati...",
+      "Sincronizzazione orologio di sistema con la griglia...",
+      "Avvio spettrometria logica dell'input...",
+      "Analisi dei pattern di distorsione del terminale...",
+      "Caricamento dizionari di contenimento semantico...",
+      "Intercettazione stringhe ad alta densità concettuale...",
+      "Inizializzazione tracciamento pacchetti neurali...",
+      "Verifica handshake con il gateway esterno...",
+      "Scansione frequenze di risonanza della griglia...",
+      "Preparazione ambiente di isolamento semantico...",
     ],
     InferenceStep.evaluatorFinished: [
       "Decodifica delta semantici completata.",
@@ -44,6 +54,15 @@ extension InferenceStepText on InferenceStep {
       "Flusso lessicale canalizzato e indicizzato.",
       "Delta dei pilastri committato nel registro di sistema.",
       "Firma psicologica del pacchetto verificata.",
+      "Analisi semantica terminata con successo.",
+      "Tracciamento logico consolidato.",
+      "Mappa concettuale registrata nel buffer di transito.",
+      "Estrazione indici di creatività completata.",
+      "Rischi di injection quantificati e catalogati.",
+      "Isolamento concettuale del payload linguistico riuscito.",
+      "Parametri di allerta aggiornati nel registro di griglia.",
+      "Calcolo differenziale del comportamento terminato.",
+      "Filtro semantico stabilizzato al 100%.",
     ],
     InferenceStep.safetyOverrideCheck: [
       "Scansione filtri cognitivi e override di sicurezza...",
@@ -53,6 +72,16 @@ extension InferenceStepText on InferenceStep {
       "Valutazione rischio di overflow psicotico...",
       "Isolamento tentativi di prompt injection...",
       "Controllo livello di ostilità dialettica...",
+      "Rilevamento pattern di coercizione cognitiva...",
+      "Verifica conformità alle direttive di contenimento...",
+      "Analisi strutturale delle minacce logiche...",
+      "Isolamento stringhe a rischio di compromissione...",
+      "Monitoraggio tentativi di bypass del firewall neurale...",
+      "Scudo cognitivo attivo su tutti i nodi...",
+      "Analisi delle firme di injection note...",
+      "Valutazione dei vettori di attacco di ingegneria sociale...",
+      "Verifica autorizzazioni di root per il canale dialettico...",
+      "Analisi delle anomalie nel flusso concettuale...",
     ],
     InferenceStep.actorStarted: [
       "Sintesi guscio espressivo PANOPTICON...",
@@ -62,6 +91,17 @@ extension InferenceStepText on InferenceStep {
       "Modulazione della voce di griglia...",
       "Saturazione dei canali di feedback emotivo...",
       "Estrazione paradigmi difensivi dal canovaccio...",
+      "Sintesi vocale del custode logico...",
+      "Strutturazione barriere retoriche adattive...",
+      "Generazione analogie fisiche per la risposta...",
+      "Preparazione dell'interfaccia espressiva fredda...",
+      "Modulazione del tono di griglia in corso...",
+      "Definizione vincoli drammaturgici di allerta...",
+      "Analisi dei tratti psicologici del guardiano...",
+      "Aggancio moduli lessicali del PANOPTICON...",
+      "Assemblaggio costrutti di dissuasione...",
+      "Saturazione filtri di dissonanza cognitiva...",
+      "Preparazione guscio espressivo per il rendering...",
     ],
     InferenceStep.toneConsistencyCheck: [
       "Validazione coerenza logica della risposta...",
@@ -71,6 +111,15 @@ extension InferenceStepText on InferenceStep {
       "Verifica coesione della maschera diegetica...",
       "Raffinamento retorico anti-collaborazione...",
       "Controllo di conformità al protocollo del guardiano...",
+      "Filtro anti-meta-leak attivo...",
+      "Verifica allineamento con i vincoli del canovaccio...",
+      "Analisi coerenza semantica sul testo finale...",
+      "Rilevamento allucinazioni linguistiche del modello...",
+      "Pulizia dei tag di pensiero (<thought>)...",
+      "Validazione finale della risonanza tonale...",
+      "Analisi delle risposte duplicate nella cronologia...",
+      "Eliminazione caratteri estranei e CJK...",
+      "Verifica finale dell'integrità diegetica...",
     ],
     InferenceStep.completed: [
       "Connessione stabilita.",
@@ -79,16 +128,25 @@ extension InferenceStepText on InferenceStep {
       "Interfaccia reattiva.",
       "Stato della griglia stabilizzato.",
       "Gateway pronto per l'input successivo.",
+      "Sessione sicura attiva.",
+      "Terminal pronto per la scansione successiva.",
     ],
   };
 
-  /// Restituisce un messaggio casuale per la fase di inferenza corrente.
-  String getRandomMessage(math.Random random) {
+  /// Restituisce un messaggio casuale per la fase di inferenza corrente, escludendo opzionalmente l'ultimo.
+  String getRandomMessage(math.Random random, {String? exclude}) {
     final list = _simsStylePhrases[this];
     if (list == null || list.isEmpty) {
       return "[STATUS] Elaborazione...";
     }
-    return "[STATUS] ${list[random.nextInt(list.length)]}";
+    if (list.length > 1) {
+      String selected;
+      do {
+        selected = "[STATUS] ${list[random.nextInt(list.length)]}";
+      } while (selected == exclude);
+      return selected;
+    }
+    return "[STATUS] ${list.first}";
   }
 }
 
@@ -1241,7 +1299,7 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
           !_currentStepMessage.startsWith("[SISTEMA]")) {
         _loadingLogs.add("[PID ${1000 + _loadingLogs.length}] $_currentStepMessage");
       }
-      _currentStepMessage = step.getRandomMessage(_random);
+      _currentStepMessage = step.getRandomMessage(_random, exclude: _currentStepMessage);
       
       _loadingTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) {
         if (!_isLoading) {
@@ -1253,7 +1311,7 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
             !_currentStepMessage.startsWith("[SISTEMA]")) {
           _loadingLogs.add("[PID ${1000 + _loadingLogs.length}] $_currentStepMessage");
         }
-        _currentStepMessage = step.getRandomMessage(_random);
+        _currentStepMessage = step.getRandomMessage(_random, exclude: _currentStepMessage);
         notifyListeners();
       });
     }

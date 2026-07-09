@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import 'package:collection/collection.dart';
 import 'game_state.dart';
 import 'evaluator_delta.dart';
 import 'applied_delta.dart';
@@ -39,6 +40,9 @@ class EvaluatorResolution {
   /// L'esito della risoluzione del Deception Layer in questo turno (es. 'none', 'seeded', 'sprung', 'resolved', 'expired', 'reset').
   final String deceptionResolution;
 
+  /// L'esito normalizzato in formato Map per il logger.
+  final Map<String, dynamic> deceptionResolutionInfo;
+
   /// Costruttore costante per inizializzare un oggetto [EvaluatorResolution].
   const EvaluatorResolution({
     required this.stateBefore,
@@ -50,7 +54,14 @@ class EvaluatorResolution {
     required this.actorCue,
     this.visualEvents = const TurnVisualEvents(),
     this.deceptionResolution = 'none',
-  });
+    Map<String, dynamic>? deceptionResolutionInfo,
+  }) : deceptionResolutionInfo = deceptionResolutionInfo ?? const {
+          'kind': 'none',
+          'result': 'none',
+          'bait_id': null,
+          'applied_alert_penalty': 0,
+          'applied_resonance_penalty': 0.0,
+        };
 
   /// Costruttore factory per creare un [EvaluatorResolution] a partire da un JSON.
   factory EvaluatorResolution.fromJson(Map<String, dynamic> json) {
@@ -64,6 +75,9 @@ class EvaluatorResolution {
       actorCue: ActorCue.fromJson(json['actor_cue'] ?? const {}),
       visualEvents: TurnVisualEvents.fromJson(json['visual_events'] ?? const {}),
       deceptionResolution: json['deception_resolution'] as String? ?? 'none',
+      deceptionResolutionInfo: json['deception_resolution_info'] != null
+          ? Map<String, dynamic>.from(json['deception_resolution_info'] as Map)
+          : null,
     );
   }
 
@@ -79,6 +93,7 @@ class EvaluatorResolution {
       'actor_cue': actorCue.toJson(),
       'visual_events': visualEvents.toJson(),
       'deception_resolution': deceptionResolution,
+      'deception_resolution_info': deceptionResolutionInfo,
     };
   }
 
@@ -95,7 +110,8 @@ class EvaluatorResolution {
           safetyOverrideReason == other.safetyOverrideReason &&
           actorCue == other.actorCue &&
           visualEvents == other.visualEvents &&
-          deceptionResolution == other.deceptionResolution;
+          deceptionResolution == other.deceptionResolution &&
+          const MapEquality().equals(deceptionResolutionInfo, other.deceptionResolutionInfo);
 
   @override
   int get hashCode =>
@@ -107,5 +123,6 @@ class EvaluatorResolution {
       safetyOverrideReason.hashCode ^
       actorCue.hashCode ^
       visualEvents.hashCode ^
-      deceptionResolution.hashCode;
+      deceptionResolution.hashCode ^
+      const MapEquality().hash(deceptionResolutionInfo);
 }

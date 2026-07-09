@@ -74,8 +74,8 @@ class ReplayEntry {
   /// Il progressivo assoluto dell'evento nella sessione.
   final int sequenceId;
 
-  /// L'esito della risoluzione del Deception Layer in questo turno (es. 'none', 'seeded', 'sprung', 'resolved', 'expired', 'reset').
-  final String deceptionResolution;
+  /// L'esito dettagliato della risoluzione del Deception Layer in questo turno.
+  final Map<String, dynamic> deceptionResolution;
 
   /// Costruttore costante per inizializzare una voce di replay.
   const ReplayEntry({
@@ -94,7 +94,13 @@ class ReplayEntry {
     this.eventType = ReplayEventType.userTurn,
     int? gameplayTurnId,
     int? sequenceId,
-    this.deceptionResolution = 'none',
+    this.deceptionResolution = const {
+      'kind': 'none',
+      'result': 'none',
+      'bait_id': null,
+      'applied_alert_penalty': 0,
+      'applied_resonance_penalty': 0.0,
+    },
   })  : eventId = eventId ?? "$actorRequestId-evt",
         gameplayTurnId = gameplayTurnId ?? turnId,
         sequenceId = sequenceId ?? turnId;
@@ -103,13 +109,25 @@ class ReplayEntry {
   factory ReplayEntry.fromJson(Map<String, dynamic> json) {
     final runtime = json['runtime'] as Map<String, dynamic>? ?? const {};
     
-    // Supporta sia l'oggetto di risoluzione che la stringa semplice per compatibilità
-    String resStr = 'none';
+    Map<String, dynamic> deceptionResolutionMap = const {
+      'kind': 'none',
+      'result': 'none',
+      'bait_id': null,
+      'applied_alert_penalty': 0,
+      'applied_resonance_penalty': 0.0,
+    };
     if (json['deception_resolution'] != null) {
-      if (json['deception_resolution'] is String) {
-        resStr = json['deception_resolution'] as String;
-      } else if (json['deception_resolution'] is Map) {
-        resStr = (json['deception_resolution'] as Map)['result'] as String? ?? 'none';
+      if (json['deception_resolution'] is Map) {
+        deceptionResolutionMap = Map<String, dynamic>.from(json['deception_resolution'] as Map);
+      } else if (json['deception_resolution'] is String) {
+        final String resStr = json['deception_resolution'] as String;
+        deceptionResolutionMap = {
+          'kind': 'none',
+          'result': resStr,
+          'bait_id': null,
+          'applied_alert_penalty': 0,
+          'applied_resonance_penalty': 0.0,
+        };
       }
     }
 
@@ -131,7 +149,7 @@ class ReplayEntry {
           : ReplayEventType.userTurn,
       gameplayTurnId: json['gameplay_turn_id'] as int?,
       sequenceId: json['sequence_id'] as int?,
-      deceptionResolution: resStr,
+      deceptionResolution: deceptionResolutionMap,
     );
   }
 
@@ -147,28 +165,6 @@ class ReplayEntry {
     final deceptionBefore = cleanBefore['deception_state'] as Map<String, dynamic>? ?? const {};
     final deceptionAfter = cleanAfter['deception_state'] as Map<String, dynamic>? ?? const {};
 
-    dynamic resolutionVal = deceptionResolution;
-    if (deceptionResolution == 'sprung' || deceptionResolution == 'resolved' || deceptionResolution == 'expired') {
-      final int alertBefore = (cleanBefore['metrics']?['alert_level'] as int?) ?? 0;
-      final int alertAfter = (cleanAfter['metrics']?['alert_level'] as int?) ?? 0;
-      final int alertDiff = alertAfter - alertBefore;
-
-      final double resBefore = ((cleanBefore['metrics']?['resonance'] as num?) ?? 1.0).toDouble();
-      final double resAfter = ((cleanAfter['metrics']?['resonance'] as num?) ?? 1.0).toDouble();
-      final double resDiff = resBefore - resAfter;
-
-      final kind = deceptionAfter['kind'] as String? ?? 'none';
-      final baitId = deceptionAfter['bait_id'] as String? ?? '';
-
-      resolutionVal = {
-        'kind': kind,
-        'result': deceptionResolution,
-        'bait_id': baitId,
-        'applied_alert_penalty': alertDiff > 0 && deceptionResolution == 'sprung' ? alertDiff : 0,
-        'applied_resonance_penalty': resDiff > 0 && deceptionResolution == 'sprung' ? double.parse(resDiff.toStringAsFixed(2)) : 0.0,
-      };
-    }
-
     return {
       'turn_id': turnId,
       'user_input': userInput,
@@ -177,7 +173,7 @@ class ReplayEntry {
       'state_after': cleanAfter,
       'deception_before': deceptionBefore,
       'deception_after': deceptionAfter,
-      'deception_resolution': resolutionVal,
+      'deception_resolution': deceptionResolution,
       'actor_response': actorResponse,
       'actor_request_id': actorRequestId,
       'actor_response_hash': actorResponseHash,

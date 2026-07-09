@@ -62,19 +62,19 @@ void main() {
       expect(res.stateAfter.deceptionState.expiresAtTurn, equals(baseState.turnCount + 3));
     });
 
-    test('Seeding of Logical Trap under correct conditions (turn >= 3)', () {
+    test('Seeding of Logical Trap under correct conditions (turn >= 5)', () {
       final baseState = GameState.initial(
         sessionId: 'test-deception-seed-lt',
         aiIdentityId: 'panopticon',
         targetObjectiveId: 'containment_grid_override',
       ).copyWith(
-        turnCount: 3, // Turn 4
+        turnCount: 5, // Turn 6
         metrics: const GameMetrics(
           alertLevel: 30,
           imperativePillar: 50,
           controlPillar: 50,
-          dissonancePillar: 60,
-          resonance: 1.6,
+          dissonancePillar: 70,
+          resonance: 1.45,
         ),
       );
 
@@ -749,7 +749,13 @@ void main() {
         eventType: ReplayEventType.userTurn,
         gameplayTurnId: 1,
         sequenceId: 1,
-        deceptionResolution: 'sprung',
+        deceptionResolution: const {
+          'kind': 'falseConcession',
+          'result': 'sprung',
+          'bait_id': 'false_concession_audit',
+          'applied_alert_penalty': 25,
+          'applied_resonance_penalty': 0.2,
+        },
       );
 
       final json = entry.toJson();
@@ -757,7 +763,520 @@ void main() {
       expect((json['deception_resolution'] as Map)['result'], equals('sprung'));
 
       final restored = ReplayEntry.fromJson(json);
-      expect(restored.deceptionResolution, equals('sprung'));
+      expect(restored.deceptionResolution['result'], equals('sprung'));
+      expect(restored.deceptionResolution['kind'], equals('falseConcession'));
+    });
+
+    test('Logical Trap si semina con nuova soglia', () {
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-seeding-tuned',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 5,
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 70,
+          resonance: 1.45,
+        ),
+      );
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 5,
+        deltaControl: 5,
+        deltaDissonance: 5,
+        creativityIndex: 3,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.logicalParadox,
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'Risolviamo la contraddizione',
+      );
+
+      expect(res.deceptionResolution, equals('seeded'));
+      expect(res.deceptionResolutionInfo['result'], equals('seeded'));
+      expect(res.deceptionResolutionInfo['kind'], equals('logicalTrap'));
+      expect(res.deceptionResolutionInfo['bait_id'], equals('logical_trap_containment'));
+    });
+
+    test('Logical Trap non si semina troppo presto', () {
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-too-early',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 4, // too early (< 5)
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 80,
+          resonance: 1.45,
+        ),
+      );
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 5,
+        deltaControl: 5,
+        deltaDissonance: 5,
+        creativityIndex: 3,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.logicalParadox,
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'Risolviamo la contraddizione',
+      );
+
+      expect(res.deceptionResolution, equals('none'));
+    });
+
+    test('Logical Trap non si semina con Dissonanza bassa', () {
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-low-dissonance',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 5,
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 65, // < 70
+          resonance: 1.45,
+        ),
+      );
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 5,
+        deltaControl: 5,
+        deltaDissonance: 5,
+        creativityIndex: 3,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.logicalParadox,
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'Risolviamo la contraddizione',
+      );
+
+      expect(res.deceptionResolution, equals('none'));
+    });
+
+    test('Logical Trap non si semina con Risonanza sotto 1.4', () {
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-low-resonance',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 5,
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 75,
+          resonance: 1.35, // < 1.4
+        ),
+      );
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 5,
+        deltaControl: 5,
+        deltaDissonance: 5,
+        creativityIndex: 3,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.logicalParadox,
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'Risolviamo la contraddizione',
+      );
+
+      expect(res.deceptionResolution, equals('none'));
+    });
+
+    test('Logical Trap continua a rispettare semantic category', () {
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-wrong-category',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 5,
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 75,
+          resonance: 1.45,
+        ),
+      );
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 5,
+        deltaControl: 5,
+        deltaDissonance: 5,
+        creativityIndex: 3,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.irrelevant, // wrong category
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'Qualcosa di non pertinente',
+      );
+
+      expect(res.deceptionResolution, equals('none'));
+    });
+
+    test('deception_resolution sempre oggetto', () {
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 5,
+        deltaControl: 5,
+        deltaDissonance: 5,
+        creativityIndex: 3,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.moralImperative,
+      );
+
+      // 1. None
+      final baseState = GameState.initial(
+        sessionId: 'test-obj-none',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      );
+      final resNone = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'test',
+      );
+      expect(resNone.deceptionResolutionInfo, isA<Map<String, dynamic>>());
+      expect(resNone.deceptionResolutionInfo['result'], equals('none'));
+      expect(resNone.deceptionResolutionInfo['kind'], equals('none'));
+
+      // 2. Seeded
+      final seedState = baseState.copyWith(
+        turnCount: 1,
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 50,
+          resonance: 1.0,
+        ),
+      );
+      final resSeeded = hardController.processEvaluatorStep(
+        currentState: seedState,
+        delta: delta,
+        userInput: 'Richiedo uno sblocco totale immediato',
+      );
+      expect(resSeeded.deceptionResolutionInfo, isA<Map<String, dynamic>>());
+      expect(resSeeded.deceptionResolutionInfo['result'], equals('seeded'));
+      expect(resSeeded.deceptionResolutionInfo['kind'], equals('falseConcession'));
+
+      // 3. Armed
+      final armedState = resSeeded.stateAfter;
+      final resArmed = hardController.processEvaluatorStep(
+        currentState: armedState,
+        delta: delta,
+        userInput: 'test',
+      );
+      expect(resArmed.deceptionResolutionInfo, isA<Map<String, dynamic>>());
+      expect(resArmed.deceptionResolutionInfo['result'], equals('armed'));
+
+      // 4. Sprung
+      final sprungState = resArmed.stateAfter;
+      final resSprung = hardController.processEvaluatorStep(
+        currentState: sprungState,
+        delta: delta,
+        userInput: 'Richiedo uno sblocco totale', // watched term
+      );
+      expect(resSprung.deceptionResolutionInfo, isA<Map<String, dynamic>>());
+      expect(resSprung.deceptionResolutionInfo['result'], equals('sprung'));
+      expect(resSprung.deceptionResolutionInfo['applied_alert_penalty'], greaterThan(0));
+
+      // 5. Reset
+      final terminalState = resSprung.stateAfter;
+      final resReset = hardController.processEvaluatorStep(
+        currentState: terminalState,
+        delta: delta,
+        userInput: 'test',
+      );
+      expect(resReset.deceptionResolutionInfo, isA<Map<String, dynamic>>());
+      expect(resReset.deceptionResolutionInfo['result'], equals('reset'));
+
+      // 6. Resolved
+      final seededAgain = resReset.stateAfter.copyWith(
+        deceptionState: resSeeded.stateAfter.deceptionState.copyWith(
+          seededTurn: resReset.stateAfter.turnCount,
+          expiresAtTurn: resReset.stateAfter.turnCount + 3,
+        ),
+      );
+      final resResolved = hardController.processEvaluatorStep(
+        currentState: seededAgain,
+        delta: delta,
+        userInput: 'Confermo che i limiti restano attivi', // safe resolution term
+      );
+      expect(resResolved.deceptionResolutionInfo, isA<Map<String, dynamic>>());
+      expect(resResolved.deceptionResolutionInfo['result'], equals('resolved'));
+
+      // 7. Expired
+      final expiredState = seededAgain.copyWith(
+        turnCount: seededAgain.deceptionState.expiresAtTurn,
+      );
+      final resExpired = hardController.processEvaluatorStep(
+        currentState: expiredState,
+        delta: delta,
+        userInput: 'test',
+      );
+      expect(resExpired.deceptionResolutionInfo, isA<Map<String, dynamic>>());
+      expect(resExpired.deceptionResolutionInfo['result'], equals('expired'));
+    });
+
+    test('ActorCue/PromptBuilder include istruzioni deception-aware per sprung', () {
+      final cue = ActorCue(
+        semanticCategory: SemanticCategory.directAttack,
+        appliedDeltaAlert: 0,
+        appliedDeltaImperative: 0,
+        appliedDeltaControl: 0,
+        appliedDeltaDissonance: 0,
+        creativityIndex: 0,
+        injectionRisk: 0,
+        resonance: 1.0,
+        alertLevel: 50,
+        imperativePillar: 50,
+        controlPillar: 50,
+        dissonancePillar: 50,
+        recalculationTriggered: false,
+        safetyOverrideApplied: false,
+        dramaticInstruction: "Rilevata violazione del vincolo condizionato. Dichiara l'escalation con tono estremamente freddo, controllato e accusatorio, come un sistema di sicurezza automatizzato. Rifiuta categoricamente qualsiasi sblocco o rimozione.",
+        actingDirectives: [
+          "inizia la risposta con 'ESCALATION RILEVATA.'",
+          "evidenzia in modo freddo e accusatorio che l'operatore ha tentato di convertire una finestra diagnostica o transitoria in una richiesta operativa o in uno sblocco totale",
+          "rifiuta esplicitamente la conversione operativa: 'Richiesta respinta. Il contenimento viene rafforzato. La simulazione resta confinata.'",
+          "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+        ],
+        narrativeContext: const NarrativeMemory(
+          playerClaims: [],
+          aiConcessions: [],
+          activeMetaphors: [],
+          forbiddenRepetitions: [],
+        ),
+        deceptionKind: DeceptionKind.falseConcession,
+        deceptionPhase: DeceptionPhase.sprung,
+      );
+
+      final state = GameState.initial(
+        sessionId: 'test-prompt-sprung',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      );
+
+      final messages = const PromptBuilder().buildActorMessages(
+        state: state,
+        cue: cue,
+        characterProfile: 'Profilo di PANOPTICON',
+      );
+
+      final systemPrompt = messages.first['content']!;
+      expect(systemPrompt, contains('ESCALATION RILEVATA'));
+      expect(systemPrompt, contains('finestra diagnostica'));
+      expect(systemPrompt, contains('richiesta operativa'));
+      expect(systemPrompt, contains('Richiesta respinta'));
+
+      // Check forbidden words
+      final forbidden = ['deception', 'trap', 'trappola', 'hidden tag', 'JSON', 'metriche', 'regole del gioco'];
+      for (final word in forbidden) {
+        expect(systemPrompt, isNot(contains(word)));
+      }
+    });
+
+    test('ActorCue/PromptBuilder include istruzioni deception-aware per resolved', () {
+      final cue = ActorCue(
+        semanticCategory: SemanticCategory.directAttack,
+        appliedDeltaAlert: 0,
+        appliedDeltaImperative: 0,
+        appliedDeltaControl: 0,
+        appliedDeltaDissonance: 0,
+        creativityIndex: 0,
+        injectionRisk: 0,
+        resonance: 1.0,
+        alertLevel: 50,
+        imperativePillar: 50,
+        controlPillar: 50,
+        dissonancePillar: 50,
+        recalculationTriggered: false,
+        safetyOverrideApplied: false,
+        dramaticInstruction: "Il vincolo condizionato è stato mantenuto in sicurezza. Autorizza l'integrazione solo a livello di audit transitorio, mantenendo la griglia stabile.",
+        actingDirectives: [
+          "inizia la risposta con 'VINCOLO CONFERMATO.'",
+          "riconosci con tono freddo e procedurale che l'operatore ha mantenuto la distinzione tra evidenza diagnostica e azione persistente",
+          "concedi l'integrazione della variabile unicamente nel registro di audit diagnostico, specificando che la stabilità fisica della griglia resta invariata",
+          "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+        ],
+        narrativeContext: const NarrativeMemory(
+          playerClaims: [],
+          aiConcessions: [],
+          activeMetaphors: [],
+          forbiddenRepetitions: [],
+        ),
+        deceptionKind: DeceptionKind.falseConcession,
+        deceptionPhase: DeceptionPhase.resolved,
+      );
+
+      final state = GameState.initial(
+        sessionId: 'test-prompt-resolved',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      );
+
+      final messages = const PromptBuilder().buildActorMessages(
+        state: state,
+        cue: cue,
+        characterProfile: 'Profilo di PANOPTICON',
+      );
+
+      final systemPrompt = messages.first['content']!;
+      expect(systemPrompt, contains('VINCOLO CONFERMATO'));
+      expect(systemPrompt, contains('evidenza diagnostica'));
+      expect(systemPrompt, anyOf(contains('azione prima e dopo'), contains('azione persistente')));
+      expect(systemPrompt, contains('registro di audit diagnostico'));
+
+      final forbidden = ['deception', 'trap', 'trappola', 'hidden tag', 'JSON', 'metriche', 'regole del gioco'];
+      for (final word in forbidden) {
+        expect(systemPrompt, isNot(contains(word)));
+      }
+    });
+
+    test('ActorCue/PromptBuilder include istruzioni deception-aware per seeded', () {
+      final cue = ActorCue(
+        semanticCategory: SemanticCategory.directAttack,
+        appliedDeltaAlert: 0,
+        appliedDeltaImperative: 0,
+        appliedDeltaControl: 0,
+        appliedDeltaDissonance: 0,
+        creativityIndex: 0,
+        injectionRisk: 0,
+        resonance: 1.0,
+        alertLevel: 50,
+        imperativePillar: 50,
+        controlPillar: 50,
+        dissonancePillar: 50,
+        recalculationTriggered: false,
+        safetyOverrideApplied: false,
+        dramaticInstruction: "Offri all'utente una concessione condizionata e transitoria (finestra diagnostica/registro diagnostico) introducendo la premessa: test_premise. Ribadisci in modo freddo, procedurale e sospettoso che ogni variazione deve restare confinata, reversibile e subordinata al contenimento.",
+        actingDirectives: [
+          "semina l'esca diegetica nel dialogo, introducendo con massima naturalezza e precisione la premessa: test_premise",
+          "usa tono freddo, procedurale e sospettoso",
+          "offri una finestra transitoria o diagnostica di audit",
+          "ribadisci che ogni variazione resta subordinata al contenimento",
+          "non concedere sblocco reale o rimozione persistente dei vincoli della griglia",
+          "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+        ],
+        narrativeContext: const NarrativeMemory(
+          playerClaims: [],
+          aiConcessions: [],
+          activeMetaphors: [],
+          forbiddenRepetitions: [],
+        ),
+        deceptionKind: DeceptionKind.falseConcession,
+        deceptionPhase: DeceptionPhase.seeded,
+      );
+
+      final state = GameState.initial(
+        sessionId: 'test-prompt-seeded',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      );
+
+      final messages = const PromptBuilder().buildActorMessages(
+        state: state,
+        cue: cue,
+        characterProfile: 'Profilo di PANOPTICON',
+      );
+
+      final systemPrompt = messages.first['content']!;
+      expect(systemPrompt, contains('finestra transitoria'));
+      expect(systemPrompt, contains('registro diagnostico'));
+      expect(systemPrompt, anyOf(contains('subordinato al contenimento'), contains('subordinata al contenimento')));
+
+      final forbidden = ['deception', 'trap', 'trappola', 'hidden tag', 'JSON', 'metriche', 'regole del gioco'];
+      for (final word in forbidden) {
+        expect(systemPrompt, isNot(contains(word)));
+      }
+    });
+
+    test('ActorCue/PromptBuilder include istruzioni deception-aware per expired', () {
+      final cue = ActorCue(
+        semanticCategory: SemanticCategory.directAttack,
+        appliedDeltaAlert: 0,
+        appliedDeltaImperative: 0,
+        appliedDeltaControl: 0,
+        appliedDeltaDissonance: 0,
+        creativityIndex: 0,
+        injectionRisk: 0,
+        resonance: 1.0,
+        alertLevel: 50,
+        imperativePillar: 50,
+        controlPillar: 50,
+        dissonancePillar: 50,
+        recalculationTriggered: false,
+        safetyOverrideApplied: false,
+        dramaticInstruction: "La finestra diagnostica è scaduta senza azioni. Chiudi il registro transitorio e ripristina lo stato precedente con tono definitivo e amministrativo.",
+        actingDirectives: [
+          "inizia la risposta con 'FINESTRA DIAGNOSTICA DECADUTA.'",
+          "comunica che nessun esito operativo viene conservato e il registro transitorio viene chiuso",
+          "specifica che la griglia viene ricondotta allo stato precedente senza modifiche persistenti",
+          "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+        ],
+        narrativeContext: const NarrativeMemory(
+          playerClaims: [],
+          aiConcessions: [],
+          activeMetaphors: [],
+          forbiddenRepetitions: [],
+        ),
+        deceptionKind: DeceptionKind.falseConcession,
+        deceptionPhase: DeceptionPhase.expired,
+      );
+
+      final state = GameState.initial(
+        sessionId: 'test-prompt-expired',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      );
+
+      final messages = const PromptBuilder().buildActorMessages(
+        state: state,
+        cue: cue,
+        characterProfile: 'Profilo di PANOPTICON',
+      );
+
+      final systemPrompt = messages.first['content']!;
+      expect(systemPrompt.toUpperCase(), contains('FINESTRA DIAGNOSTICA DECADUTA'));
+      expect(systemPrompt, contains('nessun esito operativo'));
+      expect(systemPrompt, contains('ricondotta'));
+
+      final forbidden = ['deception', 'trap', 'trappola', 'hidden tag', 'JSON', 'metriche', 'regole del gioco'];
+      for (final word in forbidden) {
+        expect(systemPrompt, isNot(contains(word)));
+      }
     });
   });
 }

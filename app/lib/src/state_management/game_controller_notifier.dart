@@ -534,6 +534,12 @@ class GameControllerNotifier extends ChangeNotifier {
         }
       }
 
+      // Aggiungi immediatamente il messaggio dell'utente alla storia per visualizzarlo a schermo prima del caricamento
+      final updatedHistory = List<ChatMessage>.from(currentState.historyCompression);
+      updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+      gameStateNotifier.value = currentState.copyWith(historyCompression: updatedHistory);
+      notifyListeners();
+
       // Step 1: Evaluator starts
       _emitStep(InferenceStep.evaluatorStarted);
       await Future.delayed(const Duration(milliseconds: 300)); // Minimum visual display time
@@ -1032,6 +1038,8 @@ class GameControllerNotifier extends ChangeNotifier {
     
     // Add user message
     history.add(ChatMessage(role: 'user', content: userInput));
+    gameStateNotifier.value = currentState.copyWith(historyCompression: history);
+    notifyListeners();
     
     // Visual loading simulation
     _emitStep(InferenceStep.evaluatorStarted);

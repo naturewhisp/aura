@@ -181,13 +181,16 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
                           ),
                         );
                       },
-                      child: Text(
-                        widget.currentLoadingMessage,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
                         key: ValueKey<String>(widget.currentLoadingMessage),
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 14.0,
-                          color: Colors.orange,
+                        child: Text(
+                          widget.currentLoadingMessage,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 14.0,
+                            color: Colors.orange,
+                          ),
                         ),
                       ),
                     ),

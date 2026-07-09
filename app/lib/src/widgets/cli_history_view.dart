@@ -164,12 +164,32 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
                     ),
                   ),
                   const SizedBox(width: 8.0),
-                  Text(
-                    widget.currentLoadingMessage,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 14.0,
-                      color: Colors.orange,
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 350),
+                      switchInCurve: Curves.easeInOut,
+                      switchOutCurve: Curves.easeInOut,
+                      transitionBuilder: (Widget child, Animation<double> animation) {
+                        return FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween<Offset>(
+                              begin: const Offset(0.0, 0.15),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Text(
+                        widget.currentLoadingMessage,
+                        key: ValueKey<String>(widget.currentLoadingMessage),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 14.0,
+                          color: Colors.orange,
+                        ),
+                      ),
                     ),
                   ),
                 ],

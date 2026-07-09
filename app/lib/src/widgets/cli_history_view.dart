@@ -44,6 +44,9 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   /// riattivato quando l'utente torna vicino al fondo.
   bool _shouldAutoScroll = true;
 
+  /// Flag per evitare che i jump programmati attivino/disattivino l'auto-scroll
+  bool _isProgrammaticScroll = false;
+
   /// Lunghezza della storia al precedente aggiornamento per rilevare nuovi messaggi.
   int _previousHistoryLength = 0;
 
@@ -92,10 +95,16 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
 
   /// Listener sullo scroll: aggiorna il flag in base alla posizione dell'utente.
   void _onScrollChanged() {
+    if (_isProgrammaticScroll) return;
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     // Tolleranza di 80px: se l'utente è entro 80px dal fondo, riattiva l'auto-scroll.
-    _shouldAutoScroll = (pos.maxScrollExtent - pos.pixels) <= 80.0;
+    final atBottom = (pos.maxScrollExtent - pos.pixels) <= 80.0;
+    if (_shouldAutoScroll != atBottom) {
+      setState(() {
+        _shouldAutoScroll = atBottom;
+      });
+    }
   }
 
   /// Avvia l'effetto macchina da scrivere per stampare il testo carattere per carattere.
@@ -123,14 +132,19 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   /// Pianifica uno scroll istantaneo al fondo dopo il layout del frame corrente.
   void _scheduleScrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _jumpToBottom();
+      if (_shouldAutoScroll) {
+        _jumpToBottom();
+      }
     });
   }
 
   /// Salta istantaneamente al fondo della lista.
   void _jumpToBottom() {
     if (_scrollController.hasClients) {
+      _isProgrammaticScroll = true;
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      // Rilascia dopo che la chiamata sincrona a jumpTo ha triggerato i listener
+      _isProgrammaticScroll = false;
     }
   }
 

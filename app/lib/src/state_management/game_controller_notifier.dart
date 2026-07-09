@@ -1302,11 +1302,6 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
     if (step == InferenceStep.completed) {
       _currentStepMessage = "";
     } else {
-      if (_currentStepMessage.isNotEmpty && 
-          !_currentStepMessage.startsWith("[ERROR]") && 
-          !_currentStepMessage.startsWith("[SISTEMA]")) {
-        _loadingLogs.add("[PID ${1000 + _loadingLogs.length}] $_currentStepMessage");
-      }
       _currentStepMessage = step.getRandomMessage(_random, exclude: _currentStepMessage);
       
       _loadingTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) {

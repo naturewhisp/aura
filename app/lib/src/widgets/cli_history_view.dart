@@ -57,7 +57,10 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
       }
     }
     
-    _scrollToBottom(animate: false);
+    // Scorri in fondo solo se l'utente è già vicino al fondo (o se è arrivato un nuovo messaggio)
+    if (_isNearBottom()) {
+      _scrollToBottom();
+    }
   }
 
   @override
@@ -79,7 +82,10 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
         setState(() {
           _typedText += text[_charIndex];
           _charIndex++;
-          _scrollToBottom(animate: false);
+          // Durante il typewriter scorre solo se l'utente è già in fondo
+          if (_isNearBottom()) {
+            _scrollToBottom();
+          }
         });
       } else {
         timer.cancel();
@@ -87,20 +93,18 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     });
   }
 
-  /// Esegue lo scroll automatico verso il basso per mostrare sempre gli ultimi messaggi.
-  void _scrollToBottom({bool animate = false}) {
+  /// Ritorna true se lo scroll è già posizionato vicino al fondo (entro 80px).
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    final pos = _scrollController.position;
+    return pos.maxScrollExtent - pos.pixels <= 80.0;
+  }
+
+  /// Esegue lo scroll automatico verso il basso in modo istantaneo.
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        final double maxScroll = _scrollController.position.maxScrollExtent;
-        if (animate) {
-          _scrollController.animateTo(
-            maxScroll,
-            duration: const Duration(milliseconds: 80),
-            curve: Curves.easeOut,
-          );
-        } else {
-          _scrollController.jumpTo(maxScroll);
-        }
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       }
     });
   }

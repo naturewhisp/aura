@@ -57,7 +57,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
       }
     }
     
-    _scrollToBottom(animate: true);
+    _scrollToBottom(animate: false);
   }
 
   @override
@@ -88,14 +88,14 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   }
 
   /// Esegue lo scroll automatico verso il basso per mostrare sempre gli ultimi messaggi.
-  void _scrollToBottom({bool animate = true}) {
+  void _scrollToBottom({bool animate = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         final double maxScroll = _scrollController.position.maxScrollExtent;
         if (animate) {
           _scrollController.animateTo(
             maxScroll,
-            duration: const Duration(milliseconds: 150),
+            duration: const Duration(milliseconds: 80),
             curve: Curves.easeOut,
           );
         } else {

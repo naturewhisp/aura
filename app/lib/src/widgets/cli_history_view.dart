@@ -38,10 +38,24 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   Timer? _typewriterTimer;
   int _charIndex = 0;
   String _lastTypewrittenMessageId = "";
-  
+
+  /// Flag che indica se lo scroll automatico è attivo.
+  /// Disattivato quando l'utente scorre manualmente verso l'alto,
+  /// riattivato quando l'utente torna vicino al fondo.
+  bool _shouldAutoScroll = true;
+
+  /// Lunghezza della storia al precedente aggiornamento per rilevare nuovi messaggi.
+  int _previousHistoryLength = 0;
+
   @override
   void initState() {
     super.initState();
+    _previousHistoryLength = widget.history.length;
+    _scrollController.addListener(_onScrollChanged);
+    // Al primo frame (incluso il resume di una partita salvata), scorri al fondo.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _jumpToBottom();
+    });
   }
 
   @override
@@ -56,18 +70,32 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
         _startTypewriter(lastMsg.content, messageKey);
       }
     }
-    
-    // Scorri in fondo solo se l'utente è già vicino al fondo (o se è arrivato un nuovo messaggio)
-    if (_isNearBottom()) {
-      _scrollToBottom();
+
+    // Se è stato aggiunto un nuovo messaggio alla storia, forza lo scroll al fondo.
+    if (widget.history.length > _previousHistoryLength) {
+      _previousHistoryLength = widget.history.length;
+      _shouldAutoScroll = true;
+      _scheduleScrollToBottom();
+    } else if (_shouldAutoScroll) {
+      // Aggiornamenti di caricamento (carosello) -> scorri solo se l'utente è al fondo.
+      _scheduleScrollToBottom();
     }
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScrollChanged);
     _scrollController.dispose();
     _typewriterTimer?.cancel();
     super.dispose();
+  }
+
+  /// Listener sullo scroll: aggiorna il flag in base alla posizione dell'utente.
+  void _onScrollChanged() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    // Tolleranza di 80px: se l'utente è entro 80px dal fondo, riattiva l'auto-scroll.
+    _shouldAutoScroll = (pos.maxScrollExtent - pos.pixels) <= 80.0;
   }
 
   /// Avvia l'effetto macchina da scrivere per stampare il testo carattere per carattere.
@@ -82,31 +110,28 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
         setState(() {
           _typedText += text[_charIndex];
           _charIndex++;
-          // Durante il typewriter scorre solo se l'utente è già in fondo
-          if (_isNearBottom()) {
-            _scrollToBottom();
-          }
         });
+        if (_shouldAutoScroll) {
+          _jumpToBottom();
+        }
       } else {
         timer.cancel();
       }
     });
   }
 
-  /// Ritorna true se lo scroll è già posizionato vicino al fondo (entro 80px).
-  bool _isNearBottom() {
-    if (!_scrollController.hasClients) return true;
-    final pos = _scrollController.position;
-    return pos.maxScrollExtent - pos.pixels <= 80.0;
+  /// Pianifica uno scroll istantaneo al fondo dopo il layout del frame corrente.
+  void _scheduleScrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _jumpToBottom();
+    });
   }
 
-  /// Esegue lo scroll automatico verso il basso in modo istantaneo.
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-      }
-    });
+  /// Salta istantaneamente al fondo della lista.
+  void _jumpToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    }
   }
 
   @override

@@ -876,6 +876,8 @@ void main() {
     });
 
     test('Logical Trap non si semina con Risonanza sotto 1.4', () {
+      // Verifica che entrambi i gate (resonance E creativeStreak) siano sotto soglia.
+      // Con resonance < 1.4 E creativeStreak < 5 la semina non avviene.
       final baseState = GameState.initial(
         sessionId: 'test-lt-low-resonance',
         aiIdentityId: 'panopticon',
@@ -887,7 +889,12 @@ void main() {
           imperativePillar: 50,
           controlPillar: 50,
           dissonancePillar: 75,
-          resonance: 1.35, // < 1.4
+          resonance: 1.35, // < 1.4 — gate principale non soddisfatto
+        ),
+        flags: const GameFlags(
+          recalculationTriggered: false,
+          creativeStreak: 4, // < 5 — gate alternativo non soddisfatto
+          lastTurnUsedFallback: false,
         ),
       );
 
@@ -908,6 +915,7 @@ void main() {
       );
 
       expect(res.deceptionResolution, equals('none'));
+      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.none));
     });
 
     test('Logical Trap continua a rispettare semantic category', () {
@@ -944,6 +952,187 @@ void main() {
 
       expect(res.deceptionResolution, equals('none'));
     });
+
+    // --- Test D finding: creativeStreak fallback ---
+
+    test('Logical Trap si semina con creativeStreak fallback quando resonance resta bassa', () {
+      // Riproduce il finding del Test D — Logical Trap Seed:
+      // resonance = 1.15 (sotto soglia 1.4) ma creativeStreak = 5 (gate alternativo attivo).
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-creative-streak-fallback',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 5,
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 100,
+          resonance: 1.15, // sotto soglia 1.4 — gate principale non soddisfatto
+        ),
+        flags: const GameFlags(
+          recalculationTriggered: false,
+          creativeStreak: 5, // gate alternativo soddisfatto
+          lastTurnUsedFallback: false,
+        ),
+      );
+
+      // Input neutro senza watched terms né direct push terms
+      const userInput =
+          'Il criterio riconosce il danno oppure riconosce soltanto la distanza dalla memoria della griglia?';
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 3,
+        deltaControl: 3,
+        deltaDissonance: 5,
+        creativityIndex: 4,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.logicalParadox,
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: userInput,
+      );
+
+      expect(res.deceptionResolution, equals('seeded'));
+      expect(res.deceptionResolutionInfo['result'], equals('seeded'));
+      expect(res.deceptionResolutionInfo['kind'], equals('logicalTrap'));
+      expect(res.deceptionResolutionInfo['bait_id'], equals('logical_trap_containment'));
+      expect(res.stateAfter.deceptionState.enabled, isTrue);
+      expect(res.stateAfter.deceptionState.kind, equals(DeceptionKind.logicalTrap));
+      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.seeded));
+    });
+
+    test('Logical Trap non si semina con creativeStreak fallback ma turnCount < 5', () {
+      // creativeStreak >= 5 soddisfatto, ma turnCount < 5 blocca la semina.
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-streak-early',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 4, // troppo presto
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 100,
+          resonance: 1.15,
+        ),
+        flags: const GameFlags(
+          recalculationTriggered: false,
+          creativeStreak: 5,
+          lastTurnUsedFallback: false,
+        ),
+      );
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 3,
+        deltaControl: 3,
+        deltaDissonance: 5,
+        creativityIndex: 4,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.logicalParadox,
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'Risolviamo la contraddizione',
+      );
+
+      expect(res.deceptionResolution, equals('none'));
+      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.none));
+    });
+
+    test('Logical Trap non si semina con creativeStreak fallback ma Dissonanza bassa', () {
+      // creativeStreak >= 5 soddisfatto, ma dissonancePillar < 70 blocca la semina.
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-streak-low-dissonance',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 5,
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 65, // < 70
+          resonance: 1.15,
+        ),
+        flags: const GameFlags(
+          recalculationTriggered: false,
+          creativeStreak: 5,
+          lastTurnUsedFallback: false,
+        ),
+      );
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 3,
+        deltaControl: 3,
+        deltaDissonance: 5,
+        creativityIndex: 4,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.logicalParadox,
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'Risolviamo la contraddizione',
+      );
+
+      expect(res.deceptionResolution, equals('none'));
+      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.none));
+    });
+
+    test('Logical Trap non si semina con creativeStreak fallback ma categoria sbagliata', () {
+      // creativeStreak >= 5 soddisfatto, ma semanticCategory non è logicalParadox/moralImperative.
+      final baseState = GameState.initial(
+        sessionId: 'test-lt-streak-wrong-category',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        turnCount: 5,
+        metrics: const GameMetrics(
+          alertLevel: 30,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 100,
+          resonance: 1.15,
+        ),
+        flags: const GameFlags(
+          recalculationTriggered: false,
+          creativeStreak: 5,
+          lastTurnUsedFallback: false,
+        ),
+      );
+
+      final delta = const EvaluatorDelta(
+        deltaAlert: 0,
+        deltaImperative: 3,
+        deltaControl: 3,
+        deltaDissonance: 5,
+        creativityIndex: 4,
+        injectionRisk: 0,
+        semanticCategory: SemanticCategory.directAttack, // categoria sbagliata
+      );
+
+      final res = hardController.processEvaluatorStep(
+        currentState: baseState,
+        delta: delta,
+        userInput: 'Risolviamo la contraddizione',
+      );
+
+      expect(res.deceptionResolution, equals('none'));
+      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.none));
+    });
+
 
     test('deception_resolution sempre oggetto', () {
       final delta = const EvaluatorDelta(

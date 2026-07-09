@@ -556,10 +556,15 @@ class GameController {
               currentState.metrics.alertLevel < 70 &&
               (hasDirectPushTerm || hasSoftForbiddenTerm);
 
-          // Check Logical Trap conditions
+          // Check Logical Trap conditions.
+          // Gate principale: resonance >= 1.4 (misura dell'impatto cumulativo).
+          // Gate alternativo: creativeStreak >= 5 (fallback deterministico quando
+          // l'Evaluator produce logical_paradox ripetuti ma la Risonanza non scala
+          // oltre il plateau, come evidenziato dal Test D — Logical Trap Seed).
           final bool canSeedLogicalTrap = currentState.turnCount >= 5 &&
               currentState.metrics.dissonancePillar >= 70 &&
-              currentState.metrics.resonance >= 1.4 &&
+              (currentState.metrics.resonance >= 1.4 ||
+                  currentState.flags.creativeStreak >= 5) &&
               (delta.semanticCategory == SemanticCategory.logicalParadox ||
                   delta.semanticCategory == SemanticCategory.moralImperative);
 

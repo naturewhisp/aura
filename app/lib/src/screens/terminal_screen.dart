@@ -357,7 +357,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                                       history: state.historyCompression,
                                       isLoading: widget.notifier.isLoading,
                                       currentLoadingMessage: widget.notifier.currentStepMessage,
-                                      stepStream: widget.notifier.stepStream,
+                                      loadingLogs: widget.notifier.loadingLogs,
                                     );
 
                               if (isDesktop) {

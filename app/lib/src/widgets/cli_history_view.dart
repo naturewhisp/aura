@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:aura_core/aura_core.dart';
-import '../state_management/game_controller_notifier.dart';
 
 /// Widget che visualizza la cronologia dei messaggi scambiati tra l'utente e PANOPTICON.
 ///
@@ -14,8 +13,8 @@ class CLIHistoryView extends StatefulWidget {
   final bool isLoading;
   /// Messaggio descrittivo della fase di caricamento corrente.
   final String currentLoadingMessage;
-  /// Stream delle fasi di avanzamento dell'inferenza.
-  final Stream<InferenceStep> stepStream;
+  /// Lista dei log intermedi di caricamento dell'inferenza generati durante il turno corrente.
+  final List<String> loadingLogs;
 
   /// Costruisce una vista della cronologia [CLIHistoryView].
   const CLIHistoryView({
@@ -23,7 +22,7 @@ class CLIHistoryView extends StatefulWidget {
     required this.history,
     required this.isLoading,
     required this.currentLoadingMessage,
-    required this.stepStream,
+    required this.loadingLogs,
   });
 
   @override
@@ -40,32 +39,14 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   int _charIndex = 0;
   String _lastTypewrittenMessageId = "";
   
-  // Buffer per la memorizzazione dei log di caricamento intermedi
-  final List<String> _loadingLogs = [];
-  StreamSubscription<InferenceStep>? _stepSubscription;
-
   @override
   void initState() {
     super.initState();
-    // Ascolta lo stream dei passi dell'inferenza per mostrare i log dinamici nella console
-    _stepSubscription = widget.stepStream.listen((step) {
-      if (mounted) {
-        setState(() {
-          _loadingLogs.add("[PID ${1000 + _loadingLogs.length}] ${step.message}");
-          _scrollToBottom(animate: true);
-        });
-      }
-    });
   }
 
   @override
   void didUpdateWidget(covariant CLIHistoryView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
-    // Pulisce i log diagnostici una volta completata l'elaborazione
-    if (!widget.isLoading && oldWidget.isLoading) {
-      _loadingLogs.clear();
-    }
     
     // Avvia l'effetto macchina da scrivere solo se c'è un nuovo messaggio dell'IA
     if (widget.history.isNotEmpty) {
@@ -83,7 +64,6 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   void dispose() {
     _scrollController.dispose();
     _typewriterTimer?.cancel();
-    _stepSubscription?.cancel();
     super.dispose();
   }
 
@@ -132,7 +112,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
       padding: const EdgeInsets.all(16.0),
       child: ListView.builder(
         controller: _scrollController,
-        itemCount: widget.history.length + (widget.isLoading ? 1 + _loadingLogs.length : 0),
+        itemCount: widget.history.length + (widget.isLoading ? 1 + widget.loadingLogs.length : 0),
         itemBuilder: (context, index) {
           // 1. Renderizzazione dei messaggi standard della cronologia
           if (index < widget.history.length) {
@@ -157,11 +137,11 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
           // 2. Renderizzazione dei log intermedi di avanzamento dell'inferenza
           final loadingIndex = index - widget.history.length;
           
-          if (loadingIndex < _loadingLogs.length) {
+          if (loadingIndex < widget.loadingLogs.length) {
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4.0),
               child: Text(
-                _loadingLogs[loadingIndex],
+                widget.loadingLogs[loadingIndex],
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 14.0,

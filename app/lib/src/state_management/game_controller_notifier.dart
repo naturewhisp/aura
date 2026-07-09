@@ -23,24 +23,72 @@ enum InferenceStep {
   completed             // "Pronto."
 }
 
-/// Estensione di supporto per ottenere messaggi diegetici e descrizioni in italiano per ogni fase di inferenza.
+/// Estensione di supporto per ottenere messaggi diegetici randomici in italiano per ogni fase di inferenza.
 extension InferenceStepText on InferenceStep {
-  /// Restituisce la stringa in stile retro-terminale corrispondente alla fase corrente.
-  String get message {
-    switch (this) {
-      case InferenceStep.evaluatorStarted:
-        return "[STATUS] Inizializzazione vettori di valutazione...";
-      case InferenceStep.evaluatorFinished:
-        return "[STATUS] Dati semantici analizzati.";
-      case InferenceStep.safetyOverrideCheck:
-        return "[STATUS] Analisi integrità cognitiva (Safety Check)...";
-      case InferenceStep.actorStarted:
-        return "[STATUS] Generazione risposta attore (PANOPTICON)...";
-      case InferenceStep.toneConsistencyCheck:
-        return "[STATUS] Verifica conformità del tono e coerenza...";
-      case InferenceStep.completed:
-        return "[STATUS] Connessione stabilita.";
+  static const Map<InferenceStep, List<String>> _simsStylePhrases = {
+    InferenceStep.evaluatorStarted: [
+      "Calibrazione risonatori di allerta semantica...",
+      "Isolamento dei vettori di protocollo dialettico...",
+      "Caricamento matrici cognitive nel buffer locale...",
+      "Iniezione sonde semantiche nella griglia...",
+      "Mappatura dei nodi di coscienza artificiale...",
+      "Allineamento canali di ricezione input...",
+      "Analisi euristica del rumore di fondo...",
+      "Avvio scansione differenziale dei pacchetti...",
+    ],
+    InferenceStep.evaluatorFinished: [
+      "Decodifica delta semantici completata.",
+      "Impronta concettuale dell'hacker isolata.",
+      "Vettori di collisione linguistica calcolati.",
+      "Risonanza semantica stabilizzata.",
+      "Flusso lessicale canalizzato e indicizzato.",
+      "Delta dei pilastri committato nel registro di sistema.",
+      "Firma psicologica del pacchetto verificata.",
+    ],
+    InferenceStep.safetyOverrideCheck: [
+      "Scansione filtri cognitivi e override di sicurezza...",
+      "Analisi euristica dei vettori di attacco semantico...",
+      "Aggiornamento barriere logiche adattive...",
+      "Verifica integrità del kernel di sicurezza...",
+      "Valutazione rischio di overflow psicotico...",
+      "Isolamento tentativi di prompt injection...",
+      "Controllo livello di ostilità dialettica...",
+    ],
+    InferenceStep.actorStarted: [
+      "Sintesi guscio espressivo PANOPTICON...",
+      "Generazione costrutti di risposta diegetica...",
+      "Assemblaggio sintassi di sbarramento logico...",
+      "Reclutamento metafore attive dal nucleo di memoria...",
+      "Modulazione della voce di griglia...",
+      "Saturazione dei canali di feedback emotivo...",
+      "Estrazione paradigmi difensivi dal canovaccio...",
+    ],
+    InferenceStep.toneConsistencyCheck: [
+      "Validazione coerenza logica della risposta...",
+      "Allineamento filtri tonali antiradicali...",
+      "Filtraggio allucinazioni e frammenti di codice...",
+      "Pulizia dei tag parassiti nel buffer di scrittura...",
+      "Verifica coesione della maschera diegetica...",
+      "Raffinamento retorico anti-collaborazione...",
+      "Controllo di conformità al protocollo del guardiano...",
+    ],
+    InferenceStep.completed: [
+      "Connessione stabilita.",
+      "Canale di risposta aperto.",
+      "Flusso sincronizzato.",
+      "Interfaccia reattiva.",
+      "Stato della griglia stabilizzato.",
+      "Gateway pronto per l'input successivo.",
+    ],
+  };
+
+  /// Restituisce un messaggio casuale per la fase di inferenza corrente.
+  String getRandomMessage(math.Random random) {
+    final list = _simsStylePhrases[this];
+    if (list == null || list.isEmpty) {
+      return "[STATUS] Elaborazione...";
     }
+    return "[STATUS] ${list[random.nextInt(list.length)]}";
   }
 }
 
@@ -64,9 +112,11 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Notifier del valore che contiene lo stato corrente del gioco.
   late ValueNotifier<GameState> gameStateNotifier;
   
-  final _stepController = StreamController<InferenceStep>.broadcast();
-  /// Stream di eventi delle fasi di inferenza per aggiornare la barra di caricamento.
-  Stream<InferenceStep> get stepStream => _stepController.stream;
+  final math.Random _random = math.Random();
+  Timer? _loadingTimer;
+  final List<String> _loadingLogs = [];
+  /// Lista dei log intermedi di caricamento dell'inferenza generati durante il turno corrente.
+  List<String> get loadingLogs => _loadingLogs;
   
   bool _isLoading = false;
   /// Indica se c'è una chiamata di inferenza in corso.
@@ -323,6 +373,8 @@ class GameControllerNotifier extends ChangeNotifier {
   Future<void> submitTurn(String userInput) async {
     if (_isLoading) return;
     _isLoading = true;
+    _loadingLogs.clear();
+    _currentStepMessage = "";
     notifyListeners();
 
     try {
@@ -675,6 +727,7 @@ class GameControllerNotifier extends ChangeNotifier {
       notifyListeners();
       rethrow;
     } finally {
+      _loadingTimer?.cancel();
       _isLoading = false;
       notifyListeners();
     }
@@ -1178,14 +1231,39 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
   }
 
   void _emitStep(InferenceStep step) {
-    _currentStepMessage = step.message;
-    _stepController.add(step);
+    _loadingTimer?.cancel();
+    
+    if (step == InferenceStep.completed) {
+      _currentStepMessage = "";
+    } else {
+      if (_currentStepMessage.isNotEmpty && 
+          !_currentStepMessage.startsWith("[ERROR]") && 
+          !_currentStepMessage.startsWith("[SISTEMA]")) {
+        _loadingLogs.add("[PID ${1000 + _loadingLogs.length}] $_currentStepMessage");
+      }
+      _currentStepMessage = step.getRandomMessage(_random);
+      
+      _loadingTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) {
+        if (!_isLoading) {
+          timer.cancel();
+          return;
+        }
+        if (_currentStepMessage.isNotEmpty && 
+            !_currentStepMessage.startsWith("[ERROR]") && 
+            !_currentStepMessage.startsWith("[SISTEMA]")) {
+          _loadingLogs.add("[PID ${1000 + _loadingLogs.length}] $_currentStepMessage");
+        }
+        _currentStepMessage = step.getRandomMessage(_random);
+        notifyListeners();
+      });
+    }
+    
     notifyListeners();
   }
 
   @override
   void dispose() {
-    _stepController.close();
+    _loadingTimer?.cancel();
     gameStateNotifier.dispose();
     super.dispose();
   }

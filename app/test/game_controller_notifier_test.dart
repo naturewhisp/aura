@@ -546,10 +546,9 @@ void main() {
         bridge: mockApiBridge,
         initialState: initialState,
       );
-      notifier.difficultyLevel = 'easy';
 
       // Start new game to apply easy difficulty preset
-      await notifier.startNewGame();
+      await notifier.startNewGame(difficulty: 'easy');
       
       expect(notifier.controller.defeatAlertThreshold, equals(110));
       expect(notifier.controller.alertMultiplier, equals(0.8));
@@ -586,8 +585,7 @@ void main() {
         bridge: mockApiBridge,
         initialState: initialState,
       );
-      notifier.difficultyLevel = 'standard';
-      await notifier.startNewGame();
+      await notifier.startNewGame(difficulty: 'standard');
 
       expect(notifier.controller.defeatAlertThreshold, equals(100));
       expect(notifier.controller.alertMultiplier, equals(1.0));
@@ -622,8 +620,7 @@ void main() {
         bridge: mockApiBridge,
         initialState: initialState,
       );
-      notifier.difficultyLevel = 'hard';
-      await notifier.startNewGame();
+      await notifier.startNewGame(difficulty: 'hard');
 
       expect(notifier.controller.defeatAlertThreshold, equals(85));
       expect(notifier.controller.alertMultiplier, equals(1.25));
@@ -649,8 +646,7 @@ void main() {
         bridge: mockApiBridge,
         initialState: initialState,
       );
-      notifier.difficultyLevel = 'standard';
-      await notifier.startNewGame();
+      await notifier.startNewGame(difficulty: 'standard');
 
       // Force resonance to 2.0
       notifier.gameStateNotifier.value = notifier.gameStateNotifier.value.copyWith(
@@ -684,8 +680,7 @@ void main() {
         bridge: mockApiBridge,
         initialState: initialState,
       );
-      notifier.difficultyLevel = 'hard'; // Hard creep starts at turn 8
-      await notifier.startNewGame();
+      await notifier.startNewGame(difficulty: 'hard'); // Hard creep starts at turn 8
 
       mockApiBridge.mockStructuredResponse = {
         'delta_alert': 0,
@@ -717,8 +712,7 @@ void main() {
         bridge: mockApiBridge,
         initialState: initialState,
       );
-      notifier.difficultyLevel = 'standard';
-      await notifier.startNewGame();
+      await notifier.startNewGame(difficulty: 'standard');
 
       // Initially, grid is stable
       expect(notifier.isGridStable, isTrue);
@@ -785,6 +779,24 @@ void main() {
       await notifier.submitTurn("Turn 7");
       // Grid is stabilized again
       expect(notifier.isGridStable, isTrue);
+    });
+
+    test('Changing defaultDifficulty does not affect ongoing session difficulty', () async {
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialState,
+      );
+      
+      // Start as hard
+      await notifier.startNewGame(difficulty: 'hard');
+      expect(notifier.difficultyLevel, equals('hard'));
+      
+      // Change default to easy
+      notifier.updateDefaultDifficulty('easy');
+      expect(notifier.defaultDifficulty, equals('easy'));
+      
+      // Active session difficulty must remain hard
+      expect(notifier.difficultyLevel, equals('hard'));
     });
   });
 }

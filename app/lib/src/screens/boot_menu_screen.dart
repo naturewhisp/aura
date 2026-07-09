@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
 import '../widgets/audio_reactive_background.dart';
+import 'new_connection_briefing_screen.dart';
 
 /// Schermata iniziale di Boot e Menu Principale dell'applicazione A.U.R.A.
 ///
@@ -217,7 +218,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
         widget.notifier.startTutorial();
         break;
       case 1:
-        widget.notifier.startNewGame();
+        setState(() {
+          _subScreen = "briefing";
+        });
         break;
       case 2:
         widget.notifier.resumeGame();
@@ -381,6 +384,11 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
         return _buildReplayDetailScreen();
       case "settings":
         return _buildSettingsScreen();
+      case "briefing":
+        return NewConnectionBriefingScreen(
+          notifier: widget.notifier,
+          onBack: _backToMainMenu,
+        );
       default:
         return _buildMainMenuScreen();
     }
@@ -828,13 +836,13 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
             children: [
               // 0. Difficulty Level selection
               _buildDropdownSetting(
-                "LIVELLO DI DIFFICOLTÀ (DIFFICULTY)",
-                widget.notifier.difficultyLevel,
+                "DIFF. PREDEFINITA NUOVA CONNESSIONE (DEFAULT)",
+                widget.notifier.defaultDifficulty,
                 const ["easy", "standard", "hard"],
                 (val) {
                   if (val != null) {
                     setState(() {
-                      widget.notifier.updateDifficultyLevel(val);
+                      widget.notifier.updateDefaultDifficulty(val);
                     });
                   }
                 },
@@ -843,6 +851,16 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                   "standard": "MEDIO (INFILTRAZIONE)",
                   "hard": "DIFFICILE (ATTRITO CEREBRALE)"
                 },
+              ),
+              const SizedBox(height: 6.0),
+              const Text(
+                "Nota: Si applica solo alle nuove connessioni. Le sessioni già avviate mantengono il proprio profilo.",
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  color: Color(0xFFFFB000), // Ambra
+                  fontSize: 11.0,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 24.0),
 

@@ -113,8 +113,10 @@ class GameControllerNotifier extends ChangeNotifier {
   double lastTokensPerSecond = 0.0;
   /// Numero di suggerimenti diagnostici (/hint) consumati in questa sessione.
   int hintsUsed = 0;
-  /// Livello di difficoltà selezionato (standard, hard, custom).
+  /// Livello di difficoltà selezionato per la sessione corrente (standard, hard, easy).
   String difficultyLevel = "standard";
+  /// Livello di difficoltà predefinito per le nuove sessioni (standard, hard, easy).
+  String defaultDifficulty = "standard";
 
   /// Logger delle giocate per salvare i replay.
   late ReplayLogger logger;
@@ -180,7 +182,8 @@ class GameControllerNotifier extends ChangeNotifier {
         conciseReasoning = data['concise_reasoning'] as bool? ?? conciseReasoning;
         shaderEnabled = data['shader_enabled'] as bool? ?? shaderEnabled;
         audioEnabled = data['audio_enabled'] as bool? ?? audioEnabled;
-        difficultyLevel = data['difficulty_level'] as String? ?? difficultyLevel;
+        defaultDifficulty = data['default_difficulty'] as String? ?? data['difficulty_level'] as String? ?? 'standard';
+        difficultyLevel = defaultDifficulty;
         _userCustomizedModels = data['user_customized_models'] as bool? ?? false;
         
         if (_userCustomizedModels) {
@@ -211,7 +214,8 @@ class GameControllerNotifier extends ChangeNotifier {
         'concise_reasoning': conciseReasoning,
         'shader_enabled': shaderEnabled,
         'audio_enabled': audioEnabled,
-        'difficulty_level': difficultyLevel,
+        'difficulty_level': defaultDifficulty, // per retrocompatibilità
+        'default_difficulty': defaultDifficulty,
         'user_customized_models': _userCustomizedModels,
       };
       await file.writeAsString(jsonEncode(data));
@@ -221,9 +225,9 @@ class GameControllerNotifier extends ChangeNotifier {
     }
   }
 
-  /// Aggiorna il livello di difficoltà e persiste la scelta su disco.
-  void updateDifficultyLevel(String level) {
-    difficultyLevel = level;
+  /// Aggiorna il livello di difficoltà predefinito per le nuove sessioni e persiste la scelta su disco.
+  void updateDefaultDifficulty(String level) {
+    defaultDifficulty = level;
     saveSettings();
     notifyListeners();
   }
@@ -824,7 +828,7 @@ class GameControllerNotifier extends ChangeNotifier {
   }
 
   /// Avvia una nuova sessione di gioco pulita, eliminando eventuali salvataggi precedenti.
-  Future<void> startNewGame() async {
+  Future<void> startNewGame({String? difficulty}) async {
     finalDiscursiveReport = null;
     await deleteActiveSession();
     hintsUsed = 0;
@@ -833,6 +837,7 @@ class GameControllerNotifier extends ChangeNotifier {
     _isGridStable = true;
     _hasExceededControl50 = false;
     
+    difficultyLevel = difficulty ?? defaultDifficulty;
     final preset = DifficultyConfig.getPreset(difficultyLevel);
     controller = GameController(
       defeatAlertThreshold: preset.defeatAlertThreshold,

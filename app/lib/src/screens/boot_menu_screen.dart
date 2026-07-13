@@ -738,7 +738,10 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 final turn = turns[index];
                 final turnNum = turn['turn_id'] ?? (index + 1);
                 final userInput = turn['user_input'] ?? '';
-                final actorResponse = turn['actor_response'] ?? '';
+                final String rawActorResponse = turn['actor_response'] ?? '';
+                final actorResponse = rawActorResponse
+                    .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+                    .trim();
                 
                 final stateAfter = turn['state_after'] ?? {};
                 final metrics = stateAfter['metrics'] ?? {};

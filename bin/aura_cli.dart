@@ -221,6 +221,10 @@ void main() async {
 
     final duration = DateTime.now().difference(startTime);
 
+    final cleanActorResponse = actorResponse
+        .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+        .trim();
+
     // 6. Registrazione della transazione nel logger di replay
     logger.logTurn(ReplayEntry(
       turnId: turn,
@@ -228,9 +232,9 @@ void main() async {
       evaluatorOutput: delta,
       stateBefore: stateBefore.toJson(),
       stateAfter: state.toJson(),
-      actorResponse: actorResponse,
+      actorResponse: cleanActorResponse,
       actorRequestId: "cli-req-$turn",
-      actorResponseHash: actorResponse.hashCode.toString(),
+      actorResponseHash: cleanActorResponse.hashCode.toString(),
       evaluatorModel: isOnline ? evaluatorModelName : 'rule_fallback',
       actorModel: isOnline ? actorModelName : 'mock_fallback',
       latencyTotalMs: duration.inMilliseconds,

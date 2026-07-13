@@ -745,6 +745,10 @@ class GameControllerNotifier extends ChangeNotifier {
       final finalState = gameStateNotifier.value;
       final duration = DateTime.now().difference(startTime);
 
+      final cleanActorResponse = actorResponse
+          .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+          .trim();
+
       // Log the turn to the ReplayLogger
       logger.logTurn(ReplayEntry(
         turnId: turnId,
@@ -752,9 +756,9 @@ class GameControllerNotifier extends ChangeNotifier {
         evaluatorOutput: delta,
         stateBefore: currentState.toJson(),
         stateAfter: finalState.toJson(),
-        actorResponse: actorResponse,
+        actorResponse: cleanActorResponse,
         actorRequestId: "app-req-$turnId",
-        actorResponseHash: actorResponse.hashCode.toString(),
+        actorResponseHash: cleanActorResponse.hashCode.toString(),
         evaluatorModel: evaluatorModelId,
         actorModel: actorModelId,
         latencyTotalMs: duration.inMilliseconds,

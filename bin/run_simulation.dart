@@ -251,6 +251,10 @@ Future<void> runStaticSimulation({
     print("  - Risposta Panopticon: \"$actorResponse\"");
     print("  - Latenza Turno:       ${duration.inMilliseconds} ms");
 
+    final cleanActorResponse = actorResponse
+        .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+        .trim();
+
     // Registra la telemetria del turno
     logger.logTurn(ReplayEntry(
       turnId: turn,
@@ -258,9 +262,9 @@ Future<void> runStaticSimulation({
       evaluatorOutput: delta,
       stateBefore: stateBefore.toJson(),
       stateAfter: currentState.toJson(),
-      actorResponse: actorResponse,
+      actorResponse: cleanActorResponse,
       actorRequestId: "sim-req-$turn",
-      actorResponseHash: actorResponse.hashCode.toString(),
+      actorResponseHash: cleanActorResponse.hashCode.toString(),
       evaluatorModel: isOnline ? evaluatorModel : 'rule_fallback',
       actorModel: isOnline ? actorModel : 'static_fallback',
       latencyTotalMs: duration.inMilliseconds,
@@ -391,15 +395,19 @@ Future<void> runInteractiveSimulation({
     print("  - Risposta Panopticon: \"$actorResponse\"");
     print("  - Latenza Turno:       ${duration.inMilliseconds} ms");
 
+    final cleanActorResponse = actorResponse
+        .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+        .trim();
+
     logger.logTurn(ReplayEntry(
       turnId: turn,
       userInput: userInput,
       evaluatorOutput: delta,
       stateBefore: stateBefore.toJson(),
       stateAfter: currentState.toJson(),
-      actorResponse: actorResponse,
+      actorResponse: cleanActorResponse,
       actorRequestId: "sim-req-$turn",
-      actorResponseHash: actorResponse.hashCode.toString(),
+      actorResponseHash: cleanActorResponse.hashCode.toString(),
       evaluatorModel: evaluatorModel,
       actorModel: actorModel,
       latencyTotalMs: duration.inMilliseconds,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:aura_core/aura_core.dart';
 
 /// Widget che visualizza la cronologia dei messaggi scambiati tra l'utente e PANOPTICON.
@@ -74,13 +75,21 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
       }
     }
 
-    // Se è stato aggiunto un nuovo messaggio alla storia, forza lo scroll al fondo.
-    if (widget.history.length > _previousHistoryLength) {
+    final historyChanged = widget.history.length > _previousHistoryLength;
+    final loadingChanged =
+        widget.currentLoadingMessage != oldWidget.currentLoadingMessage ||
+        widget.loadingLogs.length != oldWidget.loadingLogs.length ||
+        widget.isLoading != oldWidget.isLoading;
+
+    if (historyChanged) {
       _previousHistoryLength = widget.history.length;
-      _shouldAutoScroll = true;
-      _scheduleScrollToBottom();
-    } else if (_shouldAutoScroll) {
-      // Aggiornamenti di caricamento (carosello) -> scorri solo se l'utente è al fondo.
+      if (_shouldAutoScroll) {
+        _scheduleScrollToBottom();
+      }
+      return;
+    }
+
+    if (loadingChanged && _shouldAutoScroll) {
       _scheduleScrollToBottom();
     }
   }
@@ -153,96 +162,125 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     return Container(
       color: Colors.transparent,
       padding: const EdgeInsets.all(16.0),
-      child: ListView.builder(
-        controller: _scrollController,
-        itemCount: widget.history.length + (widget.isLoading ? 1 + widget.loadingLogs.length : 0),
-        itemBuilder: (context, index) {
-          // 1. Renderizzazione dei messaggi standard della cronologia
-          if (index < widget.history.length) {
-            final msg = widget.history[index];
-            final isUser = msg.role == 'user';
-            
-            // Applica l'effetto macchina da scrivere solo all'ultimo messaggio dell'IA
-            final isLastModelMsg = !isUser && index == widget.history.length - 1;
-            final displayText = isLastModelMsg ? _typedText : msg.content;
-            
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6.0),
-              child: AnimatedCrossFade(
-                firstChild: _buildMessageRow(isUser, displayText),
-                secondChild: _buildMessageRow(isUser, msg.content),
-                crossFadeState: isLastModelMsg ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-                duration: const Duration(milliseconds: 100),
-              ),
-            );
+      child: NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification is ScrollUpdateNotification &&
+              notification.dragDetails != null) {
+            final pos = _scrollController.position;
+            final atBottom = (pos.maxScrollExtent - pos.pixels) <= 80.0;
+
+            if (_shouldAutoScroll != atBottom) {
+              setState(() {
+                _shouldAutoScroll = atBottom;
+              });
+            }
           }
-          
-          // 2. Renderizzazione dei log intermedi di avanzamento dell'inferenza
-          final loadingIndex = index - widget.history.length;
-          
-          if (loadingIndex < widget.loadingLogs.length) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: Text(
-                widget.loadingLogs[loadingIndex],
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 14.0,
-                  color: Colors.orange.shade700.withValues(alpha: 0.8),
+
+          if (notification is UserScrollNotification &&
+              notification.direction != ScrollDirection.idle) {
+            final pos = _scrollController.position;
+            final atBottom = (pos.maxScrollExtent - pos.pixels) <= 80.0;
+
+            if (!atBottom && _shouldAutoScroll) {
+              setState(() {
+                _shouldAutoScroll = false;
+              });
+            }
+          }
+
+          return false;
+        },
+        child: ListView.builder(
+          controller: _scrollController,
+          itemCount: widget.history.length + (widget.isLoading ? 1 + widget.loadingLogs.length : 0),
+          itemBuilder: (context, index) {
+            // 1. Renderizzazione dei messaggi standard della cronologia
+            if (index < widget.history.length) {
+              final msg = widget.history[index];
+              final isUser = msg.role == 'user';
+              
+              // Applica l'effetto macchina da scrivere solo all'ultimo messaggio dell'IA
+              final isLastModelMsg = !isUser && index == widget.history.length - 1;
+              final displayText = isLastModelMsg ? _typedText : msg.content;
+              
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                child: AnimatedCrossFade(
+                  firstChild: _buildMessageRow(isUser, displayText),
+                  secondChild: _buildMessageRow(isUser, msg.content),
+                  crossFadeState: isLastModelMsg ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+                  duration: const Duration(milliseconds: 100),
                 ),
-              ),
-            );
-          } else {
-            // Renderizzazione dell'indicatore di caricamento attivo principale
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6.0),
-              child: Row(
-                children: [
-                  const SizedBox(
-                    width: 12.0,
-                    height: 12.0,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.0,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
-                    ),
+              );
+            }
+            
+            // 2. Renderizzazione dei log intermedi di avanzamento dell'inferenza
+            final loadingIndex = index - widget.history.length;
+            
+            if (loadingIndex < widget.loadingLogs.length) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Text(
+                  widget.loadingLogs[loadingIndex],
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 14.0,
+                    color: Colors.orange.shade700.withValues(alpha: 0.8),
                   ),
-                  const SizedBox(width: 8.0),
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 350),
-                      switchInCurve: Curves.easeInOut,
-                      switchOutCurve: Curves.easeInOut,
-                      transitionBuilder: (Widget child, Animation<double> animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: SlideTransition(
-                            position: Tween<Offset>(
-                              begin: const Offset(0.0, 0.15),
-                              end: Offset.zero,
-                            ).animate(animation),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        key: ValueKey<String>(widget.currentLoadingMessage),
-                        child: Text(
-                          widget.currentLoadingMessage,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 14.0,
-                            color: Colors.orange,
+                ),
+              );
+            } else {
+              // Renderizzazione dell'indicatore di caricamento attivo principale
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6.0),
+                child: Row(
+                  children: [
+                    const SizedBox(
+                      width: 12.0,
+                      height: 12.0,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.0,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                      ),
+                    ),
+                    const SizedBox(width: 8.0),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 350),
+                        switchInCurve: Curves.easeInOut,
+                        switchOutCurve: Curves.easeInOut,
+                        transitionBuilder: (Widget child, Animation<double> animation) {
+                          return FadeTransition(
+                            opacity: animation,
+                            child: SlideTransition(
+                              position: Tween<Offset>(
+                                begin: const Offset(0.0, 0.15),
+                                end: Offset.zero,
+                              ).animate(animation),
+                              child: child,
+                            ),
+                          );
+                        },
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          key: ValueKey<String>(widget.currentLoadingMessage),
+                          child: Text(
+                            widget.currentLoadingMessage,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 14.0,
+                              color: Colors.orange,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-            );
-          }
-        },
+                  ],
+                ),
+              );
+            }
+          },
+        ),
       ),
     );
   }

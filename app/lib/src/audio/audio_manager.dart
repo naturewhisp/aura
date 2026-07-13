@@ -60,7 +60,8 @@ class AudioplayersPlaybackBackend implements AudioPlaybackBackend {
 /// Gestore principale del comparto audio ed effetti sonori del gioco.
 ///
 /// Implementa un design Singleton per coordinare il loop musicale ed incapsula
-/// l'istanza della macchina a stati [AudioSceneMachine].
+/// l'istanza della macchina a stati [AudioSceneMachine]. Segue una politica terminale
+/// dopo la chiamata a [dispose].
 class AudioManager {
   static final AudioManager _instance = AudioManager._internal();
 
@@ -71,12 +72,15 @@ class AudioManager {
   bool _initialized = false;
   bool _audioEnabled = true;
   bool _playersCreated = false;
+  bool _disposed = false;
+
+  AudioSceneState? _pendingScene;
 
   // Riproduttori per gli effetti sonori (SFX)
-  late final AudioPlayer _sfxClickPlayer;
-  late final AudioPlayer _sfxAlertPlayer;
-  late final AudioPlayer _sfxGlitchPlayer;
-  late final AudioPlayer _sfxChimePlayer;
+  late AudioPlayer _sfxClickPlayer;
+  late AudioPlayer _sfxAlertPlayer;
+  late AudioPlayer _sfxGlitchPlayer;
+  late AudioPlayer _sfxChimePlayer;
 
   // Percorsi dei file audio WAV generati temporaneamente su disco
   String? _bgmMainPath;
@@ -89,11 +93,14 @@ class AudioManager {
   String? _sfxChimePath;
 
   // La macchina a stati audio interna
-  late final AudioSceneMachine _machine;
+  late AudioSceneMachine _machine;
 
   /// Restituisce l'istanza della macchina a stati audio (utile per iniettare mock nei test).
   @visibleForTesting
-  AudioSceneMachine get machine => _machine;
+  AudioSceneMachine get machine {
+    if (_disposed) throw StateError("L'AudioManager è stato rimosso (disposed).");
+    return _machine;
+  }
 
   /// Indica se il gestore audio è stato correttamente inizializzato.
   bool get isInitialized => _initialized;
@@ -103,17 +110,29 @@ class AudioManager {
 
   /// Restituisce i BPM effettivi della traccia in esecuzione ricavati dal profilo attivo.
   double get currentBpm {
-    if (!_initialized || !_audioEnabled) return 0.0;
+    if (_disposed || !_initialized || !_audioEnabled) return 0.0;
     return _machine.currentBpm;
   }
 
   /// Restituisce il timestamp di avvio della traccia attiva.
-  DateTime get trackStartTime => _machine.trackStartTime;
+  DateTime get trackStartTime {
+    if (_disposed) return DateTime.now();
+    return _machine.trackStartTime;
+  }
 
   /// Inizializza il modulo audio, genera i file WAV procedurali su disco e alloca il pool dei player.
   Future<void> initialize(String appDataPath, {bool audioEnabled = true}) async {
+    if (_disposed) throw StateError("Impossibile inizializzare un AudioManager dismesso.");
     if (_initialized) return;
     _audioEnabled = audioEnabled;
+
+    // Avviso specifico per la piattaforma Windows
+    if (Platform.isWindows && !Platform.environment.containsKey('FLUTTER_TEST')) {
+      debugPrint(
+        '[AUDIO] WARNING: Esecuzione di audioplayers su Windows. Avvisi di threading '
+        '(shell.cc:1183) potrebbero apparire in console.',
+      );
+    }
 
     // Verifica se siamo in un ambiente di test per caricare il no-op player
     final isTest = Platform.environment.containsKey('FLUTTER_TEST') ||
@@ -125,17 +144,20 @@ class AudioManager {
         backend: backend,
         trackPaths: const {},
       );
+      
+      if (!_audioEnabled) {
+        await _machine.suspendAudio();
+      }
+
       _playersCreated = true;
       _initialized = true;
-      return;
-    }
 
-    // Avviso specifico per la piattaforma Windows
-    if (Platform.isWindows) {
-      debugPrint(
-        '[AUDIO] WARNING: Esecuzione di audioplayers su Windows. Avvisi di threading '
-        '(shell.cc:1183) potrebbero apparire in console.',
-      );
+      final pending = _pendingScene;
+      _pendingScene = null;
+      if (pending != null) {
+        await _machine.transitionTo(pending);
+      }
+      return;
     }
 
     // Assicura che la directory temporanea per i file audio esista
@@ -195,50 +217,58 @@ class AudioManager {
       trackPaths: trackPaths,
     );
 
+    if (!_audioEnabled) {
+      await _machine.suspendAudio();
+    }
+
     _playersCreated = true;
     _initialized = true;
 
-    // Se l'audio globale è inizialmente disabilitato, sospende la riproduzione fisica
-    if (!_audioEnabled) {
-      await _machine.suspendAudio();
+    final pending = _pendingScene;
+    _pendingScene = null;
+    if (pending != null) {
+      await _machine.transitionTo(pending);
     }
   }
 
   /// Abilita o disabilita dinamicamente l'audio globale.
-  void setAudioEnabled(bool enabled) {
-    if (!_playersCreated) return;
+  Future<void> setAudioEnabled(bool enabled) async {
+    if (_disposed || !_playersCreated) return;
     if (_audioEnabled == enabled) return;
     _audioEnabled = enabled;
 
     if (!_audioEnabled) {
-      _machine.suspendAudio();
+      await _machine.suspendAudio();
     } else {
-      _machine.resumeAudio();
+      await _machine.resumeAudio();
     }
   }
 
   /// Avvia la transizione verso uno stato della scena musicale.
   Future<void> transitionTo(AudioSceneState nextState, {bool force = false}) async {
-    if (!_initialized || !_audioEnabled) {
-      // Memorizza comunque la richiesta nella macchina
-      if (_initialized) {
-        // Ignora il caricamento fisico ma traccia logicamente la richiesta
-        _machine.transitionTo(nextState, force: force);
-      }
+    if (_disposed) return;
+    
+    if (!_initialized) {
+      _pendingScene = nextState;
       return;
     }
-    await _machine.transitionTo(nextState, force: force);
+
+    try {
+      await _machine.transitionTo(nextState, force: force);
+    } catch (e) {
+      debugPrint('[AUDIO] Error in AudioManager transitionTo: $e');
+    }
   }
 
   /// Ferma la riproduzione musicale.
   Future<void> stopBgm() async {
-    if (!_playersCreated) return;
+    if (_disposed || !_playersCreated) return;
     await _machine.stopBgm();
   }
 
   /// Esegue la riproduzione interna di un file SFX in modalità Fire-and-Forget.
   void _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) {
-    if (!_playersCreated || !_audioEnabled || path == null) return;
+    if (_disposed || !_playersCreated || !_audioEnabled || path == null) return;
     player.stop().then((_) {
       player.play(DeviceFileSource(path)).then((_) {
         player.setVolume(volume);
@@ -250,30 +280,33 @@ class AudioManager {
 
   /// Riproduce il suono di click della digitazione a schermo.
   void playClick() {
-    if (!_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_disposed || !_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
     _playSfx(_sfxClickPlayer, _sfxClickPath, volume: 0.25);
   }
 
   /// Riproduce il suono di allarme del sistema.
   void playAlert() {
-    if (!_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_disposed || !_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
     _playSfx(_sfxAlertPlayer, _sfxAlertPath);
   }
 
   /// Riproduce l'effetto sonoro di glitch e crash.
   void playGlitch() {
-    if (!_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_disposed || !_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
     _playSfx(_sfxGlitchPlayer, _sfxGlitchPath);
   }
 
   /// Riproduce l'effetto sonoro positivo all'aggiornamento dei pilastri cognitivi.
   void playChime() {
-    if (!_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_disposed || !_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
     _playSfx(_sfxChimePlayer, _sfxChimePath);
   }
 
-  /// Rilascia tutte le risorse occupate dai player multimediali.
+  /// Rilascia tutte le risorse occupate dai player multimediali in via terminale.
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
+
     if (!_playersCreated) {
       _initialized = false;
       return;
@@ -291,5 +324,15 @@ class AudioManager {
     }
     _playersCreated = false;
     _initialized = false;
+  }
+
+  /// Metodo interno per resettare il Singleton durante i test di unità.
+  @visibleForTesting
+  void resetForTesting() {
+    _initialized = false;
+    _audioEnabled = true;
+    _playersCreated = false;
+    _disposed = false;
+    _pendingScene = null;
   }
 }

@@ -8,7 +8,6 @@ import '../widgets/cli_history_view.dart';
 import '../widgets/cli_input_bar.dart';
 import '../widgets/metrics_dashboard.dart';
 import '../audio/audio_manager.dart';
-import '../audio/audio_scene.dart';
 import '../audio/audio_state_resolver.dart';
 import '../widgets/audio_reactive_background.dart';
 
@@ -204,9 +203,6 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       _defeatSequenceActive = false;
     });
 
-    // Cambia la musica in victory (same-track volume fade ramp)
-    AudioManager().transitionTo(AudioSceneState.victory);
-
     _hexScrollTimer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
       _generateHexLine();
     });
@@ -233,9 +229,6 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       _victorySequenceActive = false;
       _lockoutCountdown = 15;
     });
-
-    // Forza la scena audio a defeat (same-track volume fade ramp)
-    AudioManager().transitionTo(AudioSceneState.defeat);
 
     // Play retro alert sound immediately
     AudioManager().playAlert();
@@ -559,12 +552,11 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                   ),
                 ),
                 const SizedBox(width: 8.0),
-                ElevatedButton(
+                 ElevatedButton(
                   onPressed: () {
                     setState(() {
                       _showSummaryOverlay = true;
                     });
-                    AudioManager().transitionTo(AudioSceneState.victory);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00FF66),
@@ -706,14 +698,13 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
             const SizedBox(height: 24.0),
             
             // Return or report button
-            ElevatedButton(
+             ElevatedButton(
               onPressed: _lockoutCountdown > 0
                   ? null
                   : () {
                       setState(() {
                         _showSummaryOverlay = true;
                       });
-                      AudioManager().transitionTo(AudioSceneState.menu);
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF003C),

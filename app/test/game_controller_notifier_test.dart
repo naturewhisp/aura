@@ -219,7 +219,7 @@ void main() {
       expect(notifier.audioEnabled, isTrue);
 
       // Toggle audio to false
-      notifier.toggleAudio(false);
+      await notifier.toggleAudio(false);
       expect(notifier.audioEnabled, isFalse);
 
       // Now create a new notifier and load settings

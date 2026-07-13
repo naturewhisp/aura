@@ -951,7 +951,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 "Attiva gli effetti sonori retro chiptune e la musica d'ambiente",
                 widget.notifier.audioEnabled,
                 (val) {
-                  widget.notifier.toggleAudio(val);
+                  unawaited(widget.notifier.toggleAudio(val));
                 },
               ),
             ],

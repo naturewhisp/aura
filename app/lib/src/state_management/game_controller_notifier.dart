@@ -270,12 +270,12 @@ class GameControllerNotifier extends ChangeNotifier {
     _currentScreen = screen;
     switch (screen) {
       case 'boot':
-        AudioManager().transitionTo(AudioSceneState.boot);
+        unawaited(AudioManager().transitionTo(AudioSceneState.boot));
         break;
       case 'menu':
       case 'settings':
       case 'replays':
-        AudioManager().transitionTo(AudioSceneState.menu);
+        unawaited(AudioManager().transitionTo(AudioSceneState.menu));
         break;
     }
     notifyListeners();
@@ -306,7 +306,7 @@ class GameControllerNotifier extends ChangeNotifier {
           activeProfile = "Configurazione Personalizzata";
         }
         
-        AudioManager().setAudioEnabled(audioEnabled);
+        await AudioManager().setAudioEnabled(audioEnabled);
         debugPrint("[SETTINGS] Impostazioni caricate con successo da settings.json");
       }
     } catch (e) {
@@ -421,10 +421,10 @@ class GameControllerNotifier extends ChangeNotifier {
   }
 
   /// Attiva/disattiva gli effetti sonori e il sottofondo audio.
-  void toggleAudio(bool value) {
+  Future<void> toggleAudio(bool value) async {
     audioEnabled = value;
-    AudioManager().setAudioEnabled(value);
-    saveSettings();
+    await AudioManager().setAudioEnabled(value);
+    await saveSettings();
     notifyListeners();
   }
 

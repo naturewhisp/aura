@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
+import '../audio/audio_scene.dart';
 import '../widgets/audio_reactive_background.dart';
 import 'new_connection_briefing_screen.dart';
 
@@ -99,7 +100,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
               widget.notifier.appDataPath,
               audioEnabled: widget.notifier.audioEnabled,
             );
-            await AudioManager().startBgm(isEpic: true, isVictory: false);
+            await AudioManager().transitionTo(AudioSceneState.menu);
             if (mounted) {
               setState(() {
                 _bootLines.add("AURA_INIT> Model Router profile: [${widget.notifier.activeProfile}] loaded.");
@@ -110,7 +111,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
         }
       } else {
         timer.cancel();
-        AudioManager().startBgm(isEpic: true, isVictory: false);
+        AudioManager().transitionTo(AudioSceneState.menu);
         // Show ASCII art logo after a short delay
         Future.delayed(const Duration(milliseconds: 300), () {
           if (mounted) {

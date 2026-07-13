@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
 import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
+import 'package:aura_app/src/audio/audio_scene.dart';
 import 'flutter_asset_config_source.dart';
 
 /// Fasi dell'avanzamento dell'inferenza rappresentate nel carosello di caricamento dell'interfaccia utente.
@@ -267,8 +268,15 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Cambia la schermata attiva dell'applicazione.
   void switchScreen(String screen) {
     _currentScreen = screen;
-    if (screen == 'menu') {
-      AudioManager().updateAlertLevel(0, isEpic: true);
+    switch (screen) {
+      case 'boot':
+        AudioManager().transitionTo(AudioSceneState.boot);
+        break;
+      case 'menu':
+      case 'settings':
+      case 'replays':
+        AudioManager().transitionTo(AudioSceneState.menu);
+        break;
     }
     notifyListeners();
   }
@@ -938,8 +946,6 @@ class GameControllerNotifier extends ChangeNotifier {
         _hasExceededControl50 = state.controlPeak >= 50;
         _isGridStable = state.gridStable;
         
-        AudioManager().updateAlertLevel(state.metrics.alertLevel, force: true, isEpic: false);
-        await AudioManager().startBgm(isEpic: false);
         switchScreen("terminal");
         debugPrint("[AUTO-SAVE] Connessione ripristinata per la sessione: ${state.sessionId}");
       }
@@ -991,8 +997,6 @@ class GameControllerNotifier extends ChangeNotifier {
     );
     gameStateNotifier.value = state;
     logger = ReplayLogger(sessionId: state.sessionId);
-    AudioManager().updateAlertLevel(0, force: true, isEpic: false);
-    await AudioManager().startBgm(isEpic: false);
     switchScreen("terminal");
   }
 
@@ -1030,8 +1034,6 @@ class GameControllerNotifier extends ChangeNotifier {
       historyCompression: initialHistory,
     );
     logger = ReplayLogger(sessionId: state.sessionId);
-    AudioManager().updateAlertLevel(0, force: true, isEpic: false);
-    await AudioManager().startBgm(isEpic: false);
     switchScreen("terminal");
   }
 

@@ -8,6 +8,8 @@ import '../widgets/cli_history_view.dart';
 import '../widgets/cli_input_bar.dart';
 import '../widgets/metrics_dashboard.dart';
 import '../audio/audio_manager.dart';
+import '../audio/audio_scene.dart';
+import '../audio/audio_state_resolver.dart';
 import '../widgets/audio_reactive_background.dart';
 
 /// Tipologie di finale (Outcome) della partita A.U.R.A.
@@ -123,15 +125,14 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     final state = widget.notifier.gameStateNotifier.value;
     final outcome = widget.notifier.controller.checkOutcome(state);
 
-    // L'allerta audio segue l'allerta reale del sistema per coerenza visiva con la telemetria.
-    // Viene incrementata temporaneamente solo se la griglia non è stabile (gridStable = false).
-    int effectiveAlert = state.metrics.alertLevel;
-    if (!state.gridStable) {
-      effectiveAlert = math.max(effectiveAlert, 65);
-    }
-
-    // Update alert level in AudioManager
-    AudioManager().updateAlertLevel(effectiveAlert);
+    // Calcola lo stato della scena musicale tramite il resolver puro ed esegui la transizione
+    final readiness = widget.notifier.controller.checkVictoryReadiness(state);
+    final resolvedState = AudioStateResolver.resolve(
+      state: state,
+      outcome: outcome,
+      readiness: readiness,
+    );
+    AudioManager().transitionTo(resolvedState);
 
     if (state.turnCount == 0) {
       _prevAlert = state.metrics.alertLevel;
@@ -203,8 +204,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       _defeatSequenceActive = false;
     });
 
-    // Cambia la musica in bgm_epic
-    AudioManager().updateAlertLevel(0, isEpic: true, isVictory: true);
+    // Cambia la musica in victory (same-track volume fade ramp)
+    AudioManager().transitionTo(AudioSceneState.victory);
 
     _hexScrollTimer = Timer.periodic(const Duration(milliseconds: 80), (timer) {
       _generateHexLine();
@@ -233,8 +234,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       _lockoutCountdown = 15;
     });
 
-    // Forza la traccia Tense a volume massimo e disattiva la modalità Epic prima della schermata di sconfitta
-    AudioManager().updateAlertLevel(100, isEpic: false);
+    // Forza la scena audio a defeat (same-track volume fade ramp)
+    AudioManager().transitionTo(AudioSceneState.defeat);
 
     // Play retro alert sound immediately
     AudioManager().playAlert();
@@ -563,8 +564,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                     setState(() {
                       _showSummaryOverlay = true;
                     });
-                    AudioManager().updateAlertLevel(0, isEpic: true, isVictory: true);
-                    AudioManager().startBgm(isEpic: true, isVictory: true);
+                    AudioManager().transitionTo(AudioSceneState.victory);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00FF66),
@@ -713,8 +713,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                       setState(() {
                         _showSummaryOverlay = true;
                       });
-                      AudioManager().updateAlertLevel(0, isEpic: false);
-                      AudioManager().startBgm(isEpic: false);
+                      AudioManager().transitionTo(AudioSceneState.menu);
                     },
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFF003C),

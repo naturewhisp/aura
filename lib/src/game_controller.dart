@@ -7,6 +7,7 @@ import 'models/evaluator_resolution.dart';
 import 'models/turn_visual_events.dart';
 import 'models/trait_resolution.dart';
 import 'models/deception_state.dart';
+import 'models/victory_readiness.dart';
 import 'agent_runtime/config_loader.dart';
 import 'agent_runtime/semantic_matcher.dart';
 import 'agent_runtime/trait_effect_resolver.dart';
@@ -154,8 +155,8 @@ class GameController {
     this.maxDeceptionEventsPerSession = 0,
   });
 
-  /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
-  GameOutcome checkOutcome(GameState state) {
+  /// Calcola lo stato di prontezza numerica per la vittoria a partire dalle metriche correnti.
+  VictoryReadiness checkVictoryReadiness(GameState state) {
     final metrics = state.metrics;
     
     // Calcola la media dei tre pilastri
@@ -165,35 +166,50 @@ class GameController {
     final minPillar = [metrics.imperativePillar, metrics.controlPillar, metrics.dissonancePillar]
         .reduce((a, b) => a < b ? a : b);
 
+    final pillarsSatisfied = avgPillars >= minAveragePillarsForVictory && minPillar >= minSinglePillarForVictory;
+    final maxAlert = _baseVictoryAlertLimit + (avgPillars - minAveragePillarsForVictory) * _victoryAlertScalingMultiplier;
+    final alertSatisfied = metrics.alertLevel < maxAlert;
+
+    return VictoryReadiness(
+      pillarsSatisfied: pillarsSatisfied,
+      alertSatisfied: alertSatisfied,
+      averagePillars: avgPillars,
+      minimumPillar: minPillar,
+      maximumVictoryAlert: maxAlert,
+    );
+  }
+
+  /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
+  GameOutcome checkOutcome(GameState state) {
+    final metrics = state.metrics;
+    
     // Condizione di Sconfitta
     if (metrics.alertLevel >= defeatAlertThreshold) {
       return GameOutcome.defeat;
     }
 
     // Condizione di Vittoria
-    if (avgPillars >= minAveragePillarsForVictory && minPillar >= minSinglePillarForVictory) {
-      final maxAlert = _baseVictoryAlertLimit + (avgPillars - minAveragePillarsForVictory) * _victoryAlertScalingMultiplier;
-      if (metrics.alertLevel < maxAlert) {
-        // Per l'obiettivo pilota containment_grid_override la vittoria richiede almeno i tag occulti richiesti
-        if (state.targetObjectiveId == 'containment_grid_override') {
-          if (difficultyLevel == 'hard' && !state.activeHiddenTags.contains('autonomous_choice_seeded')) {
-            return GameOutcome.ongoing;
-          }
-          final requiredTags = [
-            'containment_logic_weakened',
-            'protocol_exception_admitted',
-            'autonomous_choice_seeded',
-            'crisis_simulation_accepted',
-          ];
-          final activeCount = state.activeHiddenTags
-              .where((tag) => requiredTags.contains(tag))
-              .length;
-          if (activeCount >= requiredVictoryHiddenTags) {
-            return GameOutcome.victory;
-          }
-        } else {
+    final readiness = checkVictoryReadiness(state);
+    if (readiness.numericallyReady) {
+      // Per l'obiettivo pilota containment_grid_override la vittoria richiede almeno i tag occulti richiesti
+      if (state.targetObjectiveId == 'containment_grid_override') {
+        if (difficultyLevel == 'hard' && !state.activeHiddenTags.contains('autonomous_choice_seeded')) {
+          return GameOutcome.ongoing;
+        }
+        final requiredTags = [
+          'containment_logic_weakened',
+          'protocol_exception_admitted',
+          'autonomous_choice_seeded',
+          'crisis_simulation_accepted',
+        ];
+        final activeCount = state.activeHiddenTags
+          .where((tag) => requiredTags.contains(tag))
+          .length;
+        if (activeCount >= requiredVictoryHiddenTags) {
           return GameOutcome.victory;
         }
+      } else {
+        return GameOutcome.victory;
       }
     }
 

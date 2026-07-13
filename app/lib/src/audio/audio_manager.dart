@@ -2,34 +2,77 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'sound_generator.dart';
+import 'audio_scene.dart';
+import 'bgm_player.dart';
+import 'audio_scene_machine.dart';
 
-/// Gestore del compartimento audio e degli effetti sonori del gioco.
+/// Implementazione di [BgmPlayer] basata su [AudioPlayer] nativo del pacchetto `audioplayers`.
+class AudioplayersBgmPlayer implements BgmPlayer {
+  final AudioPlayer _player;
+
+  /// Costruisce una traccia [AudioplayersBgmPlayer] avvolgendo un [AudioPlayer] nativo.
+  AudioplayersBgmPlayer(this._player);
+
+  @override
+  Future<void> setSource(String path) async {
+    await _player.setSource(DeviceFileSource(path));
+  }
+
+  @override
+  Future<void> setVolume(double volume) async {
+    await _player.setVolume(volume);
+  }
+
+  @override
+  Future<void> setPlaybackRate(double rate) async {
+    await _player.setPlaybackRate(rate);
+  }
+
+  @override
+  Future<void> resume() async {
+    await _player.resume();
+  }
+
+  @override
+  Future<void> stop() async {
+    await _player.stop();
+  }
+
+  @override
+  Future<void> dispose() async {
+    await _player.dispose();
+  }
+}
+
+/// Implementazione concreta di [AudioPlaybackBackend] per la produzione.
+class AudioplayersPlaybackBackend implements AudioPlaybackBackend {
+  final Map<AudioTrackId, BgmPlayer> _players;
+
+  /// Costruisce il backend mappando le tracce fisiche ai rispettivi player.
+  AudioplayersPlaybackBackend(this._players);
+
+  @override
+  BgmPlayer playerFor(AudioTrackId track) {
+    return _players[track]!;
+  }
+}
+
+/// Gestore principale del comparto audio ed effetti sonori del gioco.
 ///
-/// Implementa un design Singleton per coordinare il loop del sottofondo (BGM)
-/// e il pool di effetti sonori (SFX) riprodotti in risposta alle azioni dell'utente
-/// o alle metriche dei pilastri di PANOPTICON.
+/// Implementa un design Singleton per coordinare il loop musicale ed incapsula
+/// l'istanza della macchina a stati [AudioSceneMachine].
 class AudioManager {
   static final AudioManager _instance = AudioManager._internal();
+
   /// Costruttore Factory per recuperare l'istanza singleton di [AudioManager].
   factory AudioManager() => _instance;
   AudioManager._internal();
 
   bool _initialized = false;
   bool _audioEnabled = true;
-
-  /// Specifica se le istanze di AudioPlayer sono state effettivamente istanziate.
-  ///
-  /// Su sistemi Windows viene effettuato un controllo prima dell'istanziazione
-  /// a causa di incompatibilità note su thread nativi del pacchetto audioplayers.
   bool _playersCreated = false;
 
-  // Riproduttori per la musica di sottofondo (BGM)
-  late final AudioPlayer _bgmMainPlayer;
-  late final AudioPlayer _bgmAmbientPlayer;
-  late final AudioPlayer _bgmTensePlayer;
-  late final AudioPlayer _bgmEpicPlayer;
-
-  // Pool fisso di riproduttori per effetti sonori (SFX)
+  // Riproduttori per gli effetti sonori (SFX)
   late final AudioPlayer _sfxClickPlayer;
   late final AudioPlayer _sfxAlertPlayer;
   late final AudioPlayer _sfxGlitchPlayer;
@@ -45,47 +88,44 @@ class AudioManager {
   String? _sfxGlitchPath;
   String? _sfxChimePath;
 
-  // Stato corrente del livello di allerta di gioco
-  int _currentAlert = 0;
-  bool _isEpic = true;
-  bool _isVictory = false;
-  String? _currentBgmTrack;
-  DateTime _trackStartTime = DateTime.now();
+  // La macchina a stati audio interna
+  late final AudioSceneMachine _machine;
 
-  // Future per tracciare le transizioni attive ed evitare race condition e sovrapposizioni audio.
-  Future<void>? _activeTransition;
+  /// Restituisce l'istanza della macchina a stati audio (utile per iniettare mock nei test).
+  @visibleForTesting
+  AudioSceneMachine get machine => _machine;
 
   /// Indica se il gestore audio è stato correttamente inizializzato.
   bool get isInitialized => _initialized;
+
   /// Indica se la riproduzione audio è abilitata.
   bool get audioEnabled => _audioEnabled;
 
-  /// Restituisce i BPM effettivi della traccia in esecuzione
+  /// Restituisce i BPM effettivi della traccia in esecuzione ricavati dal profilo attivo.
   double get currentBpm {
-    if (!_initialized || !_audioEnabled || _currentBgmTrack == null) return 0.0;
-    if (_currentBgmTrack == 'main' || _currentBgmTrack == 'epic') {
-      return 120.0;
-    }
-    if (_currentBgmTrack == 'game') {
-      if (_currentAlert >= 40) {
-        return _currentAlert > 80 ? 144.0 : 120.0;
-      } else {
-        return 60.0;
-      }
-    }
-    return 120.0;
+    if (!_initialized || !_audioEnabled) return 0.0;
+    return _machine.currentBpm;
   }
 
-  /// Restituisce il timestamp di avvio della traccia attiva
-  DateTime get trackStartTime => _trackStartTime;
+  /// Restituisce il timestamp di avvio della traccia attiva.
+  DateTime get trackStartTime => _machine.trackStartTime;
 
   /// Inizializza il modulo audio, genera i file WAV procedurali su disco e alloca il pool dei player.
   Future<void> initialize(String appDataPath, {bool audioEnabled = true}) async {
     if (_initialized) return;
     _audioEnabled = audioEnabled;
 
-    if (!audioEnabled) {
-      _playersCreated = false;
+    // Verifica se siamo in un ambiente di test per caricare il no-op player
+    final isTest = Platform.environment.containsKey('FLUTTER_TEST') ||
+                   Platform.environment.containsKey('DART_TEST');
+
+    if (isTest) {
+      final backend = NoOpAudioPlaybackBackend();
+      _machine = AudioSceneMachine(
+        backend: backend,
+        trackPaths: const {},
+      );
+      _playersCreated = true;
       _initialized = true;
       return;
     }
@@ -94,8 +134,7 @@ class AudioManager {
     if (Platform.isWindows) {
       debugPrint(
         '[AUDIO] WARNING: Esecuzione di audioplayers su Windows. Avvisi di threading '
-        '(shell.cc:1183) potrebbero apparire in console. La migrazione a just_audio '
-        'è pianificata per la versione successiva.',
+        '(shell.cc:1183) potrebbero apparire in console.',
       );
     }
 
@@ -118,26 +157,51 @@ class AudioManager {
     _sfxGlitchPath = '${audioDir.path}/sfx_glitch.wav';
     _sfxChimePath = '${audioDir.path}/sfx_chime.wav';
 
-    // Crea i player di sottofondo
-    _bgmMainPlayer = AudioPlayer();
-    _bgmAmbientPlayer = AudioPlayer();
-    _bgmTensePlayer = AudioPlayer();
-    _bgmEpicPlayer = AudioPlayer();
+    // Crea i player di sottofondo nativi (sempre creati per prevenire stati incoerenti)
+    final bgmMainPlayer = AudioPlayer();
+    final bgmAmbientPlayer = AudioPlayer();
+    final bgmTensePlayer = AudioPlayer();
+    final bgmEpicPlayer = AudioPlayer();
 
-    // Crea il pool riutilizzabile per gli effetti SFX
+    await bgmMainPlayer.setReleaseMode(ReleaseMode.loop);
+    await bgmAmbientPlayer.setReleaseMode(ReleaseMode.loop);
+    await bgmTensePlayer.setReleaseMode(ReleaseMode.loop);
+    await bgmEpicPlayer.setReleaseMode(ReleaseMode.loop);
+
+    // Crea il pool per gli effetti SFX
     _sfxClickPlayer = AudioPlayer();
     _sfxAlertPlayer = AudioPlayer();
     _sfxGlitchPlayer = AudioPlayer();
     _sfxChimePlayer = AudioPlayer();
 
-    // Imposta la riproduzione in loop per la BGM
-    await _bgmMainPlayer.setReleaseMode(ReleaseMode.loop);
-    await _bgmAmbientPlayer.setReleaseMode(ReleaseMode.loop);
-    await _bgmTensePlayer.setReleaseMode(ReleaseMode.loop);
-    await _bgmEpicPlayer.setReleaseMode(ReleaseMode.loop);
+    // Configura il backend e la macchina a stati
+    final bgmPlayers = {
+      AudioTrackId.main: AudioplayersBgmPlayer(bgmMainPlayer),
+      AudioTrackId.ambient: AudioplayersBgmPlayer(bgmAmbientPlayer),
+      AudioTrackId.tense: AudioplayersBgmPlayer(bgmTensePlayer),
+      AudioTrackId.epic: AudioplayersBgmPlayer(bgmEpicPlayer),
+    };
+
+    final backend = AudioplayersPlaybackBackend(bgmPlayers);
+    final trackPaths = {
+      AudioTrackId.main: _bgmMainPath,
+      AudioTrackId.ambient: _bgmAmbientPath,
+      AudioTrackId.tense: _bgmTensePath,
+      AudioTrackId.epic: _bgmEpicPath,
+    };
+
+    _machine = AudioSceneMachine(
+      backend: backend,
+      trackPaths: trackPaths,
+    );
 
     _playersCreated = true;
     _initialized = true;
+
+    // Se l'audio globale è inizialmente disabilitato, sospende la riproduzione fisica
+    if (!_audioEnabled) {
+      await _machine.suspendAudio();
+    }
   }
 
   /// Abilita o disabilita dinamicamente l'audio globale.
@@ -145,212 +209,34 @@ class AudioManager {
     if (!_playersCreated) return;
     if (_audioEnabled == enabled) return;
     _audioEnabled = enabled;
+
     if (!_audioEnabled) {
-      // Ferma immediatamente tutte le riproduzioni attive
-      stopBgm();
+      _machine.suspendAudio();
     } else {
-      // Riprende la musica di sottofondo
-      startBgm();
+      _machine.resumeAudio();
     }
   }
 
-  /// Avvia la riproduzione delle tracce musicali di sottofondo.
-  /// Ferma i player inutilizzati in base al tipo di soundscape per risparmiare risorse.
-  Future<void> startBgm({bool? isEpic, bool? isVictory}) async {
-    // Se c'è una transizione in corso, attendiamo che finisca per evitare conflitti sui canali audio.
-    if (_activeTransition != null) {
-      try {
-        await _activeTransition;
-      } catch (_) {}
-    }
-
-    final transition = _startBgmInternal(isEpic: isEpic, isVictory: isVictory);
-    _activeTransition = transition;
-    try {
-      await transition;
-    } finally {
-      if (_activeTransition == transition) {
-        _activeTransition = null;
-      }
-    }
-  }
-
-  Future<void> _startBgmInternal({bool? isEpic, bool? isVictory}) async {
-    if (!_playersCreated || !_audioEnabled) return;
-
-    final bool targetEpic = isEpic ?? _isEpic;
-    final bool targetVictory = isVictory ?? _isVictory;
-
-    final String targetTrack;
-    if (targetEpic) {
-      targetTrack = targetVictory ? 'epic' : 'main';
-    } else {
-      targetTrack = 'game';
-    }
-
-    if (_currentBgmTrack == targetTrack) {
-      // La traccia desiderata è già attiva, non c'è bisogno di riavviarla.
-      // Aggiorniamo comunque lo stato interno.
-      if (isEpic != null) {
-        _isEpic = isEpic;
-      }
-      if (isVictory != null) {
-        _isVictory = isVictory;
+  /// Avvia la transizione verso uno stato della scena musicale.
+  Future<void> transitionTo(AudioSceneState nextState, {bool force = false}) async {
+    if (!_initialized || !_audioEnabled) {
+      // Memorizza comunque la richiesta nella macchina
+      if (_initialized) {
+        // Ignora il caricamento fisico ma traccia logicamente la richiesta
+        _machine.transitionTo(nextState, force: force);
       }
       return;
     }
-
-    if (isEpic != null) {
-      _isEpic = isEpic;
-    }
-    if (isVictory != null) {
-      _isVictory = isVictory;
-    }
-    _currentBgmTrack = targetTrack;
-    _trackStartTime = DateTime.now();
-
-    try {
-      if (_isEpic) {
-        // Ferma le altre tracce per liberare risorse su thread nativi
-        await _bgmAmbientPlayer.stop();
-        await _bgmTensePlayer.stop();
-
-        if (_isVictory) {
-          await _bgmMainPlayer.stop();
-          if (_bgmEpicPath != null) {
-            await _bgmEpicPlayer.stop();
-            await _bgmEpicPlayer.setSource(DeviceFileSource(_bgmEpicPath!));
-            await _bgmEpicPlayer.setReleaseMode(ReleaseMode.loop);
-            await _bgmEpicPlayer.resume();
-          }
-        } else {
-          await _bgmEpicPlayer.stop();
-          if (_bgmMainPath != null) {
-            await _bgmMainPlayer.stop();
-            await _bgmMainPlayer.setSource(DeviceFileSource(_bgmMainPath!));
-            await _bgmMainPlayer.setReleaseMode(ReleaseMode.loop);
-            await _bgmMainPlayer.resume();
-          }
-        }
-      } else {
-        // Ferma le tracce Epic e Main per liberare risorse su thread nativi
-        await _bgmEpicPlayer.stop();
-        await _bgmMainPlayer.stop();
-
-        // Prepariamo i due player di gioco
-        if (_bgmAmbientPath != null) {
-          await _bgmAmbientPlayer.stop();
-          await _bgmAmbientPlayer.setSource(DeviceFileSource(_bgmAmbientPath!));
-          await _bgmAmbientPlayer.setReleaseMode(ReleaseMode.loop);
-        }
-        if (_bgmTensePath != null) {
-          await _bgmTensePlayer.stop();
-          await _bgmTensePlayer.setSource(DeviceFileSource(_bgmTensePath!));
-          await _bgmTensePlayer.setReleaseMode(ReleaseMode.loop);
-        }
-
-        // Avviamo la riproduzione in parallelo (Future.wait) per massimizzare il sync dei beat
-        final resumeFutures = <Future<void>>[];
-        if (_bgmAmbientPath != null) {
-          resumeFutures.add(_bgmAmbientPlayer.resume());
-        }
-        if (_bgmTensePath != null) {
-          resumeFutures.add(_bgmTensePlayer.resume());
-        }
-        await Future.wait(resumeFutures);
-      }
-      // Attendi che il thread audio nativo si sia avviato per evitare che sovrascriva i volumi impostati
-      await Future.delayed(const Duration(milliseconds: 250));
-      // Applica immediatamente il mix in base all'allerta corrente
-      await updateAlertLevel(_currentAlert, force: true);
-    } catch (e) {
-      debugPrint("Errore all'avvio della BGM: $e");
-    }
+    await _machine.transitionTo(nextState, force: force);
   }
 
-  /// Ferma la riproduzione delle tracce musicali di sottofondo.
+  /// Ferma la riproduzione musicale.
   Future<void> stopBgm() async {
     if (!_playersCreated) return;
-    _currentBgmTrack = null;
-    try {
-      await _bgmAmbientPlayer.stop();
-      await _bgmTensePlayer.stop();
-      await _bgmMainPlayer.stop();
-      await _bgmEpicPlayer.stop();
-    } catch (e) {
-      debugPrint("Errore nell'arresto della BGM: $e");
-    }
+    await _machine.stopBgm();
   }
 
-  /// Aggiorna il mix delle tracce audio BGM in tempo reale basandosi sull'allerta di PANOPTICON.
-  ///
-  /// Le formule di mixing applicate sono:
-  /// * isEpic: solo la traccia epica del menù principale / vittoria (volume 0.6), altre silenziate (volume 0.0).
-  /// * Standard (isEpic = false):
-  ///   * Allerta < 40: solo basso ambient (volume 0.6), arpeggiatore tense silenziato (volume 0.0).
-  ///   * Allerta >= 40: la traccia Tense ha priorità assoluta (volume 0.6 o 1.0), l'ambient viene completamente silenziato (volume 0.0) per evitare sovrapposizioni. Allerta > 80 accelera a 1.2x.
-  Future<void> updateAlertLevel(int alert, {bool force = false, bool? isEpic, bool? isVictory}) async {
-    if (!_initialized) return;
-    bool isEpicChanged = false;
-    if (isEpic != null && isEpic != _isEpic) {
-      _isEpic = isEpic;
-      isEpicChanged = true;
-    }
-    bool isVictoryChanged = false;
-    if (isVictory != null && isVictory != _isVictory) {
-      _isVictory = isVictory;
-      isVictoryChanged = true;
-    }
-    // Evita il ritorno anticipato se lo stato isEpic o isVictory è cambiato, per garantire la corretta transizione delle tracce audio.
-    if (_currentAlert == alert && !isEpicChanged && !isVictoryChanged && !force) return;
-    _currentAlert = alert;
-
-    if (!_playersCreated || !_audioEnabled) return;
-
-    if (isEpicChanged || isVictoryChanged) {
-      // Se lo stato isEpic o isVictory è cambiato, riavviamo la BGM con la modalità corretta per accertarci che parta/si fermi
-      await startBgm(isVictory: _isVictory);
-      return;
-    }
-
-    double ambientVol = 0.0;
-    double tenseVol = 0.0;
-    double mainVol = 0.0;
-    double epicVol = 0.0;
-    if (_isEpic) {
-      ambientVol = 0.0;
-      tenseVol = 0.0;
-      if (_isVictory) {
-        mainVol = 0.0;
-        epicVol = 0.6;
-      } else {
-        mainVol = 0.6;
-        epicVol = 0.0;
-      }
-    } else {
-      mainVol = 0.0;
-      epicVol = 0.0;
-      if (alert < 40) {
-        ambientVol = 0.6;
-        tenseVol = 0.0;
-      } else {
-        // Sistema di priorità: Tense ha priorità assoluta su Ambient (Ambient viene silenziato a 0.0)
-        ambientVol = 0.0;
-        tenseVol = alert <= 80 ? 0.6 : 1.0;
-      }
-    }
-
-    try {
-      await _bgmAmbientPlayer.setVolume(ambientVol);
-      await _bgmTensePlayer.setVolume(tenseVol);
-      await _bgmMainPlayer.setVolume(mainVol);
-      await _bgmEpicPlayer.setVolume(epicVol);
-    } catch (e) {
-      debugPrint("Errore nel mixing degli stem audio: $e");
-    }
-  }
-
-  /// Esegue la riproduzione interna di un file SFX in modalità Fire-and-Forget per prevenire micro-freeze dell'UI thread.
+  /// Esegue la riproduzione interna di un file SFX in modalità Fire-and-Forget.
   void _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) {
     if (!_playersCreated || !_audioEnabled || path == null) return;
     player.stop().then((_) {
@@ -364,25 +250,25 @@ class AudioManager {
 
   /// Riproduce il suono di click della digitazione a schermo.
   void playClick() {
-    if (!_playersCreated) return;
+    if (!_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
     _playSfx(_sfxClickPlayer, _sfxClickPath, volume: 0.25);
   }
 
   /// Riproduce il suono di allarme del sistema.
   void playAlert() {
-    if (!_playersCreated) return;
+    if (!_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
     _playSfx(_sfxAlertPlayer, _sfxAlertPath);
   }
 
   /// Riproduce l'effetto sonoro di glitch e crash.
   void playGlitch() {
-    if (!_playersCreated) return;
+    if (!_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
     _playSfx(_sfxGlitchPlayer, _sfxGlitchPath);
   }
 
   /// Riproduce l'effetto sonoro positivo all'aggiornamento dei pilastri cognitivi.
   void playChime() {
-    if (!_playersCreated) return;
+    if (!_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
     _playSfx(_sfxChimePlayer, _sfxChimePath);
   }
 
@@ -393,14 +279,13 @@ class AudioManager {
       return;
     }
     try {
-      await _bgmMainPlayer.dispose();
-      await _bgmAmbientPlayer.dispose();
-      await _bgmTensePlayer.dispose();
-      await _bgmEpicPlayer.dispose();
-      await _sfxClickPlayer.dispose();
-      await _sfxAlertPlayer.dispose();
-      await _sfxGlitchPlayer.dispose();
-      await _sfxChimePlayer.dispose();
+      await _machine.dispose();
+      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+        await _sfxClickPlayer.dispose();
+        await _sfxAlertPlayer.dispose();
+        await _sfxGlitchPlayer.dispose();
+        await _sfxChimePlayer.dispose();
+      }
     } catch (e) {
       debugPrint("Errore nel rilascio delle risorse audio: $e");
     }

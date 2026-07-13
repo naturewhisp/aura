@@ -68,6 +68,12 @@ class AudioSceneMachine {
   /// Restituisce il volume fisico memorizzato per una determinata traccia.
   double getVolumeFor(AudioTrackId track) => _currentVolumes[track] ?? 0.0;
 
+  @visibleForTesting
+  set isTrackPlayingForTesting(bool value) => _isTrackPlaying = value;
+
+  @visibleForTesting
+  set currentTrackForTesting(AudioTrackId? value) => _currentTrack = value;
+
   /// Accoda un'operazione asincrona assicurando che gli errori non rompano permanentemente la coda.
   Future<void> _enqueue(Future<void> Function() operation) {
     final result = _queue.then((_) => operation());
@@ -104,6 +110,10 @@ class AudioSceneMachine {
 
     final previousScene = _currentScene;
     final previousTrack = _currentTrack;
+    final previousTrackStartTime = _trackStartTime;
+    final previousWasPlaying = _isTrackPlaying;
+    bool previousTrackWasStopped = false;
+
     final previousProfile = previousScene != null ? audioSceneProfiles[previousScene] : null;
 
     try {
@@ -112,44 +122,99 @@ class AudioSceneMachine {
         final player = backend.playerFor(targetTrack);
         
         await player.setPlaybackRate(targetProfile.playbackRate);
-        if (generation != _generation) return;
+        if (await _abortIfObsolete(
+          generation: generation,
+          previousScene: previousScene,
+          previousTrack: previousTrack,
+          previousTrackStartTime: previousTrackStartTime,
+          previousWasPlaying: previousWasPlaying,
+          previousTrackWasStopped: previousTrackWasStopped,
+        )) {
+          return;
+        }
 
         final double startVol = _currentVolumes[targetTrack] ?? previousProfile?.volume ?? 0.0;
         final double endVol = targetProfile.volume;
         final duration = targetProfile.transitionDuration;
 
+        final wasAlreadyPlaying = _isTrackPlaying && _currentTrack == targetTrack;
+        DateTime? candidateTrackStartTime;
+
+        if (!wasAlreadyPlaying) {
+          await player.resume();
+          if (await _abortIfObsolete(
+            generation: generation,
+            previousScene: previousScene,
+            previousTrack: previousTrack,
+            previousTrackStartTime: previousTrackStartTime,
+            previousWasPlaying: previousWasPlaying,
+            previousTrackWasStopped: previousTrackWasStopped,
+          )) {
+            return;
+          }
+          candidateTrackStartTime = DateTime.now();
+        }
+
         const steps = 8;
         final stepDuration = duration ~/ steps;
 
         for (int i = 1; i <= steps; i++) {
-          if (generation != _generation) return; // Annullamento logico
           final double t = i / steps;
           final double vol = startVol + (endVol - startVol) * t;
 
           await player.setVolume(vol.clamp(0.0, 1.0).toDouble());
           _currentVolumes[targetTrack] = vol;
 
+          if (await _abortIfObsolete(
+            generation: generation,
+            previousScene: previousScene,
+            previousTrack: previousTrack,
+            previousTrackStartTime: previousTrackStartTime,
+            previousWasPlaying: previousWasPlaying,
+            previousTrackWasStopped: previousTrackWasStopped,
+          )) {
+            return;
+          }
+
           await Future.delayed(stepDuration);
+
+          if (await _abortIfObsolete(
+            generation: generation,
+            previousScene: previousScene,
+            previousTrack: previousTrack,
+            previousTrackStartTime: previousTrackStartTime,
+            previousWasPlaying: previousWasPlaying,
+            previousTrackWasStopped: previousTrackWasStopped,
+          )) {
+            return;
+          }
         }
 
-        if (generation != _generation) return;
+        if (await _abortIfObsolete(
+          generation: generation,
+          previousScene: previousScene,
+          previousTrack: previousTrack,
+          previousTrackStartTime: previousTrackStartTime,
+          previousWasPlaying: previousWasPlaying,
+          previousTrackWasStopped: previousTrackWasStopped,
+        )) {
+          return;
+        }
 
-        await player.setVolume(endVol);
-        _currentVolumes[targetTrack] = endVol;
-
-        // Cleanup di tutte le altre tracce non target prima di completare la transizione
-        await _silenceAndStopAllExcept(targetTrack, generation);
-        if (generation != _generation) return;
-
-        _currentScene = nextState;
-        _currentTrack = targetTrack;
-        _isTrackPlaying = true;
+        await _finalizeTransition(
+          targetScene: nextState,
+          targetTrack: targetTrack,
+          targetVolume: endVol,
+          candidateStartTime: candidateTrackStartTime,
+          previousTrack: previousTrack,
+          onPreviousTrackStopped: () {
+            previousTrackWasStopped = true;
+          },
+        );
         return;
       }
 
       // transizione Crossfade per tracce fisiche differenti.
-      _trackStartTime = DateTime.now();
-
       final BgmPlayer? fromPlayer = previousTrack != null ? backend.playerFor(previousTrack) : null;
       final BgmPlayer toPlayer = backend.playerFor(targetTrack);
 
@@ -163,9 +228,19 @@ class AudioSceneMachine {
         }
       }
 
-      if (generation != _generation) return;
+      if (await _abortIfObsolete(
+        generation: generation,
+        previousScene: previousScene,
+        previousTrack: previousTrack,
+        previousTrackStartTime: previousTrackStartTime,
+        previousWasPlaying: previousWasPlaying,
+        previousTrackWasStopped: previousTrackWasStopped,
+      )) {
+        return;
+      }
 
       // 2. Prepariamo e avviamo il toPlayer a volume 0.0
+      DateTime? candidateTrackStartTime;
       if (targetPath != null) {
         await toPlayer.stop();
         await toPlayer.setSource(targetPath);
@@ -173,13 +248,42 @@ class AudioSceneMachine {
         await toPlayer.setVolume(0.0);
         _currentVolumes[targetTrack] = 0.0;
         await toPlayer.resume();
+        if (await _abortIfObsolete(
+          generation: generation,
+          previousScene: previousScene,
+          previousTrack: previousTrack,
+          previousTrackStartTime: previousTrackStartTime,
+          previousWasPlaying: previousWasPlaying,
+          previousTrackWasStopped: previousTrackWasStopped,
+        )) {
+          return;
+        }
+        candidateTrackStartTime = DateTime.now();
       }
 
-      if (generation != _generation) return;
+      if (await _abortIfObsolete(
+        generation: generation,
+        previousScene: previousScene,
+        previousTrack: previousTrack,
+        previousTrackStartTime: previousTrackStartTime,
+        previousWasPlaying: previousWasPlaying,
+        previousTrackWasStopped: previousTrackWasStopped,
+      )) {
+        return;
+      }
 
       // Breve pausa per attendere l'avvio nativo del thread
       await Future.delayed(const Duration(milliseconds: 150));
-      if (generation != _generation) return;
+      if (await _abortIfObsolete(
+        generation: generation,
+        previousScene: previousScene,
+        previousTrack: previousTrack,
+        previousTrackStartTime: previousTrackStartTime,
+        previousWasPlaying: previousWasPlaying,
+        previousTrackWasStopped: previousTrackWasStopped,
+      )) {
+        return;
+      }
 
       // 3. Eseguiamo il crossfade
       const steps = 8;
@@ -190,7 +294,6 @@ class AudioSceneMachine {
       final double endToVolume = targetProfile.volume;
 
       for (int i = 1; i <= steps; i++) {
-        if (generation != _generation) return; // Annullamento logico
         final double t = i / steps;
 
         if (fromPlayer != null && previousTrack != null) {
@@ -203,74 +306,280 @@ class AudioSceneMachine {
         await toPlayer.setVolume(toVol.clamp(0.0, 1.0).toDouble());
         _currentVolumes[targetTrack] = toVol;
 
+        if (await _abortIfObsolete(
+          generation: generation,
+          previousScene: previousScene,
+          previousTrack: previousTrack,
+          previousTrackStartTime: previousTrackStartTime,
+          previousWasPlaying: previousWasPlaying,
+          previousTrackWasStopped: previousTrackWasStopped,
+        )) {
+          return;
+        }
+
         await Future.delayed(stepDuration);
+
+        if (await _abortIfObsolete(
+          generation: generation,
+          previousScene: previousScene,
+          previousTrack: previousTrack,
+          previousTrackStartTime: previousTrackStartTime,
+          previousWasPlaying: previousWasPlaying,
+          previousTrackWasStopped: previousTrackWasStopped,
+        )) {
+          return;
+        }
       }
 
-      if (generation != _generation) return;
-
-      // 4. Stoppiamo e azzeriamo completamente il fromPlayer uscente
-      if (fromPlayer != null && previousTrack != null) {
-        await fromPlayer.stop();
-        await fromPlayer.setVolume(0.0);
-        _currentVolumes[previousTrack] = 0.0;
+      if (await _abortIfObsolete(
+        generation: generation,
+        previousScene: previousScene,
+        previousTrack: previousTrack,
+        previousTrackStartTime: previousTrackStartTime,
+        previousWasPlaying: previousWasPlaying,
+        previousTrackWasStopped: previousTrackWasStopped,
+      )) {
+        return;
       }
 
-      await toPlayer.setVolume(endToVolume);
-      _currentVolumes[targetTrack] = endToVolume;
-
-      // Cleanup finale di tutte le altre tracce non target prima di committare lo stato
-      await _silenceAndStopAllExcept(targetTrack, generation);
-      if (generation != _generation) return;
-
-      _currentScene = nextState;
-      _currentTrack = targetTrack;
-      _isTrackPlaying = true;
+      await _finalizeTransition(
+        targetScene: nextState,
+        targetTrack: targetTrack,
+        targetVolume: endToVolume,
+        candidateStartTime: candidateTrackStartTime,
+        previousTrack: previousTrack,
+        onPreviousTrackStopped: () {
+          previousTrackWasStopped = true;
+        },
+      );
     } catch (error) {
-      if (generation == _generation) {
-        _requestedScene = _currentScene; // Consente il retry
-        await _restoreStableState(generation);
+      final isLatestRequest = generation == _generation;
+      if (isLatestRequest) {
+        _requestedScene = previousScene;
       }
+      await _restoreStableStateNonCancellable(
+        stableScene: previousScene,
+        stableTrack: previousTrack,
+        stableTrackStartTime: previousTrackStartTime,
+        stableTrackWasPlaying: previousWasPlaying,
+        stableTrackWasStopped: previousTrackWasStopped,
+      );
       debugPrint('[AUDIO] Transition failed: $error');
     }
   }
 
-  /// Silenzia e spegne tutti i player tranne quello specificato come target.
-  Future<void> _silenceAndStopAllExcept(AudioTrackId targetTrack, int generation) async {
-    for (final track in AudioTrackId.values) {
-      if (track == targetTrack) continue;
-      if (generation != _generation) return;
+  Future<bool> _abortIfObsolete({
+    required int generation,
+    required AudioSceneState? previousScene,
+    required AudioTrackId? previousTrack,
+    required DateTime previousTrackStartTime,
+    required bool previousWasPlaying,
+    required bool previousTrackWasStopped,
+  }) async {
+    if (generation == _generation) {
+      return false;
+    }
 
-      final player = backend.playerFor(track);
-      await player.setVolume(0.0);
-      await player.stop();
-      _currentVolumes[track] = 0.0;
+    await _restoreStableStateNonCancellable(
+      stableScene: previousScene,
+      stableTrack: previousTrack,
+      stableTrackStartTime: previousTrackStartTime,
+      stableTrackWasPlaying: previousWasPlaying,
+      stableTrackWasStopped: previousTrackWasStopped,
+    );
+
+    return true;
+  }
+
+  Future<void> _finalizeTransition({
+    required AudioSceneState targetScene,
+    required AudioTrackId targetTrack,
+    required double targetVolume,
+    required DateTime? candidateStartTime,
+    required AudioTrackId? previousTrack,
+    required void Function() onPreviousTrackStopped,
+  }) async {
+    if (_disposed) return;
+
+    if (_suspended) {
+      await _finalizeSuspendedState(
+        previousTrack: previousTrack,
+        onPreviousTrackStopped: onPreviousTrackStopped,
+      );
+      return;
+    }
+
+    if (previousTrack != null && previousTrack != targetTrack) {
+      final fromPlayer = backend.playerFor(previousTrack);
+      await fromPlayer.stop();
+      onPreviousTrackStopped();
+
+      if (_disposed) return;
+      if (_suspended) {
+        await _finalizeSuspendedState();
+        return;
+      }
+
+      await fromPlayer.setVolume(0.0);
+      if (_disposed) return;
+      if (_suspended) {
+        await _finalizeSuspendedState();
+        return;
+      }
+      _currentVolumes[previousTrack] = 0.0;
+    }
+
+    if (_disposed) return;
+    if (_suspended) {
+      await _finalizeSuspendedState();
+      return;
+    }
+
+    await _silenceAndStopAllExceptNonCancellable(targetTrack);
+
+    if (_disposed) return;
+    if (_suspended) {
+      await _finalizeSuspendedState();
+      return;
+    }
+
+    final player = backend.playerFor(targetTrack);
+    await player.setVolume(targetVolume);
+
+    if (_disposed) return;
+    if (_suspended) {
+      await _finalizeSuspendedState();
+      return;
+    }
+
+    _currentVolumes[targetTrack] = targetVolume;
+    _currentScene = targetScene;
+    _currentTrack = targetTrack;
+    _isTrackPlaying = true;
+
+    if (candidateStartTime != null) {
+      _trackStartTime = candidateStartTime;
     }
   }
 
-  /// Ripristina uno stato audio stabile in caso di errore in transizione.
-  Future<void> _restoreStableState(int generation) async {
-    final stableScene = _currentScene;
-    final stableTrack = _currentTrack;
+  Future<void> _finalizeSuspendedState({
+    AudioTrackId? previousTrack,
+    void Function()? onPreviousTrackStopped,
+  }) async {
+    await _bestEffortStopAllNonCancellable(
+      onTrackStopped: (track) {
+        if (track == previousTrack) {
+          onPreviousTrackStopped?.call();
+        }
+      },
+    );
+    if (_disposed) return;
 
-    if (stableScene == null || stableTrack == null) {
-      await _bestEffortStopAll(generation);
+    _currentTrack = null;
+    _isTrackPlaying = false;
+  }
+
+  Future<void> _silenceAndStopAllExceptNonCancellable(AudioTrackId targetTrack) async {
+    for (final track in AudioTrackId.values) {
+      if (track == targetTrack) continue;
+      final player = backend.playerFor(track);
+      try {
+        await player.stop();
+        await player.setVolume(0.0);
+        _currentVolumes[track] = 0.0;
+      } catch (e) {
+        debugPrint('[AUDIO] Silence and stop failed for non-target $track: $e');
+      }
+    }
+  }
+
+  Future<void> _restoreStableStateNonCancellable({
+    required AudioSceneState? stableScene,
+    required AudioTrackId? stableTrack,
+    required DateTime stableTrackStartTime,
+    required bool stableTrackWasPlaying,
+    required bool stableTrackWasStopped,
+  }) async {
+    if (_disposed || _suspended) {
+      await _bestEffortStopAllNonCancellable();
+      if (!_disposed) {
+        _currentTrack = null;
+        _isTrackPlaying = false;
+      }
+      return;
+    }
+
+    final effectiveStableTrack = stableTrack ??
+        (stableScene != null ? audioSceneProfiles[stableScene]!.track : null);
+
+    if (stableScene == null || effectiveStableTrack == null) {
+      await _bestEffortStopAllNonCancellable();
+      if (_disposed) return;
+
+      _currentScene = null;
+      _currentTrack = null;
       _isTrackPlaying = false;
       return;
     }
 
     try {
       final profile = audioSceneProfiles[stableScene]!;
-      final player = backend.playerFor(stableTrack);
+      final player = backend.playerFor(effectiveStableTrack);
 
       await player.setPlaybackRate(profile.playbackRate);
-      await player.setVolume(profile.volume);
-      _currentVolumes[stableTrack] = profile.volume;
+      if (_disposed) {
+        await _bestEffortStopAllNonCancellable();
+        return;
+      }
+      if (_suspended) {
+        await _finalizeSuspendedState();
+        return;
+      }
 
-      await _silenceAndStopAllExcept(stableTrack, generation);
+      await player.setVolume(profile.volume);
+      if (_disposed) {
+        await _bestEffortStopAllNonCancellable();
+        return;
+      }
+      if (_suspended) {
+        await _finalizeSuspendedState();
+        return;
+      }
+
+      final requiresRestart = !stableTrackWasPlaying || stableTrackWasStopped || stableTrack == null;
+
+      if (requiresRestart) {
+        await player.resume();
+      }
+
+      if (_disposed) {
+        await _bestEffortStopAllNonCancellable();
+        return;
+      }
+      if (_suspended) {
+        await _finalizeSuspendedState();
+        return;
+      }
+
+      await _silenceAndStopAllExceptNonCancellable(effectiveStableTrack);
+      if (_disposed) {
+        await _bestEffortStopAllNonCancellable();
+        return;
+      }
+      if (_suspended) {
+        await _finalizeSuspendedState();
+        return;
+      }
+
+      _currentVolumes[effectiveStableTrack] = profile.volume;
+      _currentScene = stableScene;
+      _currentTrack = effectiveStableTrack;
       _isTrackPlaying = true;
+      _trackStartTime = requiresRestart ? DateTime.now() : stableTrackStartTime;
     } catch (e) {
-      // In caso di errore anche nel recovery, spegniamo tutto e azzeriamo
-      await _bestEffortStopAll(generation);
+      await _bestEffortStopAllNonCancellable();
+      if (_disposed) return;
+
       _currentTrack = null;
       _isTrackPlaying = false;
       debugPrint('[AUDIO] Recovery failed, silencing all: $e');
@@ -291,7 +600,7 @@ class AudioSceneMachine {
     _isTrackPlaying = false;
     _currentTrack = null;
 
-    await _bestEffortStopAll(generation);
+    await _bestEffortStopAllNonCancellable();
   }
 
   /// Ripristina la riproduzione audio forzando l'avvio dello stato richiesto.
@@ -327,19 +636,21 @@ class AudioSceneMachine {
     _currentTrack = null;
     _isTrackPlaying = false;
 
-    await _bestEffortStopAll(generation);
+    await _bestEffortStopAllNonCancellable();
   }
 
-  Future<void> _bestEffortStopAll(int generation) async {
+  Future<void> _bestEffortStopAllNonCancellable({
+    void Function(AudioTrackId)? onTrackStopped,
+  }) async {
     for (final trackId in AudioTrackId.values) {
-      if (generation != _generation) return;
       final p = backend.playerFor(trackId);
       try {
         await p.stop();
+        onTrackStopped?.call(trackId);
         await p.setVolume(0.0);
         _currentVolumes[trackId] = 0.0;
-      } catch (e) {
-        debugPrint("Errore nell'arresto di emergenza della traccia $trackId: $e");
+      } catch (error) {
+        debugPrint('[AUDIO] Emergency stop failed for $trackId: $error');
       }
     }
   }

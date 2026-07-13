@@ -1,8 +1,13 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_scene.dart';
 import 'package:aura_app/src/audio/bgm_player.dart';
 import 'package:aura_app/src/audio/audio_scene_machine.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
+import 'package:aura_app/src/screens/boot_menu_screen.dart';
+import 'package:aura_app/src/state_management/game_controller_notifier.dart';
 
 class FakeBgmPlayer implements BgmPlayer {
   String? sourcePath;
@@ -17,7 +22,13 @@ class FakeBgmPlayer implements BgmPlayer {
 
   bool failSetVolume = false;
   bool failSetVolumeOnce = false;
+  bool failSetVolumeAfterStop = false;
   bool failSetPlaybackRate = false;
+  bool failSetPlaybackRateOnce = false;
+
+  Completer<void>? setVolumeCompleter;
+  Completer<void>? stopCompleter;
+  Completer<void>? resumeCompleter;
 
   @override
   Future<void> setSource(String path) async {
@@ -29,6 +40,9 @@ class FakeBgmPlayer implements BgmPlayer {
   @override
   Future<void> setVolume(double vol) async {
     if (isDisposed) throw StateError("Player già rimosso");
+    if (setVolumeCompleter != null) {
+      await setVolumeCompleter!.future;
+    }
     if (failSetVolumeOnce) {
       failSetVolumeOnce = false;
       throw Exception("Errore simulato setVolume una tantum");
@@ -40,6 +54,10 @@ class FakeBgmPlayer implements BgmPlayer {
   @override
   Future<void> setPlaybackRate(double rate) async {
     if (isDisposed) throw StateError("Player già rimosso");
+    if (failSetPlaybackRateOnce) {
+      failSetPlaybackRateOnce = false;
+      throw Exception("Errore simulato setPlaybackRate una tantum");
+    }
     if (failSetPlaybackRate) throw Exception("Errore simulato setPlaybackRate");
     playbackRate = rate;
   }
@@ -47,6 +65,9 @@ class FakeBgmPlayer implements BgmPlayer {
   @override
   Future<void> resume() async {
     if (isDisposed) throw StateError("Player già rimosso");
+    if (resumeCompleter != null) {
+      await resumeCompleter!.future;
+    }
     isPlaying = true;
     resumeCalls++;
   }
@@ -54,8 +75,14 @@ class FakeBgmPlayer implements BgmPlayer {
   @override
   Future<void> stop() async {
     if (isDisposed) throw StateError("Player già rimosso");
+    if (stopCompleter != null) {
+      await stopCompleter!.future;
+    }
     isPlaying = false;
     stopCalls++;
+    if (failSetVolumeAfterStop) {
+      failSetVolumeOnce = true;
+    }
   }
 
   @override
@@ -313,6 +340,184 @@ void main() {
       await machine.suspendAudio();
       expect(machine.currentBpm, equals(0.0));
     });
+
+    test('Race di Mute durante Finalizzazione: la finalizzazione non riattiva il volume e lascia requestedScene = target, currentScene = precedente, currentTrack = null, isPlaying = false', () async {
+      await machine.transitionTo(AudioSceneState.gameAmbient);
+      final tensePlayer = backend.players[AudioTrackId.tense]!;
+
+      tensePlayer.setVolumeCompleter = Completer<void>();
+
+      final f1 = machine.transitionTo(AudioSceneState.gameTense);
+      
+      // Chiamiamo suspendAudio ma non lo attendiamo qui per evitare deadlock
+      final fSuspend = machine.suspendAudio();
+
+      tensePlayer.setVolumeCompleter!.complete();
+      await f1;
+      await fSuspend;
+
+      expect(machine.requestedScene, equals(AudioSceneState.gameTense));
+      expect(machine.currentScene, equals(AudioSceneState.gameAmbient));
+      expect(machine.currentTrack, isNull);
+      expect(machine.isTrackPlaying, isFalse);
+      for (final p in backend.players.values) {
+        expect(p.isPlaying, isFalse);
+      }
+    });
+
+    test('Race di Recovery su Transizione Obsoleta: se A fallisce dopo che B è già stata accodata, B non vede sovrascritto requestedScene, ma A ripristina comunque lo stato fisico stabile', () async {
+      await machine.transitionTo(AudioSceneState.gameAmbient);
+      final ambientPlayer = backend.players[AudioTrackId.ambient]!;
+      final tensePlayer = backend.players[AudioTrackId.tense]!;
+
+      tensePlayer.resumeCompleter = Completer<void>();
+
+      final f1 = machine.transitionTo(AudioSceneState.gameTense);
+      final f2 = machine.transitionTo(AudioSceneState.victory);
+
+      tensePlayer.failSetVolume = true;
+      tensePlayer.resumeCompleter!.complete();
+      await f1;
+
+      expect(machine.requestedScene, equals(AudioSceneState.victory));
+      expect(tensePlayer.isPlaying, isFalse);
+      expect(ambientPlayer.isPlaying, isTrue);
+
+      tensePlayer.failSetVolume = false;
+      await f2;
+      expect(machine.currentScene, equals(AudioSceneState.victory));
+    });
+
+    test('Same-track Condizionale: attivo non aumenta resumeCalls e trackStartTime resta uguale; inattivo chiama resume e aggiorna trackStartTime', () async {
+      await machine.transitionTo(AudioSceneState.gameTense);
+      final tensePlayer = backend.players[AudioTrackId.tense]!;
+
+      expect(machine.currentScene, equals(AudioSceneState.gameTense));
+      final firstResumeCalls = tensePlayer.resumeCalls;
+      final firstStartTime = machine.trackStartTime;
+
+      await machine.transitionTo(AudioSceneState.defeat);
+      expect(tensePlayer.resumeCalls, equals(firstResumeCalls));
+      expect(machine.trackStartTime, equals(firstStartTime));
+
+      // Simuliamo l'inattività fisica del player ma manteniamo same-track
+      machine.isTrackPlayingForTesting = false;
+      machine.currentTrackForTesting = AudioTrackId.tense;
+
+      await machine.transitionTo(AudioSceneState.gameTense, force: true);
+      expect(tensePlayer.resumeCalls, greaterThan(firstResumeCalls));
+      expect(machine.trackStartTime, isNot(equals(firstStartTime)));
+    });
+
+    test('Recovery dopo Sospensione Fallito: se la macchina era sospesa, fallisce la transizione al resume, gameAmbient viene ripristinato fisicamente (con resume) e trackStartTime viene ricreato', () async {
+      await machine.transitionTo(AudioSceneState.gameAmbient);
+      final ambientPlayer = backend.players[AudioTrackId.ambient]!;
+      expect(machine.currentScene, equals(AudioSceneState.gameAmbient));
+      final originalStartTime = machine.trackStartTime;
+
+      await machine.suspendAudio();
+      expect(ambientPlayer.isPlaying, isFalse);
+
+      ambientPlayer.failSetPlaybackRateOnce = true;
+      await machine.resumeAudio();
+
+      expect(machine.currentScene, equals(AudioSceneState.gameAmbient));
+      expect(ambientPlayer.isPlaying, isTrue);
+      expect(machine.trackStartTime, isNot(equals(originalStartTime)));
+    });
+
+    test('Errore prima dello stop della traccia stabile: trackStartTime resta invariato', () async {
+      await machine.transitionTo(AudioSceneState.gameAmbient);
+      final ambientPlayer = backend.players[AudioTrackId.ambient]!;
+      final tensePlayer = backend.players[AudioTrackId.tense]!;
+      final originalStartTime = machine.trackStartTime;
+
+      tensePlayer.failSetVolume = true;
+
+      await machine.transitionTo(AudioSceneState.gameTense);
+
+      expect(machine.currentScene, equals(AudioSceneState.gameAmbient));
+      expect(ambientPlayer.isPlaying, isTrue);
+      expect(machine.trackStartTime, equals(originalStartTime));
+    });
+
+    test('Errore dopo lo stop della traccia stabile: il recovery esegue resume e assegna un nuovo trackStartTime', () async {
+      await machine.transitionTo(AudioSceneState.gameAmbient);
+      final ambientPlayer = backend.players[AudioTrackId.ambient]!;
+      final originalStartTime = machine.trackStartTime;
+
+      // Facciamo fallire setVolume sul player uscente dopo lo stop
+      ambientPlayer.failSetVolumeAfterStop = true;
+
+      await machine.transitionTo(AudioSceneState.gameTense);
+
+      expect(machine.currentScene, equals(AudioSceneState.gameAmbient));
+      expect(ambientPlayer.isPlaying, isTrue);
+      expect(machine.trackStartTime, isNot(equals(originalStartTime)));
+    });
+
+    test('Stop riuscito ma setVolume() fallito nel crossfade: recovery ripristina la traccia stabile precedente', () async {
+      await machine.transitionTo(AudioSceneState.gameAmbient);
+      final ambientPlayer = backend.players[AudioTrackId.ambient]!;
+
+      // Fallisce solo la prima volta sul player uscente dopo lo stop
+      ambientPlayer.failSetVolumeAfterStop = true;
+
+      await machine.transitionTo(AudioSceneState.gameTense);
+
+      expect(machine.currentScene, equals(AudioSceneState.gameAmbient));
+      expect(ambientPlayer.isPlaying, isTrue);
+    });
+
+    test('Cancellazione Generazionale Pre-Confine: la prima transizione obsoleta stabilizza fisicamente lo stato prima della successiva', () async {
+      await machine.transitionTo(AudioSceneState.gameAmbient);
+      final ambientPlayer = backend.players[AudioTrackId.ambient]!;
+      final tensePlayer = backend.players[AudioTrackId.tense]!;
+      final epicPlayer = backend.players[AudioTrackId.epic]!;
+
+      tensePlayer.setVolumeCompleter = Completer<void>();
+
+      final f1 = machine.transitionTo(AudioSceneState.gameTense);
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      final f2 = machine.transitionTo(AudioSceneState.breakthrough);
+
+      tensePlayer.setVolumeCompleter!.complete();
+      await f1;
+
+      expect(tensePlayer.isPlaying, isFalse);
+      expect(ambientPlayer.isPlaying, isTrue);
+      expect(machine.requestedScene, equals(AudioSceneState.breakthrough));
+
+      await f2;
+      expect(machine.currentScene, equals(AudioSceneState.breakthrough));
+      expect(epicPlayer.isPlaying, isTrue);
+    });
+
+    test('Dispose durante recovery di transizione obsoleta spegne tutto e non committa', () async {
+      await machine.transitionTo(AudioSceneState.gameAmbient);
+      final ambientPlayer = backend.players[AudioTrackId.ambient]!;
+      final tensePlayer = backend.players[AudioTrackId.tense]!;
+
+      ambientPlayer.setVolumeCompleter = Completer<void>();
+      tensePlayer.failSetVolumeOnce = true;
+
+      final f1 = machine.transitionTo(AudioSceneState.gameTense);
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      final f2 = machine.dispose();
+
+      ambientPlayer.setVolumeCompleter!.complete();
+      await f1;
+      await f2;
+
+      expect(machine.currentScene, isNull);
+      expect(machine.currentTrack, isNull);
+      expect(machine.isTrackPlaying, isFalse);
+      for (final p in backend.players.values) {
+        expect(p.isPlaying, isFalse);
+      }
+    });
   });
 
   group('AudioManager - Inizializzazione, Pending Scene, e Mute', () {
@@ -328,17 +533,14 @@ void main() {
       await manager.dispose();
       expect(manager.isInitialized, isFalse);
 
-      // Successiva chiamata a dispose è sicura
       await manager.dispose();
 
-      // Inizializzazione post-dispose fallisce
       expect(() => manager.initialize('test_dir'), throwsStateError);
     });
 
     test('Due pendingScene prima di initialize: viene applicata solo l’ultima', () async {
       final manager = AudioManager();
       
-      // Chiamiamo transizioni prima dell'inizializzazione
       await manager.transitionTo(AudioSceneState.gameAmbient);
       await manager.transitionTo(AudioSceneState.breakthrough);
 
@@ -351,13 +553,54 @@ void main() {
       final manager = AudioManager();
       await manager.transitionTo(AudioSceneState.gameAmbient);
 
-      // Inizializza con audio disabilitato
       await manager.initialize('test_dir', audioEnabled: false);
 
       expect(manager.audioEnabled, isFalse);
       expect(manager.machine.currentScene, isNull);
       expect(manager.machine.requestedScene, AudioSceneState.gameAmbient);
       expect(manager.machine.isTrackPlaying, isFalse);
+    });
+
+    test('dispose() SFX Stato Esplicito: dispose non accede agli SFX se _sfxPlayersCreated è false', () async {
+      final manager = AudioManager();
+      manager.resetForTesting();
+      await manager.initialize('test_dir');
+      
+      await manager.dispose();
+      expect(manager.isInitialized, isFalse);
+    });
+  });
+
+  group('AudioManager - BootMenuScreen Rendering Integration', () {
+    testWidgets('BootMenuScreen montata senza pre-inizializzare AudioManager non crasha', (WidgetTester tester) async {
+      AudioManager().resetForTesting();
+
+      final mockApiBridge = MockInferenceBridge(
+        mockStructuredResponse: const {},
+        mockTextResponse: '',
+      );
+      final initialState = GameState.initial(
+        sessionId: 'test-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      );
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialState,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GameControllerProvider(
+              notifier: notifier,
+              child: BootMenuScreen(notifier: notifier),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(BootMenuScreen), findsOneWidget);
     });
   });
 }

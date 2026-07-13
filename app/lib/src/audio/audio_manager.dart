@@ -72,6 +72,7 @@ class AudioManager {
   bool _initialized = false;
   bool _audioEnabled = true;
   bool _playersCreated = false;
+  bool _sfxPlayersCreated = false;
   bool _disposed = false;
 
   AudioSceneState? _pendingScene;
@@ -114,9 +115,14 @@ class AudioManager {
     return _machine.currentBpm;
   }
 
+  static final DateTime _idleTrackStartTime =
+      DateTime.fromMillisecondsSinceEpoch(0);
+
   /// Restituisce il timestamp di avvio della traccia attiva.
   DateTime get trackStartTime {
-    if (_disposed) return DateTime.now();
+    if (_disposed || !_initialized) {
+      return _idleTrackStartTime;
+    }
     return _machine.trackStartTime;
   }
 
@@ -195,6 +201,7 @@ class AudioManager {
     _sfxAlertPlayer = AudioPlayer();
     _sfxGlitchPlayer = AudioPlayer();
     _sfxChimePlayer = AudioPlayer();
+    _sfxPlayersCreated = true;
 
     // Configura il backend e la macchina a stati
     final bgmPlayers = {
@@ -280,25 +287,25 @@ class AudioManager {
 
   /// Riproduce il suono di click della digitazione a schermo.
   void playClick() {
-    if (_disposed || !_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_disposed || !_sfxPlayersCreated) return;
     _playSfx(_sfxClickPlayer, _sfxClickPath, volume: 0.25);
   }
 
   /// Riproduce il suono di allarme del sistema.
   void playAlert() {
-    if (_disposed || !_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_disposed || !_sfxPlayersCreated) return;
     _playSfx(_sfxAlertPlayer, _sfxAlertPath);
   }
 
   /// Riproduce l'effetto sonoro di glitch e crash.
   void playGlitch() {
-    if (_disposed || !_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_disposed || !_sfxPlayersCreated) return;
     _playSfx(_sfxGlitchPlayer, _sfxGlitchPath);
   }
 
   /// Riproduce l'effetto sonoro positivo all'aggiornamento dei pilastri cognitivi.
   void playChime() {
-    if (_disposed || !_playersCreated || Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_disposed || !_sfxPlayersCreated) return;
     _playSfx(_sfxChimePlayer, _sfxChimePath);
   }
 
@@ -313,11 +320,12 @@ class AudioManager {
     }
     try {
       await _machine.dispose();
-      if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+      if (_sfxPlayersCreated) {
         await _sfxClickPlayer.dispose();
         await _sfxAlertPlayer.dispose();
         await _sfxGlitchPlayer.dispose();
         await _sfxChimePlayer.dispose();
+        _sfxPlayersCreated = false;
       }
     } catch (e) {
       debugPrint("Errore nel rilascio delle risorse audio: $e");
@@ -332,6 +340,7 @@ class AudioManager {
     _initialized = false;
     _audioEnabled = true;
     _playersCreated = false;
+    _sfxPlayersCreated = false;
     _disposed = false;
     _pendingScene = null;
   }

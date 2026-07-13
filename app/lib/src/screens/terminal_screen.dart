@@ -126,10 +126,13 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
 
     // Calcola lo stato della scena musicale tramite il resolver puro ed esegui la transizione
     final readiness = widget.notifier.controller.checkVictoryReadiness(state);
+    final nonNumericSatisfied =
+        widget.notifier.controller.checkNonNumericVictoryRequirements(state);
     final resolvedState = AudioStateResolver.resolve(
       state: state,
       outcome: outcome,
       readiness: readiness,
+      nonNumericVictoryRequirementsSatisfied: nonNumericSatisfied,
     );
     AudioManager().transitionTo(resolvedState);
 

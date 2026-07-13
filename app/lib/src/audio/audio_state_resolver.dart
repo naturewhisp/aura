@@ -9,16 +9,25 @@ class AudioStateResolver {
   /// Risolve lo stato musicale target in base allo stato corrente della sessione.
   ///
   /// Le priorità applicate sono:
-  /// 1. Sconfitta (defeat) -> se l'outcome è sconfitta.
-  /// 2. Vittoria (victory) -> se l'outcome è vittoria.
-  /// 3. Deception attiva o sprung -> se c'è una trappola attiva o appena attivata di PANOPTICON.
-  /// 4. Breakthrough -> se l'outcome è partita in corso, ma i criteri numerici sono pienamente soddisfatti.
-  /// 5. Tense -> se il livello di allerta è >= 40.
-  /// 6. Ambient -> default per gameplay standard a bassa allerta.
+  /// 1. Sconfitta (defeat) → se l'outcome è sconfitta.
+  /// 2. Vittoria (victory) → se l'outcome è vittoria.
+  /// 3. Deception attiva o sprung → se c'è una trappola attiva o appena attivata di PANOPTICON.
+  /// 4. Breakthrough → se l'outcome è partita in corso e si verifica la condizione A o B:
+  ///    - **A**: soglie numeriche completamente soddisfatte (`readiness.numericallyReady`).
+  ///    - **B**: progresso numerico ≥ 95% (`readiness.approachingNumericalReadiness`) e
+  ///      i requisiti non-numerici sono già soddisfatti
+  ///      (`nonNumericVictoryRequirementsSatisfied`).
+  ///
+  ///    La condizione B copre il caso Hard in cui tutti i gate occulti sono presenti
+  ///    ma un singolo pilastro è ancora sotto soglia: senza di essa, la traccia `epic`
+  ///    non partirebbe mai come `breakthrough` prima di `victory`.
+  /// 5. Tense → se il livello di allerta è >= 40.
+  /// 6. Ambient → default per gameplay standard a bassa allerta.
   static AudioSceneState resolve({
     required GameState state,
     required GameOutcome outcome,
     required VictoryReadiness readiness,
+    required bool nonNumericVictoryRequirementsSatisfied,
   }) {
     // 1. Defeat
     if (outcome == GameOutcome.defeat) {
@@ -37,9 +46,18 @@ class AudioStateResolver {
       return AudioSceneState.gameTense;
     }
 
-    // 4. Breakthrough (ongoing AND numericallyReady AND no Deception active/sprung)
-    if (outcome == GameOutcome.ongoing && readiness.numericallyReady) {
-      return AudioSceneState.breakthrough;
+    // 4. Breakthrough (ongoing AND (condizione A OR condizione B))
+    //
+    // Condizione A: prontezza numerica completa (i pilastri hanno superato le soglie).
+    // Condizione B: avvicinamento imminente (≥ 95%) con gate non-numerici già soddisfatti.
+    //   Copre il caso Hard in cui i tag occulti precedono il completamento numerico.
+    if (outcome == GameOutcome.ongoing) {
+      final breakthroughA = readiness.numericallyReady;
+      final breakthroughB = readiness.approachingNumericalReadiness &&
+          nonNumericVictoryRequirementsSatisfied;
+      if (breakthroughA || breakthroughB) {
+        return AudioSceneState.breakthrough;
+      }
     }
 
     // 5. Alert >= 40 -> gameTense

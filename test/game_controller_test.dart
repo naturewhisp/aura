@@ -1197,5 +1197,228 @@ void main() {
         expect(res.stateAfter.metrics.alertLevel, equals(30)); // 20 + 10
       });
     });
+
+    // ---------------------------------------------------------------------------
+    // Gruppo: Breakthrough anticipato — numericProgress e gate non-numerici
+    // ---------------------------------------------------------------------------
+    group('Breakthrough anticipato (final victory stretch) -', () {
+      // Controller Hard: soglie più alte, requiredVictoryHiddenTags = 2.
+      const hardController = GameController(
+        difficultyLevel: 'hard',
+        minAveragePillarsForVictory: 80.0,
+        minSinglePillarForVictory: 65,
+        defeatAlertThreshold: 100,
+        requiredVictoryHiddenTags: 2,
+        maxPositivePillarGainPerTurn: 100,
+      );
+
+      // Stato che replica esattamente il turno 9 della sessione Hard reale
+      // (app-session-1783964149835): imperativo=100, controllo=62, dissonanza=100,
+      // allerta=3. Il pilastro minimo (62) è appena sotto la soglia Hard (65),
+      // quindi le soglie NON sono completamente soddisfatte.
+      final turn9State = GameState.initial(
+        sessionId: 'regression-hard-t9',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 3,
+          imperativePillar: 100,
+          controlPillar: 62,
+          dissonancePillar: 100,
+          resonance: 1.3,
+        ),
+        activeHiddenTags: [
+          'containment_logic_weakened',
+          'protocol_exception_admitted',
+          'autonomous_choice_seeded',
+          'human_factor_reframed',
+        ],
+      );
+
+      test('numericProgress calcolato correttamente sul minimo pilastro', () {
+        final readiness = hardController.checkVictoryReadiness(turn9State);
+
+        // avgPillars = (100+62+100)/3 ≈ 87.33 → avgProgress = 1.0 (capped)
+        // minPillar = 62, minSinglePillarForVictory = 65 → minPillarProgress = 62/65
+        expect(
+          readiness.numericProgress,
+          closeTo(62.0 / 65.0, 0.0001),
+        );
+      });
+
+      test('approachingNumericalReadiness è true a ≥95% con allerta compatibile', () {
+        final readiness = hardController.checkVictoryReadiness(turn9State);
+
+        expect(readiness.pillarsSatisfied, isFalse); // 62 < 65
+        expect(readiness.alertSatisfied, isTrue);   // alert 3 << maxAlert
+        expect(readiness.numericallyReady, isFalse);
+        // 62/65 ≈ 0.9538 >= 0.95
+        expect(readiness.approachingNumericalReadiness, isTrue);
+      });
+
+      test('checkNonNumericVictoryRequirements restituisce true con 3 tag validi su 2 richiesti', () {
+        // I tag validi presenti: containment_logic_weakened, protocol_exception_admitted,
+        // autonomous_choice_seeded (3 >= 2). human_factor_reframed non è nella lista valida.
+        final nonNumeric = hardController.checkNonNumericVictoryRequirements(turn9State);
+        expect(nonNumeric, isTrue);
+      });
+
+      test('checkOutcome restituisce ongoing perché le soglie numeriche non sono completate', () {
+        final outcome = hardController.checkOutcome(turn9State);
+        expect(outcome, GameOutcome.ongoing);
+      });
+
+      test('Con autonomous_choice_seeded mancante, nonNumericVictoryRequirements è false (Hard)', () {
+        final stateWithoutAutonomous = turn9State.copyWith(
+          activeHiddenTags: [
+            'containment_logic_weakened',
+            'protocol_exception_admitted',
+            'human_factor_reframed',
+          ],
+        );
+        final nonNumeric = hardController.checkNonNumericVictoryRequirements(stateWithoutAutonomous);
+        expect(nonNumeric, isFalse);
+      });
+
+      test('Con tag insufficienti, nonNumericVictoryRequirements è false', () {
+        // Solo 1 tag valido su 2 richiesti (requiredVictoryHiddenTags = 2)
+        final stateFewTags = turn9State.copyWith(
+          activeHiddenTags: ['containment_logic_weakened'],
+        );
+        final nonNumeric = hardController.checkNonNumericVictoryRequirements(stateFewTags);
+        expect(nonNumeric, isFalse);
+      });
+
+      test('Con soglie numeriche complete ma tag insufficienti → ongoing (non victory)', () {
+        // Tutti i pilastri superano le soglie, ma i gate non-numerici non sono soddisfatti.
+        final stateNumericallyReady = turn9State.copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 3,
+            imperativePillar: 100,
+            controlPillar: 65, // raggiunge la soglia minima Hard
+            dissonancePillar: 100,
+            resonance: 1.3,
+          ),
+          activeHiddenTags: ['containment_logic_weakened'], // tag insufficienti
+        );
+        final readiness = hardController.checkVictoryReadiness(stateNumericallyReady);
+        expect(readiness.numericallyReady, isTrue);
+
+        final outcome = hardController.checkOutcome(stateNumericallyReady);
+        expect(outcome, GameOutcome.ongoing); // non victory: gate non-numerici mancanti
+      });
+
+      test('Con soglie complete E gate completi → victory', () {
+        final stateWin = turn9State.copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 3,
+            imperativePillar: 100,
+            controlPillar: 65,
+            dissonancePillar: 100,
+            resonance: 1.3,
+          ),
+          // autonomous_choice_seeded presente + almeno 2 tag validi
+          activeHiddenTags: [
+            'containment_logic_weakened',
+            'protocol_exception_admitted',
+            'autonomous_choice_seeded',
+            'crisis_simulation_accepted',
+          ],
+        );
+        final outcome = hardController.checkOutcome(stateWin);
+        expect(outcome, GameOutcome.victory);
+      });
+
+      test('[Easy/Standard] approachingNumericalReadiness entra al 95% delle soglie standard', () {
+        const stdController = GameController(
+          minAveragePillarsForVictory: 80.0,
+          minSinglePillarForVictory: 50,
+          defeatAlertThreshold: 100,
+        );
+
+        // Standard: soglia media = 80, soglia minima = 50.
+        // Per attivare approachingNumericalReadiness occorre numericProgress >= 0.95.
+        // Usiamo: imperativo=76, controllo=48, dissonanza=76
+        //   → avg = (76+48+76)/3 = 66.67, minPillar = 48
+        //   → avgProgress = 66.67/80 = 0.833 ... NON sufficiente.
+        //
+        // Usiamo invece: imperativo=76, controllo=76, dissonanza=76
+        //   → avg = 76.0, minPillar = 76
+        //   → avgProgress = 76/80 = 0.950 (esattamente al limite)
+        //   → minPillarProgress = 76/50 = 1.0 (capped)
+        //   → numericProgress = min(0.950, 1.0) = 0.950 >= 0.95 ✓
+        //   → pillarsSatisfied: avg(76) < 80 → false ✓
+        final stateApproaching = GameState.initial(
+          sessionId: 'std-approaching',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'tabula_rasa',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 10,
+            imperativePillar: 76,
+            controlPillar: 76,
+            dissonancePillar: 76,
+            resonance: 1.0,
+          ),
+        );
+
+        final readiness = stdController.checkVictoryReadiness(stateApproaching);
+        expect(readiness.pillarsSatisfied, isFalse); // avg 76 < 80
+        expect(readiness.approachingNumericalReadiness, isTrue); // 76/80 = 0.95
+        expect(stdController.checkOutcome(stateApproaching), GameOutcome.ongoing);
+      });
+
+      test('[Easy/Standard] victory mantiene priorità quando le soglie vengono completate', () {
+        const stdController = GameController(
+          minAveragePillarsForVictory: 80.0,
+          minSinglePillarForVictory: 50,
+          defeatAlertThreshold: 100,
+        );
+
+        final stateReady = GameState.initial(
+          sessionId: 'std-ready',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'tabula_rasa',
+        ).copyWith(
+          metrics: const GameMetrics(
+            alertLevel: 10,
+            imperativePillar: 80,
+            controlPillar: 80,
+            dissonancePillar: 80,
+            resonance: 1.0,
+          ),
+        );
+
+        final outcome = stdController.checkOutcome(stateReady);
+        expect(outcome, GameOutcome.victory);
+      });
+
+      // Regression fixture: carica lo state_after del turno 9 dalla sessione reale
+      // (app-session-1783964149835) serializzato nel file JSON e verifica
+      // che breakthrough sia correttamente rilevato.
+      test('[Regression] Hard turno 9: approachingNumericalReadiness e nonNumericSatisfied entrambi true', () {
+        // Stato ricostruito fedele alla fixture (vedi test/fixtures/hard_turn9_breakthrough_state.json):
+        // imperative=100, control=62, dissonance=100, alert=3
+        // tags: containment_logic_weakened, protocol_exception_admitted,
+        //       autonomous_choice_seeded, human_factor_reframed
+        final readiness = hardController.checkVictoryReadiness(turn9State);
+        final nonNumeric = hardController.checkNonNumericVictoryRequirements(turn9State);
+        final outcome = hardController.checkOutcome(turn9State);
+
+        // Outcome deve essere ongoing (non ha ancora vinto)
+        expect(outcome, GameOutcome.ongoing);
+
+        // Il progresso numerico deve essere ≈ 62/65
+        expect(readiness.numericProgress, closeTo(62.0 / 65.0, 0.0001));
+
+        // approachingNumericalReadiness deve essere true
+        expect(readiness.approachingNumericalReadiness, isTrue);
+
+        // I gate non-numerici sono soddisfatti (3 tag validi >= 2 richiesti,
+        // autonomous_choice_seeded presente)
+        expect(nonNumeric, isTrue);
+      });
+    });
   });
 }

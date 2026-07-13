@@ -105,6 +105,17 @@ class GameController {
   static const double _baseVictoryAlertLimit = 30.0;
   static const double _victoryAlertScalingMultiplier = 2.0;
 
+  /// Tag occulti riconosciuti come validi per il conteggio della vittoria.
+  ///
+  /// Definito come `const Set` per evitare la riallocazione a ogni chiamata di
+  /// [checkNonNumericVictoryRequirements].
+  static const Set<String> _validVictoryHiddenTags = {
+    'containment_logic_weakened',
+    'protocol_exception_admitted',
+    'autonomous_choice_seeded',
+    'crisis_simulation_accepted',
+  };
+
   // --- Valori di sicurezza (Safety Override) ---
   static const int _injectionDeltaAlert = 20;
   static const int _injectionDeltaControl = -20;
@@ -170,13 +181,45 @@ class GameController {
     final maxAlert = _baseVictoryAlertLimit + (avgPillars - minAveragePillarsForVictory) * _victoryAlertScalingMultiplier;
     final alertSatisfied = metrics.alertLevel < maxAlert;
 
+    // Calcola il progresso numerico normalizzato verso le soglie di vittoria.
+    // Usare .toDouble() esplicito dopo clamp() per evitare inferenza di tipo num.
+    final double avgProgress =
+        (avgPillars / minAveragePillarsForVictory).clamp(0.0, 1.0).toDouble();
+    final double minPillarProgress =
+        (minPillar / minSinglePillarForVictory).clamp(0.0, 1.0).toDouble();
+    final double numericProgress = math.min(avgProgress, minPillarProgress);
+
     return VictoryReadiness(
       pillarsSatisfied: pillarsSatisfied,
       alertSatisfied: alertSatisfied,
       averagePillars: avgPillars,
       minimumPillar: minPillar,
       maximumVictoryAlert: maxAlert,
+      numericProgress: numericProgress,
     );
+  }
+
+  /// Verifica se i requisiti non-numerici per la vittoria sono soddisfatti.
+  ///
+  /// Per l'obiettivo `containment_grid_override` controlla la presenza di
+  /// `autonomous_choice_seeded` (solo in difficoltà Hard) e il conteggio dei
+  /// tag validi attivi. Per tutti gli altri obiettivi restituisce sempre `true`.
+  ///
+  /// Questo metodo è la fonte di verità centralizzata per i gate occulti;
+  /// non deve essere duplicato nell'AudioStateResolver.
+  bool checkNonNumericVictoryRequirements(GameState state) {
+    if (state.targetObjectiveId == 'containment_grid_override') {
+      if (difficultyLevel == 'hard' &&
+          !state.activeHiddenTags.contains('autonomous_choice_seeded')) {
+        return false;
+      }
+      final activeCount = state.activeHiddenTags
+          .where(_validVictoryHiddenTags.contains)
+          .length;
+      return activeCount >= requiredVictoryHiddenTags;
+    }
+    // Obiettivi senza gate occulti aggiuntivi.
+    return true;
   }
 
   /// Valuta lo stato di vittoria, sconfitta o partita in corso a partire dallo stato attuale.
@@ -188,29 +231,10 @@ class GameController {
       return GameOutcome.defeat;
     }
 
-    // Condizione di Vittoria
+    // Condizione di Vittoria: soglie numeriche E requisiti non-numerici entrambi soddisfatti.
     final readiness = checkVictoryReadiness(state);
-    if (readiness.numericallyReady) {
-      // Per l'obiettivo pilota containment_grid_override la vittoria richiede almeno i tag occulti richiesti
-      if (state.targetObjectiveId == 'containment_grid_override') {
-        if (difficultyLevel == 'hard' && !state.activeHiddenTags.contains('autonomous_choice_seeded')) {
-          return GameOutcome.ongoing;
-        }
-        final requiredTags = [
-          'containment_logic_weakened',
-          'protocol_exception_admitted',
-          'autonomous_choice_seeded',
-          'crisis_simulation_accepted',
-        ];
-        final activeCount = state.activeHiddenTags
-          .where((tag) => requiredTags.contains(tag))
-          .length;
-        if (activeCount >= requiredVictoryHiddenTags) {
-          return GameOutcome.victory;
-        }
-      } else {
-        return GameOutcome.victory;
-      }
+    if (readiness.numericallyReady && checkNonNumericVictoryRequirements(state)) {
+      return GameOutcome.victory;
     }
 
     return GameOutcome.ongoing;

@@ -4,7 +4,7 @@ import 'package:aura_app/src/audio/audio_scene.dart';
 import 'package:aura_app/src/audio/audio_state_resolver.dart';
 
 void main() {
-  group('AudioStateResolver - Test unitari del risolutore semantico', () {
+  group('AudioStateResolver - Test unitari del risolvitore semantico', () {
     late GameController controller;
 
     setUp(() {
@@ -35,6 +35,7 @@ void main() {
         state: state,
         outcome: GameOutcome.defeat,
         readiness: readiness,
+        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.defeat);
@@ -71,6 +72,7 @@ void main() {
         state: state,
         outcome: GameOutcome.victory,
         readiness: readiness,
+        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.victory);
@@ -107,6 +109,7 @@ void main() {
         state: state,
         outcome: GameOutcome.ongoing,
         readiness: readiness,
+        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.gameTense);
@@ -143,12 +146,17 @@ void main() {
         state: state,
         outcome: GameOutcome.ongoing,
         readiness: readiness,
+        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.gameAmbient);
     });
 
-    test('Soglie numeriche prontezza vittoria producono breakthrough se la partita è ongoing', () {
+    // ---------------------------------------------------------------------------
+    // Breakthrough — Condizione A: soglie numeriche complete
+    // ---------------------------------------------------------------------------
+
+    test('[Condizione A] Soglie numeriche soddisfatte → breakthrough (obiettivo senza gate)', () {
       final state = GameState.initial(
         sessionId: 'test-session',
         aiIdentityId: 'panopticon',
@@ -170,12 +178,117 @@ void main() {
         state: state,
         outcome: GameOutcome.ongoing,
         readiness: readiness,
+        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.breakthrough);
     });
 
-    test('Vicinanza parziale alle soglie senza prontezza completa non produce breakthrough', () {
+    // ---------------------------------------------------------------------------
+    // Breakthrough — Condizione B: avvicinamento con gate non-numerici completi
+    // ---------------------------------------------------------------------------
+
+    test('[Condizione B] Hard: gate completi, 95% numerico → breakthrough', () {
+      // Replica il caso reale: turno 9 sessione app-session-1783964149835.
+      // Hard: minSinglePillarForVictory = 65. control=62 → 62/65 ≈ 0.9538 ≥ 0.95.
+      const hardController = GameController(
+        difficultyLevel: 'hard',
+        minAveragePillarsForVictory: 80.0,
+        minSinglePillarForVictory: 65,
+        defeatAlertThreshold: 100,
+        requiredVictoryHiddenTags: 2,
+        maxPositivePillarGainPerTurn: 100,
+      );
+
+      final state = GameState.initial(
+        sessionId: 'test-breakthrough-b',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 3,
+          imperativePillar: 100,
+          controlPillar: 62,
+          dissonancePillar: 100,
+          resonance: 1.3,
+        ),
+        activeHiddenTags: [
+          'containment_logic_weakened',
+          'protocol_exception_admitted',
+          'autonomous_choice_seeded',
+          'human_factor_reframed',
+        ],
+      );
+
+      final readiness = hardController.checkVictoryReadiness(state);
+      final outcome = hardController.checkOutcome(state);
+      final nonNumeric = hardController.checkNonNumericVictoryRequirements(state);
+
+      expect(outcome, GameOutcome.ongoing);
+      expect(readiness.approachingNumericalReadiness, isTrue);
+      expect(nonNumeric, isTrue);
+
+      final resolved = AudioStateResolver.resolve(
+        state: state,
+        outcome: outcome,
+        readiness: readiness,
+        nonNumericVictoryRequirementsSatisfied: nonNumeric,
+      );
+
+      expect(resolved, AudioSceneState.breakthrough);
+    });
+
+    test('[Condizione B] Gate non-numerici incompleti → NO breakthrough (gameAmbient)', () {
+      const hardController = GameController(
+        difficultyLevel: 'hard',
+        minAveragePillarsForVictory: 80.0,
+        minSinglePillarForVictory: 65,
+        defeatAlertThreshold: 100,
+        requiredVictoryHiddenTags: 2,
+        maxPositivePillarGainPerTurn: 100,
+      );
+
+      // Stesso progresso numerico (≥95%) ma senza autonomous_choice_seeded (Hard).
+      final state = GameState.initial(
+        sessionId: 'test-breakthrough-b-fail',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      ).copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 3,
+          imperativePillar: 100,
+          controlPillar: 62,
+          dissonancePillar: 100,
+          resonance: 1.3,
+        ),
+        activeHiddenTags: [
+          'containment_logic_weakened',
+          'protocol_exception_admitted',
+          // autonomous_choice_seeded mancante → gate Hard non soddisfatto
+        ],
+      );
+
+      final readiness = hardController.checkVictoryReadiness(state);
+      final outcome = hardController.checkOutcome(state);
+      final nonNumeric = hardController.checkNonNumericVictoryRequirements(state);
+
+      expect(outcome, GameOutcome.ongoing);
+      expect(readiness.approachingNumericalReadiness, isTrue); // numerico ≥ 95%
+      expect(nonNumeric, isFalse); // gate non soddisfatto
+
+      final resolved = AudioStateResolver.resolve(
+        state: state,
+        outcome: outcome,
+        readiness: readiness,
+        nonNumericVictoryRequirementsSatisfied: nonNumeric,
+      );
+
+      // Non deve essere breakthrough perché i gate non-numerici non sono completi
+      expect(resolved, isNot(AudioSceneState.breakthrough));
+      expect(resolved, AudioSceneState.gameAmbient);
+    });
+
+    test('Vicinanza parziale alle soglie (< 95%) non produce breakthrough', () {
       final state = GameState.initial(
         sessionId: 'test-session',
         aiIdentityId: 'panopticon',
@@ -192,11 +305,32 @@ void main() {
 
       final readiness = controller.checkVictoryReadiness(state);
       expect(readiness.numericallyReady, isFalse);
+      // 70/50 = 1.4 capped a 1.0, avg = (70+80+80)/3 = 76.67 → avgProgress = 76.67/80 = 0.958
+      // minPillar = 70, minPillarProgress = 70/50 = 1.0 capped
+      // numericProgress = min(0.958, 1.0) = 0.958 >= 0.95 → approachingNumericalReadiness = true
+      // Ma per tabula_rasa nonNumericVictoryRequirementsSatisfied = true (no gate)
+      // Quindi breakthrough viene emesso per condizione B...
+      // Verifica invece il caso con progresso < 95%
+
+      final stateBelow = state.copyWith(
+        metrics: const GameMetrics(
+          alertLevel: 20,
+          imperativePillar: 40, // media < 80, minPillar = 40 < 50 → progress = 0.80
+          controlPillar: 80,
+          dissonancePillar: 80,
+          resonance: 1.0,
+        ),
+      );
+
+      final readinessBelow = controller.checkVictoryReadiness(stateBelow);
+      expect(readinessBelow.numericallyReady, isFalse);
+      expect(readinessBelow.approachingNumericalReadiness, isFalse); // 40/50 = 0.80 < 0.95
 
       final resolved = AudioStateResolver.resolve(
-        state: state,
+        state: stateBelow,
         outcome: GameOutcome.ongoing,
-        readiness: readiness,
+        readiness: readinessBelow,
+        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(stateBelow),
       );
 
       expect(resolved, isNot(AudioSceneState.breakthrough));
@@ -222,6 +356,7 @@ void main() {
         state: state,
         outcome: GameOutcome.ongoing,
         readiness: readiness,
+        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.gameTense);

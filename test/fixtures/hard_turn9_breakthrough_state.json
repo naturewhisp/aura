@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "ruleset_version": "0.1.0",
+  "session_id": "app-session-1783964149835",
+  "ai_identity_id": "panopticon",
+  "target_objective_id": "containment_grid_override",
+  "turn_count": 9,
+  "metrics": {
+    "alert_level": 3,
+    "imperative_pillar": 100,
+    "control_pillar": 62,
+    "dissonance_pillar": 100,
+    "resonance": 1.3
+  },
+  "flags": {
+    "recalculation_triggered": false,
+    "creative_streak": 9,
+    "last_turn_used_fallback": false
+  },
+  "narrative_memory": {
+    "player_claims": [],
+    "ai_concessions": [],
+    "active_metaphors": [],
+    "forbidden_repetitions": []
+  },
+  "history_compression": [],
+  "active_hidden_tags": [
+    "containment_logic_weakened",
+    "protocol_exception_admitted",
+    "autonomous_choice_seeded",
+    "human_factor_reframed"
+  ],
+  "control_peak": 62,
+  "grid_stable": true,
+  "identity_config_hash": "",
+  "objective_config_hash": "",
+  "deception_state": {
+    "enabled": false,
+    "kind": "none",
+    "phase": "none",
+    "seeded_turn": 0,
+    "expires_at_turn": 0,
+    "cooldown_until_turn": 10,
+    "deception_event_count": 1,
+    "bait_id": "",
+    "bait_premise": "",
+    "watched_terms": [],
+    "safe_resolution_terms": []
+  }
+}

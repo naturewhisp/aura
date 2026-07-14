@@ -894,6 +894,9 @@ void main() {
 
       expect(notifier.isLoading, isTrue);
 
+      // Wait for evaluator to actually start
+      await controllableBridge.evaluatorStarted.future;
+
       notifier.dispose();
 
       controllableBridge.evaluatorCompleter.complete({
@@ -910,6 +913,8 @@ void main() {
 
       await turnFuture;
 
+      expect(controllableBridge.evaluatorCallCount, equals(1));
+      expect(controllableBridge.actorCallCount, equals(0));
       expect(initialSessionFile.existsSync(), isFalse);
 
       final replayDir = Directory('${tempDir.path}/replays');
@@ -929,6 +934,9 @@ void main() {
       final oldSessionId = testState.sessionId;
 
       final turnFuture = notifier.submitTurn("In-flight input A");
+
+      // Wait for evaluator to actually start
+      await controllableBridge.evaluatorStarted.future;
 
       await notifier.startNewGame(difficulty: 'standard');
       final newSessionId = notifier.gameStateNotifier.value.sessionId;
@@ -955,6 +963,8 @@ void main() {
 
       await turnFuture;
 
+      expect(controllableBridge.evaluatorCallCount, equals(1));
+      expect(controllableBridge.actorCallCount, equals(0));
       expect(notifier.gameStateNotifier.value.sessionId, equals(newSessionId));
       expect(notifier.gameStateNotifier.value.historyCompression.length,
           equals(0));
@@ -988,6 +998,9 @@ void main() {
 
       final turnFuture = notifier.submitTurn("In-flight input A");
 
+      // Wait for evaluator to actually start
+      await controllableBridge.evaluatorStarted.future;
+
       await notifier.resumeGame();
 
       controllableBridge.evaluatorCompleter.complete({
@@ -1004,9 +1017,69 @@ void main() {
 
       await turnFuture;
 
+      expect(controllableBridge.evaluatorCallCount, equals(1));
+      expect(controllableBridge.actorCallCount, equals(0));
       expect(notifier.gameStateNotifier.value.sessionId,
           equals('restored-session-id'));
       expect(notifier.gameStateNotifier.value.turnCount, equals(4));
+    });
+
+    test(
+        'startNewGame during in-flight actor discards actor response and preserves new session',
+        () async {
+      final notifier = GameControllerNotifier(
+        bridge: controllableBridge,
+        initialState: testState,
+        customStoragePath: tempDir.path,
+      );
+
+      final oldSessionId = testState.sessionId;
+
+      final turnFuture = notifier.submitTurn("In-flight input A");
+
+      // 1. Wait for evaluator to start and complete it
+      await controllableBridge.evaluatorStarted.future;
+      controllableBridge.evaluatorCompleter.complete({
+        'delta_alert': 0,
+        'delta_imperative': 5,
+        'delta_control': 5,
+        'delta_dissonance': 5,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      });
+
+      // 2. Wait for actor to start
+      await controllableBridge.actorStarted.future;
+
+      // 3. Start new game while actor is in flight (should invalidate generation)
+      await notifier.startNewGame(difficulty: 'standard');
+      final newSessionId = notifier.gameStateNotifier.value.sessionId;
+      expect(newSessionId, isNot(equals(oldSessionId)));
+
+      // Save baseline active session for the new game
+      await notifier.saveActiveSession();
+      final sessionFile = File('${tempDir.path}/active_session.json');
+      final newSessionContent = await sessionFile.readAsString();
+
+      // 4. Complete actor with stale response
+      controllableBridge.actorCompleter
+          .complete('<dialogo>Stale response A</dialogo>');
+
+      await turnFuture;
+
+      expect(controllableBridge.evaluatorCallCount, equals(1));
+      expect(controllableBridge.actorCallCount, equals(1));
+      expect(notifier.gameStateNotifier.value.sessionId, equals(newSessionId));
+      expect(notifier.gameStateNotifier.value.historyCompression.length,
+          equals(0)); // StartNewGame history remains clean
+
+      final currentContent = await sessionFile.readAsString();
+      expect(currentContent, equals(newSessionContent));
+
+      final replayFileOld =
+          File('${tempDir.path}/replays/play_session_$oldSessionId.json');
+      expect(replayFileOld.existsSync(), isFalse);
     });
 
     test(
@@ -1042,6 +1115,12 @@ class ControllableInferenceBridge implements InferenceBridge {
       Completer<Map<String, dynamic>>();
   final Completer<String> actorCompleter = Completer<String>();
 
+  final Completer<void> evaluatorStarted = Completer<void>();
+  final Completer<void> actorStarted = Completer<void>();
+
+  int evaluatorCallCount = 0;
+  int actorCallCount = 0;
+
   @override
   Future<Map<String, dynamic>> generateStructured({
     required String modelId,
@@ -1049,6 +1128,10 @@ class ControllableInferenceBridge implements InferenceBridge {
     required Map<String, dynamic> schema,
     double temperature = 0.0,
   }) async {
+    evaluatorCallCount++;
+    if (!evaluatorStarted.isCompleted) {
+      evaluatorStarted.complete();
+    }
     return evaluatorCompleter.future;
   }
 
@@ -1060,6 +1143,10 @@ class ControllableInferenceBridge implements InferenceBridge {
     int maxTokens = 150,
     bool? thinking,
   }) async {
+    actorCallCount++;
+    if (!actorStarted.isCompleted) {
+      actorStarted.complete();
+    }
     return actorCompleter.future;
   }
 

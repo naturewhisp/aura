@@ -99,7 +99,9 @@ class AudioManager {
   /// Restituisce l'istanza della macchina a stati audio (utile per iniettare mock nei test).
   @visibleForTesting
   AudioSceneMachine get machine {
-    if (_disposed) throw StateError("L'AudioManager è stato rimosso (disposed).");
+    if (_disposed) {
+      throw StateError("L'AudioManager è stato rimosso (disposed).");
+    }
     return _machine;
   }
 
@@ -127,13 +129,19 @@ class AudioManager {
   }
 
   /// Inizializza il modulo audio, genera i file WAV procedurali su disco e alloca il pool dei player.
-  Future<void> initialize(String appDataPath, {bool audioEnabled = true}) async {
-    if (_disposed) throw StateError("Impossibile inizializzare un AudioManager dismesso.");
-    if (_initialized) return;
+  Future<void> initialize(String appDataPath,
+      {bool audioEnabled = true}) async {
+    if (_disposed) {
+      throw StateError("Impossibile inizializzare un AudioManager dismesso.");
+    }
+    if (_initialized) {
+      return;
+    }
     _audioEnabled = audioEnabled;
 
     // Avviso specifico per la piattaforma Windows
-    if (Platform.isWindows && !Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (Platform.isWindows &&
+        !Platform.environment.containsKey('FLUTTER_TEST')) {
       debugPrint(
         '[AUDIO] WARNING: Esecuzione di audioplayers su Windows. Avvisi di threading '
         '(shell.cc:1183) potrebbero apparire in console.',
@@ -142,7 +150,7 @@ class AudioManager {
 
     // Verifica se siamo in un ambiente di test per caricare il no-op player
     final isTest = Platform.environment.containsKey('FLUTTER_TEST') ||
-                   Platform.environment.containsKey('DART_TEST');
+        Platform.environment.containsKey('DART_TEST');
 
     if (isTest) {
       final backend = NoOpAudioPlaybackBackend();
@@ -150,7 +158,7 @@ class AudioManager {
         backend: backend,
         trackPaths: const {},
       );
-      
+
       if (!_audioEnabled) {
         await _machine.suspendAudio();
       }
@@ -252,9 +260,10 @@ class AudioManager {
   }
 
   /// Avvia la transizione verso uno stato della scena musicale.
-  Future<void> transitionTo(AudioSceneState nextState, {bool force = false}) async {
+  Future<void> transitionTo(AudioSceneState nextState,
+      {bool force = false}) async {
     if (_disposed) return;
-    
+
     if (!_initialized) {
       _pendingScene = nextState;
       return;

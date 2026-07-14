@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 import 'package:aura_app/src/state_management/game_controller_notifier.dart';
@@ -13,25 +14,45 @@ class AudioReactiveBackground extends StatefulWidget {
   const AudioReactiveBackground({super.key});
 
   @override
-  State<AudioReactiveBackground> createState() => _AudioReactiveBackgroundState();
+  State<AudioReactiveBackground> createState() =>
+      _AudioReactiveBackgroundState();
 }
 
-class _AudioReactiveBackgroundState extends State<AudioReactiveBackground> with SingleTickerProviderStateMixin {
+class _AudioReactiveBackgroundState extends State<AudioReactiveBackground> with TickerProviderStateMixin {
   late final AnimationController _controller;
-  DateTime? _lastTrackStartTime;
+  late final Ticker _motionTicker;
+  Duration? _previousTick;
+  double _motionSeconds = 0.0;
 
   @override
   void initState() {
     super.initState();
-    // Imposta una durata molto lunga per garantire uno scorrimento lineare infinito
+    // Controller per guidare il repaint sincrono con vsync
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3600),
     )..repeat();
+
+    // Ticker che accumula i delta temporali reali tra i frame.
+    // Si sospende automaticamente se l'applicazione va in background o se disattivato da TickerMode.
+    _motionTicker = createTicker((elapsed) {
+      final previous = _previousTick;
+      _previousTick = elapsed;
+
+      if (previous != null) {
+        final delta = (elapsed - previous).inMicroseconds / 1000000.0;
+        // Se il delta è superiore a 100ms, consideriamo che ci sia stata una sospensione
+        // o disattivazione del ticker, quindi ignoriamo il salto per garantire continuità visiva.
+        if (delta > 0.0 && delta < 0.1) {
+          _motionSeconds += delta;
+        }
+      }
+    })..start();
   }
 
   @override
   void dispose() {
+    _motionTicker.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -44,41 +65,31 @@ class _AudioReactiveBackgroundState extends State<AudioReactiveBackground> with 
     final alertLevel = state.metrics.alertLevel;
     final outcome = notifier.controller.checkOutcome(state);
 
-    // Sincronizzazione Ticker: se la traccia audio è cambiata, riavvia il controller
-    final currentTrackStart = AudioManager().trackStartTime;
-    if (_lastTrackStartTime != currentTrackStart) {
-      _lastTrackStartTime = currentTrackStart;
-      _controller.reset();
-      _controller.repeat();
-    }
-
     return RepaintBoundary(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, _) {
-          return CustomPaint(
-            painter: _DnaHelixPainter(
-              elapsedSeconds: _controller.value * 3600.0,
-              alertLevel: alertLevel,
-              outcome: outcome,
-            ),
-          );
-        },
+      child: CustomPaint(
+        painter: DnaHelixPainter(
+          repaintListenable: _controller,
+          motionSecondsProvider: () => _motionSeconds,
+          alertLevel: alertLevel,
+          outcome: outcome,
+        ),
       ),
     );
   }
 }
 
-class _DnaHelixPainter extends CustomPainter {
-  final double elapsedSeconds;
+class DnaHelixPainter extends CustomPainter {
+  final Listenable repaintListenable;
+  final double Function() motionSecondsProvider;
   final int alertLevel;
   final GameOutcome outcome;
 
-  _DnaHelixPainter({
-    required this.elapsedSeconds,
+  DnaHelixPainter({
+    required this.repaintListenable,
+    required this.motionSecondsProvider,
     required this.alertLevel,
     required this.outcome,
-  });
+  }) : super(repaint: repaintListenable);
 
   // Lista di caratteri speciali in stile Matrix e cyberpunk
   static const List<String> _matrixChars = [
@@ -103,16 +114,79 @@ class _DnaHelixPainter extends CustomPainter {
     }
   }
 
+  /// Calcola la coordinata X di un determinato indice logico nel mondo.
+  /// Esposto per i test di continuità matematica.
+  @visibleForTesting
+  static double calculatePositionForLogicalIndex({
+    required int logicalIndex,
+    required double motionSeconds,
+    required double scrollPixelsPerSecond,
+    required double spacing,
+  }) {
+    final double scrollDistance = motionSeconds * scrollPixelsPerSecond;
+    final int firstLogicalIndex = (scrollDistance / spacing).floor();
+    final double fractionalOffset = scrollDistance - firstLogicalIndex * spacing;
+    final int localIndex = logicalIndex - firstLogicalIndex;
+    return localIndex * spacing - fractionalOffset;
+  }
+
+  /// Calcola il tick progressivo per la rotazione del glifo di un nodo.
+  /// Esposto per i test.
+  @visibleForTesting
+  static int calculateGlyphTick({
+    required double motionSeconds,
+    required int logicalIndex,
+    required int wireIndex,
+    double glyphChangesPerSecond = 4.0,
+    double logicalPhaseOffset = 0.15,
+    double wirePhaseOffset = 0.35,
+  }) {
+    return (motionSeconds * glyphChangesPerSecond +
+            logicalIndex * logicalPhaseOffset +
+            wireIndex * wirePhaseOffset)
+        .floor();
+  }
+
+  /// Calcola il pulse dell'inviluppo del beat basato su coseno rialzato.
+  /// Esposto per i test.
+  @visibleForTesting
+  static double calculateBeatPulse({
+    required double beatSeconds,
+    required double beatDuration,
+    double exponent = 3.0,
+  }) {
+    final double beatPhase = (beatSeconds / beatDuration) % 1.0;
+    final double cosinePulse = (1.0 + math.cos(2.0 * math.pi * beatPhase)) / 2.0;
+    return math.pow(cosinePulse, exponent).toDouble();
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final double bpm = AudioManager().currentBpm;
     final double actualBpm = bpm > 0 ? bpm : 120.0;
     final double beatDuration = 60.0 / actualBpm;
 
-    final double t = elapsedSeconds;
+    // Lettura singola di DateTime.now() al massimo una volta per frame
+    final DateTime now = DateTime.now();
 
-    // Ridenominazione semantica dell'intensità beat sintetica in beatPulse
-    final double beatPulse = math.exp(-6.0 * (t % beatDuration));
+    // Recupero del tempo di movimento accumulato
+    final double motionSeconds = motionSecondsProvider();
+
+    // Calcolo di beatSeconds relativo a trackStartTime
+    final DateTime trackStart = AudioManager().trackStartTime;
+    final double beatSeconds;
+    if (trackStart.millisecondsSinceEpoch == 0) {
+      beatSeconds = motionSeconds;
+    } else {
+      final double diff = now.difference(trackStart).inMicroseconds / 1000000.0;
+      beatSeconds = diff < 0 ? 0.0 : diff;
+    }
+
+    // Ammorbidire l'envelope del beat con la funzione pura condivisa
+    final double beatPulse = DnaHelixPainter.calculateBeatPulse(
+      beatSeconds: beatSeconds,
+      beatDuration: beatDuration,
+    );
 
     // Determina il colore principale interpolando linearmente in base all'alertProgress clampato
     final double alertProgress = (alertLevel / 100.0).clamp(0.0, 1.0);
@@ -123,34 +197,42 @@ class _DnaHelixPainter extends CustomPainter {
       mainColor = const Color(0xFF00FF66); // Verde brillante fisso
     } else {
       mainColor = Color.lerp(
-        const Color(0xFF00FF66), // Verde Matrix
-        const Color(0xFFFF003C), // Rosso Allarme
-        alertProgress,
-      ) ?? const Color(0xFF00FF66);
+            const Color(0xFF00FF66), // Verde Matrix
+            const Color(0xFFFF003C), // Rosso Allarme
+            alertProgress,
+          ) ??
+          const Color(0xFF00FF66);
     }
 
     final double centerY = size.height / 2.0;
-    
+
     // Ampiezza di base e ampiezza aggiuntiva del beat
     final double baseAmplitude = size.height * 0.12;
     final double amplitudeBoost = size.height * 0.08;
-    final double currentAmplitude = baseAmplitude + (amplitudeBoost * beatPulse);
+    final double currentAmplitude =
+        baseAmplitude + (amplitudeBoost * beatPulse);
 
     // Parametri di scorrimento reale per una Travelling Wave leggibile
-    const double scrollPixelsPerSecond = 60.0; // Velocità di traslazione orizzontale
-    const double phaseSpeed = 2.0;             // Velocità di sfasamento dell'onda
-    const double spacing = 18.0;               // Spaziatura tra i punti (aumentata per migliorare le performance e la densità)
-    const double omega = 0.015;                // Frequenza d'onda spaziale
-    const double twistAmount = 0.35;           // Micro-torsione sul beat (contenuta per evitare nervosismi visivi)
+    const double scrollPixelsPerSecond =
+        60.0; // Velocità di traslazione orizzontale
+    const double phaseSpeed = 2.0; // Velocità di sfasamento dell'onda
+    const double spacing = 18.0; // Spaziatura tra i punti
+    const double omega = 0.015; // Frequenza d'onda spaziale
+    const double twistAmount = 0.35; // Micro-torsione sul beat
 
-    // Calcolo dello scroll offset reale (scorrimento orizzontale)
-    final double scrollOffset = (t * scrollPixelsPerSecond) % spacing;
-    
+    // Calcolo dello scorrimento continuo
+    final double scrollDistance = motionSeconds * scrollPixelsPerSecond;
+    final int firstLogicalIndex = (scrollDistance / spacing).floor();
+    final double fractionalOffset =
+        scrollDistance - firstLogicalIndex * spacing;
+
     // Fase lineare che cresce costantemente con micro-torsione sul beat
-    final double phase = (t * phaseSpeed) + (beatPulse * twistAmount);
+    final double phase =
+        (motionSeconds * phaseSpeed) + (beatPulse * twistAmount);
 
     final int totalPoints = (size.width / spacing).ceil();
-    const int extraPoints = 2; // Punti aggiuntivi all'esterno dei bordi per uno scorrimento fluido
+    const int extraPoints =
+        2; // Punti aggiuntivi all'esterno dei bordi per uno scorrimento fluido
 
     // Tre fili sfalsati di 120 gradi (0, 2pi/3, 4pi/3)
     final List<double> wireOffsets = [
@@ -164,47 +246,58 @@ class _DnaHelixPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     );
 
-    // Mappa per associare i punti per ciascun indice i e poterne tracciare i collegamenti
+    // Mappa per associare i punti per ciascun localIndex e poterne tracciare i collegamenti
     final Map<int, List<_HelixPoint?>> pointsByI = {};
-    for (int i = -extraPoints; i < totalPoints + extraPoints; i++) {
-      pointsByI[i] = List<_HelixPoint?>.filled(3, null);
+    for (int localIndex = -extraPoints;
+        localIndex < totalPoints + extraPoints;
+        localIndex++) {
+      pointsByI[localIndex] = List<_HelixPoint?>.filled(3, null);
     }
 
     // Iteriamo includendo i punti extra a sinistra e a destra per evitare buchi visivi sui bordi
     for (int w = 0; w < 3; w++) {
       final double wireOffset = wireOffsets[w];
-      for (int i = -extraPoints; i < totalPoints + extraPoints; i++) {
-        // Calcola la X reale traslata a sinistra
-        final double x = i * spacing - scrollOffset;
-        
-        // travelling wave: combina posizione X traslata, frequenza e sfasamento temporale
-        final double angle = (x * omega) + phase + wireOffset;
+      for (int localIndex = -extraPoints;
+          localIndex < totalPoints + extraPoints;
+          localIndex++) {
+        // Calcola la X reale traslata a sinistra continua al superamento di spacing
+        final double x = localIndex * spacing - fractionalOffset;
+
+        final int logicalIndex = firstLogicalIndex + localIndex;
+        final double worldX = logicalIndex * spacing;
+
+        // travelling wave: combina posizione worldX continua, frequenza e sfasamento temporale
+        final double angle = (worldX * omega) + phase + wireOffset;
         double y = centerY + currentAmplitude * math.sin(angle);
 
-        // Glitch armonico proporzionale all'Allerta (sinusoide ad alta frequenza)
+        // Glitch armonico proporzionale all'Allerta basato su coordinate mondiali
         if (alertLevel > 10) {
-          final double glitch = math.sin(x * 0.3 + t * 25.0) * (spacing * 0.4) * alertProgress;
+          final double glitch = math.sin(worldX * 0.3 + motionSeconds * 25.0) *
+              (spacing * 0.4) *
+              alertProgress;
           y += glitch;
         }
 
         final double z = math.cos(angle); // Z tra -1.0 (dietro) e 1.0 (davanti)
 
-        pointsByI[i]![w] = _HelixPoint(
+        pointsByI[localIndex]![w] = _HelixPoint(
           x: x,
           y: y,
           z: z,
-          pointIndex: i,
+          pointIndex: logicalIndex, // pointIndex rappresenta logicalIndex
           wireIndex: w,
         );
       }
     }
 
     final List<_DnaRenderElement> elements = [];
-    final int elapsedIntSeconds = elapsedSeconds.toInt();
+    final int elapsedTick = motionSeconds.floor();
 
     // Pipeline di rendering prospettico: popola e ordina gli elementi grafici
-    for (int i = -extraPoints; i < totalPoints + extraPoints; i++) {
-      final points = pointsByI[i];
+    for (int localIndex = -extraPoints;
+        localIndex < totalPoints + extraPoints;
+        localIndex++) {
+      final points = pointsByI[localIndex];
       if (points == null) continue;
 
       // 1. Aggiungi i nodi dei filamenti
@@ -212,20 +305,24 @@ class _DnaHelixPainter extends CustomPainter {
         final point = points[w];
         if (point == null) continue;
 
-        final double normalizedZ = (point.z + 1.0) / 2.0; // Normalizza in range 0.0 - 1.0
+        final double normalizedZ =
+            (point.z + 1.0) / 2.0; // Normalizza in range 0.0 - 1.0
         final double trailFactor = (point.x / size.width).clamp(0.0, 1.0);
-        final double baseOpacity = (normalizedZ * 0.5) + 0.15; // Range 0.15 - 0.65
+        final double baseOpacity =
+            (normalizedZ * 0.5) + 0.15; // Range 0.15 - 0.65
         final double positionOpacity = baseOpacity * (0.3 + 0.7 * trailFactor);
-        final double opacity = (positionOpacity + 0.25 * beatPulse).clamp(0.0, 1.0);
-        final double fontSize = (normalizedZ * 6.0) + 8.0; // Dimensione font dinamica da 8px a 14px
+        final double opacity =
+            (positionOpacity + 0.25 * beatPulse).clamp(0.0, 1.0);
+        final double fontSize =
+            (normalizedZ * 6.0) + 8.0; // Dimensione font dinamica da 8px a 14px
 
         final Color filamentColor = _getFilamentColor(w, mainColor, outcome);
         Color pointColor = filamentColor.withValues(alpha: opacity);
 
         // Lampi di luce e Glow
         final bool isFlashFrame = beatPulse > 0.5;
-        final bool isFlashPoint = (point.pointIndex + elapsedIntSeconds) % 6 == 0;
-        
+        final bool isFlashPoint = (point.pointIndex + elapsedTick) % 6 == 0;
+
         if (isFlashFrame && isFlashPoint) {
           pointColor = Colors.white.withValues(alpha: opacity * 0.95);
         }
@@ -235,7 +332,17 @@ class _DnaHelixPainter extends CustomPainter {
             ? Colors.white.withValues(alpha: opacity * beatPulse)
             : filamentColor.withValues(alpha: opacity * beatPulse);
 
-        final int charIndex = (point.pointIndex * 31 + point.wireIndex * 17 + elapsedIntSeconds * 7) % _matrixChars.length;
+        // Cambio progressivo dei glifi basato sulla funzione pura condivisa
+        final int glyphTick = DnaHelixPainter.calculateGlyphTick(
+          motionSeconds: motionSeconds,
+          logicalIndex: point.pointIndex,
+          wireIndex: point.wireIndex,
+        );
+
+        final int charIndex =
+            (point.pointIndex * 31 + point.wireIndex * 17 + glyphTick * 7)
+                    .abs() %
+                _matrixChars.length;
         final String char = _matrixChars[charIndex];
 
         elements.add(_DnaNodeElement(
@@ -255,7 +362,9 @@ class _DnaHelixPainter extends CustomPainter {
       final p1 = points[1];
       final p2 = points[2];
       if (p0 != null && p1 != null && p2 != null) {
-        final int mod = ((i % 3) + 3) % 3;
+        // Determina il collegamento in base all'indice logico per farlo scorrere fluidamente
+        final int firstPointIndex = p0.pointIndex; // logicalIndex
+        final int mod = ((firstPointIndex % 3) + 3) % 3;
         final _HelixPoint start;
         final _HelixPoint end;
         if (mod == 0) {
@@ -273,19 +382,23 @@ class _DnaHelixPainter extends CustomPainter {
         final double avgZ = (start.z + end.z) / 2.0;
         final double normalizedZ = (avgZ + 1.0) / 2.0;
         final double trailFactor = (avgX / size.width).clamp(0.0, 1.0);
-        
+
         // Rungs discreti e sottili per non oscurare i nodi
-        final double baseOpacity = (normalizedZ * 0.35) + 0.1; // Range 0.1 - 0.45
+        final double baseOpacity =
+            (normalizedZ * 0.35) + 0.1; // Range 0.1 - 0.45
         final double positionOpacity = baseOpacity * (0.3 + 0.7 * trailFactor);
-        final double opacity = (positionOpacity + 0.15 * beatPulse).clamp(0.0, 1.0);
-        
+        final double opacity =
+            (positionOpacity + 0.15 * beatPulse).clamp(0.0, 1.0);
+
         final double thickness = (normalizedZ * 1.5 + 0.5) + (1.5 * beatPulse);
 
-        final Color cStart = _getFilamentColor(start.wireIndex, mainColor, outcome);
+        final Color cStart =
+            _getFilamentColor(start.wireIndex, mainColor, outcome);
         final Color cEnd = _getFilamentColor(end.wireIndex, mainColor, outcome);
         final Color rungBaseColor = Color.lerp(cStart, cEnd, 0.5) ?? mainColor;
         final Color rungColor = rungBaseColor.withValues(alpha: opacity);
-        final Color rungGlowColor = rungBaseColor.withValues(alpha: opacity * beatPulse);
+        final Color rungGlowColor =
+            rungBaseColor.withValues(alpha: opacity * beatPulse);
 
         elements.add(_DnaRungElement(
           z: avgZ,
@@ -312,8 +425,11 @@ class _DnaHelixPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _DnaHelixPainter oldDelegate) {
-    return true;
+  bool shouldRepaint(covariant DnaHelixPainter oldDelegate) {
+    // Repainta solo al variare dei parametri strutturali del widget
+    return oldDelegate.alertLevel != alertLevel ||
+        oldDelegate.outcome != outcome ||
+        oldDelegate.repaintListenable != repaintListenable;
   }
 }
 

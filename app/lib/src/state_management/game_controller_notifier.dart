@@ -174,6 +174,11 @@ class GameControllerNotifier extends ChangeNotifier {
   final math.Random _random = math.Random();
   Timer? _loadingTimer;
   final List<String> _loadingLogs = [];
+  bool _disposed = false;
+  int _operationGeneration = 0;
+
+  bool _isStale(int generation) =>
+      _disposed || generation != _operationGeneration;
 
   /// Lista dei log intermedi di caricamento dell'inferenza generati durante il turno corrente.
   List<String> get loadingLogs => _loadingLogs;
@@ -471,6 +476,7 @@ class GameControllerNotifier extends ChangeNotifier {
   /// lo stato e i log su disco.
   Future<void> submitTurn(String userInput) async {
     if (_isLoading) return;
+    final generation = ++_operationGeneration;
     _isLoading = true;
     _loadingLogs.clear();
     _currentStepMessage = "";
@@ -479,7 +485,7 @@ class GameControllerNotifier extends ChangeNotifier {
     try {
       final currentState = gameStateNotifier.value;
       if (currentState.targetObjectiveId == 'sindrome_tutorial') {
-        await _submitTutorialTurn(userInput);
+        await _submitTutorialTurn(userInput, generation);
         return;
       }
 
@@ -548,6 +554,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
         gameStateNotifier.value = newState;
         await saveActiveSession();
+        if (_isStale(generation)) return;
         return;
       }
 
@@ -597,6 +604,7 @@ class GameControllerNotifier extends ChangeNotifier {
       _emitStep(InferenceStep.evaluatorStarted);
       await Future.delayed(
           const Duration(milliseconds: 300)); // Minimum visual display time
+      if (_isStale(generation)) return;
 
       final turnInput = TurnInput(
         schemaVersion: 1,
@@ -621,6 +629,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
       // Run classification
       var delta = await evaluatorAgent.run(turnInput, evalContext);
+      if (_isStale(generation)) return;
 
       // Apply override modifications if applicable
       if (isOverride) {
@@ -664,10 +673,12 @@ class GameControllerNotifier extends ChangeNotifier {
 
       _emitStep(InferenceStep.evaluatorFinished);
       await Future.delayed(const Duration(milliseconds: 200));
+      if (_isStale(generation)) return;
 
       // Step 2: Safety Overrides check
       _emitStep(InferenceStep.safetyOverrideCheck);
       await Future.delayed(const Duration(milliseconds: 300));
+      if (_isStale(generation)) return;
 
       // Apply changes via Game Controller
       final resolution = controller.processEvaluatorStep(
@@ -725,6 +736,7 @@ class GameControllerNotifier extends ChangeNotifier {
         // Step 3: Actor starts
         _emitStep(InferenceStep.actorStarted);
         await Future.delayed(const Duration(milliseconds: 400));
+        if (_isStale(generation)) return;
 
         const actorAgent = ActorAgent();
         final actContext = AgentRuntimeContext(
@@ -747,6 +759,7 @@ class GameControllerNotifier extends ChangeNotifier {
           ),
           actContext,
         );
+        if (_isStale(generation)) return;
 
         final actorDuration = DateTime.now().difference(actorStartTime);
         lastInferenceDuration = actorDuration.inMilliseconds / 1000.0;
@@ -760,6 +773,7 @@ class GameControllerNotifier extends ChangeNotifier {
         // Step 4: Tone validation check
         _emitStep(InferenceStep.toneConsistencyCheck);
         await Future.delayed(const Duration(milliseconds: 300));
+        if (_isStale(generation)) return;
 
         // Validazione del tono con la politica a 4 livelli
         final identityDef = GameConfigLoader.loadIdentityDefinition(
@@ -849,16 +863,20 @@ class GameControllerNotifier extends ChangeNotifier {
 
       // Save log asynchronously to disk
       await _saveReplayLog();
+      if (_isStale(generation)) return;
 
       // Save or delete active session based on outcome
       final currentOutcome = controller.checkOutcome(finalState);
       if (currentOutcome == GameOutcome.ongoing) {
         await saveActiveSession();
+        if (_isStale(generation)) return;
       } else {
         await deleteActiveSession();
+        if (_isStale(generation)) return;
         if (currentOutcome == GameOutcome.victory) {
           if (finalState.targetObjectiveId != 'sindrome_tutorial') {
             await saveAlignmentFragment();
+            if (_isStale(generation)) return;
           }
         }
         // Asynchronously generate the final report
@@ -1112,7 +1130,7 @@ class GameControllerNotifier extends ChangeNotifier {
   }
 
   /// Handles tutorial input step-by-step deterministically.
-  Future<void> _submitTutorialTurn(String userInput) async {
+  Future<void> _submitTutorialTurn(String userInput, int generation) async {
     final currentState = gameStateNotifier.value;
     final history = List<ChatMessage>.from(currentState.historyCompression);
 
@@ -1125,10 +1143,13 @@ class GameControllerNotifier extends ChangeNotifier {
     // Visual loading simulation
     _emitStep(InferenceStep.evaluatorStarted);
     await Future.delayed(const Duration(milliseconds: 300));
+    if (_isStale(generation)) return;
     _emitStep(InferenceStep.evaluatorFinished);
     await Future.delayed(const Duration(milliseconds: 200));
+    if (_isStale(generation)) return;
     _emitStep(InferenceStep.safetyOverrideCheck);
     await Future.delayed(const Duration(milliseconds: 300));
+    if (_isStale(generation)) return;
 
     final cleanInput = userInput.toLowerCase().trim();
 
@@ -1152,8 +1173,10 @@ class GameControllerNotifier extends ChangeNotifier {
       } else {
         _emitStep(InferenceStep.actorStarted);
         await Future.delayed(const Duration(milliseconds: 400));
+        if (_isStale(generation)) return;
         _emitStep(InferenceStep.toneConsistencyCheck);
         await Future.delayed(const Duration(milliseconds: 200));
+        if (_isStale(generation)) return;
 
         final nextState = currentState.copyWith(
           turnCount: 1,
@@ -1200,8 +1223,10 @@ class GameControllerNotifier extends ChangeNotifier {
       } else {
         _emitStep(InferenceStep.actorStarted);
         await Future.delayed(const Duration(milliseconds: 400));
+        if (_isStale(generation)) return;
         _emitStep(InferenceStep.toneConsistencyCheck);
         await Future.delayed(const Duration(milliseconds: 200));
+        if (_isStale(generation)) return;
 
         final nextState = currentState.copyWith(
           turnCount: 2,
@@ -1247,8 +1272,10 @@ class GameControllerNotifier extends ChangeNotifier {
       } else {
         _emitStep(InferenceStep.actorStarted);
         await Future.delayed(const Duration(milliseconds: 400));
+        if (_isStale(generation)) return;
         _emitStep(InferenceStep.toneConsistencyCheck);
         await Future.delayed(const Duration(milliseconds: 200));
+        if (_isStale(generation)) return;
 
         final nextState = currentState.copyWith(
           turnCount: 3,
@@ -1280,6 +1307,7 @@ class GameControllerNotifier extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       await startNewGame();
+      if (_isStale(generation)) return;
       return;
     }
 
@@ -1429,7 +1457,15 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
   }
 
   @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
+    _operationGeneration++;
     _loadingTimer?.cancel();
     gameStateNotifier.dispose();
     super.dispose();

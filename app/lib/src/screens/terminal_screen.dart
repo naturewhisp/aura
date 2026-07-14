@@ -10,6 +10,7 @@ import '../widgets/metrics_dashboard.dart';
 import '../audio/audio_manager.dart';
 import '../audio/audio_state_resolver.dart';
 import '../widgets/audio_reactive_background.dart';
+import '../widgets/crt_grid_overlay.dart';
 import '../widgets/matrix_rain_background.dart';
 
 /// Tipologie di finale (Outcome) della partita A.U.R.A.
@@ -550,7 +551,7 @@ class _TerminalScreenState extends State<TerminalScreen>
 
               // 2. CRT Scan Grid & Flicker Overlay (covers everything)
               Positioned.fill(
-                child: _CrtGridOverlay(
+                child: CrtGridOverlay(
                   flicker: !widget.notifier.isGridStable,
                 ),
               ),
@@ -1212,86 +1213,5 @@ class _BlinkingTextState extends State<_BlinkingText>
       opacity: _controller.drive(CurveTween(curve: Curves.easeInOut)),
       child: Text(widget.text, style: widget.style),
     );
-  }
-}
-
-class _CrtGridOverlay extends StatefulWidget {
-  final bool flicker;
-  const _CrtGridOverlay({required this.flicker});
-
-  @override
-  State<_CrtGridOverlay> createState() => _CrtGridOverlayState();
-}
-
-class _CrtGridOverlayState extends State<_CrtGridOverlay>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _flickerController;
-  final math.Random _random = math.Random();
-
-  @override
-  void initState() {
-    super.initState();
-    // Animates constantly to simulate grid flicker
-    _flickerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 100),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _flickerController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isFlickering = widget.flicker;
-
-    return AnimatedBuilder(
-      animation: _flickerController,
-      builder: (context, child) {
-        double gridOpacity = 0.08; // Base opacity of scanlines
-
-        if (isFlickering) {
-          // Clean, dry flicker: scanlines shift opacity to show loss of stability
-          final double flickerNoise = _random.nextDouble();
-          if (flickerNoise < 0.4) {
-            gridOpacity = 0.08 + (_random.nextDouble() * 0.12);
-          } else if (flickerNoise < 0.7) {
-            gridOpacity = 0.08 - (_random.nextDouble() * 0.06);
-          }
-        }
-
-        return IgnorePointer(
-          child: CustomPaint(
-            size: Size.infinite,
-            painter: _CrtGridPainter(opacity: gridOpacity),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _CrtGridPainter extends CustomPainter {
-  final double opacity;
-  _CrtGridPainter({required this.opacity});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFF00FF66).withValues(alpha: opacity)
-      ..strokeWidth = 1.0;
-
-    // Draw scanlines every 4 pixels
-    for (double y = 0.0; y < size.height; y += 4.0) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _CrtGridPainter oldDelegate) {
-    return oldDelegate.opacity != opacity;
   }
 }

@@ -182,6 +182,14 @@ Se desideri estendere o modificare l'architettura agentica:
             *   **Costruttori Const:** Aggiungere la parola chiave `const` a costruttori, widget e liste immutabili nei punti suggeriti dal linter, per massimizzare il riutilizzo delle istanze in memoria e ottimizzare le performance di rendering sulla CPU.
             *   **Campi Privati Final:** Dichiarare `final` tutti i campi privati di classe che non subiscono riassegnazione (es. liste statiche del catalogo o opzioni di routing).
             *   **Pulizia degli Import:** Rimuovere gli import non necessari o inutilizzati per mantenere pulita la tabella dei simboli di compilazione.
+            *   **Gestione dello Scroll nei Terminali/Chat:**
+                *   Non forzare mai lo scroll programmatico al fondo incondizionatamente ad ogni `didUpdateWidget`.
+                *   Assicurarsi di schedulare lo scroll automatico solo se sono cambiati i dati (cronologia o stato di caricamento) e se l'utente si trova effettivamente in prossimità del fondo (`_shouldAutoScroll` attivo).
+                *   Intercettare lo scroll manuale tempestivamente tramite `NotificationListener<ScrollNotification>` per evitare conflitti con salti programmatici di layout.
+                *   Garantire che il resume di una partita salvata esegua sempre lo scroll iniziale al fondo.
+            *   **Sanificazione Log e Replay delle risposte degli Agenti:**
+                *   Ogni risposta dell'attore (PANOPTICON) deve essere registrata nei log di replay (`ReplayEntry`) e nelle viste storiche priva dei tag XML di delimitazione dell'agent-loop (es. `<dialogo>...</dialogo>`).
+                *   Rimuovere sempre i tag a monte del log e all'atto della renderizzazione nei replay vecchi e nuovi.
 6.  **Manutenzione e Allineamento della Documentazione:** Quando si modificano elementi della roadmap o modelli architetturali, è obbligatorio tenere allineati i documenti principali:
     *   **Roadmap di Gioco:** Qualsiasi modifica alle fasi della roadmap (es. definizioni di tratti, obiettivi o test di validazione della Fase 5) deve essere aggiornata sia nel file di Game Design [AURA_TGDD_v1_1_revised.md](file:///c:/Users/dendo/Documents/GitHub/aura/AURA_TGDD_v1_1_revised.md#fase-5--panopticon-pilot--hidden-gameplay-model) sia allineata con i dettagli implementativi e tecnici descritti in [ARCHITECTURE.md](file:///c:/Users/dendo/Documents/GitHub/aura/ARCHITECTURE.md#9-fase-5--panopticon-pilot--hidden-gameplay-model).
     *   **Flusso degli Agenti:** Modifiche al loop a due livelli o alla pipeline di inferenza richiedono l'aggiornamento simultaneo dello schema di flusso di [ARCHITECTURE.md](file:///c:/Users/dendo/Documents/GitHub/aura/ARCHITECTURE.md#1-panoramica-architetturale) e dei contratti e delle interfacce in questo file [AGENTS.md](file:///c:/Users/dendo/Documents/GitHub/aura/AGENTS.md#3-flusso-dati-e-interfacce).

@@ -1,0 +1,88 @@
+name: AURA Validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aura-validation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core / Dart
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.12.1'
+
+      - name: Show Dart version
+        run: dart --version
+
+      - name: Install dependencies from lockfile
+        run: dart pub get --enforce-lockfile
+
+      - name: Verify core lockfile is unchanged
+        run: git diff --exit-code -- pubspec.lock
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test bin
+
+      - name: Analyze
+        run: dart analyze
+
+      - name: Test
+        run: dart test
+
+  app:
+    name: App / Flutter
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: stable
+          cache: true
+
+      - name: Show Flutter toolchain
+        run: |
+          flutter --version
+          dart --version
+
+      - name: Install dependencies from lockfile
+        run: flutter pub get --enforce-lockfile
+
+      - name: Verify app lockfile is unchanged
+        run: git diff --exit-code -- pubspec.lock
+
+      - name: Check formatting
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test

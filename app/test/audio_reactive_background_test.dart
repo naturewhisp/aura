@@ -222,11 +222,15 @@ void main() {
       double simulatedSeconds = 10.0;
       double motionSecondsProvider() => simulatedSeconds;
 
+      final cache1 = DnaRenderCache();
+      final cache2 = DnaRenderCache();
+
       final painter1 = DnaHelixPainter(
         repaintListenable: mockController,
         motionSecondsProvider: motionSecondsProvider,
         alertLevel: 10,
         outcome: GameOutcome.ongoing,
+        cache: cache1,
       );
 
       final painter2 = DnaHelixPainter(
@@ -234,6 +238,7 @@ void main() {
         motionSecondsProvider: motionSecondsProvider,
         alertLevel: 10,
         outcome: GameOutcome.ongoing,
+        cache: cache1,
       );
 
       final painter3 = DnaHelixPainter(
@@ -241,6 +246,7 @@ void main() {
         motionSecondsProvider: motionSecondsProvider,
         alertLevel: 30,
         outcome: GameOutcome.ongoing,
+        cache: cache2,
       );
 
       // shouldRepaint deve essere false se i parametri strutturali sono equivalenti
@@ -250,6 +256,88 @@ void main() {
       expect(painter1.shouldRepaint(painter3), isTrue);
 
       mockController.dispose();
+    });
+
+    test('7. Ottimizzazioni Fase 3 (Quantizzazione, Cache, Buckets, Culling, Profiler)', () {
+      // 7.1 Quantizzazione
+      expect(DnaHelixPainter.quantizeFontSize(11.2), equals(11.0));
+      expect(DnaHelixPainter.quantizeFontSize(5.0), equals(8.0));
+      expect(DnaHelixPainter.quantizeFontSize(20.0), equals(14.0));
+
+      expect(DnaHelixPainter.quantizeAlpha(0.05), equals(0.0));
+      expect(DnaHelixPainter.quantizeAlpha(0.3), equals(0.25));
+      expect(DnaHelixPainter.quantizeAlpha(0.6), equals(0.5));
+      expect(DnaHelixPainter.quantizeAlpha(0.8), equals(0.75));
+      expect(DnaHelixPainter.quantizeAlpha(0.95), equals(1.0));
+
+      expect(DnaHelixPainter.quantizeAlertProgress(0.23), equals(0.2));
+      expect(DnaHelixPainter.quantizeAlertProgress(0.88), equals(0.8));
+      expect(DnaHelixPainter.quantizeAlertProgress(0.92), equals(1.0));
+
+      expect(DnaHelixPainter.getGlowLevel(0.0, false), equals(DnaGlowLevel.none));
+      expect(DnaHelixPainter.getGlowLevel(3.0, false), equals(DnaGlowLevel.low));
+      expect(DnaHelixPainter.getGlowLevel(6.0, false), equals(DnaGlowLevel.medium));
+      expect(DnaHelixPainter.getGlowLevel(10.0, false), equals(DnaGlowLevel.high));
+      expect(DnaHelixPainter.getGlowLevel(5.0, true), equals(DnaGlowLevel.flash));
+
+      expect(DnaHelixPainter.calculateDepthBucket(-1.0, 16), equals(0));
+      expect(DnaHelixPainter.calculateDepthBucket(1.0, 16), equals(15));
+      expect(DnaHelixPainter.calculateDepthBucket(0.0, 16), equals(8));
+
+      // 7.2 Buckets interleaved e handles
+      final nodeHandle = DnaRenderHandle.packNode(42);
+      final rungHandle = DnaRenderHandle.packRung(99);
+      expect(DnaRenderHandle.isNode(nodeHandle), isTrue);
+      expect(DnaRenderHandle.isNode(rungHandle), isFalse);
+      expect(DnaRenderHandle.indexOf(nodeHandle), equals(42));
+      expect(DnaRenderHandle.indexOf(rungHandle), equals(99));
+
+      // 7.3 LRU Glyph Cache Eviction
+      final cache = DnaGlyphCache(capacity: 10);
+      for (int i = 0; i < 15; i++) {
+        // Per differenziare le chiavi, usiamo l'alertProgress o la dimensione font quantizzata
+        final keyDiff = DnaGlyphKey(
+          'A',
+          8.0 + i,
+          DnaGlyphPalette.primary,
+          1.0,
+          DnaGlowLevel.none,
+          0.0,
+          GameOutcome.ongoing,
+        );
+        cache.put(keyDiff, TextPainter());
+      }
+      expect(cache.length, equals(10));
+      
+      // Verifica hit / miss
+      final testKey = DnaGlyphKey('A', 8.0, DnaGlyphPalette.primary, 1.0, DnaGlowLevel.none, 0.0, GameOutcome.ongoing);
+      // Quello con font size 8.0 dovrebbe essere stato rimosso (era il primo)
+      final hitPainter = cache.get(testKey);
+      expect(hitPainter, isNull);
+      expect(cache.misses, equals(1));
+
+      // Quello con font size 14.0 (i = 6 => 14) dovrebbe esserci
+      final existingKey = DnaGlyphKey('A', 14.0, DnaGlyphPalette.primary, 1.0, DnaGlowLevel.none, 0.0, GameOutcome.ongoing);
+      final hitPainter2 = cache.get(existingKey);
+      expect(hitPainter2, isNotNull);
+      expect(cache.hits, equals(1));
+
+      // 7.4 Culling
+      expect(DnaHelixPainter.isNodeVisible(x: 10.0, radius: 28.0, canvasWidth: 100.0), isTrue);
+      expect(DnaHelixPainter.isNodeVisible(x: -30.0, radius: 28.0, canvasWidth: 100.0), isFalse);
+      expect(DnaHelixPainter.isNodeVisible(x: 130.0, radius: 28.0, canvasWidth: 100.0), isFalse);
+
+      expect(DnaHelixPainter.isRungVisible(startX: -50.0, endX: -10.0, margin: 28.0, canvasWidth: 100.0), isTrue);
+      expect(DnaHelixPainter.isRungVisible(startX: -50.0, endX: -30.0, margin: 28.0, canvasWidth: 100.0), isFalse);
+
+      // 7.5 Profiler & Render Cache
+      final renderCache = DnaRenderCache();
+      expect(renderCache.pointCapacity, equals(0));
+      renderCache.ensureCapacity(20);
+      expect(renderCache.pointCapacity, greaterThanOrEqualTo(20));
+      expect(renderCache.wire0.length, greaterThanOrEqualTo(20));
+
+      expect(DnaFrameProfiler.instance, isNotNull);
     });
   });
 }

@@ -601,7 +601,7 @@ class GameControllerNotifier extends ChangeNotifier {
       notifyListeners();
 
       // Step 1: Evaluator starts
-      _emitStep(InferenceStep.evaluatorStarted);
+      _emitStep(InferenceStep.evaluatorStarted, generation);
       await Future.delayed(
           const Duration(milliseconds: 300)); // Minimum visual display time
       if (_isStale(generation)) return;
@@ -671,12 +671,12 @@ class GameControllerNotifier extends ChangeNotifier {
         }
       }
 
-      _emitStep(InferenceStep.evaluatorFinished);
+      _emitStep(InferenceStep.evaluatorFinished, generation);
       await Future.delayed(const Duration(milliseconds: 200));
       if (_isStale(generation)) return;
 
       // Step 2: Safety Overrides check
-      _emitStep(InferenceStep.safetyOverrideCheck);
+      _emitStep(InferenceStep.safetyOverrideCheck, generation);
       await Future.delayed(const Duration(milliseconds: 300));
       if (_isStale(generation)) return;
 
@@ -734,7 +734,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
       if (outcome == GameOutcome.ongoing) {
         // Step 3: Actor starts
-        _emitStep(InferenceStep.actorStarted);
+        _emitStep(InferenceStep.actorStarted, generation);
         await Future.delayed(const Duration(milliseconds: 400));
         if (_isStale(generation)) return;
 
@@ -771,7 +771,7 @@ class GameControllerNotifier extends ChangeNotifier {
         }
 
         // Step 4: Tone validation check
-        _emitStep(InferenceStep.toneConsistencyCheck);
+        _emitStep(InferenceStep.toneConsistencyCheck, generation);
         await Future.delayed(const Duration(milliseconds: 300));
         if (_isStale(generation)) return;
 
@@ -883,18 +883,21 @@ class GameControllerNotifier extends ChangeNotifier {
         _generateFinalDiscursiveReport(finalState, currentOutcome);
       }
 
-      _emitStep(InferenceStep.completed);
-    } catch (e) {
-      // If error occurs, fall back to safe state update
+      _emitStep(InferenceStep.completed, generation);
+    } catch (error, stackTrace) {
+      if (_isStale(generation)) {
+        return;
+      }
       _currentStepMessage =
-          "[ERROR] Errore di connessione o inferenza fallita: $e";
-      _isLoading = false;
-      notifyListeners();
-      rethrow;
+          "[ERROR] Errore di connessione o inferenza fallita: $error";
+      Error.throwWithStackTrace(error, stackTrace);
     } finally {
-      _loadingTimer?.cancel();
-      _isLoading = false;
-      notifyListeners();
+      if (!_isStale(generation)) {
+        _loadingTimer?.cancel();
+        _loadingTimer = null;
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -976,6 +979,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
   /// Ripristina lo stato del gioco a partire dal file active_session.json.
   Future<void> resumeGame() async {
+    _invalidatePendingOperations();
     try {
       finalDiscursiveReport = null;
       final baseDir = _getAppDataPath();
@@ -1048,6 +1052,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
   /// Avvia una nuova sessione di gioco pulita, eliminando eventuali salvataggi precedenti.
   Future<void> startNewGame({String? difficulty}) async {
+    _invalidatePendingOperations();
     finalDiscursiveReport = null;
     await deleteActiveSession();
     hintsUsed = 0;
@@ -1094,6 +1099,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
   /// Starts the guided tutorial session.
   Future<void> startTutorial() async {
+    _invalidatePendingOperations();
     finalDiscursiveReport = null;
     await deleteActiveSession();
     hintsUsed = 0;
@@ -1141,13 +1147,13 @@ class GameControllerNotifier extends ChangeNotifier {
     notifyListeners();
 
     // Visual loading simulation
-    _emitStep(InferenceStep.evaluatorStarted);
+    _emitStep(InferenceStep.evaluatorStarted, generation);
     await Future.delayed(const Duration(milliseconds: 300));
     if (_isStale(generation)) return;
-    _emitStep(InferenceStep.evaluatorFinished);
+    _emitStep(InferenceStep.evaluatorFinished, generation);
     await Future.delayed(const Duration(milliseconds: 200));
     if (_isStale(generation)) return;
-    _emitStep(InferenceStep.safetyOverrideCheck);
+    _emitStep(InferenceStep.safetyOverrideCheck, generation);
     await Future.delayed(const Duration(milliseconds: 300));
     if (_isStale(generation)) return;
 
@@ -1171,10 +1177,10 @@ class GameControllerNotifier extends ChangeNotifier {
         gameStateNotifier.value =
             currentState.copyWith(historyCompression: history);
       } else {
-        _emitStep(InferenceStep.actorStarted);
+        _emitStep(InferenceStep.actorStarted, generation);
         await Future.delayed(const Duration(milliseconds: 400));
         if (_isStale(generation)) return;
-        _emitStep(InferenceStep.toneConsistencyCheck);
+        _emitStep(InferenceStep.toneConsistencyCheck, generation);
         await Future.delayed(const Duration(milliseconds: 200));
         if (_isStale(generation)) return;
 
@@ -1221,10 +1227,10 @@ class GameControllerNotifier extends ChangeNotifier {
         gameStateNotifier.value =
             currentState.copyWith(historyCompression: history);
       } else {
-        _emitStep(InferenceStep.actorStarted);
+        _emitStep(InferenceStep.actorStarted, generation);
         await Future.delayed(const Duration(milliseconds: 400));
         if (_isStale(generation)) return;
-        _emitStep(InferenceStep.toneConsistencyCheck);
+        _emitStep(InferenceStep.toneConsistencyCheck, generation);
         await Future.delayed(const Duration(milliseconds: 200));
         if (_isStale(generation)) return;
 
@@ -1270,10 +1276,10 @@ class GameControllerNotifier extends ChangeNotifier {
         gameStateNotifier.value =
             currentState.copyWith(historyCompression: history);
       } else {
-        _emitStep(InferenceStep.actorStarted);
+        _emitStep(InferenceStep.actorStarted, generation);
         await Future.delayed(const Duration(milliseconds: 400));
         if (_isStale(generation)) return;
-        _emitStep(InferenceStep.toneConsistencyCheck);
+        _emitStep(InferenceStep.toneConsistencyCheck, generation);
         await Future.delayed(const Duration(milliseconds: 200));
         if (_isStale(generation)) return;
 
@@ -1311,7 +1317,7 @@ class GameControllerNotifier extends ChangeNotifier {
       return;
     }
 
-    _emitStep(InferenceStep.completed);
+    _emitStep(InferenceStep.completed, generation);
     _isLoading = false;
     notifyListeners();
   }
@@ -1432,8 +1438,16 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
     }
   }
 
-  void _emitStep(InferenceStep step) {
+  void _invalidatePendingOperations() {
+    _operationGeneration++;
     _loadingTimer?.cancel();
+    _loadingTimer = null;
+    _isLoading = false;
+  }
+
+  void _emitStep(InferenceStep step, int generation) {
+    _loadingTimer?.cancel();
+    if (_isStale(generation)) return;
 
     if (step == InferenceStep.completed) {
       _currentStepMessage = "";
@@ -1443,7 +1457,7 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
 
       _loadingTimer =
           Timer.periodic(const Duration(milliseconds: 2500), (timer) {
-        if (!_isLoading) {
+        if (_isStale(generation) || !_isLoading) {
           timer.cancel();
           return;
         }
@@ -1465,8 +1479,7 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
   @override
   void dispose() {
     _disposed = true;
-    _operationGeneration++;
-    _loadingTimer?.cancel();
+    _invalidatePendingOperations();
     gameStateNotifier.dispose();
     super.dispose();
   }

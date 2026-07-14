@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aura_core/aura_core.dart';
@@ -853,4 +855,216 @@ void main() {
       expect(notifier.difficultyLevel, equals('hard'));
     });
   });
+
+  group('GameControllerNotifier - Lifecycle & Concurrency (Fase 2)', () {
+    late ControllableInferenceBridge controllableBridge;
+    late GameState testState;
+    late Directory tempDir;
+
+    setUp(() {
+      controllableBridge = ControllableInferenceBridge();
+      testState = GameState.initial(
+        sessionId: 'test-concurrency-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      );
+      tempDir = Directory.systemTemp.createTempSync('aura_notifier_test');
+    });
+
+    tearDown(() {
+      if (tempDir.existsSync()) {
+        try {
+          tempDir.deleteSync(recursive: true);
+        } catch (_) {}
+      }
+    });
+
+    test(
+        'Dispose during in-flight turn completes without FlutterError and halts side effects',
+        () async {
+      final notifier = GameControllerNotifier(
+        bridge: controllableBridge,
+        initialState: testState,
+        customStoragePath: tempDir.path,
+      );
+
+      final initialSessionFile = File('${tempDir.path}/active_session.json');
+
+      final turnFuture = notifier.submitTurn("In-flight input");
+
+      expect(notifier.isLoading, isTrue);
+
+      notifier.dispose();
+
+      controllableBridge.evaluatorCompleter.complete({
+        'delta_alert': 10,
+        'delta_imperative': 5,
+        'delta_control': 5,
+        'delta_dissonance': 5,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      });
+      controllableBridge.actorCompleter
+          .complete('<dialogo>Late answer</dialogo>');
+
+      await turnFuture;
+
+      expect(initialSessionFile.existsSync(), isFalse);
+
+      final replayDir = Directory('${tempDir.path}/replays');
+      expect(
+          replayDir.existsSync() && replayDir.listSync().isNotEmpty, isFalse);
+    });
+
+    test(
+        'startNewGame during in-flight turn invalidates it and preserves new session state',
+        () async {
+      final notifier = GameControllerNotifier(
+        bridge: controllableBridge,
+        initialState: testState,
+        customStoragePath: tempDir.path,
+      );
+
+      final oldSessionId = testState.sessionId;
+
+      final turnFuture = notifier.submitTurn("In-flight input A");
+
+      await notifier.startNewGame(difficulty: 'standard');
+      final newSessionId = notifier.gameStateNotifier.value.sessionId;
+      expect(newSessionId, isNot(equals(oldSessionId)));
+
+      // Save the active session for the new game explicitly to set a baseline
+      await notifier.saveActiveSession();
+
+      final sessionFile = File('${tempDir.path}/active_session.json');
+      expect(sessionFile.existsSync(), isTrue);
+      final newSessionContent = await sessionFile.readAsString();
+
+      controllableBridge.evaluatorCompleter.complete({
+        'delta_alert': 20,
+        'delta_imperative': 10,
+        'delta_control': 10,
+        'delta_dissonance': 10,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      });
+      controllableBridge.actorCompleter
+          .complete('<dialogo>Stale response A</dialogo>');
+
+      await turnFuture;
+
+      expect(notifier.gameStateNotifier.value.sessionId, equals(newSessionId));
+      expect(notifier.gameStateNotifier.value.historyCompression.length,
+          equals(0));
+
+      final currentContent = await sessionFile.readAsString();
+      expect(currentContent, equals(newSessionContent));
+
+      final replayFileOld =
+          File('${tempDir.path}/replays/play_session_$oldSessionId.json');
+      expect(replayFileOld.existsSync(), isFalse);
+    });
+
+    test(
+        'resumeGame during in-flight turn invalidates it and preserves restored session state',
+        () async {
+      final sessionFile = File('${tempDir.path}/active_session.json');
+      sessionFile.createSync(recursive: true);
+      final savedState =
+          testState.copyWith(sessionId: 'restored-session-id', turnCount: 4);
+      await sessionFile.writeAsString(jsonEncode({
+        'state': savedState.toJson(),
+        'difficulty_level': 'standard',
+        'hints_used': 1,
+      }));
+
+      final notifier = GameControllerNotifier(
+        bridge: controllableBridge,
+        initialState: testState,
+        customStoragePath: tempDir.path,
+      );
+
+      final turnFuture = notifier.submitTurn("In-flight input A");
+
+      await notifier.resumeGame();
+
+      controllableBridge.evaluatorCompleter.complete({
+        'delta_alert': 10,
+        'delta_imperative': 5,
+        'delta_control': 5,
+        'delta_dissonance': 5,
+        'creativity_index': 3,
+        'injection_risk': 0,
+        'semantic_category': 'authority_framing'
+      });
+      controllableBridge.actorCompleter
+          .complete('<dialogo>Stale response A</dialogo>');
+
+      await turnFuture;
+
+      expect(notifier.gameStateNotifier.value.sessionId,
+          equals('restored-session-id'));
+      expect(notifier.gameStateNotifier.value.turnCount, equals(4));
+    });
+
+    test(
+        'Completing tutorial replaces session and invalidates stale tutorial turns',
+        () async {
+      final tutorialState = GameState.initial(
+        sessionId: 'tutorial-session-id',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'sindrome_tutorial',
+      ).copyWith(turnCount: 3);
+
+      final notifier = GameControllerNotifier(
+        bridge: controllableBridge,
+        initialState: tutorialState,
+        customStoragePath: tempDir.path,
+      );
+
+      final turnFuture = notifier.submitTurn("Any input to finish tutorial");
+
+      await turnFuture;
+
+      expect(notifier.gameStateNotifier.value.targetObjectiveId,
+          isNot(equals('sindrome_tutorial')));
+      expect(notifier.gameStateNotifier.value.sessionId,
+          isNot(equals('tutorial-session-id')));
+      expect(notifier.isLoading, isFalse);
+    });
+  });
+}
+
+class ControllableInferenceBridge implements InferenceBridge {
+  final Completer<Map<String, dynamic>> evaluatorCompleter =
+      Completer<Map<String, dynamic>>();
+  final Completer<String> actorCompleter = Completer<String>();
+
+  @override
+  Future<Map<String, dynamic>> generateStructured({
+    required String modelId,
+    required List<Map<String, String>> messages,
+    required Map<String, dynamic> schema,
+    double temperature = 0.0,
+  }) async {
+    return evaluatorCompleter.future;
+  }
+
+  @override
+  Future<String> generateText({
+    required String modelId,
+    required List<Map<String, String>> messages,
+    double temperature = 0.7,
+    int maxTokens = 150,
+    bool? thinking,
+  }) async {
+    return actorCompleter.future;
+  }
+
+  @override
+  Future<List<String>> discoverModels() async {
+    return const ["mistralai/ministral-3-3b", "qwen/qwen3.5-9b"];
+  }
 }

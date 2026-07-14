@@ -264,7 +264,7 @@ void main() {
       expect(DnaHelixPainter.quantizeFontSize(5.0), equals(8.0));
       expect(DnaHelixPainter.quantizeFontSize(20.0), equals(14.0));
 
-      expect(DnaHelixPainter.quantizeAlpha(0.05), equals(0.0));
+      expect(DnaHelixPainter.quantizeAlpha(0.05), equals(0.25));
       expect(DnaHelixPainter.quantizeAlpha(0.3), equals(0.25));
       expect(DnaHelixPainter.quantizeAlpha(0.6), equals(0.5));
       expect(DnaHelixPainter.quantizeAlpha(0.8), equals(0.75));
@@ -338,6 +338,21 @@ void main() {
       expect(renderCache.wire0.length, greaterThanOrEqualTo(20));
 
       expect(DnaFrameProfiler.instance, isNotNull);
+
+      // 7.6 Regressioni Visive (Correzioni Fase 3)
+      // A. Coerenza cromatica della cache: alertProgress quantizzato ed interpolazione colore
+      final key1 = DnaGlyphKey('X', 11.0, DnaGlyphPalette.primary, 1.0, DnaGlowLevel.none, 0.2, GameOutcome.ongoing);
+      final key2 = DnaGlyphKey('X', 11.0, DnaGlyphPalette.primary, 1.0, DnaGlowLevel.none, 0.2, GameOutcome.ongoing);
+      expect(key1, equals(key2));
+      expect(key1.hashCode, equals(key2.hashCode));
+
+      // B. Nodi con alpha basso (fra 0.01 e 0.1) non quantizzati a 0
+      expect(DnaHelixPainter.quantizeAlpha(0.02), equals(0.25));
+      expect(DnaHelixPainter.quantizeAlpha(0.095), equals(0.25));
+
+      // C. Flash frame e flash point assegnano la palette whiteFlash ed il relativo colore bianco
+      final whiteColor = DnaHelixPainter.getPaletteColor(DnaGlyphPalette.whiteFlash, Colors.red);
+      expect(whiteColor, equals(Colors.white));
     });
   });
 }

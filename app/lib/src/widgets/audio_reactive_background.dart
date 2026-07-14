@@ -210,10 +210,10 @@ class DnaHelixPainter extends CustomPainter {
   /// Esposto per i test.
   @visibleForTesting
   static double quantizeAlpha(double alpha) {
-    if (alpha <= 0.1) return 0.0;
-    if (alpha <= 0.375) return 0.25;
-    if (alpha <= 0.625) return 0.5;
-    if (alpha <= 0.875) return 0.75;
+    final double clamped = alpha.clamp(0.0, 1.0);
+    if (clamped <= 0.375) return 0.25;
+    if (clamped <= 0.625) return 0.5;
+    if (clamped <= 0.875) return 0.75;
     return 1.0;
   }
 
@@ -435,6 +435,8 @@ class DnaHelixPainter extends CustomPainter {
         final bool isFlashPoint = (point.logicalIndex + elapsedTick) % 6 == 0;
         final bool drawFlash = isFlashFrame && isFlashPoint;
 
+        final DnaGlyphPalette effectivePalette = drawFlash ? DnaGlyphPalette.whiteFlash : palette;
+
         final double glowRadius = beatPulse * 12.0;
         final DnaGlowLevel glowLevel = DnaHelixPainter.getGlowLevel(glowRadius, drawFlash);
 
@@ -456,7 +458,7 @@ class DnaHelixPainter extends CustomPainter {
           z: point.z,
           char: char,
           fontSize: quantizedFontSize,
-          palette: palette,
+          palette: effectivePalette,
           alpha: quantizedAlpha,
           glowLevel: glowLevel,
         );
@@ -547,7 +549,20 @@ class DnaHelixPainter extends CustomPainter {
 
           var tp = cache.glyphCache.get(key);
           if (tp == null) {
-            final Color resolvedColor = DnaHelixPainter.getPaletteColor(node.palette, mainColor).withValues(alpha: node.alpha);
+            final Color quantizedMainColor;
+            if (key.outcome == GameOutcome.defeat) {
+              quantizedMainColor = const Color(0xFFFF003C);
+            } else if (key.outcome == GameOutcome.victory) {
+              quantizedMainColor = const Color(0xFF00FF66);
+            } else {
+              quantizedMainColor = Color.lerp(
+                const Color(0xFF00FF66),
+                const Color(0xFFFF003C),
+                key.alertProgress,
+              ) ?? const Color(0xFF00FF66);
+            }
+
+            final Color resolvedColor = DnaHelixPainter.getPaletteColor(node.palette, quantizedMainColor).withValues(alpha: node.alpha);
             final Color? resolvedGlowColor;
             final double glowRad;
             if (node.glowLevel == DnaGlowLevel.none) {
@@ -561,7 +576,7 @@ class DnaHelixPainter extends CustomPainter {
                       : 12.0;
               resolvedGlowColor = node.glowLevel == DnaGlowLevel.flash
                   ? Colors.white.withValues(alpha: node.alpha)
-                  : DnaHelixPainter.getPaletteColor(node.palette, mainColor).withValues(alpha: node.alpha);
+                  : DnaHelixPainter.getPaletteColor(node.palette, quantizedMainColor).withValues(alpha: node.alpha);
             }
 
             tp = TextPainter(
@@ -932,12 +947,15 @@ class DnaFrameProfiler {
   }
 
   void _printReport() {
-    if (_timings.length < 100) {
-      debugPrint('[DNA PROFILER] Campione troppo piccolo (${_timings.length} frame). Richiesti almeno 100 frame.');
+    const int warmupFrames = 10;
+    const int minimumSamples = 100;
+
+    if (_timings.length < warmupFrames + minimumSamples) {
+      debugPrint('[DNA PROFILER] Campione troppo piccolo (${_timings.length} frame). Richiesti almeno ${warmupFrames + minimumSamples} frame.');
       return;
     }
 
-    final sample = _timings.skip(10).toList();
+    final sample = _timings.skip(warmupFrames).toList();
     if (sample.isEmpty) return;
 
     final totalFrames = sample.length;

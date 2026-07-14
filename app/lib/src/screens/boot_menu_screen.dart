@@ -680,28 +680,31 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                             color: const Color(0xFF005522), width: 1.0),
                         color: const Color(0xFF000802),
                       ),
-                      child: ListTile(
-                        leading:
-                            const Icon(Icons.history, color: Color(0xFF00FF66)),
-                        title: Text(
-                          name,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF00FF66),
-                            fontWeight: FontWeight.bold,
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: ListTile(
+                          leading: const Icon(
+                              Icons.history, color: Color(0xFF00FF66)),
+                          title: Text(
+                            name,
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              color: Color(0xFF00FF66),
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
-                        ),
-                        subtitle: Text(
-                          "Data: ${lastModified.toLocal().toString().substring(0, 19)} | Dimensione: $kbSize KB",
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF009944),
-                            fontSize: 12.0,
+                          subtitle: Text(
+                            "Data: ${lastModified.toLocal().toString().substring(0, 19)} | Dimensione: $kbSize KB",
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              color: Color(0xFF009944),
+                              fontSize: 12.0,
+                            ),
                           ),
+                          trailing: const Icon(Icons.arrow_forward_ios,
+                              color: Color(0xFF00FF66), size: 16.0),
+                          onTap: () => _openReplay(file),
                         ),
-                        trailing: const Icon(Icons.arrow_forward_ios,
-                            color: Color(0xFF00FF66), size: 16.0),
-                        onTap: () => _openReplay(file),
                       ),
                     );
                   },

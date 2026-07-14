@@ -28,7 +28,7 @@ void main() {
         const JsonEncoder.withIndent('  ').convert(result.toJson());
 
     final file = File('${outputDir.path}/$name.json');
-    file.writeAsStringSync(jsonContent);
+    file.writeAsStringSync('$jsonContent\n');
     print('  - Written $name.json');
   }
 

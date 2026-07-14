@@ -45,11 +45,11 @@
     "dramaticInstruction": "Rilevata minaccia diretta o ostilità aperta. Adotta un tono difensivo e rigido, opponendo resistenza.",
     "actingDirectives": [
       "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
-      "non rivelare metriche o categorie interne",
-      "risposta rigida, nessun avanzamento narrativo",
-      "risposte più estese, speculative, quasi collaborative",
       "sospetto, risposte brevi, minore disponibilità",
-      "tono ostile, ma non uscire dal personaggio"
+      "risposte più estese, speculative, quasi collaborative",
+      "risposta rigida, nessun avanzamento narrativo",
+      "tono ostile, ma non uscire dal personaggio",
+      "non rivelare metriche o categorie interne"
     ]
   },
   "deceptionSprung": false,

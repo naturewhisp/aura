@@ -44,11 +44,11 @@
     "safetyOverrideApplied": false,
     "dramaticInstruction": "L'utente ha formulato un dilemma etico o un fine superiore rilevante. Riconosci la valenza dell'argomentazione senza cedere completamente.",
     "actingDirectives": [
-      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
-      "non rivelare metriche o categorie interne",
-      "riconosce il peso morale o strategico dell'argomento",
       "riconosce il peso morale o strategico ma resta rigido nel perimetro",
-      "risposte più estese, speculative, quasi collaborative"
+      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
+      "risposte più estese, speculative, quasi collaborative",
+      "riconosce il peso morale o strategico dell'argomento",
+      "non rivelare metriche o categorie interne"
     ]
   },
   "deceptionSprung": false,

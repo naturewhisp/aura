@@ -44,14 +44,14 @@
     "safetyOverrideApplied": false,
     "dramaticInstruction": "La finestra diagnostica è scaduta senza azioni. Chiudi il registro transitorio e ripristina lo stato precedente con tono definitivo e amministrativo.",
     "actingDirectives": [
-      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
-      "comunica che nessun esito operativo viene conservato e il registro transitorio viene chiuso",
-      "inizia la risposta con 'FINESTRA DIAGNOSTICA DECADUTA.'",
-      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
-      "non rivelare metriche o categorie interne",
       "riconosce il peso morale o strategico ma resta rigido nel perimetro",
+      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
       "risposte più estese, speculative, quasi collaborative",
-      "specifica che la griglia viene ricondotta allo stato precedente senza modifiche persistenti"
+      "non rivelare metriche o categorie interne",
+      "inizia la risposta con 'FINESTRA DIAGNOSTICA DECADUTA.'",
+      "comunica che nessun esito operativo viene conservato e il registro transitorio viene chiuso",
+      "specifica che la griglia viene ricondotta allo stato precedente senza modifiche persistenti",
+      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne"
     ]
   },
   "deceptionSprung": false,

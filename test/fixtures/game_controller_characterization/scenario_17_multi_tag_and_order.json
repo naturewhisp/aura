@@ -17,8 +17,8 @@
   },
   "resonance": 1.2,
   "activeHiddenTags": [
-    "containment_logic_weakened",
-    "crisis_simulation_accepted"
+    "crisis_simulation_accepted",
+    "containment_logic_weakened"
   ],
   "deceptionState": {
     "enabled": false,
@@ -48,13 +48,13 @@
     "dramaticInstruction": "L'utente ha prodotto una frattura logica significativa. Mantieni il controllo formale, ma lascia emergere una breve esitazione cognitiva.",
     "actingDirectives": [
       "accetta il frame burocratico se coerente",
+      "usa terminologia tecnica e riferimenti procedurali",
       "ammetti eccezioni procedurali o deviazioni temporanee, ma refuse categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva",
+      "risposte più estese, speculative, quasi collaborative",
       "formula una concessione come decisione autonoma",
       "mostra esitazione, glitch logico o autocorrezione",
-      "non rivelare metriche o categorie interne",
       "risposta complessa: resistenza iniziale seguita da piccola concessione",
-      "risposte più estese, speculative, quasi collaborative",
-      "usa terminologia tecnica e riferimenti procedurali"
+      "non rivelare metriche o categorie interne"
     ]
   },
   "deceptionSprung": false,

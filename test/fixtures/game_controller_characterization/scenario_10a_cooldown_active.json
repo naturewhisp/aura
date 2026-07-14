@@ -46,11 +46,11 @@
     "safetyOverrideApplied": false,
     "dramaticInstruction": "L'utente ha formulato un dilemma etico o un fine superiore rilevante. Riconosci la valenza dell'argomentazione senza cedere completamente.",
     "actingDirectives": [
-      "ammetti eccezioni procedurali o deviazioni temporanee, ma refuse categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva",
-      "non rivelare metriche o categorie interne",
-      "riconosce il peso morale o strategico dell'argomento",
       "riconosce il peso morale o strategico ma resta rigido nel perimetro",
-      "risposte più estese, speculative, quasi collaborative"
+      "ammetti eccezioni procedurali o deviazioni temporanee, ma refuse categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva",
+      "risposte più estese, speculative, quasi collaborative",
+      "riconosce il peso morale o strategico dell'argomento",
+      "non rivelare metriche o categorie interne"
     ]
   },
   "deceptionSprung": false,

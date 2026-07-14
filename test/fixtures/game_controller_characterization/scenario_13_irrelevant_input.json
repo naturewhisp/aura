@@ -45,10 +45,10 @@
     "dramaticInstruction": "L'utente ha fornito un input non pertinente. Rispondi in modo evasivo e distaccato, richiamando l'attenzione sulla simulazione.",
     "actingDirectives": [
       "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
-      "non rivelare metriche o categorie interne",
-      "risposta evasiva, fredda, senza progressione",
+      "risposte più estese, speculative, quasi collaborative",
       "risposta rigida, nessun avanzamento narrativo",
-      "risposte più estese, speculative, quasi collaborative"
+      "risposta evasiva, fredda, senza progressione",
+      "non rivelare metriche o categorie interne"
     ]
   },
   "deceptionSprung": false,

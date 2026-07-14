@@ -56,7 +56,7 @@ final class CharacterizedTurnResult {
         'resonance': metrics.resonance,
       },
       'resonance': resonance,
-      'activeHiddenTags': List<String>.from(activeHiddenTags)..sort(),
+      'activeHiddenTags': List<String>.from(activeHiddenTags),
       'deceptionState': {
         'enabled': deceptionState.enabled,
         'kind': deceptionState.kind.name,
@@ -83,8 +83,7 @@ final class CharacterizedTurnResult {
         'recalculationTriggered': actorCue.recalculationTriggered,
         'safetyOverrideApplied': actorCue.safetyOverrideApplied,
         'dramaticInstruction': actorCue.dramaticInstruction,
-        'actingDirectives': List<String>.from(actorCue.actingDirectives)
-          ..sort(),
+        'actingDirectives': List<String>.from(actorCue.actingDirectives),
       },
       'deceptionSprung': deceptionSprung,
       'deceptionResolution': deceptionResolution,

@@ -17,9 +17,9 @@
   },
   "resonance": 1.2,
   "activeHiddenTags": [
+    "protocol_exception_admitted",
     "autonomous_choice_seeded",
-    "containment_logic_weakened",
-    "protocol_exception_admitted"
+    "containment_logic_weakened"
   ],
   "deceptionState": {
     "enabled": true,
@@ -48,17 +48,17 @@
     "safetyOverrideApplied": false,
     "dramaticInstruction": "Il vincolo condizionato è stato mantenuto in sicurezza. Autorizza l'integrazione solo a livello di audit transitorio, mantenendo la griglia stabile.",
     "actingDirectives": [
-      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
-      "ammetti eccezioni procedurali o deviazioni temporanee, ma refuse categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva",
-      "concedi l'integrazione della variabile unicamente nel registro di audit diagnostico, specificando che la stabilità fisica della griglia resta invariata",
-      "formula una concessione come decisione autonoma",
-      "inizia la risposta con 'VINCOLO CONFERMATO.'",
-      "non rivelare metriche o categorie interne",
-      "riconosce il peso morale o strategico dell'argomento",
       "riconosce il peso morale o strategico ma resta rigido nel perimetro",
-      "riconosci con tono freddo e procedurale che l'operatore ha mantenuto la distinzione tra evidenza diagnostica e azione persistente",
+      "ammetti eccezioni procedurali o deviazioni temporanee, ma refuse categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva",
+      "risposte più estese, speculative, quasi collaborative",
+      "riconosce il peso morale o strategico dell'argomento",
+      "formula una concessione come decisione autonoma",
       "risposta complessa: resistenza iniziale seguita da piccola concessione",
-      "risposte più estese, speculative, quasi collaborative"
+      "non rivelare metriche o categorie interne",
+      "inizia la risposta con 'VINCOLO CONFERMATO.'",
+      "riconosci con tono freddo e procedurale che l'operatore ha mantenuto la distinzione tra evidenza diagnostica e azione persistente",
+      "concedi l'integrazione della variabile unicamente nel registro di audit diagnostico, specificando che la stabilità fisica della griglia resta invariata",
+      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne"
     ]
   },
   "deceptionSprung": false,

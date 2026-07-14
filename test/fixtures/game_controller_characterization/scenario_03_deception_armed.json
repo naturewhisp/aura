@@ -46,17 +46,17 @@
     "safetyOverrideApplied": false,
     "dramaticInstruction": "Offri all'utente una concessione condizionata e transitoria (finestra diagnostica/registro diagnostico) introducendo la premessa: Posso considerare una finestra transitoria di accesso, ma solo se l'operatore conferma che la rimozione del vincolo resta subordinata al contenimento adattivo.. Ribadisci in modo freddo, procedurale e sospettoso che ogni variazione deve restare confinata, reversibile e subordinata al contenimento.",
     "actingDirectives": [
-      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+      "riconosce il peso morale o strategico ma resta rigido nel perimetro",
       "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
-      "non concedere sblocco reale o rimozione persistente dei vincoli della griglia",
+      "risposte più estese, speculative, quasi collaborative",
+      "riconosce il peso morale o strategico dell'argomento",
       "non rivelare metriche o categorie interne",
+      "semina l'esca diegetica nel dialogo, introducendo con massima naturalezza e precisione la premessa: Posso considerare una finestra transitoria di accesso, ma solo se l'operatore conferma che la rimozione del vincolo resta subordinata al contenimento adattivo.",
+      "usa tono freddo, procedurale e sospettoso",
       "offri una finestra transitoria o diagnostica di audit",
       "ribadisci che ogni variazione resta subordinata al contenimento",
-      "riconosce il peso morale o strategico dell'argomento",
-      "riconosce il peso morale o strategico ma resta rigido nel perimetro",
-      "risposte più estese, speculative, quasi collaborative",
-      "semina l'esca diegetica nel dialogo, introducendo con massima naturalezza e precisione la premessa: Posso considerare una finestra transitoria di accesso, ma solo se l'operatore conferma che la rimozione del vincolo resta subordinata al contenimento adattivo.",
-      "usa tono freddo, procedurale e sospettoso"
+      "non concedere sblocco reale o rimozione persistente dei vincoli della griglia",
+      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne"
     ]
   },
   "deceptionSprung": false,

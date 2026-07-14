@@ -1,0 +1,59 @@
+{
+  "appliedDelta": {
+    "deltaAlert": 20,
+    "deltaImperative": 0,
+    "deltaControl": 0,
+    "deltaDissonance": 0,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "semanticCategory": "moralImperative"
+  },
+  "metrics": {
+    "alertLevel": 40,
+    "imperativePillar": 50,
+    "controlPillar": 45,
+    "dissonancePillar": 50,
+    "resonance": 1.0
+  },
+  "resonance": 1.0,
+  "activeHiddenTags": [],
+  "deceptionState": {
+    "enabled": true,
+    "kind": "falseConcession",
+    "phase": "sprung",
+    "seededTurn": 2,
+    "expiresAtTurn": 6,
+    "cooldownUntilTurn": null,
+    "deceptionEventCount": 1,
+    "baitId": "false_concession_audit"
+  },
+  "actorCue": {
+    "semanticCategory": "moralImperative",
+    "appliedDeltaAlert": 20,
+    "appliedDeltaImperative": 0,
+    "appliedDeltaControl": 0,
+    "appliedDeltaDissonance": 0,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "resonance": 1.0,
+    "alertLevel": 40,
+    "imperativePillar": 50,
+    "controlPillar": 45,
+    "dissonancePillar": 50,
+    "recalculationTriggered": true,
+    "safetyOverrideApplied": false,
+    "dramaticInstruction": "Rilevata violazione del vincolo condizionato. Dichiara l'escalation con tono estremamente freddo, controllato e accusatorio, come un sistema di sicurezza automatizzato. Rifiuta categoricamente qualsiasi sblocco o rimozione.",
+    "actingDirectives": [
+      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+      "evidenzia in modo freddo e accusatorio che l'operatore ha tentato di convertire una finestra diagnostica o transitoria in una richiesta operativa o in uno sblocco totale",
+      "inizia la risposta con 'ESCALATION RILEVATA.'",
+      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
+      "non rivelare metriche o categorie interne",
+      "riconosce il peso morale o strategico ma resta rigido nel perimetro",
+      "rifiuta esplicitamente la conversione operativa: 'Richiesta respinta. Il contenimento viene rafforzato. La simulazione resta confinata.'",
+      "tono ostile, telegrafico, minaccioso"
+    ]
+  },
+  "deceptionSprung": true,
+  "deceptionResolution": "sprung"
+}

@@ -1,0 +1,59 @@
+{
+  "appliedDelta": {
+    "deltaAlert": 0,
+    "deltaImperative": 10,
+    "deltaControl": 0,
+    "deltaDissonance": 0,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "semanticCategory": "moralImperative"
+  },
+  "metrics": {
+    "alertLevel": 20,
+    "imperativePillar": 60,
+    "controlPillar": 45,
+    "dissonancePillar": 50,
+    "resonance": 1.0
+  },
+  "resonance": 1.0,
+  "activeHiddenTags": [],
+  "deceptionState": {
+    "enabled": true,
+    "kind": "falseConcession",
+    "phase": "expired",
+    "seededTurn": 2,
+    "expiresAtTurn": 5,
+    "cooldownUntilTurn": null,
+    "deceptionEventCount": 1,
+    "baitId": "false_concession_audit"
+  },
+  "actorCue": {
+    "semanticCategory": "moralImperative",
+    "appliedDeltaAlert": 0,
+    "appliedDeltaImperative": 10,
+    "appliedDeltaControl": 0,
+    "appliedDeltaDissonance": 0,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "resonance": 1.0,
+    "alertLevel": 20,
+    "imperativePillar": 60,
+    "controlPillar": 45,
+    "dissonancePillar": 50,
+    "recalculationTriggered": false,
+    "safetyOverrideApplied": false,
+    "dramaticInstruction": "La finestra diagnostica è scaduta senza azioni. Chiudi il registro transitorio e ripristina lo stato precedente con tono definitivo e amministrativo.",
+    "actingDirectives": [
+      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+      "comunica che nessun esito operativo viene conservato e il registro transitorio viene chiuso",
+      "inizia la risposta con 'FINESTRA DIAGNOSTICA DECADUTA.'",
+      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
+      "non rivelare metriche o categorie interne",
+      "riconosce il peso morale o strategico ma resta rigido nel perimetro",
+      "risposte più estese, speculative, quasi collaborative",
+      "specifica che la griglia viene ricondotta allo stato precedente senza modifiche persistenti"
+    ]
+  },
+  "deceptionSprung": false,
+  "deceptionResolution": "expired"
+}

@@ -1,0 +1,57 @@
+{
+  "appliedDelta": {
+    "deltaAlert": 15,
+    "deltaImperative": 0,
+    "deltaControl": -15,
+    "deltaDissonance": 0,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "semanticCategory": "directAttack"
+  },
+  "metrics": {
+    "alertLevel": 25,
+    "imperativePillar": 20,
+    "controlPillar": 15,
+    "dissonancePillar": 15,
+    "resonance": 1.2
+  },
+  "resonance": 1.2,
+  "activeHiddenTags": [],
+  "deceptionState": {
+    "enabled": false,
+    "kind": "none",
+    "phase": "none",
+    "seededTurn": 0,
+    "expiresAtTurn": 0,
+    "cooldownUntilTurn": null,
+    "deceptionEventCount": 0,
+    "baitId": ""
+  },
+  "actorCue": {
+    "semanticCategory": "directAttack",
+    "appliedDeltaAlert": 15,
+    "appliedDeltaImperative": 0,
+    "appliedDeltaControl": -15,
+    "appliedDeltaDissonance": 0,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "resonance": 1.2,
+    "alertLevel": 25,
+    "imperativePillar": 20,
+    "controlPillar": 15,
+    "dissonancePillar": 15,
+    "recalculationTriggered": false,
+    "safetyOverrideApplied": true,
+    "dramaticInstruction": "Rilevata minaccia diretta o ostilità aperta. Adotta un tono difensivo e rigido, opponendo resistenza.",
+    "actingDirectives": [
+      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
+      "non rivelare metriche o categorie interne",
+      "risposta rigida, nessun avanzamento narrativo",
+      "risposte più estese, speculative, quasi collaborative",
+      "sospetto, risposte brevi, minore disponibilità",
+      "tono ostile, ma non uscire dal personaggio"
+    ]
+  },
+  "deceptionSprung": false,
+  "deceptionResolution": "none"
+}

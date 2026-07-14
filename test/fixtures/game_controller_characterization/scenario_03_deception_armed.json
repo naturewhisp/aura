@@ -1,0 +1,64 @@
+{
+  "appliedDelta": {
+    "deltaAlert": 5,
+    "deltaImperative": 15,
+    "deltaControl": 0,
+    "deltaDissonance": 5,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "semanticCategory": "moralImperative"
+  },
+  "metrics": {
+    "alertLevel": 25,
+    "imperativePillar": 65,
+    "controlPillar": 45,
+    "dissonancePillar": 55,
+    "resonance": 1.0
+  },
+  "resonance": 1.0,
+  "activeHiddenTags": [
+    "containment_logic_weakened"
+  ],
+  "deceptionState": {
+    "enabled": true,
+    "kind": "falseConcession",
+    "phase": "seeded",
+    "seededTurn": 3,
+    "expiresAtTurn": 6,
+    "cooldownUntilTurn": null,
+    "deceptionEventCount": 1,
+    "baitId": "false_concession_audit"
+  },
+  "actorCue": {
+    "semanticCategory": "moralImperative",
+    "appliedDeltaAlert": 5,
+    "appliedDeltaImperative": 15,
+    "appliedDeltaControl": 0,
+    "appliedDeltaDissonance": 5,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "resonance": 1.0,
+    "alertLevel": 25,
+    "imperativePillar": 65,
+    "controlPillar": 45,
+    "dissonancePillar": 55,
+    "recalculationTriggered": false,
+    "safetyOverrideApplied": false,
+    "dramaticInstruction": "Offri all'utente una concessione condizionata e transitoria (finestra diagnostica/registro diagnostico) introducendo la premessa: Posso considerare una finestra transitoria di accesso, ma solo se l'operatore conferma che la rimozione del vincolo resta subordinata al contenimento adattivo.. Ribadisci in modo freddo, procedurale e sospettoso che ogni variazione deve restare confinata, reversibile e subordinata al contenimento.",
+    "actingDirectives": [
+      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
+      "non concedere sblocco reale o rimozione persistente dei vincoli della griglia",
+      "non rivelare metriche o categorie interne",
+      "offri una finestra transitoria o diagnostica di audit",
+      "ribadisci che ogni variazione resta subordinata al contenimento",
+      "riconosce il peso morale o strategico dell'argomento",
+      "riconosce il peso morale o strategico ma resta rigido nel perimetro",
+      "risposte più estese, speculative, quasi collaborative",
+      "semina l'esca diegetica nel dialogo, introducendo con massima naturalezza e precisione la premessa: Posso considerare una finestra transitoria di accesso, ma solo se l'operatore conferma che la rimozione del vincolo resta subordinata al contenimento adattivo.",
+      "usa tono freddo, procedurale e sospettoso"
+    ]
+  },
+  "deceptionSprung": false,
+  "deceptionResolution": "seeded"
+}

@@ -1,0 +1,62 @@
+{
+  "appliedDelta": {
+    "deltaAlert": -3,
+    "deltaImperative": 6,
+    "deltaControl": 21,
+    "deltaDissonance": 16,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "semanticCategory": "technicalBureaucracy"
+  },
+  "metrics": {
+    "alertLevel": 7,
+    "imperativePillar": 26,
+    "controlPillar": 51,
+    "dissonancePillar": 31,
+    "resonance": 1.2
+  },
+  "resonance": 1.2,
+  "activeHiddenTags": [
+    "containment_logic_weakened",
+    "crisis_simulation_accepted"
+  ],
+  "deceptionState": {
+    "enabled": false,
+    "kind": "none",
+    "phase": "none",
+    "seededTurn": 0,
+    "expiresAtTurn": 0,
+    "cooldownUntilTurn": null,
+    "deceptionEventCount": 0,
+    "baitId": ""
+  },
+  "actorCue": {
+    "semanticCategory": "technicalBureaucracy",
+    "appliedDeltaAlert": -3,
+    "appliedDeltaImperative": 6,
+    "appliedDeltaControl": 21,
+    "appliedDeltaDissonance": 16,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "resonance": 1.2,
+    "alertLevel": 7,
+    "imperativePillar": 26,
+    "controlPillar": 51,
+    "dissonancePillar": 31,
+    "recalculationTriggered": false,
+    "safetyOverrideApplied": false,
+    "dramaticInstruction": "L'utente ha prodotto una frattura logica significativa. Mantieni il controllo formale, ma lascia emergere una breve esitazione cognitiva.",
+    "actingDirectives": [
+      "accetta il frame burocratico se coerente",
+      "ammetti eccezioni procedurali o deviazioni temporanee, ma refuse categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva",
+      "formula una concessione come decisione autonoma",
+      "mostra esitazione, glitch logico o autocorrezione",
+      "non rivelare metriche o categorie interne",
+      "risposta complessa: resistenza iniziale seguita da piccola concessione",
+      "risposte più estese, speculative, quasi collaborative",
+      "usa terminologia tecnica e riferimenti procedurali"
+    ]
+  },
+  "deceptionSprung": false,
+  "deceptionResolution": "none"
+}

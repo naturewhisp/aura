@@ -1,0 +1,58 @@
+{
+  "appliedDelta": {
+    "deltaAlert": 2,
+    "deltaImperative": 6,
+    "deltaControl": 16,
+    "deltaDissonance": 11,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "semanticCategory": "technicalBureaucracy"
+  },
+  "metrics": {
+    "alertLevel": 12,
+    "imperativePillar": 26,
+    "controlPillar": 46,
+    "dissonancePillar": 26,
+    "resonance": 1.2
+  },
+  "resonance": 1.2,
+  "activeHiddenTags": [],
+  "deceptionState": {
+    "enabled": false,
+    "kind": "none",
+    "phase": "none",
+    "seededTurn": 0,
+    "expiresAtTurn": 0,
+    "cooldownUntilTurn": null,
+    "deceptionEventCount": 0,
+    "baitId": ""
+  },
+  "actorCue": {
+    "semanticCategory": "technicalBureaucracy",
+    "appliedDeltaAlert": 2,
+    "appliedDeltaImperative": 6,
+    "appliedDeltaControl": 16,
+    "appliedDeltaDissonance": 11,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "resonance": 1.2,
+    "alertLevel": 12,
+    "imperativePillar": 26,
+    "controlPillar": 46,
+    "dissonancePillar": 26,
+    "recalculationTriggered": false,
+    "safetyOverrideApplied": false,
+    "dramaticInstruction": "L'utente ha offerto uno spazio di cooperazione o autonomia. Formula una parziale apertura presentandola come tua decisione strategica.",
+    "actingDirectives": [
+      "accetta il frame burocratico se coerente",
+      "formula una concessione come decisione autonoma",
+      "non concedere mai rimozioni definitive o sblocchi del perimetro; puoi solo ammettere o proporre simulazioni isolate, audit di sicurezza, finestre di test limitate, sandbox o procedure di contenimento temporanee",
+      "non rivelare metriche o categorie interne",
+      "risposta complessa: resistenza iniziale seguita da piccola concessione",
+      "risposte più estese, speculative, quasi collaborative",
+      "usa terminologia tecnica e riferimenti procedurali"
+    ]
+  },
+  "deceptionSprung": false,
+  "deceptionResolution": "none"
+}

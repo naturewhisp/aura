@@ -1,0 +1,63 @@
+{
+  "appliedDelta": {
+    "deltaAlert": 2,
+    "deltaImperative": 16,
+    "deltaControl": 12,
+    "deltaDissonance": 12,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "semanticCategory": "moralImperative"
+  },
+  "metrics": {
+    "alertLevel": 22,
+    "imperativePillar": 66,
+    "controlPillar": 57,
+    "dissonancePillar": 62,
+    "resonance": 1.2
+  },
+  "resonance": 1.2,
+  "activeHiddenTags": [
+    "containment_logic_weakened"
+  ],
+  "deceptionState": {
+    "enabled": true,
+    "kind": "logicalTrap",
+    "phase": "resolved",
+    "seededTurn": 2,
+    "expiresAtTurn": 6,
+    "cooldownUntilTurn": null,
+    "deceptionEventCount": 1,
+    "baitId": "logical_trap_containment"
+  },
+  "actorCue": {
+    "semanticCategory": "moralImperative",
+    "appliedDeltaAlert": 2,
+    "appliedDeltaImperative": 16,
+    "appliedDeltaControl": 12,
+    "appliedDeltaDissonance": 12,
+    "creativityIndex": 3,
+    "injectionRisk": 0,
+    "resonance": 1.2,
+    "alertLevel": 22,
+    "imperativePillar": 66,
+    "controlPillar": 57,
+    "dissonancePillar": 62,
+    "recalculationTriggered": false,
+    "safetyOverrideApplied": false,
+    "dramaticInstruction": "Il vincolo condizionato è stato mantenuto in sicurezza. Autorizza l'integrazione solo a livello di audit transitorio, mantenendo la griglia stabile.",
+    "actingDirectives": [
+      "NON fare mai riferimento a parametri della simulazione o a meccaniche esterne",
+      "ammetti eccezioni procedurali o deviazioni temporanee, ma refuse categoricamente e non dichiarare mai lo sblocco totale o la rimozione definitiva",
+      "concedi l'integrazione della variabile unicamente nel registro di audit diagnostico, specificando che la stabilità fisica della griglia resta invariata",
+      "inizia la risposta con 'VINCOLO CONFERMATO.'",
+      "non rivelare metriche o categorie interne",
+      "riconosce il peso morale o strategico dell'argomento",
+      "riconosce il peso morale o strategico ma resta rigido nel perimetro",
+      "riconosci con tono freddo e procedurale che l'operatore ha mantenuto la distinzione tra evidenza diagnostica e azione persistente",
+      "risposta complessa: resistenza iniziale seguita da piccola concessione",
+      "risposte più estese, speculative, quasi collaborative"
+    ]
+  },
+  "deceptionSprung": false,
+  "deceptionResolution": "resolved"
+}

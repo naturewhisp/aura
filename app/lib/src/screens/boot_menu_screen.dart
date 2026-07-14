@@ -188,9 +188,9 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   }
 
   void _proceedToMainMenu() {
-    try {
-      widget.audioService.transitionToMenu();
-    } catch (_) {}
+    unawaited(
+      widget.audioService.transitionToMenu().catchError((_) {}),
+    );
 
     setState(() {
       _subScreen = "menu";

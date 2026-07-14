@@ -30,9 +30,6 @@ void main() async {
     initialState: initialState,
   );
 
-  // Rileva e mappa i modelli LLM disponibili in modo dinamico
-  await controllerNotifier.initializeModels();
-
   runApp(AuraApp(notifier: controllerNotifier));
 }
 

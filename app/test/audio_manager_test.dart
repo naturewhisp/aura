@@ -643,6 +643,9 @@ void main() {
       );
 
       expect(find.byType(BootMenuScreen), findsOneWidget);
+
+      // Consume pending boot sequence timers to avoid test leak errors
+      await tester.pump(const Duration(seconds: 3));
     });
   });
 }

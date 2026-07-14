@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
-import '../audio/audio_scene.dart';
+import '../audio/boot_audio_service.dart';
 import '../widgets/audio_reactive_background.dart';
 import 'new_connection_briefing_screen.dart';
 
@@ -19,10 +19,18 @@ class BootMenuScreen extends StatefulWidget {
   /// Notifier per la sincronizzazione dello stato globale di gioco.
   final GameControllerNotifier notifier;
 
+  /// Servizio audio per l'avvio.
+  final BootAudioService audioService;
+
+  /// Callback opzionale per l'inizializzazione dei modelli nei test.
+  final Future<void> Function()? initializeModels;
+
   /// Costruisce una schermata [BootMenuScreen] a partire dal notifier.
   const BootMenuScreen({
     super.key,
     required this.notifier,
+    this.audioService = const AudioManagerBootService(),
+    this.initializeModels,
   });
 
   @override
@@ -42,8 +50,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   final List<String> _bootLines = [];
   bool _logoVisible = false;
   bool _pressEnterVisible = false;
-  int _currentBootStep = 0;
-  Timer? _bootTimer;
+  Future<void>? _bootFuture;
+  bool _bootCompleted = false;
   final FocusNode _focusNode = FocusNode();
 
   // Campi per la gestione dei replay salvati su disco
@@ -66,76 +74,94 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   @override
   void initState() {
     super.initState();
-    _startBootSequence();
+    _bootFuture ??= _runBootSequence();
     _focusNode.requestFocus();
   }
 
   @override
   void dispose() {
-    _bootTimer?.cancel();
     _focusNode.dispose();
     super.dispose();
   }
 
-  void _startBootSequence() {
-    final steps = [
-      "SYSTEM INITIALIZATION... OK",
-      "SCANNING HARDWARE ENGINES (Vulkan/CUDA)... DETECTED",
-      "FETCHING LOCAL MODEL CATALOG...",
-      "ACTIVE ENGINES IDENTIFIED AND ROUTED.",
-      "CONNECTING TO NEURAL PORT [PORT 1234]... STABLE",
-    ];
+  Future<void> _runBootSequence() async {
+    try {
+      _appendBootLog("AURA_INIT> SYSTEM INITIALIZATION... OK");
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
 
-    _bootTimer = Timer.periodic(const Duration(milliseconds: 400), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
+      _appendBootLog(
+          "AURA_INIT> SCANNING HARDWARE ENGINES (Vulkan/CUDA)... DETECTED");
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+
+      _appendBootLog("AURA_INIT> FETCHING LOCAL MODEL CATALOG...");
+
+      final initModelsFn =
+          widget.initializeModels ?? widget.notifier.initializeModels;
+      await initModelsFn();
+      if (!mounted) return;
+
+      _appendBootLog(
+          "AURA_INIT> Model Router profile: [${widget.notifier.activeProfile}] loaded.");
+
+      _appendBootLog("AURA_INIT> ACTIVE ENGINES IDENTIFIED AND ROUTED.");
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+
+      _appendBootLog(
+          "AURA_INIT> CONNECTING TO NEURAL PORT [PORT 1234]... STABLE");
+
+      try {
+        await widget.audioService.initialize(
+          appDataPath: widget.notifier.appDataPath,
+          audioEnabled: widget.notifier.audioEnabled,
+        );
+        if (!mounted) return;
+        _appendBootLog(
+            "AURA_INIT> Soundscape initialized: [${widget.notifier.audioEnabled ? 'ENABLED' : 'MUTED'}].");
+      } catch (audioError) {
+        if (!mounted) return;
+        _appendBootLog(
+            "AURA_INIT> [ATTENZIONE] Soundscape non inizializzato. Audio disabilitato.");
       }
 
-      if (_currentBootStep < steps.length) {
-        setState(() {
-          _bootLines.add("AURA_INIT> ${steps[_currentBootStep]}");
-          _currentBootStep++;
-        });
+      try {
+        await widget.audioService.transitionToMenu();
+      } catch (_) {}
 
-        // Trigger model catalog loading asynchronously on step 3
-        if (_currentBootStep == 3) {
-          widget.notifier.initializeModels().then((_) async {
-            await AudioManager().initialize(
-              widget.notifier.appDataPath,
-              audioEnabled: widget.notifier.audioEnabled,
-            );
-            await AudioManager().transitionTo(AudioSceneState.menu);
-            if (mounted) {
-              setState(() {
-                _bootLines.add(
-                    "AURA_INIT> Model Router profile: [${widget.notifier.activeProfile}] loaded.");
-                _bootLines.add(
-                    "AURA_INIT> Soundscape initialized: [${widget.notifier.audioEnabled ? 'ENABLED' : 'MUTED'}].");
-              });
-            }
-          });
-        }
-      } else {
-        timer.cancel();
-        AudioManager().transitionTo(AudioSceneState.menu);
-        // Show ASCII art logo after a short delay
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (mounted) {
-            setState(() {
-              _logoVisible = true;
-            });
-          }
-        });
-        // Show prompt to continue
-        Future.delayed(const Duration(milliseconds: 1000), () {
-          if (mounted) {
-            setState(() {
-              _pressEnterVisible = true;
-            });
-          }
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _bootCompleted = true;
+      });
+
+      // Show ASCII art logo after a short delay
+      await Future.delayed(const Duration(milliseconds: 300));
+      if (!mounted) return;
+      setState(() {
+        _logoVisible = true;
+      });
+
+      // Show prompt to continue
+      await Future.delayed(const Duration(milliseconds: 1000));
+      if (!mounted) return;
+      setState(() {
+        _pressEnterVisible = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      _appendBootLog("AURA_INIT> [CRITICAL ERROR] Boot fallito: $e");
+      setState(() {
+        _bootCompleted = true;
+        _pressEnterVisible = true;
+      });
+    }
+  }
+
+  void _appendBootLog(String line) {
+    if (!mounted) return;
+    setState(() {
+      _bootLines.add(line);
     });
   }
 
@@ -323,6 +349,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
     if (event is KeyDownEvent) {
       if (_subScreen == "boot" &&
           _pressEnterVisible &&
+          _bootCompleted &&
           event.logicalKey == LogicalKeyboardKey.enter) {
         _proceedToMainMenu();
       } else if (_subScreen == "menu") {

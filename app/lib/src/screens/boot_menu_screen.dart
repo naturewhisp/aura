@@ -683,8 +683,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                       child: Material(
                         type: MaterialType.transparency,
                         child: ListTile(
-                          leading: const Icon(
-                              Icons.history, color: Color(0xFF00FF66)),
+                          leading: const Icon(Icons.history,
+                              color: Color(0xFF00FF66)),
                           title: Text(
                             name,
                             style: const TextStyle(

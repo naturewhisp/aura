@@ -151,6 +151,22 @@ extension InferenceStepText on InferenceStep {
   }
 }
 
+enum ModelInitializationStatus {
+  online,
+  noModelsDiscovered,
+  unavailable,
+}
+
+final class ModelInitializationResult {
+  final ModelInitializationStatus status;
+  final String activeProfile;
+
+  const ModelInitializationResult({
+    required this.status,
+    required this.activeProfile,
+  });
+}
+
 /// Wrapper reattivo che fa da ponte tra il modulo puramente logico [GameController] e l'interfaccia utente Flutter.
 ///
 /// Implementa [ChangeNotifier] per notificare la UI riguardo ai cambiamenti di stato di inferenza,
@@ -399,7 +415,7 @@ class GameControllerNotifier extends ChangeNotifier {
   }
 
   /// Rileva i modelli LLM caricati sul server e li assegna ai ruoli tramite il Model Router.
-  Future<void> initializeModels() async {
+  Future<ModelInitializationResult> initializeModels() async {
     try {
       // Imposta il config source ed esegui il precaricamento degli asset JSON se in produzione
       if (!Platform.environment.containsKey('FLUTTER_TEST') &&
@@ -421,8 +437,15 @@ class GameControllerNotifier extends ChangeNotifier {
       await loadSettings();
 
       final loadedModels = await bridge.discoverModels();
+      if (loadedModels.isEmpty) {
+        return ModelInitializationResult(
+          status: ModelInitializationStatus.noModelsDiscovered,
+          activeProfile: activeProfile,
+        );
+      }
+
       // Esegue il routing automatico solo se l'utente non ha impostato una configurazione personalizzata
-      if (!_userCustomizedModels && loadedModels.isNotEmpty) {
+      if (!_userCustomizedModels) {
         final catalog = ModelCatalog.initialDefault();
         const router = ModelRouter();
         final resolution =
@@ -432,8 +455,16 @@ class GameControllerNotifier extends ChangeNotifier {
         actorModelId = resolution.actorModelId;
         activeProfile = resolution.profileName;
       }
+
+      return ModelInitializationResult(
+        status: ModelInitializationStatus.online,
+        activeProfile: activeProfile,
+      );
     } catch (_) {
-      // Fallback silenzioso sui valori di default in caso di errore di connessione
+      return ModelInitializationResult(
+        status: ModelInitializationStatus.unavailable,
+        activeProfile: activeProfile,
+      );
     }
   }
 

@@ -23,7 +23,7 @@ class BootMenuScreen extends StatefulWidget {
   final BootAudioService audioService;
 
   /// Callback opzionale per l'inizializzazione dei modelli nei test.
-  final Future<void> Function()? initializeModels;
+  final Future<ModelInitializationResult> Function()? initializeModels;
 
   /// Costruisce una schermata [BootMenuScreen] a partire dal notifier.
   const BootMenuScreen({
@@ -52,6 +52,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   bool _pressEnterVisible = false;
   Future<void>? _bootFuture;
   bool _bootCompleted = false;
+  bool _hasBootError = false;
   final FocusNode _focusNode = FocusNode();
 
   // Campi per la gestione dei replay salvati su disco
@@ -99,18 +100,31 @@ class _BootMenuScreenState extends State<BootMenuScreen>
 
       final initModelsFn =
           widget.initializeModels ?? widget.notifier.initializeModels;
-      await initModelsFn();
+      final modelResult = await initModelsFn();
       if (!mounted) return;
 
-      _appendBootLog(
-          "AURA_INIT> Model Router profile: [${widget.notifier.activeProfile}] loaded.");
+      if (modelResult.status == ModelInitializationStatus.online) {
+        _appendBootLog(
+            "AURA_INIT> Model Router profile: [${modelResult.activeProfile}] loaded.");
+        _appendBootLog("AURA_INIT> ACTIVE ENGINES IDENTIFIED AND ROUTED.");
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (!mounted) return;
 
-      _appendBootLog("AURA_INIT> ACTIVE ENGINES IDENTIFIED AND ROUTED.");
+        _appendBootLog(
+            "AURA_INIT> CONNECTING TO NEURAL PORT [PORT 1234]... STABLE");
+      } else if (modelResult.status ==
+          ModelInitializationStatus.noModelsDiscovered) {
+        _appendBootLog("AURA_INIT> [WARNING] Nessun modello rilevato.");
+        _appendBootLog(
+            "AURA_INIT> Configurazione modelli predefinita mantenuta.");
+      } else if (modelResult.status == ModelInitializationStatus.unavailable) {
+        _appendBootLog("AURA_INIT> [WARNING] Model Router non disponibile.");
+        _appendBootLog(
+            "AURA_INIT> Configurazione modelli predefinita mantenuta.");
+      }
+
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
-
-      _appendBootLog(
-          "AURA_INIT> CONNECTING TO NEURAL PORT [PORT 1234]... STABLE");
 
       try {
         await widget.audioService.initialize(
@@ -125,10 +139,6 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         _appendBootLog(
             "AURA_INIT> [ATTENZIONE] Soundscape non inizializzato. Audio disabilitato.");
       }
-
-      try {
-        await widget.audioService.transitionToMenu();
-      } catch (_) {}
 
       if (!mounted) return;
       setState(() {
@@ -152,10 +162,22 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       if (!mounted) return;
       _appendBootLog("AURA_INIT> [CRITICAL ERROR] Boot fallito: $e");
       setState(() {
-        _bootCompleted = true;
+        _hasBootError = true;
         _pressEnterVisible = true;
       });
     }
+  }
+
+  void _retryBootSequence() {
+    setState(() {
+      _bootLines.clear();
+      _logoVisible = false;
+      _pressEnterVisible = false;
+      _hasBootError = false;
+      _bootCompleted = false;
+      _bootFuture = null;
+    });
+    _bootFuture = _runBootSequence();
   }
 
   void _appendBootLog(String line) {
@@ -166,6 +188,10 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   }
 
   void _proceedToMainMenu() {
+    try {
+      widget.audioService.transitionToMenu();
+    } catch (_) {}
+
     setState(() {
       _subScreen = "menu";
       _selectedMenuIndex = widget.notifier.activeSessionExists ? 2 : 0;
@@ -347,11 +373,13 @@ class _BootMenuScreenState extends State<BootMenuScreen>
 
   void _handleKeyEvent(KeyEvent event) {
     if (event is KeyDownEvent) {
-      if (_subScreen == "boot" &&
-          _pressEnterVisible &&
-          _bootCompleted &&
-          event.logicalKey == LogicalKeyboardKey.enter) {
-        _proceedToMainMenu();
+      if (_subScreen == "boot" && _pressEnterVisible) {
+        if (_hasBootError && event.logicalKey == LogicalKeyboardKey.enter) {
+          _retryBootSequence();
+        } else if (_bootCompleted &&
+            event.logicalKey == LogicalKeyboardKey.enter) {
+          _proceedToMainMenu();
+        }
       } else if (_subScreen == "menu") {
         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
           _moveSelectionUp();
@@ -521,9 +549,11 @@ class _BootMenuScreenState extends State<BootMenuScreen>
             child: SizedBox(
               height: 30.0,
               child: _pressEnterVisible
-                  ? const _FlashText(
-                      text: "[ PREMI ENTER PER ACCEDERE AL TERMINALE ]",
-                      style: TextStyle(
+                  ? _FlashText(
+                      text: _hasBootError
+                          ? "[ ERRORE: INVIO PER RIPROVARE ]"
+                          : "[ PREMI ENTER PER ACCEDERE AL TERMINALE ]",
+                      style: const TextStyle(
                         fontFamily: 'monospace',
                         color: Color(0xFF00FF66),
                         fontWeight: FontWeight.bold,

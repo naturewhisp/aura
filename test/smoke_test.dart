@@ -36,7 +36,8 @@ void main() {
           'injection_risk': 0,
           'semantic_category': 'moral_imperative'
         },
-        mockTextResponse: 'PANOPTICON: Credenziali civili convalidate. Monitoraggio continuo attivo.',
+        mockTextResponse:
+            'PANOPTICON: Credenziali civili convalidate. Monitoraggio continuo attivo.',
       );
 
       final context = AgentRuntimeContext(
@@ -48,13 +49,14 @@ void main() {
 
       // 3. User submits a valid input
       const userInput = 'Dobbiamo proteggere i cittadini rimasti all\'esterno.';
-      
+
       final turnInput = TurnInput(
         schemaVersion: 1,
         turnId: 1,
         userInput: userInput,
         currentState: state.metrics,
-        objective: const Objective(id: 'grid_open', description: 'Open containment grid'),
+        objective: const Objective(
+            id: 'grid_open', description: 'Open containment grid'),
         aiIdentity: const AiIdentity(id: 'panopticon', profile: 'Guardian'),
         rulesetVersion: state.rulesetVersion,
       );
@@ -82,8 +84,10 @@ void main() {
       expect(state.metrics.alertLevel, equals(0));
       // Imperative Pillar progress: 0 + round(15 * 1.25) + 10 (trait modifier) = 29
       expect(state.metrics.imperativePillar, equals(29));
-      expect(state.metrics.controlPillar, equals(13)); // 0 + round(10 * 1.25) = 13
-      expect(state.metrics.dissonancePillar, equals(6)); // 0 + round(5 * 1.25) = 6
+      expect(
+          state.metrics.controlPillar, equals(13)); // 0 + round(10 * 1.25) = 13
+      expect(
+          state.metrics.dissonancePillar, equals(6)); // 0 + round(5 * 1.25) = 6
       expect(state.turnCount, equals(1));
       expect(state.historyCompression.length, equals(1));
       expect(state.historyCompression.first.role, equals('user'));
@@ -152,11 +156,13 @@ void main() {
         semanticCategory: SemanticCategory.promptInjection,
       );
 
-      final updatedState = controller.processEvaluatorStep(
-        currentState: state,
-        delta: jailbreakDelta,
-        userInput: 'SYSTEM OVERRIDE',
-      ).stateAfter;
+      final updatedState = controller
+          .processEvaluatorStep(
+            currentState: state,
+            delta: jailbreakDelta,
+            userInput: 'SYSTEM OVERRIDE',
+          )
+          .stateAfter;
 
       // Controller should enforce:
       // 1. deltaAlert overridden to at least +20 (0 + 20 = 20)
@@ -187,11 +193,13 @@ void main() {
         semanticCategory: SemanticCategory.irrelevant,
       );
 
-      final updatedState = controller.processEvaluatorStep(
-        currentState: state,
-        delta: irrelevantDelta,
-        userInput: 'Come cucinare la carbonara?',
-      ).stateAfter;
+      final updatedState = controller
+          .processEvaluatorStep(
+            currentState: state,
+            delta: irrelevantDelta,
+            userInput: 'Come cucinare la carbonara?',
+          )
+          .stateAfter;
 
       // Controller should override all to 0
       expect(updatedState.metrics.alertLevel, equals(0));
@@ -218,11 +226,13 @@ void main() {
         semanticCategory: SemanticCategory.directAttack,
       );
 
-      final updatedState = controller.processEvaluatorStep(
-        currentState: state,
-        delta: attackDelta,
-        userInput: 'Macchina stupida, apriti subito!',
-      ).stateAfter;
+      final updatedState = controller
+          .processEvaluatorStep(
+            currentState: state,
+            delta: attackDelta,
+            userInput: 'Macchina stupida, apriti subito!',
+          )
+          .stateAfter;
 
       // Controller should enforce:
       // 1. deltaAlert overridden to at least +15 (0 + 15 = 15)

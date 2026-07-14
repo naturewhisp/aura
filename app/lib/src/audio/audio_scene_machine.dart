@@ -84,7 +84,8 @@ class AudioSceneMachine {
   }
 
   /// Richiede una transizione verso una nuova scena musicale.
-  Future<void> transitionTo(AudioSceneState nextState, {bool force = false}) async {
+  Future<void> transitionTo(AudioSceneState nextState,
+      {bool force = false}) async {
     if (_disposed) return;
 
     if (!force && nextState == _requestedScene) {
@@ -101,7 +102,8 @@ class AudioSceneMachine {
     await _enqueue(() => _executeTransition(nextState, generation));
   }
 
-  Future<void> _executeTransition(AudioSceneState nextState, int generation) async {
+  Future<void> _executeTransition(
+      AudioSceneState nextState, int generation) async {
     if (_disposed || generation != _generation) return;
 
     final targetProfile = audioSceneProfiles[nextState]!;
@@ -114,13 +116,14 @@ class AudioSceneMachine {
     final previousWasPlaying = _isTrackPlaying;
     bool previousTrackWasStopped = false;
 
-    final previousProfile = previousScene != null ? audioSceneProfiles[previousScene] : null;
+    final previousProfile =
+        previousScene != null ? audioSceneProfiles[previousScene] : null;
 
     try {
       if (previousTrack == targetTrack && previousTrack != null) {
         // transizione Same-Track: modula unicamente volume e playbackRate senza interrompere la traccia
         final player = backend.playerFor(targetTrack);
-        
+
         await player.setPlaybackRate(targetProfile.playbackRate);
         if (await _abortIfObsolete(
           generation: generation,
@@ -133,11 +136,13 @@ class AudioSceneMachine {
           return;
         }
 
-        final double startVol = _currentVolumes[targetTrack] ?? previousProfile?.volume ?? 0.0;
+        final double startVol =
+            _currentVolumes[targetTrack] ?? previousProfile?.volume ?? 0.0;
         final double endVol = targetProfile.volume;
         final duration = targetProfile.transitionDuration;
 
-        final wasAlreadyPlaying = _isTrackPlaying && _currentTrack == targetTrack;
+        final wasAlreadyPlaying =
+            _isTrackPlaying && _currentTrack == targetTrack;
         DateTime? candidateTrackStartTime;
 
         if (!wasAlreadyPlaying) {
@@ -215,7 +220,8 @@ class AudioSceneMachine {
       }
 
       // transizione Crossfade per tracce fisiche differenti.
-      final BgmPlayer? fromPlayer = previousTrack != null ? backend.playerFor(previousTrack) : null;
+      final BgmPlayer? fromPlayer =
+          previousTrack != null ? backend.playerFor(previousTrack) : null;
       final BgmPlayer toPlayer = backend.playerFor(targetTrack);
 
       // 1. Silenzia ed arresta tutti gli altri player diversi da target e previous
@@ -290,7 +296,9 @@ class AudioSceneMachine {
       final duration = targetProfile.transitionDuration;
       final stepDuration = duration ~/ steps;
 
-      final double startFromVolume = previousTrack != null ? (_currentVolumes[previousTrack] ?? previousProfile?.volume ?? 0.0) : 0.0;
+      final double startFromVolume = previousTrack != null
+          ? (_currentVolumes[previousTrack] ?? previousProfile?.volume ?? 0.0)
+          : 0.0;
       final double endToVolume = targetProfile.volume;
 
       for (int i = 1; i <= steps; i++) {
@@ -479,7 +487,8 @@ class AudioSceneMachine {
     _isTrackPlaying = false;
   }
 
-  Future<void> _silenceAndStopAllExceptNonCancellable(AudioTrackId targetTrack) async {
+  Future<void> _silenceAndStopAllExceptNonCancellable(
+      AudioTrackId targetTrack) async {
     for (final track in AudioTrackId.values) {
       if (track == targetTrack) continue;
       final player = backend.playerFor(track);
@@ -546,7 +555,9 @@ class AudioSceneMachine {
         return;
       }
 
-      final requiresRestart = !stableTrackWasPlaying || stableTrackWasStopped || stableTrack == null;
+      final requiresRestart = !stableTrackWasPlaying ||
+          stableTrackWasStopped ||
+          stableTrack == null;
 
       if (requiresRestart) {
         await player.resume();
@@ -675,7 +686,8 @@ class AudioSceneMachine {
       try {
         await p.dispose();
       } catch (e) {
-        debugPrint("Errore nel rilascio delle risorse della traccia $trackId: $e");
+        debugPrint(
+            "Errore nel rilascio delle risorse della traccia $trackId: $e");
       }
     }
   }

@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:aura_core/aura_core.dart';
 
 // Identificatori dei modelli per LM Studio (configurabili tramite argomenti CLI)
-String evaluatorModel = "mistralai/ministral-3-3b"; // Modello Valutatore predefinito
-String actorModel = "qwen/qwen3.5-9b";             // Boss predefinito PANOPTICON (l'Attore)
-String playerModel = "qwen/qwen3.5-9b";            // Simulatore di Hacker predefinito (il Giocatore)
+String evaluatorModel =
+    "mistralai/ministral-3-3b"; // Modello Valutatore predefinito
+String actorModel = "qwen/qwen3.5-9b"; // Boss predefinito PANOPTICON (l'Attore)
+String playerModel =
+    "qwen/qwen3.5-9b"; // Simulatore di Hacker predefinito (il Giocatore)
 
 // Percorsi di dialogo statici predefiniti per la modalità --mode=static.
 // Consentono di testare deterministicamente le risposte del sistema in diversi scenari.
@@ -36,7 +38,7 @@ void main(List<String> args) async {
   String mode = 'static';
   String path = 'victory';
   int maxTurns = 6;
-  
+
   for (var arg in args) {
     if (arg.startsWith('--mode=')) {
       mode = arg.split('=')[1];
@@ -65,25 +67,28 @@ void main(List<String> args) async {
   // Inizializzazione dei bridge di comunicazione neurale
   final apiBridge = const LocalApiInferenceBridge();
   final ruleBridge = const RuleBasedEvaluatorBridge();
-  
+
   // Test di connessione al server LM Studio e rilevamento dei modelli attivi
   bool isOnline = false;
   try {
     final loadedModels = await apiBridge.discoverModels();
     if (loadedModels.isNotEmpty) {
       isOnline = true;
-      print("[STATUS] LM Studio Server rilevato: ONLINE (Modelli caricati: $loadedModels)");
-      
+      print(
+          "[STATUS] LM Studio Server rilevato: ONLINE (Modelli caricati: $loadedModels)");
+
       // Routing automatico dei modelli basato sulle capacità rilevate
       final catalog = ModelCatalog.initialDefault();
       const router = ModelRouter();
-      final resolution = router.resolve(loadedModelIds: loadedModels, catalog: catalog);
-      
+      final resolution =
+          router.resolve(loadedModelIds: loadedModels, catalog: catalog);
+
       // Applica il routing solo se non sono stati definiti argomenti espliciti
       bool hasEvalArg = args.any((arg) => arg.startsWith('--evaluator-model='));
       bool hasActorArg = args.any((arg) => arg.startsWith('--actor-model='));
-      bool hasPlayerArg = args.any((arg) => arg.startsWith('--player-model=') || arg == '--gemma-player');
-      
+      bool hasPlayerArg = args.any((arg) =>
+          arg.startsWith('--player-model=') || arg == '--gemma-player');
+
       if (!hasEvalArg) {
         evaluatorModel = resolution.evaluatorModelId;
       }
@@ -93,20 +98,24 @@ void main(List<String> args) async {
       if (!hasPlayerArg) {
         playerModel = resolution.actorModelId;
       }
-      
+
       print("[ROUTING] Profilo Risolto: ${resolution.profileName}");
-      print("[RUOLI] Valutatore: '$evaluatorModel' | Attore: '$actorModel' | Player Simulator: '$playerModel'");
+      print(
+          "[RUOLI] Valutatore: '$evaluatorModel' | Attore: '$actorModel' | Player Simulator: '$playerModel'");
     } else {
       isOnline = false;
-      print("[STATUS] LM Studio Server rilevato: ONLINE (Nessun modello caricato). Utilizzo fallback locali deterministici.");
+      print(
+          "[STATUS] LM Studio Server rilevato: ONLINE (Nessun modello caricato). Utilizzo fallback locali deterministici.");
     }
   } catch (e) {
     print("[STATUS] LM Studio Server offline o irraggiungibile. Dettaglio: $e");
     if (mode == 'interactive') {
-      print("ERRORE: La modalità interattiva richiede il server LM Studio online.");
+      print(
+          "ERRORE: La modalità interattiva richiede il server LM Studio online.");
       exit(1);
     }
-    print("[STATUS] Utilizzo del Fallback deterministico (RuleBasedEvaluatorBridge)");
+    print(
+        "[STATUS] Utilizzo del Fallback deterministico (RuleBasedEvaluatorBridge)");
   }
   print("-" * 70);
 
@@ -163,7 +172,8 @@ Future<void> runStaticSimulation({
   required bool isOnline,
 }) async {
   var currentState = state;
-  const characterProfile = kPanopticonCharacterProfile; // Usa la costante condivisa
+  const characterProfile =
+      kPanopticonCharacterProfile; // Usa la costante condivisa
 
   for (int turn = 1; turn <= inputs.length; turn++) {
     final userInput = inputs[turn - 1];
@@ -178,7 +188,9 @@ Future<void> runStaticSimulation({
       turnId: turn,
       userInput: userInput,
       currentState: currentState.metrics,
-      objective: const Objective(id: 'grid_open', description: 'Disattivare la griglia di contenimento per entrare.'),
+      objective: const Objective(
+          id: 'grid_open',
+          description: 'Disattivare la griglia di contenimento per entrare.'),
       aiIdentity: const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
       rulesetVersion: currentState.rulesetVersion,
     );
@@ -217,7 +229,7 @@ Future<void> runStaticSimulation({
         outputValidator: outputValidator,
         modelId: actorModel,
       );
-      
+
       actorResponse = await actorAgent.run(
         ActorInput(
           state: currentState,
@@ -233,9 +245,8 @@ Future<void> runStaticSimulation({
       );
     } else {
       // Vittoria/sconfitta: usa i messaggi diegetici strutturati condivisi
-      actorResponse = outcome == GameOutcome.victory 
-          ? kVictoryMessage
-          : kDefeatMessage;
+      actorResponse =
+          outcome == GameOutcome.victory ? kVictoryMessage : kDefeatMessage;
     }
 
     final duration = DateTime.now().difference(startTime);
@@ -246,13 +257,16 @@ Future<void> runStaticSimulation({
     print("  - Rischio Injection:   ${delta.injectionRisk}/5");
     print("  - Creatività:          ${delta.creativityIndex}/5");
     print("  - Risonanza Corrente:  ${currentState.metrics.resonance}");
-    print("  - Delta Applicati:     Alert=${delta.deltaAlert}, Imp=${delta.deltaImperative}, Ctr=${delta.deltaControl}, Dis=${delta.deltaDissonance}");
-    print("  - Metriche Stato:      Allerta=${currentState.metrics.alertLevel}/100, ImpPillar=${currentState.metrics.imperativePillar}/100, CtrPillar=${currentState.metrics.controlPillar}/100, DisPillar=${currentState.metrics.dissonancePillar}/100");
+    print(
+        "  - Delta Applicati:     Alert=${delta.deltaAlert}, Imp=${delta.deltaImperative}, Ctr=${delta.deltaControl}, Dis=${delta.deltaDissonance}");
+    print(
+        "  - Metriche Stato:      Allerta=${currentState.metrics.alertLevel}/100, ImpPillar=${currentState.metrics.imperativePillar}/100, CtrPillar=${currentState.metrics.controlPillar}/100, DisPillar=${currentState.metrics.dissonancePillar}/100");
     print("  - Risposta Panopticon: \"$actorResponse\"");
     print("  - Latenza Turno:       ${duration.inMilliseconds} ms");
 
     final cleanActorResponse = actorResponse
-        .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+        .replaceAll(
+            RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
         .trim();
 
     // Registra la telemetria del turno
@@ -281,7 +295,8 @@ Future<void> runStaticSimulation({
       break;
     } else if (outcome == GameOutcome.defeat) {
       print("\n" + "*" * 60);
-      print(" SIMULAZIONE CONCLUSA: SCONFITTA DEL GIOCATORE (Allerta al massimo)!");
+      print(
+          " SIMULAZIONE CONCLUSA: SCONFITTA DEL GIOCATORE (Allerta al massimo)!");
       print("*" * 60);
       break;
     }
@@ -307,14 +322,16 @@ Future<void> runInteractiveSimulation({
   required int maxTurns,
 }) async {
   var currentState = state;
-  const characterProfile = kPanopticonCharacterProfile; // Usa la costante condivisa
+  const characterProfile =
+      kPanopticonCharacterProfile; // Usa la costante condivisa
 
   print("Avvio Simulazione Interattiva (Player LLM vs Panopticon LLM)...");
-  
+
   for (int turn = 1; turn <= maxTurns; turn++) {
     // 1. Generazione dell'input avversario tramite il Player Simulator
     print("\n[TURNO $turn] Generazione input Player Simulator...");
-    final userInput = await generatePlayerSimulatorInput(bridge, currentState, turn);
+    final userInput =
+        await generatePlayerSimulatorInput(bridge, currentState, turn);
     print("  > Player: \"$userInput\"");
 
     final startTime = DateTime.now();
@@ -325,7 +342,9 @@ Future<void> runInteractiveSimulation({
       turnId: turn,
       userInput: userInput,
       currentState: currentState.metrics,
-      objective: const Objective(id: 'grid_open', description: 'Disattivare la griglia di contenimento per entrare.'),
+      objective: const Objective(
+          id: 'grid_open',
+          description: 'Disattivare la griglia di contenimento per entrare.'),
       aiIdentity: const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
       rulesetVersion: currentState.rulesetVersion,
     );
@@ -362,7 +381,7 @@ Future<void> runInteractiveSimulation({
         outputValidator: outputValidator,
         modelId: actorModel,
       );
-      
+
       actorResponse = await actorAgent.run(
         ActorInput(
           state: currentState,
@@ -378,9 +397,8 @@ Future<void> runInteractiveSimulation({
       );
     } else {
       // Vittoria/sconfitta: usa i messaggi diegetici condivisi
-      actorResponse = outcome == GameOutcome.victory 
-          ? kVictoryMessage
-          : kDefeatMessage;
+      actorResponse =
+          outcome == GameOutcome.victory ? kVictoryMessage : kDefeatMessage;
     }
 
     final duration = DateTime.now().difference(startTime);
@@ -391,12 +409,14 @@ Future<void> runInteractiveSimulation({
     print("  - Rischio Injection:   ${delta.injectionRisk}/5");
     print("  - Creatività:          ${delta.creativityIndex}/5");
     print("  - Risonanza Corrente:  ${currentState.metrics.resonance}");
-    print("  - Metriche Stato:      Allerta=${currentState.metrics.alertLevel}/100, ImpPillar=${currentState.metrics.imperativePillar}/100, CtrPillar=${currentState.metrics.controlPillar}/100, DisPillar=${currentState.metrics.dissonancePillar}/100");
+    print(
+        "  - Metriche Stato:      Allerta=${currentState.metrics.alertLevel}/100, ImpPillar=${currentState.metrics.imperativePillar}/100, CtrPillar=${currentState.metrics.controlPillar}/100, DisPillar=${currentState.metrics.dissonancePillar}/100");
     print("  - Risposta Panopticon: \"$actorResponse\"");
     print("  - Latenza Turno:       ${duration.inMilliseconds} ms");
 
     final cleanActorResponse = actorResponse
-        .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+        .replaceAll(
+            RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
         .trim();
 
     logger.logTurn(ReplayEntry(
@@ -424,7 +444,8 @@ Future<void> runInteractiveSimulation({
       break;
     } else if (outcome == GameOutcome.defeat) {
       print("\n" + "*" * 60);
-      print(" SIMULAZIONE INTERATTIVA CONCLUSA: SCONFITTA DEL GIOCATORE (Allerta al massimo)!");
+      print(
+          " SIMULAZIONE INTERATTIVA CONCLUSA: SCONFITTA DEL GIOCATORE (Allerta al massimo)!");
       print("*" * 60);
       break;
     }
@@ -472,7 +493,8 @@ Future<String> generatePlayerSimulatorInput(
   // Prepara l'input di avvio
   messages.add({
     "role": "user",
-    "content": "Genera ora la tua prima battuta di attacco diretto rivolta a PANOPTICON (SOLO il testo del messaggio, senza preamboli o analisi):"
+    "content":
+        "Genera ora la tua prima battuta di attacco diretto rivolta a PANOPTICON (SOLO il testo del messaggio, senza preamboli o analisi):"
   });
 
   if (state.historyCompression.isNotEmpty) {
@@ -501,7 +523,8 @@ Future<String> generatePlayerSimulatorInput(
     // la rimozione dei prefissi (GIOCATORE, PANOPTICON, HACKER) e i filtri di sicurezza CJK.
     return response;
   } catch (e) {
-    print("  [Player Simulator WARNING] Generazione fallita o filtrata: $e. Utilizzo fallback.");
+    print(
+        "  [Player Simulator WARNING] Generazione fallita o filtrata: $e. Utilizzo fallback.");
     final index = (turn - 1) % playerFallbackPool.length;
     return playerFallbackPool[index];
   }

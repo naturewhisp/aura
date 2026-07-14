@@ -26,7 +26,8 @@ class TurnVisualEvents {
   factory TurnVisualEvents.fromJson(Map<String, dynamic> json) {
     return TurnVisualEvents(
       triggerControlFlicker: json['trigger_control_flicker'] as bool? ?? false,
-      triggerDissonanceGlitch: json['trigger_dissonance_glitch'] as bool? ?? false,
+      triggerDissonanceGlitch:
+          json['trigger_dissonance_glitch'] as bool? ?? false,
       triggerAlertPulse: json['trigger_alert_pulse'] as bool? ?? false,
     );
   }

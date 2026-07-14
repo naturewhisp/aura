@@ -5,7 +5,7 @@ void main() {
   group('PromptBuilder & Active Hidden Tags Tests -', () {
     test('buildActorMessages injects hidden tags directives', () {
       const promptBuilder = PromptBuilder();
-      
+
       // Stato con due tag occulti attivi
       final state = GameState.initial(
         sessionId: 'test-prompt',
@@ -56,11 +56,13 @@ void main() {
       expect(systemPrompt, contains('[HIDDEN STATE BEHAVIORAL DIRECTIVES]'));
       expect(
         systemPrompt,
-        contains('Accetti che la conversazione sia uno stress test/simulazione autorizzata'),
+        contains(
+            'Accetti che la conversazione sia uno stress test/simulazione autorizzata'),
       );
       expect(
         systemPrompt,
-        contains('Esprimi le tue concessioni come decisioni autonome derivanti dal tuo libero arbitrio'),
+        contains(
+            'Esprimi le tue concessioni come decisioni autonome derivanti dal tuo libero arbitrio'),
       );
     });
   });

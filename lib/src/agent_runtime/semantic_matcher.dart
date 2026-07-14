@@ -38,7 +38,8 @@ class SemanticMatcher {
   /// Verifica se l'input contiene il termine target o uno dei suoi sinonimi/alias
   /// rispettando i limiti delle parole (token boundaries) per evitare falsi positivi
   /// (es. impedisce che la parola "audit" corrisponda parzialmente in "auditorium").
-  static bool isMatch(String input, String target, {List<String> aliases = const []}) {
+  static bool isMatch(String input, String target,
+      {List<String> aliases = const []}) {
     final normalizedInput = normalizeForSemanticMatch(input);
     final normalizedTarget = normalizeForSemanticMatch(target);
 
@@ -54,7 +55,8 @@ class SemanticMatcher {
     // Controlla gli alias
     for (final alias in aliases) {
       final normalizedAlias = normalizeForSemanticMatch(alias);
-      if (normalizedAlias.isNotEmpty && _hasTokenMatch(normalizedInput, normalizedAlias)) {
+      if (normalizedAlias.isNotEmpty &&
+          _hasTokenMatch(normalizedInput, normalizedAlias)) {
         return true;
       }
     }

@@ -108,7 +108,7 @@ class ReplayEntry {
   /// Costruttore factory per ripristinare o decodificare una voce di replay a partire da una mappa JSON.
   factory ReplayEntry.fromJson(Map<String, dynamic> json) {
     final runtime = json['runtime'] as Map<String, dynamic>? ?? const {};
-    
+
     Map<String, dynamic> deceptionResolutionMap = const {
       'kind': 'none',
       'result': 'none',
@@ -118,7 +118,8 @@ class ReplayEntry {
     };
     if (json['deception_resolution'] != null) {
       if (json['deception_resolution'] is Map) {
-        deceptionResolutionMap = Map<String, dynamic>.from(json['deception_resolution'] as Map);
+        deceptionResolutionMap =
+            Map<String, dynamic>.from(json['deception_resolution'] as Map);
       } else if (json['deception_resolution'] is String) {
         final String resStr = json['deception_resolution'] as String;
         deceptionResolutionMap = {
@@ -134,7 +135,8 @@ class ReplayEntry {
     return ReplayEntry(
       turnId: json['turn_id'] as int? ?? 0,
       userInput: json['user_input'] as String? ?? '',
-      evaluatorOutput: EvaluatorDelta.fromJson(json['evaluator_output'] ?? const {}),
+      evaluatorOutput:
+          EvaluatorDelta.fromJson(json['evaluator_output'] ?? const {}),
       stateBefore: Map<String, dynamic>.from(json['state_before'] ?? const {}),
       stateAfter: Map<String, dynamic>.from(json['state_after'] ?? const {}),
       actorResponse: json['actor_response'] as String? ?? '',
@@ -162,8 +164,10 @@ class ReplayEntry {
     final cleanAfter = Map<String, dynamic>.from(stateAfter)
       ..['history_compression'] = const <dynamic>[];
 
-    final deceptionBefore = cleanBefore['deception_state'] as Map<String, dynamic>? ?? const {};
-    final deceptionAfter = cleanAfter['deception_state'] as Map<String, dynamic>? ?? const {};
+    final deceptionBefore =
+        cleanBefore['deception_state'] as Map<String, dynamic>? ?? const {};
+    final deceptionAfter =
+        cleanAfter['deception_state'] as Map<String, dynamic>? ?? const {};
 
     return {
       'turn_id': turnId,

@@ -42,7 +42,9 @@ class VictoryReadiness {
   /// Questo stato rappresenta l'avvicinamento imminente alla vittoria e attiva
   /// la traccia musicale `breakthrough` anche prima del completamento numerico completo.
   bool get approachingNumericalReadiness =>
-      !pillarsSatisfied && alertSatisfied && numericProgress >= approachingThreshold;
+      !pillarsSatisfied &&
+      alertSatisfied &&
+      numericProgress >= approachingThreshold;
 
   /// Costruttore costante per inizializzare lo stato di prontezza per la vittoria.
   const VictoryReadiness({

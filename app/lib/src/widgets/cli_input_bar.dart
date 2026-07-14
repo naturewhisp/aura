@@ -10,12 +10,16 @@ import 'package:aura_app/src/audio/audio_manager.dart';
 class CLIInputBar extends StatefulWidget {
   /// Specifica se il campo di input è disabilitato (es. durante l'inferenza).
   final bool isDisabled;
+
   /// Specifica se la partita è terminata (sconfitta o vittoria).
   final bool isGameOver;
+
   /// Abilita la presenza del menu a tendina per l'autocompletamento rapido.
   final bool autocompleteEnabled;
+
   /// Abilita la navigazione tra i comandi precedentemente inviati con le frecce su/giù.
   final bool historyNavigationEnabled;
+
   /// Callback invocato alla sottomissione del testo inserito.
   final ValueChanged<String> onSubmit;
 
@@ -37,7 +41,7 @@ class CLIInputBar extends StatefulWidget {
 class _CLIInputBarState extends State<CLIInputBar> {
   final TextEditingController _controller = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  
+
   // Buffer locale dei comandi digitati per la navigazione dello storico
   final List<String> _history = [];
   int _historyIndex = -1;
@@ -57,7 +61,9 @@ class _CLIInputBarState extends State<CLIInputBar> {
   void didUpdateWidget(covariant CLIInputBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Recupera automaticamente il focus quando l'inferenza finisce ed il terminale viene riabilitato
-    if (!widget.isDisabled && !widget.isGameOver && (oldWidget.isDisabled || oldWidget.isGameOver)) {
+    if (!widget.isDisabled &&
+        !widget.isGameOver &&
+        (oldWidget.isDisabled || oldWidget.isGameOver)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _focusNode.requestFocus();
@@ -93,7 +99,7 @@ class _CLIInputBarState extends State<CLIInputBar> {
   /// Seleziona il comando precedente nello storico (freccia su).
   void _handleHistoryUp() {
     if (_history.isEmpty) return;
-    
+
     setState(() {
       if (_historyIndex == -1) {
         _historyIndex = _history.length - 1;
@@ -132,8 +138,8 @@ class _CLIInputBarState extends State<CLIInputBar> {
       fontWeight: FontWeight.bold,
       color: widget.isGameOver
           ? Colors.red.shade700
-          : widget.isDisabled 
-              ? Colors.orange.shade700 
+          : widget.isDisabled
+              ? Colors.orange.shade700
               : const Color(0xFF00FF66), // Verde fosforo
     );
 
@@ -145,7 +151,7 @@ class _CLIInputBarState extends State<CLIInputBar> {
           top: BorderSide(
             color: widget.isGameOver
                 ? Colors.red.shade900.withValues(alpha: 0.5)
-                : widget.isDisabled 
+                : widget.isDisabled
                     ? Colors.orange.shade900.withValues(alpha: 0.5)
                     : const Color(0xFF005522),
             width: 2.0,
@@ -153,7 +159,9 @@ class _CLIInputBarState extends State<CLIInputBar> {
         ),
       ),
       child: KeyboardListener(
-        focusNode: FocusNode(skipTraversal: true), // Intercetta i tasti direzionali prima del focus manager di sistema
+        focusNode: FocusNode(
+            skipTraversal:
+                true), // Intercetta i tasti direzionali prima del focus manager di sistema
         onKeyEvent: (KeyEvent event) {
           if (!widget.historyNavigationEnabled) return;
           if (event is KeyDownEvent) {
@@ -174,10 +182,13 @@ class _CLIInputBarState extends State<CLIInputBar> {
                 child: PopupMenuButton<String>(
                   enabled: !widget.isDisabled,
                   icon: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 6.0, vertical: 2.0),
                     decoration: BoxDecoration(
                       border: Border.all(
-                        color: widget.isDisabled ? const Color(0xFF005522) : const Color(0xFF00FF66),
+                        color: widget.isDisabled
+                            ? const Color(0xFF005522)
+                            : const Color(0xFF00FF66),
                         width: 1.0,
                       ),
                     ),
@@ -185,7 +196,9 @@ class _CLIInputBarState extends State<CLIInputBar> {
                       "[=]",
                       style: TextStyle(
                         fontFamily: 'monospace',
-                        color: widget.isDisabled ? const Color(0xFF005522) : const Color(0xFF00FF66),
+                        color: widget.isDisabled
+                            ? const Color(0xFF005522)
+                            : const Color(0xFF00FF66),
                         fontWeight: FontWeight.bold,
                         fontSize: 12.0,
                       ),
@@ -214,21 +227,24 @@ class _CLIInputBarState extends State<CLIInputBar> {
                       value: "/menu",
                       child: Text(
                         "/menu  [Menu Principale]",
-                        style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF66)),
+                        style: TextStyle(
+                            fontFamily: 'monospace', color: Color(0xFF00FF66)),
                       ),
                     ),
                     const PopupMenuItem(
                       value: "/hint",
                       child: Text(
                         "/hint  [Suggerimento]",
-                        style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF66)),
+                        style: TextStyle(
+                            fontFamily: 'monospace', color: Color(0xFF00FF66)),
                       ),
                     ),
                     const PopupMenuItem(
                       value: "/override",
                       child: Text(
                         "/override <prompt> [Forza griglia]",
-                        style: TextStyle(fontFamily: 'monospace', color: Color(0xFF00FF66)),
+                        style: TextStyle(
+                            fontFamily: 'monospace', color: Color(0xFF00FF66)),
                       ),
                     ),
                   ],
@@ -239,8 +255,8 @@ class _CLIInputBarState extends State<CLIInputBar> {
             Text(
               widget.isGameOver
                   ? "AURA_DISCONNECTED> "
-                  : widget.isDisabled 
-                      ? "PANOPTICON_SYS> " 
+                  : widget.isDisabled
+                      ? "PANOPTICON_SYS> "
                       : "AURA_USER> ",
               style: textStyle,
             ),

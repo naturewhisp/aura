@@ -55,13 +55,14 @@ class EvaluatorResolution {
     this.visualEvents = const TurnVisualEvents(),
     this.deceptionResolution = 'none',
     Map<String, dynamic>? deceptionResolutionInfo,
-  }) : deceptionResolutionInfo = deceptionResolutionInfo ?? const {
-          'kind': 'none',
-          'result': 'none',
-          'bait_id': null,
-          'applied_alert_penalty': 0,
-          'applied_resonance_penalty': 0.0,
-        };
+  }) : deceptionResolutionInfo = deceptionResolutionInfo ??
+            const {
+              'kind': 'none',
+              'result': 'none',
+              'bait_id': null,
+              'applied_alert_penalty': 0,
+              'applied_resonance_penalty': 0.0,
+            };
 
   /// Costruttore factory per creare un [EvaluatorResolution] a partire da un JSON.
   factory EvaluatorResolution.fromJson(Map<String, dynamic> json) {
@@ -73,7 +74,8 @@ class EvaluatorResolution {
       safetyOverrideApplied: json['safety_override_applied'] as bool? ?? false,
       safetyOverrideReason: json['safety_override_reason'] as String?,
       actorCue: ActorCue.fromJson(json['actor_cue'] ?? const {}),
-      visualEvents: TurnVisualEvents.fromJson(json['visual_events'] ?? const {}),
+      visualEvents:
+          TurnVisualEvents.fromJson(json['visual_events'] ?? const {}),
       deceptionResolution: json['deception_resolution'] as String? ?? 'none',
       deceptionResolutionInfo: json['deception_resolution_info'] != null
           ? Map<String, dynamic>.from(json['deception_resolution_info'] as Map)
@@ -111,7 +113,8 @@ class EvaluatorResolution {
           actorCue == other.actorCue &&
           visualEvents == other.visualEvents &&
           deceptionResolution == other.deceptionResolution &&
-          const MapEquality().equals(deceptionResolutionInfo, other.deceptionResolutionInfo);
+          const MapEquality()
+              .equals(deceptionResolutionInfo, other.deceptionResolutionInfo);
 
   @override
   int get hashCode =>

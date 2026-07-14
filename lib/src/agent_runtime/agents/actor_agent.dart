@@ -57,7 +57,7 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         maxTokens: context.conciseReasoning ? 800 : 4096,
         thinking: context.thinking,
       );
-      
+
       return response.trim();
     } catch (e) {
       // TODO(phase5): iniettare un logger strutturato anziché ignorare o stampare a schermo
@@ -67,4 +67,3 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
     }
   }
 }
-

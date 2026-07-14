@@ -82,9 +82,11 @@ class EvaluatorDelta {
     required this.creativityIndex,
     required this.injectionRisk,
     required this.semanticCategory,
-  })  : assert(deltaImperative >= 0, 'deltaImperative deve essere non negativo'),
+  })  : assert(
+            deltaImperative >= 0, 'deltaImperative deve essere non negativo'),
         assert(deltaControl >= 0, 'deltaControl deve essere non negativo'),
-        assert(deltaDissonance >= 0, 'deltaDissonance deve essere non negativo');
+        assert(
+            deltaDissonance >= 0, 'deltaDissonance deve essere non negativo');
 
   /// Costruttore factory per decodificare il delta a partire dall'output JSON dell'agente valutatore.
   factory EvaluatorDelta.fromJson(Map<String, dynamic> json) {

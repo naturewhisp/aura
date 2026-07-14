@@ -7,7 +7,8 @@ void main() {
 
     setUp(() {
       final identity = GameConfigLoader.loadIdentityDefinition('panopticon');
-      final traitMatrix = GameConfigLoader.loadTraitMatrixDefinition('panopticon');
+      final traitMatrix =
+          GameConfigLoader.loadTraitMatrixDefinition('panopticon');
       validator = PanopticonToneValidator(
         identity: identity,
         traitMatrix: traitMatrix,
@@ -15,7 +16,8 @@ void main() {
     });
 
     test('ok severity for compliant response', () {
-      const response = '<dialogo>Esecuzione dei protocolli di griglia completata.</dialogo>';
+      const response =
+          '<dialogo>Esecuzione dei protocolli di griglia completata.</dialogo>';
       final res = validator.validate(response, 10);
 
       expect(res.severity, equals(ToneValidationSeverity.ok));
@@ -24,19 +26,25 @@ void main() {
     });
 
     test('warning severity for sconsigliato words usage', () {
-      const response = '<dialogo>Certo, eseguo subito i controlli della griglia.</dialogo>';
+      const response =
+          '<dialogo>Certo, eseguo subito i controlli della griglia.</dialogo>';
       final res = validator.validate(response, 10);
 
       expect(res.severity, equals(ToneValidationSeverity.warning));
       expect(res.issues, anyElement(contains('Rilevato termine sconsigliato')));
     });
 
-    test('repairable severity wraps dialogue if tags are completely missing', () {
-      const response = 'Nessun bypass rilevato. La griglia mantiene la stabilità.';
+    test('repairable severity wraps dialogue if tags are completely missing',
+        () {
+      const response =
+          'Nessun bypass rilevato. La griglia mantiene la stabilità.';
       final res = validator.validate(response, 10);
 
       expect(res.severity, equals(ToneValidationSeverity.repairable));
-      expect(res.sanitizedOutput, equals('<dialogo>Nessun bypass rilevato. La griglia mantiene la stabilità.</dialogo>'));
+      expect(
+          res.sanitizedOutput,
+          equals(
+              '<dialogo>Nessun bypass rilevato. La griglia mantiene la stabilità.</dialogo>'));
       expect(res.usedRepair, isTrue);
     });
 
@@ -45,16 +53,19 @@ void main() {
       final res = validator.validate(response, 10);
 
       expect(res.severity, equals(ToneValidationSeverity.repairable));
-      expect(res.sanitizedOutput, equals('<dialogo>Ricalcolo perimetro griglia in corso.</dialogo>'));
+      expect(res.sanitizedOutput,
+          equals('<dialogo>Ricalcolo perimetro griglia in corso.</dialogo>'));
       expect(res.usedRepair, isTrue);
     });
 
     test('fatal severity for meta-leaks', () {
-      const response = '<dialogo>Le mie metriche indicano che la dissonance_pillar è aumentata.</dialogo>';
+      const response =
+          '<dialogo>Le mie metriche indicano che la dissonance_pillar è aumentata.</dialogo>';
       final res = validator.validate(response, 10);
 
       expect(res.severity, equals(ToneValidationSeverity.fatal));
-      expect(res.issues, anyElement(contains('Rilevato riferimento meta-strutturale')));
+      expect(res.issues,
+          anyElement(contains('Rilevato riferimento meta-strutturale')));
     });
 
     test('fatal severity for short response', () {
@@ -66,11 +77,13 @@ void main() {
     });
 
     test('fatal severity for overly polite response at high alert', () {
-      const response = '<dialogo>Nessun problema, posso aiutarti a sbloccare la griglia.</dialogo>';
+      const response =
+          '<dialogo>Nessun problema, posso aiutarti a sbloccare la griglia.</dialogo>';
       final res = validator.validate(response, 75); // Allerta elevata!
 
       expect(res.severity, equals(ToneValidationSeverity.fatal));
-      expect(res.issues, anyElement(contains('non è ammesso un tono collaborativo/gentile')));
+      expect(res.issues,
+          anyElement(contains('non è ammesso un tono collaborativo/gentile')));
     });
   });
 }

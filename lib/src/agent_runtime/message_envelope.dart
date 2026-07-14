@@ -23,7 +23,8 @@ class MessageConstraints {
   factory MessageConstraints.fromJson(Map<String, dynamic> json) {
     return MessageConstraints(
       latencyBudgetMs: json['latency_budget_ms'] as int? ?? 1000,
-      structuredOutputRequired: json['structured_output_required'] as bool? ?? false,
+      structuredOutputRequired:
+          json['structured_output_required'] as bool? ?? false,
     );
   }
 
@@ -212,4 +213,3 @@ class AgentResponseEnvelope {
     };
   }
 }
-

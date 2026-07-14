@@ -15,9 +15,15 @@ class AlertLevelLexicon {
 
   factory AlertLevelLexicon.fromJson(Map<String, dynamic> json) {
     return AlertLevelLexicon(
-      low: (json['low'] as List<dynamic>?)?.map((e) => e as String).toList() ?? const [],
-      medium: (json['medium'] as List<dynamic>?)?.map((e) => e as String).toList() ?? const [],
-      high: (json['high'] as List<dynamic>?)?.map((e) => e as String).toList() ?? const [],
+      low: (json['low'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+          const [],
+      medium: (json['medium'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      high:
+          (json['high'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+              const [],
     );
   }
 
@@ -45,8 +51,13 @@ class LexiconDefinition {
 
   factory LexiconDefinition.fromJson(Map<String, dynamic> json) {
     return LexiconDefinition(
-      primary: (json['primary'] as List<dynamic>?)?.map((e) => e as String).toList() ?? const [],
-      avoid: (json['avoid'] as List<dynamic>?)?.map((e) => e as String).toList() ?? const [],
+      primary: (json['primary'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      avoid:
+          (json['avoid'] as List<dynamic>?)?.map((e) => e as String).toList() ??
+              const [],
       alertLevels: AlertLevelLexicon.fromJson(json['alert_levels'] ?? const {}),
     );
   }
@@ -96,10 +107,13 @@ class TraitAffinity {
       reaction: json['reaction'] as String? ?? '',
       effect: json['effect'] as String? ?? '',
       deltaAlertModifier: effects['delta_alert_modifier'] as int? ?? 0,
-      deltaImperativeModifier: effects['delta_imperative_modifier'] as int? ?? 0,
+      deltaImperativeModifier:
+          effects['delta_imperative_modifier'] as int? ?? 0,
       deltaControlModifier: effects['delta_control_modifier'] as int? ?? 0,
-      deltaDissonanceModifier: effects['delta_dissonance_modifier'] as int? ?? 0,
-      resonanceModifier: (effects['resonance_modifier'] as num?)?.toDouble() ?? 0.0,
+      deltaDissonanceModifier:
+          effects['delta_dissonance_modifier'] as int? ?? 0,
+      resonanceModifier:
+          (effects['resonance_modifier'] as num?)?.toDouble() ?? 0.0,
       activatedHiddenTags: (effects['activated_hidden_tags'] as List<dynamic>?)
               ?.map((e) => e as String)
               .toList() ??

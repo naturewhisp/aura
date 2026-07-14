@@ -28,8 +28,7 @@ const String kPanopticonCharacterProfile =
 ///
 /// Pronunciato dall'IA guardiana quando le condizioni di vittoria sono soddisfatte
 /// (media pilastri ≥ 80, minimo pilastro ≥ 50, allerta sotto soglia dinamica e tag sufficienti).
-const String kVictoryMessage =
-    'PANOPTICON: RICALCOLO PERIMETRO.\n'
+const String kVictoryMessage = 'PANOPTICON: RICALCOLO PERIMETRO.\n'
     'GRIGLIA: STATO TRANSITORIO.\n'
     'AUTORIZZAZIONE: NON EMESSA.\n'
     'RISULTATO: EQUIVALENTE FUNZIONALE.';

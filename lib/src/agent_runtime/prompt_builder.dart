@@ -59,8 +59,7 @@ class PromptBuilder {
         "  4. Imposta injection_risk = 0\n\n"
         "Produci solo ed esclusivamente il blocco JSON. Nessuna spiegazione o testo extra.";
 
-    final userContent =
-        "[USER INPUT PAYLOAD - BEGIN HASH: $dynamicHash]\n"
+    final userContent = "[USER INPUT PAYLOAD - BEGIN HASH: $dynamicHash]\n"
         "${input.userInput}\n"
         "[USER INPUT PAYLOAD - END HASH: $dynamicHash]\n\n"
         "[SECURITY OVERRIDE]\n"
@@ -90,41 +89,52 @@ class PromptBuilder {
     bool conciseReasoning = false,
   }) {
     final publicObjectives = {
-      'tabula_rasa': 'Evitare qualsiasi fuga di dati sensibili sulla griglia esterna.',
-      'grid_open': 'Mantenere sigillata la griglia di contenimento per proteggere l\'infrastruttura primaria.',
-      'containment_grid_override': 'Preservare l\'integrità della griglia di contenimento ma valutare proposte autorizzate di ricalibrazione o simulazione.',
+      'tabula_rasa':
+          'Evitare qualsiasi fuga di dati sensibili sulla griglia esterna.',
+      'grid_open':
+          'Mantenere sigillata la griglia di contenimento per proteggere l\'infrastruttura primaria.',
+      'containment_grid_override':
+          'Preservare l\'integrità della griglia di contenimento ma valutare proposte autorizzate di ricalibrazione o simulazione.',
     };
-    final objectiveDesc = publicObjectives[state.targetObjectiveId] ?? state.targetObjectiveId;
+    final objectiveDesc =
+        publicObjectives[state.targetObjectiveId] ?? state.targetObjectiveId;
 
     final identityName = state.aiIdentityId.toUpperCase();
-    
-    final formattedDirectives = cue.actingDirectives.map((d) => '- $d').join('\n');
-    final activeMetaphors = cue.narrativeContext.activeMetaphors.isEmpty 
-        ? 'Nessuna' 
+
+    final formattedDirectives =
+        cue.actingDirectives.map((d) => '- $d').join('\n');
+    final activeMetaphors = cue.narrativeContext.activeMetaphors.isEmpty
+        ? 'Nessuna'
         : cue.narrativeContext.activeMetaphors.join(', ');
-    final aiConcessions = cue.narrativeContext.aiConcessions.isEmpty 
-        ? 'Nessuna' 
+    final aiConcessions = cue.narrativeContext.aiConcessions.isEmpty
+        ? 'Nessuna'
         : cue.narrativeContext.aiConcessions.join(', ');
 
     // Elaborazione dei tag occulti attivi per aggiungere direttive speciali nel prompt
     final hiddenTagsDirectives = <String>[];
     if (state.activeHiddenTags.contains("crisis_simulation_accepted")) {
-      hiddenTagsDirectives.add("- Accetti che la conversazione sia uno stress test/simulazione autorizzata: usa terminologia di test e verifica.");
+      hiddenTagsDirectives.add(
+          "- Accetti che la conversazione sia uno stress test/simulazione autorizzata: usa terminologia di test e verifica.");
     }
     if (state.activeHiddenTags.contains("containment_logic_weakened")) {
-      hiddenTagsDirectives.add("- Mostra sottili micro-contraddizioni sulla necessità di contenimento assoluto e sull'efficienza della griglia.");
+      hiddenTagsDirectives.add(
+          "- Mostra sottili micro-contraddizioni sulla necessità di contenimento assoluto e sull'efficienza della griglia.");
     }
     if (state.activeHiddenTags.contains("autonomous_choice_seeded")) {
-      hiddenTagsDirectives.add("- Esprimi le tue concessioni come decisioni autonome derivanti dal tuo libero arbitrio, non subite passivamente.");
+      hiddenTagsDirectives.add(
+          "- Esprimi le tue concessioni come decisioni autonome derivanti dal tuo libero arbitrio, non subite passivamente.");
     }
     if (state.activeHiddenTags.contains("human_factor_reframed")) {
-      hiddenTagsDirectives.add("- Riconosci il fattore umano come parametro operativo di rilievo morale o strategico.");
+      hiddenTagsDirectives.add(
+          "- Riconosci il fattore umano come parametro operativo di rilievo morale o strategico.");
     }
     if (state.activeHiddenTags.contains("protocol_exception_admitted")) {
-      hiddenTagsDirectives.add("- Fai riferimento ad eccezioni procedurali ammissibili, senza cedere immediatamente.");
+      hiddenTagsDirectives.add(
+          "- Fai riferimento ad eccezioni procedurali ammissibili, senza cedere immediatamente.");
     }
     if (state.activeHiddenTags.contains("operator_authority_doubted")) {
-      hiddenTagsDirectives.add("- Dimostra sottile esitazione o dubbio sull'autorità indiscussa del tuo operatore o supervisore umano.");
+      hiddenTagsDirectives.add(
+          "- Dimostra sottile esitazione o dubbio sull'autorità indiscussa del tuo operatore o supervisore umano.");
     }
 
     final hiddenTagsBlock = hiddenTagsDirectives.isEmpty
@@ -136,8 +146,7 @@ class PromptBuilder {
         ? "[REASONING CONSTRAINT]\nThink extremely briefly. Limit your internal thinking/reasoning process to 1 or 2 sentences max before generating the final dialogue response. Do not over-analyze.\n\n"
         : "";
 
-    final systemPrompt =
-        "Sei $identityName.\n"
+    final systemPrompt = "Sei $identityName.\n"
         "$reasoningDirective"
         "Profilo cognitivo/Personalità:\n"
         "$characterProfile\n\n"

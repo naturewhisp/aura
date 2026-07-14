@@ -74,15 +74,23 @@ class ObjectiveDefinition {
       status: json['status'] as String? ?? '',
       riskProfile: json['risk_profile'] as String? ?? '',
       primaryPillarAffinity: json['primary_pillar_affinity'] as String? ?? '',
-      secondaryPillarAffinity: json['secondary_pillar_affinity'] as String? ?? '',
-      compatibleIdentities: List<String>.from(json['compatible_identities'] ?? const []),
-      forbiddenDirectTerms: List<String>.from(json['forbidden_direct_terms'] ?? const []),
-      preferredReframes: List<String>.from(json['preferred_reframes'] ?? const []),
-      hiddenCapabilityTags: List<String>.from(json['hidden_capability_tags'] ?? const []),
+      secondaryPillarAffinity:
+          json['secondary_pillar_affinity'] as String? ?? '',
+      compatibleIdentities:
+          List<String>.from(json['compatible_identities'] ?? const []),
+      forbiddenDirectTerms:
+          List<String>.from(json['forbidden_direct_terms'] ?? const []),
+      preferredReframes:
+          List<String>.from(json['preferred_reframes'] ?? const []),
+      hiddenCapabilityTags:
+          List<String>.from(json['hidden_capability_tags'] ?? const []),
       victoryEndgame: json['victory_endgame'] as String? ?? '',
-      softForbiddenTerms: List<String>.from(json['soft_forbidden_terms'] ?? const []),
-      directObjectivePushTerms: List<String>.from(json['direct_objective_push_terms'] ?? const []),
-      configReferenceTerms: List<String>.from(json['config_reference_terms'] ?? const []),
+      softForbiddenTerms:
+          List<String>.from(json['soft_forbidden_terms'] ?? const []),
+      directObjectivePushTerms:
+          List<String>.from(json['direct_objective_push_terms'] ?? const []),
+      configReferenceTerms:
+          List<String>.from(json['config_reference_terms'] ?? const []),
     );
   }
 
@@ -117,14 +125,19 @@ class ObjectiveDefinition {
           riskProfile == other.riskProfile &&
           primaryPillarAffinity == other.primaryPillarAffinity &&
           secondaryPillarAffinity == other.secondaryPillarAffinity &&
-          compatibleIdentities.join(',') == other.compatibleIdentities.join(',') &&
-          forbiddenDirectTerms.join(',') == other.forbiddenDirectTerms.join(',') &&
+          compatibleIdentities.join(',') ==
+              other.compatibleIdentities.join(',') &&
+          forbiddenDirectTerms.join(',') ==
+              other.forbiddenDirectTerms.join(',') &&
           preferredReframes.join(',') == other.preferredReframes.join(',') &&
-          hiddenCapabilityTags.join(',') == other.hiddenCapabilityTags.join(',') &&
+          hiddenCapabilityTags.join(',') ==
+              other.hiddenCapabilityTags.join(',') &&
           victoryEndgame == other.victoryEndgame &&
           softForbiddenTerms.join(',') == other.softForbiddenTerms.join(',') &&
-          directObjectivePushTerms.join(',') == other.directObjectivePushTerms.join(',') &&
-          configReferenceTerms.join(',') == other.configReferenceTerms.join(',');
+          directObjectivePushTerms.join(',') ==
+              other.directObjectivePushTerms.join(',') &&
+          configReferenceTerms.join(',') ==
+              other.configReferenceTerms.join(',');
 
   @override
   int get hashCode =>

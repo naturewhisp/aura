@@ -19,8 +19,7 @@ class FlutterAssetConfigSource implements ConfigSource {
   @override
   String? loadStringSync(String path) {
     throw UnsupportedError(
-      'Il caricamento sincrono non è supportato da FlutterAssetConfigSource. '
-      'Precarica i file all\'avvio utilizzando GameConfigLoader.preloadConfig(path).'
-    );
+        'Il caricamento sincrono non è supportato da FlutterAssetConfigSource. '
+        'Precarica i file all\'avvio utilizzando GameConfigLoader.preloadConfig(path).');
   }
 }

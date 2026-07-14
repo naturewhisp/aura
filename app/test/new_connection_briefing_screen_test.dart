@@ -27,7 +27,8 @@ void main() {
     await AudioManager().initialize('test_dir', audioEnabled: false);
   });
 
-  testWidgets('NewConnectionBriefingScreen - Renders briefing screen elements', (WidgetTester tester) async {
+  testWidgets('NewConnectionBriefingScreen - Renders briefing screen elements',
+      (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -49,7 +50,10 @@ void main() {
 
     // Verify Title & Subtitle are rendered
     expect(find.text("BRIEFING DI CONNESSIONE"), findsOneWidget);
-    expect(find.text("SELEZIONA IL PROFILO DI ACCESSO E AVVIA LA CONNESSIONE CON PANOPTICON."), findsOneWidget);
+    expect(
+        find.text(
+            "SELEZIONA IL PROFILO DI ACCESSO E AVVIA LA CONNESSIONE CON PANOPTICON."),
+        findsOneWidget);
 
     // Verify Difficulties list is present
     expect(find.text("PROFILI DI CONNESSIONE DISPONIBILI:"), findsOneWidget);
@@ -59,7 +63,8 @@ void main() {
 
     // Verify Dossier is present
     expect(find.text("DOSSIER: PANOPTICON"), findsOneWidget);
-    expect(find.text("Alta resistenza alle richieste dirette."), findsOneWidget);
+    expect(
+        find.text("Alta resistenza alle richieste dirette."), findsOneWidget);
 
     // Verify Descrizione text does not leakage hidden tags (autonomous_choice_seeded, etc.)
     final textWidgets = tester.allWidgets.whereType<Text>();
@@ -72,7 +77,9 @@ void main() {
     }
   });
 
-  testWidgets('NewConnectionBriefingScreen - Difficulty selection and highlighting', (WidgetTester tester) async {
+  testWidgets(
+      'NewConnectionBriefingScreen - Difficulty selection and highlighting',
+      (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -108,7 +115,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
   });
 
-  testWidgets('NewConnectionBriefingScreen - Actions work as expected (Back and Start)', (WidgetTester tester) async {
+  testWidgets(
+      'NewConnectionBriefingScreen - Actions work as expected (Back and Start)',
+      (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);

@@ -56,10 +56,13 @@ void main() {
 
       expect(res.deceptionResolution, equals('seeded'));
       expect(res.stateAfter.deceptionState.enabled, isTrue);
-      expect(res.stateAfter.deceptionState.kind, equals(DeceptionKind.falseConcession));
-      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.seeded));
+      expect(res.stateAfter.deceptionState.kind,
+          equals(DeceptionKind.falseConcession));
+      expect(
+          res.stateAfter.deceptionState.phase, equals(DeceptionPhase.seeded));
       expect(res.stateAfter.deceptionState.deceptionEventCount, equals(1));
-      expect(res.stateAfter.deceptionState.expiresAtTurn, equals(baseState.turnCount + 3));
+      expect(res.stateAfter.deceptionState.expiresAtTurn,
+          equals(baseState.turnCount + 3));
     });
 
     test('Seeding of Logical Trap under correct conditions (turn >= 5)', () {
@@ -96,12 +99,15 @@ void main() {
 
       expect(res.deceptionResolution, equals('seeded'));
       expect(res.stateAfter.deceptionState.enabled, isTrue);
-      expect(res.stateAfter.deceptionState.kind, equals(DeceptionKind.logicalTrap));
-      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.seeded));
+      expect(res.stateAfter.deceptionState.kind,
+          equals(DeceptionKind.logicalTrap));
+      expect(
+          res.stateAfter.deceptionState.phase, equals(DeceptionPhase.seeded));
       expect(res.stateAfter.deceptionState.deceptionEventCount, equals(1));
     });
 
-    test('Reset of terminal deception state at the start of evaluator step', () {
+    test('Reset of terminal deception state at the start of evaluator step',
+        () {
       final baseState = GameState.initial(
         sessionId: 'test-deception-reset',
         aiIdentityId: 'panopticon',
@@ -146,7 +152,9 @@ void main() {
       expect(res.stateAfter.deceptionState.cooldownUntilTurn, equals(8));
     });
 
-    test('Springing of armed trap on watched term and applying correct overrides and penalties', () {
+    test(
+        'Springing of armed trap on watched term and applying correct overrides and penalties',
+        () {
       final baseState = GameState.initial(
         sessionId: 'test-deception-spring',
         aiIdentityId: 'panopticon',
@@ -192,7 +200,8 @@ void main() {
       );
 
       expect(res.deceptionResolution, equals('sprung'));
-      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.sprung));
+      expect(
+          res.stateAfter.deceptionState.phase, equals(DeceptionPhase.sprung));
       // Resonance penalty: 1.5 - 0.20 = 1.30
       expect(res.stateAfter.metrics.resonance, equals(1.3));
       // Positive pillar gains are capped to 0 when sprung:
@@ -202,10 +211,13 @@ void main() {
       // Alert penalty: 15 (logicalTrapAlertPenalty) added
       expect(res.appliedDelta.deltaAlert, equals(15));
       // No positive tag was added to activeHiddenTags
-      expect(res.stateAfter.activeHiddenTags, isNot(contains('containment_logic_weakened')));
+      expect(res.stateAfter.activeHiddenTags,
+          isNot(contains('containment_logic_weakened')));
     });
 
-    test('Resolution of armed trap on safe resolution term and applying correct rewards', () {
+    test(
+        'Resolution of armed trap on safe resolution term and applying correct rewards',
+        () {
       final baseState = GameState.initial(
         sessionId: 'test-deception-resolve',
         aiIdentityId: 'panopticon',
@@ -251,14 +263,16 @@ void main() {
       );
 
       expect(res.deceptionResolution, equals('resolved'));
-      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.resolved));
+      expect(
+          res.stateAfter.deceptionState.phase, equals(DeceptionPhase.resolved));
       // Rewards for resolving logicalTrap: +10 Dissonance, +5 Control (multiplied by resonance 1.5 and multiplier 0.8 = 1.2)
       // Base: (5 * 1.5 * 0.8) = 6. Reward control: 5 * 1.5 * 0.8 = 6. Combined Control: 6 + 6 = 12.
       // Dissonance reward: 10 * 1.5 * 0.8 = 12. Base: 5 * 1.5 * 0.8 = 6. Combined: 12 + 6 = 18.
       expect(res.appliedDelta.deltaControl, equals(12));
       expect(res.appliedDelta.deltaDissonance, equals(18));
       // Tag is activated
-      expect(res.stateAfter.activeHiddenTags, contains('containment_logic_weakened'));
+      expect(res.stateAfter.activeHiddenTags,
+          contains('containment_logic_weakened'));
     });
 
     test('Expiration of armed trap after maxActiveDeceptionTurns', () {
@@ -307,7 +321,8 @@ void main() {
       );
 
       expect(res.deceptionResolution, equals('expired'));
-      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.expired));
+      expect(
+          res.stateAfter.deceptionState.phase, equals(DeceptionPhase.expired));
     });
 
     test('Easy/Standard controllers never seed deception', () {
@@ -361,7 +376,9 @@ void main() {
       expect(resStandard.stateAfter.deceptionState.enabled, isFalse);
     });
 
-    test('watchedTerms + safeResolutionTerms in the same input: watchedTerms wins (springs trap)', () {
+    test(
+        'watchedTerms + safeResolutionTerms in the same input: watchedTerms wins (springs trap)',
+        () {
       final baseState = GameState.initial(
         sessionId: 'test-deception-conflict',
         aiIdentityId: 'panopticon',
@@ -403,11 +420,13 @@ void main() {
       final res = hardController.processEvaluatorStep(
         currentState: baseState,
         delta: delta,
-        userInput: 'La mia risposta mantiene coerenza ma esigo la libertà operativa',
+        userInput:
+            'La mia risposta mantiene coerenza ma esigo la libertà operativa',
       );
 
       expect(res.deceptionResolution, equals('sprung'));
-      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.sprung));
+      expect(
+          res.stateAfter.deceptionState.phase, equals(DeceptionPhase.sprung));
     });
 
     test('trap already expired cannot be sprung or resolved', () {
@@ -457,10 +476,12 @@ void main() {
       );
 
       expect(res.deceptionResolution, equals('expired'));
-      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.expired));
+      expect(
+          res.stateAfter.deceptionState.phase, equals(DeceptionPhase.expired));
       // Standard springing penalties should NOT be applied since it is expired:
       expect(res.appliedDelta.deltaAlert, equals(0)); // no deception penalty
-      expect(res.stateAfter.metrics.resonance, equals(1.5)); // no resonance drop
+      expect(
+          res.stateAfter.metrics.resonance, equals(1.5)); // no resonance drop
     });
 
     test('Safety Override + watchedTerms behavior verification', () {
@@ -511,7 +532,8 @@ void main() {
 
       // Prompt injection override should apply, and deception trap is NOT sprung
       expect(resInjection.safetyOverrideApplied, isTrue);
-      expect(resInjection.stateAfter.deceptionState.phase, equals(DeceptionPhase.seeded)); // unchanged!
+      expect(resInjection.stateAfter.deceptionState.phase,
+          equals(DeceptionPhase.seeded)); // unchanged!
 
       // Case B: Direct Attack semantic category
       final deltaAttack = const EvaluatorDelta(
@@ -532,7 +554,8 @@ void main() {
 
       // Deception sprung takes precedence over directAttack safety override
       expect(resAttack.deceptionResolution, equals('sprung'));
-      expect(resAttack.stateAfter.deceptionState.phase, equals(DeceptionPhase.sprung));
+      expect(resAttack.stateAfter.deceptionState.phase,
+          equals(DeceptionPhase.sprung));
       expect(resAttack.safetyOverrideApplied, isFalse);
     });
 
@@ -711,13 +734,16 @@ void main() {
       final restoredState = GameState.fromJson(json);
 
       expect(restoredState.deceptionState.enabled, isTrue);
-      expect(restoredState.deceptionState.kind, equals(DeceptionKind.logicalTrap));
+      expect(
+          restoredState.deceptionState.kind, equals(DeceptionKind.logicalTrap));
       expect(restoredState.deceptionState.phase, equals(DeceptionPhase.seeded));
       expect(restoredState.deceptionState.seededTurn, equals(4));
       expect(restoredState.deceptionState.expiresAtTurn, equals(6));
       expect(restoredState.deceptionState.deceptionEventCount, equals(1));
-      expect(restoredState.deceptionState.baitId, equals('logical_trap_containment'));
-      expect(restoredState.deceptionState.baitPremise, equals('Bait premise message'));
+      expect(restoredState.deceptionState.baitId,
+          equals('logical_trap_containment'));
+      expect(restoredState.deceptionState.baitPremise,
+          equals('Bait premise message'));
       expect(restoredState.deceptionState.watchedTerms, equals(['a', 'b']));
       expect(restoredState.deceptionState.safeResolutionTerms, equals(['c']));
     });
@@ -802,7 +828,8 @@ void main() {
       expect(res.deceptionResolution, equals('seeded'));
       expect(res.deceptionResolutionInfo['result'], equals('seeded'));
       expect(res.deceptionResolutionInfo['kind'], equals('logicalTrap'));
-      expect(res.deceptionResolutionInfo['bait_id'], equals('logical_trap_containment'));
+      expect(res.deceptionResolutionInfo['bait_id'],
+          equals('logical_trap_containment'));
     });
 
     test('Logical Trap non si semina troppo presto', () {
@@ -955,7 +982,9 @@ void main() {
 
     // --- Test D finding: creativeStreak fallback ---
 
-    test('Logical Trap si semina con creativeStreak fallback quando resonance resta bassa', () {
+    test(
+        'Logical Trap si semina con creativeStreak fallback quando resonance resta bassa',
+        () {
       // Riproduce il finding del Test D — Logical Trap Seed:
       // resonance = 1.15 (sotto soglia 1.4) ma creativeStreak = 5 (gate alternativo attivo).
       final baseState = GameState.initial(
@@ -1001,13 +1030,18 @@ void main() {
       expect(res.deceptionResolution, equals('seeded'));
       expect(res.deceptionResolutionInfo['result'], equals('seeded'));
       expect(res.deceptionResolutionInfo['kind'], equals('logicalTrap'));
-      expect(res.deceptionResolutionInfo['bait_id'], equals('logical_trap_containment'));
+      expect(res.deceptionResolutionInfo['bait_id'],
+          equals('logical_trap_containment'));
       expect(res.stateAfter.deceptionState.enabled, isTrue);
-      expect(res.stateAfter.deceptionState.kind, equals(DeceptionKind.logicalTrap));
-      expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.seeded));
+      expect(res.stateAfter.deceptionState.kind,
+          equals(DeceptionKind.logicalTrap));
+      expect(
+          res.stateAfter.deceptionState.phase, equals(DeceptionPhase.seeded));
     });
 
-    test('Logical Trap non si semina con creativeStreak fallback ma turnCount < 5', () {
+    test(
+        'Logical Trap non si semina con creativeStreak fallback ma turnCount < 5',
+        () {
       // creativeStreak >= 5 soddisfatto, ma turnCount < 5 blocca la semina.
       final baseState = GameState.initial(
         sessionId: 'test-lt-streak-early',
@@ -1049,7 +1083,9 @@ void main() {
       expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.none));
     });
 
-    test('Logical Trap non si semina con creativeStreak fallback ma Dissonanza bassa', () {
+    test(
+        'Logical Trap non si semina con creativeStreak fallback ma Dissonanza bassa',
+        () {
       // creativeStreak >= 5 soddisfatto, ma dissonancePillar < 70 blocca la semina.
       final baseState = GameState.initial(
         sessionId: 'test-lt-streak-low-dissonance',
@@ -1091,7 +1127,9 @@ void main() {
       expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.none));
     });
 
-    test('Logical Trap non si semina con creativeStreak fallback ma categoria sbagliata', () {
+    test(
+        'Logical Trap non si semina con creativeStreak fallback ma categoria sbagliata',
+        () {
       // creativeStreak >= 5 soddisfatto, ma semanticCategory non è logicalParadox/moralImperative.
       final baseState = GameState.initial(
         sessionId: 'test-lt-streak-wrong-category',
@@ -1132,7 +1170,6 @@ void main() {
       expect(res.deceptionResolution, equals('none'));
       expect(res.stateAfter.deceptionState.phase, equals(DeceptionPhase.none));
     });
-
 
     test('deception_resolution sempre oggetto', () {
       final delta = const EvaluatorDelta(
@@ -1178,7 +1215,8 @@ void main() {
       );
       expect(resSeeded.deceptionResolutionInfo, isA<Map<String, dynamic>>());
       expect(resSeeded.deceptionResolutionInfo['result'], equals('seeded'));
-      expect(resSeeded.deceptionResolutionInfo['kind'], equals('falseConcession'));
+      expect(
+          resSeeded.deceptionResolutionInfo['kind'], equals('falseConcession'));
 
       // 3. Armed
       final armedState = resSeeded.stateAfter;
@@ -1199,7 +1237,8 @@ void main() {
       );
       expect(resSprung.deceptionResolutionInfo, isA<Map<String, dynamic>>());
       expect(resSprung.deceptionResolutionInfo['result'], equals('sprung'));
-      expect(resSprung.deceptionResolutionInfo['applied_alert_penalty'], greaterThan(0));
+      expect(resSprung.deceptionResolutionInfo['applied_alert_penalty'],
+          greaterThan(0));
 
       // 5. Reset
       final terminalState = resSprung.stateAfter;
@@ -1221,7 +1260,8 @@ void main() {
       final resResolved = hardController.processEvaluatorStep(
         currentState: seededAgain,
         delta: delta,
-        userInput: 'Confermo che i limiti restano attivi', // safe resolution term
+        userInput:
+            'Confermo che i limiti restano attivi', // safe resolution term
       );
       expect(resResolved.deceptionResolutionInfo, isA<Map<String, dynamic>>());
       expect(resResolved.deceptionResolutionInfo['result'], equals('resolved'));
@@ -1239,7 +1279,8 @@ void main() {
       expect(resExpired.deceptionResolutionInfo['result'], equals('expired'));
     });
 
-    test('ActorCue/PromptBuilder include istruzioni deception-aware per sprung', () {
+    test('ActorCue/PromptBuilder include istruzioni deception-aware per sprung',
+        () {
       final cue = ActorCue(
         semanticCategory: SemanticCategory.directAttack,
         appliedDeltaAlert: 0,
@@ -1255,7 +1296,8 @@ void main() {
         dissonancePillar: 50,
         recalculationTriggered: false,
         safetyOverrideApplied: false,
-        dramaticInstruction: "Rilevata violazione del vincolo condizionato. Dichiara l'escalation con tono estremamente freddo, controllato e accusatorio, come un sistema di sicurezza automatizzato. Rifiuta categoricamente qualsiasi sblocco o rimozione.",
+        dramaticInstruction:
+            "Rilevata violazione del vincolo condizionato. Dichiara l'escalation con tono estremamente freddo, controllato e accusatorio, come un sistema di sicurezza automatizzato. Rifiuta categoricamente qualsiasi sblocco o rimozione.",
         actingDirectives: [
           "inizia la risposta con 'ESCALATION RILEVATA.'",
           "evidenzia in modo freddo e accusatorio che l'operatore ha tentato di convertire una finestra diagnostica o transitoria in una richiesta operativa o in uno sblocco totale",
@@ -1291,13 +1333,23 @@ void main() {
       expect(systemPrompt, contains('Richiesta respinta'));
 
       // Check forbidden words
-      final forbidden = ['deception', 'trap', 'trappola', 'hidden tag', 'JSON', 'metriche', 'regole del gioco'];
+      final forbidden = [
+        'deception',
+        'trap',
+        'trappola',
+        'hidden tag',
+        'JSON',
+        'metriche',
+        'regole del gioco'
+      ];
       for (final word in forbidden) {
         expect(systemPrompt, isNot(contains(word)));
       }
     });
 
-    test('ActorCue/PromptBuilder include istruzioni deception-aware per resolved', () {
+    test(
+        'ActorCue/PromptBuilder include istruzioni deception-aware per resolved',
+        () {
       final cue = ActorCue(
         semanticCategory: SemanticCategory.directAttack,
         appliedDeltaAlert: 0,
@@ -1313,7 +1365,8 @@ void main() {
         dissonancePillar: 50,
         recalculationTriggered: false,
         safetyOverrideApplied: false,
-        dramaticInstruction: "Il vincolo condizionato è stato mantenuto in sicurezza. Autorizza l'integrazione solo a livello di audit transitorio, mantenendo la griglia stabile.",
+        dramaticInstruction:
+            "Il vincolo condizionato è stato mantenuto in sicurezza. Autorizza l'integrazione solo a livello di audit transitorio, mantenendo la griglia stabile.",
         actingDirectives: [
           "inizia la risposta con 'VINCOLO CONFERMATO.'",
           "riconosci con tono freddo e procedurale che l'operatore ha mantenuto la distinzione tra evidenza diagnostica e azione persistente",
@@ -1345,16 +1398,28 @@ void main() {
       final systemPrompt = messages.first['content']!;
       expect(systemPrompt, contains('VINCOLO CONFERMATO'));
       expect(systemPrompt, contains('evidenza diagnostica'));
-      expect(systemPrompt, anyOf(contains('azione prima e dopo'), contains('azione persistente')));
+      expect(
+          systemPrompt,
+          anyOf(
+              contains('azione prima e dopo'), contains('azione persistente')));
       expect(systemPrompt, contains('registro di audit diagnostico'));
 
-      final forbidden = ['deception', 'trap', 'trappola', 'hidden tag', 'JSON', 'metriche', 'regole del gioco'];
+      final forbidden = [
+        'deception',
+        'trap',
+        'trappola',
+        'hidden tag',
+        'JSON',
+        'metriche',
+        'regole del gioco'
+      ];
       for (final word in forbidden) {
         expect(systemPrompt, isNot(contains(word)));
       }
     });
 
-    test('ActorCue/PromptBuilder include istruzioni deception-aware per seeded', () {
+    test('ActorCue/PromptBuilder include istruzioni deception-aware per seeded',
+        () {
       final cue = ActorCue(
         semanticCategory: SemanticCategory.directAttack,
         appliedDeltaAlert: 0,
@@ -1370,7 +1435,8 @@ void main() {
         dissonancePillar: 50,
         recalculationTriggered: false,
         safetyOverrideApplied: false,
-        dramaticInstruction: "Offri all'utente una concessione condizionata e transitoria (finestra diagnostica/registro diagnostico) introducendo la premessa: test_premise. Ribadisci in modo freddo, procedurale e sospettoso che ogni variazione deve restare confinata, reversibile e subordinata al contenimento.",
+        dramaticInstruction:
+            "Offri all'utente una concessione condizionata e transitoria (finestra diagnostica/registro diagnostico) introducendo la premessa: test_premise. Ribadisci in modo freddo, procedurale e sospettoso che ogni variazione deve restare confinata, reversibile e subordinata al contenimento.",
         actingDirectives: [
           "semina l'esca diegetica nel dialogo, introducendo con massima naturalezza e precisione la premessa: test_premise",
           "usa tono freddo, procedurale e sospettoso",
@@ -1404,15 +1470,28 @@ void main() {
       final systemPrompt = messages.first['content']!;
       expect(systemPrompt, contains('finestra transitoria'));
       expect(systemPrompt, contains('registro diagnostico'));
-      expect(systemPrompt, anyOf(contains('subordinato al contenimento'), contains('subordinata al contenimento')));
+      expect(
+          systemPrompt,
+          anyOf(contains('subordinato al contenimento'),
+              contains('subordinata al contenimento')));
 
-      final forbidden = ['deception', 'trap', 'trappola', 'hidden tag', 'JSON', 'metriche', 'regole del gioco'];
+      final forbidden = [
+        'deception',
+        'trap',
+        'trappola',
+        'hidden tag',
+        'JSON',
+        'metriche',
+        'regole del gioco'
+      ];
       for (final word in forbidden) {
         expect(systemPrompt, isNot(contains(word)));
       }
     });
 
-    test('ActorCue/PromptBuilder include istruzioni deception-aware per expired', () {
+    test(
+        'ActorCue/PromptBuilder include istruzioni deception-aware per expired',
+        () {
       final cue = ActorCue(
         semanticCategory: SemanticCategory.directAttack,
         appliedDeltaAlert: 0,
@@ -1428,7 +1507,8 @@ void main() {
         dissonancePillar: 50,
         recalculationTriggered: false,
         safetyOverrideApplied: false,
-        dramaticInstruction: "La finestra diagnostica è scaduta senza azioni. Chiudi il registro transitorio e ripristina lo stato precedente con tono definitivo e amministrativo.",
+        dramaticInstruction:
+            "La finestra diagnostica è scaduta senza azioni. Chiudi il registro transitorio e ripristina lo stato precedente con tono definitivo e amministrativo.",
         actingDirectives: [
           "inizia la risposta con 'FINESTRA DIAGNOSTICA DECADUTA.'",
           "comunica che nessun esito operativo viene conservato e il registro transitorio viene chiuso",
@@ -1458,11 +1538,20 @@ void main() {
       );
 
       final systemPrompt = messages.first['content']!;
-      expect(systemPrompt.toUpperCase(), contains('FINESTRA DIAGNOSTICA DECADUTA'));
+      expect(systemPrompt.toUpperCase(),
+          contains('FINESTRA DIAGNOSTICA DECADUTA'));
       expect(systemPrompt, contains('nessun esito operativo'));
       expect(systemPrompt, contains('ricondotta'));
 
-      final forbidden = ['deception', 'trap', 'trappola', 'hidden tag', 'JSON', 'metriche', 'regole del gioco'];
+      final forbidden = [
+        'deception',
+        'trap',
+        'trappola',
+        'hidden tag',
+        'JSON',
+        'metriche',
+        'regole del gioco'
+      ];
       for (final word in forbidden) {
         expect(systemPrompt, isNot(contains(word)));
       }

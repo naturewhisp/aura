@@ -34,7 +34,7 @@ class AgentRuntimeContext {
 }
 
 /// Contratto astratto che tutti gli agenti in A.U.R.A. devono implementare.
-/// 
+///
 /// Rappresenta l'interfaccia comune per gli agenti sia analitici che narrativi.
 abstract class AuraAgent<I, O> {
   /// L'identificatore univoco dell'agente.
@@ -47,4 +47,3 @@ abstract class AuraAgent<I, O> {
   /// Ritorna un [Future] contenente l'output tipizzato [O].
   Future<O> run(I input, AgentRuntimeContext context);
 }
-

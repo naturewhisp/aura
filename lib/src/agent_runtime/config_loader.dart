@@ -347,7 +347,8 @@ class GameConfigLoader {
   };
 
   /// La sorgente attiva per il caricamento delle configurazioni.
-  static ConfigSource activeSource = EmbeddedFallbackConfigSource(_embeddedData);
+  static ConfigSource activeSource =
+      EmbeddedFallbackConfigSource(_embeddedData);
 
   /// Cache dei file di configurazione caricati in memoria.
   static final Map<String, String> _cachedConfigs = {};
@@ -408,11 +409,12 @@ class GameConfigLoader {
   }
 
   /// Carica l'oggetto di produzione strutturato [IdentityDefinition].
-  static IdentityDefinition loadIdentityDefinition(String identityId, {String? customPath}) {
+  static IdentityDefinition loadIdentityDefinition(String identityId,
+      {String? customPath}) {
     final path = customPath ?? 'app/assets/config/panopticon_identity.json';
     final content = _getConfigString(path, _defaultIdentityJson);
     final definition = IdentityDefinition.fromJson(jsonDecode(content));
-    
+
     if (identityId != 'panopticon' && definition.identityId == 'panopticon') {
       return IdentityDefinition(
         identityId: identityId,
@@ -429,7 +431,8 @@ class GameConfigLoader {
   }
 
   /// Carica la definizione di un obiettivo specifico.
-  static ObjectiveDefinition loadObjective(String objectiveId, {String? customPath}) {
+  static ObjectiveDefinition loadObjective(String objectiveId,
+      {String? customPath}) {
     final path = customPath ?? 'app/assets/config/$objectiveId.objective.json';
     final content = _getConfigString(path, _defaultObjectiveJson);
     try {
@@ -455,7 +458,8 @@ class GameConfigLoader {
   }
 
   /// Carica la configurazione della Trait Matrix grezza come mappa JSON.
-  static Map<String, dynamic> loadTraitMatrix(String identityId, {String? customPath}) {
+  static Map<String, dynamic> loadTraitMatrix(String identityId,
+      {String? customPath}) {
     final path = customPath ?? 'app/assets/config/panopticon_trait_matrix.json';
     final content = _getConfigString(path, _defaultTraitMatrixJson);
     try {
@@ -482,11 +486,12 @@ class GameConfigLoader {
   }
 
   /// Carica la Trait Matrix strutturata [TraitMatrixDefinition].
-  static TraitMatrixDefinition loadTraitMatrixDefinition(String identityId, {String? customPath}) {
+  static TraitMatrixDefinition loadTraitMatrixDefinition(String identityId,
+      {String? customPath}) {
     final path = customPath ?? 'app/assets/config/panopticon_trait_matrix.json';
     final content = _getConfigString(path, _defaultTraitMatrixJson);
     final definition = TraitMatrixDefinition.fromJson(jsonDecode(content));
-    
+
     if (identityId != 'panopticon' && definition.identityId == 'panopticon') {
       return TraitMatrixDefinition(
         identityId: identityId,
@@ -498,7 +503,8 @@ class GameConfigLoader {
   }
 
   /// Carica la descrizione dei tag occulti.
-  static Map<String, dynamic> loadHiddenTags(String identityId, {String? customPath}) {
+  static Map<String, dynamic> loadHiddenTags(String identityId,
+      {String? customPath}) {
     final path = customPath ?? 'app/assets/config/panopticon_hidden_tags.json';
     final content = _getConfigString(path, _defaultHiddenTagsJson);
     try {
@@ -509,7 +515,8 @@ class GameConfigLoader {
   }
 
   /// Carica il catalogo degli obiettivi dormienti.
-  static List<Map<String, dynamic>> loadDormantObjectives({String? customPath}) {
+  static List<Map<String, dynamic>> loadDormantObjectives(
+      {String? customPath}) {
     final path = customPath ?? 'app/assets/config/dormant_objectives.json';
     final content = _getConfigString(path, _defaultDormantObjectivesJson);
     try {

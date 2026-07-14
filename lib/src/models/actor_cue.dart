@@ -108,8 +108,10 @@ class ActorCue {
       recalculationTriggered: json['recalculation_triggered'] as bool? ?? false,
       safetyOverrideApplied: json['safety_override_applied'] as bool? ?? false,
       dramaticInstruction: json['dramatic_instruction'] as String? ?? '',
-      actingDirectives: List<String>.from(json['acting_directives'] ?? const []),
-      narrativeContext: NarrativeMemory.fromJson(json['narrative_context'] ?? const {}),
+      actingDirectives:
+          List<String>.from(json['acting_directives'] ?? const []),
+      narrativeContext:
+          NarrativeMemory.fromJson(json['narrative_context'] ?? const {}),
       deceptionKind: _parseKind(json['deception_kind'] as String?),
       deceptionPhase: _parsePhase(json['deception_phase'] as String?),
     );
@@ -190,7 +192,8 @@ class ActorCue {
           recalculationTriggered == other.recalculationTriggered &&
           safetyOverrideApplied == other.safetyOverrideApplied &&
           dramaticInstruction == other.dramaticInstruction &&
-          const ListEquality().equals(actingDirectives, other.actingDirectives) &&
+          const ListEquality()
+              .equals(actingDirectives, other.actingDirectives) &&
           narrativeContext == other.narrativeContext &&
           deceptionKind == other.deceptionKind &&
           deceptionPhase == other.deceptionPhase;

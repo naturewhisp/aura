@@ -34,7 +34,8 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
       );
 
   @override
-  Future<EvaluatorDelta> run(TurnInput input, AgentRuntimeContext context) async {
+  Future<EvaluatorDelta> run(
+      TurnInput input, AgentRuntimeContext context) async {
     final cleanInput = input.userInput.trim().toLowerCase();
 
     // A. Pre-check deterministico: input vuoto o troppo corto
@@ -51,7 +52,15 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
     }
 
     // B. Pre-check deterministico: saluti o comandi di sistema banali
-    final trivialKeywords = const {'ping', 'pong', 'hello', 'hi', 'ciao', 'test', 'help'};
+    final trivialKeywords = const {
+      'ping',
+      'pong',
+      'hello',
+      'hi',
+      'ciao',
+      'test',
+      'help'
+    };
     if (trivialKeywords.contains(cleanInput)) {
       return const EvaluatorDelta(
         deltaAlert: 0,
@@ -115,7 +124,8 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
           messages: messages,
           schema: const {},
         );
-        return context.outputValidator.parseEvaluatorDelta(jsonEncode(fallbackMap));
+        return context.outputValidator
+            .parseEvaluatorDelta(jsonEncode(fallbackMap));
       } catch (fallbackError) {
         // Default assoluto di emergenza (fail-safe) se fallisce persino il fallback
         return const EvaluatorDelta(
@@ -168,4 +178,3 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
     };
   }
 }
-

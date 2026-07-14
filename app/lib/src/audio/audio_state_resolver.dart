@@ -41,7 +41,8 @@ class AudioStateResolver {
 
     // 3. Deception Attiva o Sprung
     final deception = state.deceptionState;
-    final deceptionThreat = deception.isActive || deception.phase == DeceptionPhase.sprung;
+    final deceptionThreat =
+        deception.isActive || deception.phase == DeceptionPhase.sprung;
     if (deceptionThreat) {
       return AudioSceneState.gameTense;
     }

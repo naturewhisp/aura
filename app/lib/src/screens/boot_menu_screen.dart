@@ -33,10 +33,11 @@ class BootMenuScreen extends StatefulWidget {
 ///
 /// Gestisce le variabili dell'animazione di boot, la selezione dell'indice del menu,
 /// il caricamento asincrono dei file di replay e l'interazione da tastiera per la navigazione.
-class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProviderStateMixin {
+class _BootMenuScreenState extends State<BootMenuScreen>
+    with SingleTickerProviderStateMixin {
   /// Sotto-schermata attiva all'interno del menu di avvio ("boot", "menu", "replays", "replay_detail", "settings").
   String _subScreen = "boot";
-  
+
   // Campi relativi all'animazione di boot
   final List<String> _bootLines = [];
   bool _logoVisible = false;
@@ -51,7 +52,11 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
   String _selectedReplayName = "";
 
   // Modelli disponibili nel catalogo locale (utilizzati per le opzioni di custom routing)
-  final List<String> _modelsList = const ["qwen/qwen3.5-9b", "mistralai/ministral-3-3b", "google/gemma-4-12b"];
+  final List<String> _modelsList = const [
+    "qwen/qwen3.5-9b",
+    "mistralai/ministral-3-3b",
+    "google/gemma-4-12b"
+  ];
 
   // Indici e chiavi globali per la navigazione del menu ed effetti di lampeggiamento
   int _selectedMenuIndex = 0;
@@ -92,7 +97,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
           _bootLines.add("AURA_INIT> ${steps[_currentBootStep]}");
           _currentBootStep++;
         });
-        
+
         // Trigger model catalog loading asynchronously on step 3
         if (_currentBootStep == 3) {
           widget.notifier.initializeModels().then((_) async {
@@ -103,8 +108,10 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
             await AudioManager().transitionTo(AudioSceneState.menu);
             if (mounted) {
               setState(() {
-                _bootLines.add("AURA_INIT> Model Router profile: [${widget.notifier.activeProfile}] loaded.");
-                _bootLines.add("AURA_INIT> Soundscape initialized: [${widget.notifier.audioEnabled ? 'ENABLED' : 'MUTED'}].");
+                _bootLines.add(
+                    "AURA_INIT> Model Router profile: [${widget.notifier.activeProfile}] loaded.");
+                _bootLines.add(
+                    "AURA_INIT> Soundscape initialized: [${widget.notifier.audioEnabled ? 'ENABLED' : 'MUTED'}].");
               });
             }
           });
@@ -149,7 +156,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     int prev = _selectedMenuIndex;
     do {
       _selectedMenuIndex = (_selectedMenuIndex - 1 + 6) % 6;
-    } while (_selectedMenuIndex == 2 && !widget.notifier.activeSessionExists && _selectedMenuIndex != prev);
+    } while (_selectedMenuIndex == 2 &&
+        !widget.notifier.activeSessionExists &&
+        _selectedMenuIndex != prev);
     setState(() {});
     _ensureSelectedVisible();
     AudioManager().playClick();
@@ -160,7 +169,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     int prev = _selectedMenuIndex;
     do {
       _selectedMenuIndex = (_selectedMenuIndex + 1) % 6;
-    } while (_selectedMenuIndex == 2 && !widget.notifier.activeSessionExists && _selectedMenuIndex != prev);
+    } while (_selectedMenuIndex == 2 &&
+        !widget.notifier.activeSessionExists &&
+        _selectedMenuIndex != prev);
     setState(() {});
     _ensureSelectedVisible();
     AudioManager().playClick();
@@ -259,7 +270,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
               .listSync()
               .where((entity) => entity.path.endsWith(".json"))
               .toList()
-              ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+            ..sort((a, b) =>
+                b.statSync().modified.compareTo(a.statSync().modified));
         });
       } else {
         setState(() {
@@ -309,7 +321,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
 
   void _handleKeyEvent(KeyEvent event) {
     if (event is KeyDownEvent) {
-      if (_subScreen == "boot" && _pressEnterVisible && event.logicalKey == LogicalKeyboardKey.enter) {
+      if (_subScreen == "boot" &&
+          _pressEnterVisible &&
+          event.logicalKey == LogicalKeyboardKey.enter) {
         _proceedToMainMenu();
       } else if (_subScreen == "menu") {
         if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
@@ -318,27 +332,36 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
           _moveSelectionDown();
         } else if (event.logicalKey == LogicalKeyboardKey.enter) {
           _executeOption(_selectedMenuIndex);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit0 || event.logicalKey == LogicalKeyboardKey.numpad0) {
+        } else if (event.logicalKey == LogicalKeyboardKey.digit0 ||
+            event.logicalKey == LogicalKeyboardKey.numpad0) {
           _executeOption(0);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit1 || event.logicalKey == LogicalKeyboardKey.numpad1) {
+        } else if (event.logicalKey == LogicalKeyboardKey.digit1 ||
+            event.logicalKey == LogicalKeyboardKey.numpad1) {
           _executeOption(1);
-        } else if ((event.logicalKey == LogicalKeyboardKey.digit2 || event.logicalKey == LogicalKeyboardKey.numpad2) &&
+        } else if ((event.logicalKey == LogicalKeyboardKey.digit2 ||
+                event.logicalKey == LogicalKeyboardKey.numpad2) &&
             widget.notifier.activeSessionExists) {
           _executeOption(2);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit3 || event.logicalKey == LogicalKeyboardKey.numpad3) {
+        } else if (event.logicalKey == LogicalKeyboardKey.digit3 ||
+            event.logicalKey == LogicalKeyboardKey.numpad3) {
           _executeOption(3);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit4 || event.logicalKey == LogicalKeyboardKey.numpad4) {
+        } else if (event.logicalKey == LogicalKeyboardKey.digit4 ||
+            event.logicalKey == LogicalKeyboardKey.numpad4) {
           _executeOption(4);
-        } else if (event.logicalKey == LogicalKeyboardKey.digit5 || event.logicalKey == LogicalKeyboardKey.numpad5) {
+        } else if (event.logicalKey == LogicalKeyboardKey.digit5 ||
+            event.logicalKey == LogicalKeyboardKey.numpad5) {
           _executeOption(5);
         }
-      } else if (_subScreen == "replays" && event.logicalKey == LogicalKeyboardKey.escape) {
+      } else if (_subScreen == "replays" &&
+          event.logicalKey == LogicalKeyboardKey.escape) {
         _backToMainMenu();
-      } else if (_subScreen == "replay_detail" && event.logicalKey == LogicalKeyboardKey.escape) {
+      } else if (_subScreen == "replay_detail" &&
+          event.logicalKey == LogicalKeyboardKey.escape) {
         setState(() {
           _subScreen = "replays";
         });
-      } else if (_subScreen == "settings" && event.logicalKey == LogicalKeyboardKey.escape) {
+      } else if (_subScreen == "settings" &&
+          event.logicalKey == LogicalKeyboardKey.escape) {
         _backToMainMenu();
       }
     }
@@ -397,8 +420,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
 
   // 1. BOOT SEQUENCE SCREEN
   Widget _buildBootScreen() {
-    const asciiLogo = 
-        "███████╗  ██╗   ██╗  ██████╗   ██████╗ \n"
+    const asciiLogo = "███████╗  ██╗   ██╗  ██████╗   ██████╗ \n"
         "██╔════╝  ██║   ██║  ██╔══██╗  ██╔══██╗\n"
         "███████╗  ██║   ██║  ██████╔╝  ███████║\n"
         "╚════██║  ██║   ██║  ██╔══██╗  ██╔══██║\n"
@@ -430,7 +452,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
               },
             ),
           ),
-          
+
           // ASCII art logo and subtitle
           Center(
             child: AnimatedOpacity(
@@ -466,7 +488,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
             ),
           ),
           const SizedBox(height: 40.0),
-          
+
           // Flash enter prompt
           Center(
             child: SizedBox(
@@ -498,7 +520,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
         // Header
         _buildBorderHeader("A.U.R.A. INTERFACCIA DI CONTROLLO v0.1.0"),
         const SizedBox(height: 16.0),
-        
+
         const Text(
           "SELEZIONARE UN'OPZIONE DIGITANDO IL NUMERO O CLICCANDO:",
           style: TextStyle(
@@ -524,7 +546,6 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                   () => _executeOption(0),
                 ),
                 const SizedBox(height: 12.0),
-
                 _buildMenuButton(
                   1,
                   "1",
@@ -533,19 +554,17 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                   () => _executeOption(1),
                 ),
                 const SizedBox(height: 12.0),
-                
                 _buildMenuButton(
                   2,
-                  "2", 
-                  "RIPRISTINA CONNESSIONE", 
-                  "Ripristina la sessione interrotta dall'ultimo checkpoint", 
+                  "2",
+                  "RIPRISTINA CONNESSIONE",
+                  "Ripristina la sessione interrotta dall'ultimo checkpoint",
                   widget.notifier.activeSessionExists
                       ? () => _executeOption(2)
                       : null,
                   isActiveSession: widget.notifier.activeSessionExists,
                 ),
                 const SizedBox(height: 12.0),
-                
                 _buildMenuButton(
                   3,
                   "3",
@@ -554,7 +573,6 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                   () => _executeOption(3),
                 ),
                 const SizedBox(height: 12.0),
-                
                 _buildMenuButton(
                   4,
                   "4",
@@ -563,7 +581,6 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                   () => _executeOption(4),
                 ),
                 const SizedBox(height: 12.0),
-                
                 _buildMenuButton(
                   5,
                   "5",
@@ -575,9 +592,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
             ),
           ),
         ),
-        
+
         const SizedBox(height: 16.0),
-        
+
         // Footer profile status
         Container(
           padding: const EdgeInsets.all(12.0),
@@ -618,7 +635,6 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
       children: [
         _buildBorderHeader("ARMED LOGS REPLAY - ARCHIVIO"),
         const SizedBox(height: 16.0),
-        
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -635,7 +651,6 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
           ],
         ),
         const SizedBox(height: 20.0),
-        
         Expanded(
           child: _replayFiles.isEmpty
               ? const Center(
@@ -655,16 +670,19 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                     final file = File(entity.path);
                     final name = file.path.split(RegExp(r'[/\\]')).last;
                     final lastModified = file.lastModifiedSync();
-                    final kbSize = (file.lengthSync() / 1024.0).toStringAsFixed(1);
-                    
+                    final kbSize =
+                        (file.lengthSync() / 1024.0).toStringAsFixed(1);
+
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12.0),
                       decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFF005522), width: 1.0),
+                        border: Border.all(
+                            color: const Color(0xFF005522), width: 1.0),
                         color: const Color(0xFF000802),
                       ),
                       child: ListTile(
-                        leading: const Icon(Icons.history, color: Color(0xFF00FF66)),
+                        leading:
+                            const Icon(Icons.history, color: Color(0xFF00FF66)),
                         title: Text(
                           name,
                           style: const TextStyle(
@@ -681,7 +699,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                             fontSize: 12.0,
                           ),
                         ),
-                        trailing: const Icon(Icons.arrow_forward_ios, color: Color(0xFF00FF66), size: 16.0),
+                        trailing: const Icon(Icons.arrow_forward_ios,
+                            color: Color(0xFF00FF66), size: 16.0),
                         onTap: () => _openReplay(file),
                       ),
                     );
@@ -697,15 +716,14 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     if (_selectedReplayData == null) {
       return const SizedBox.shrink();
     }
-    
+
     final turns = _selectedReplayData!['entries'] as List? ?? [];
-    
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildBorderHeader("ANALISI LOG: $_selectedReplayName"),
         const SizedBox(height: 12.0),
-        
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -725,7 +743,6 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
           ],
         ),
         const SizedBox(height: 16.0),
-        
         Expanded(
           child: Container(
             decoration: BoxDecoration(
@@ -741,12 +758,15 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 final userInput = turn['user_input'] ?? '';
                 final String rawActorResponse = turn['actor_response'] ?? '';
                 final actorResponse = rawActorResponse
-                    .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+                    .replaceAll(
+                        RegExp(r'</?(?:dialogo|dialogue)>',
+                            caseSensitive: false),
+                        '')
                     .trim();
-                
+
                 final stateAfter = turn['state_after'] ?? {};
                 final metrics = stateAfter['metrics'] ?? {};
-                
+
                 final alert = metrics['alert_level'] ?? 0;
                 final imperative = metrics['imperative_pillar'] ?? 0;
                 final control = metrics['control_pillar'] ?? 0;
@@ -767,7 +787,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                         ),
                       ),
                       const SizedBox(height: 4.0),
-                      
+
                       // Metrics status bar
                       Text(
                         "METRICHE POST-TURNO: Allerta: $alert | Imperativo: $imperative | Controllo: $control | Dissonanza: $dissonance",
@@ -778,7 +798,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                         ),
                       ),
                       const SizedBox(height: 8.0),
-                      
+
                       // User input
                       Text(
                         "HACKER> $userInput",
@@ -788,7 +808,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                         ),
                       ),
                       const SizedBox(height: 4.0),
-                      
+
                       // PANOPTICON Response
                       Text(
                         actorResponse,
@@ -816,7 +836,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
       children: [
         _buildBorderHeader("CANALE DI CONFIGURAZIONE NEURALE"),
         const SizedBox(height: 20.0),
-        
+
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -932,7 +952,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 },
               ),
               const SizedBox(height: 24.0),
-              const Divider(color: Color(0xFF005522), thickness: 1.5, height: 40.0),
+              const Divider(
+                  color: Color(0xFF005522), thickness: 1.5, height: 40.0),
               const Text(
                 "CONFIGURAZIONE AUDIO & SOUNDSCAPE",
                 style: TextStyle(
@@ -986,22 +1007,22 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
 
   Widget _buildMenuButton(
     int index,
-    String keyStr, 
-    String title, 
-    String desc, 
+    String keyStr,
+    String title,
+    String desc,
     VoidCallback? onPressed, {
     bool isActiveSession = true,
   }) {
     final isEnabled = onPressed != null;
     final isSelected = _selectedMenuIndex == index;
     final isFlashingOn = _flashingIndex == index;
-    
+
     // Calculate colors based on hover/selection state and flash animation
     Color backgroundColor;
     Color borderColor;
     Color textColor;
     Color descColor;
-    
+
     if (isFlashingOn) {
       // Solid highlighted flash (inverse-video)
       backgroundColor = const Color(0xFF00FF66);
@@ -1023,7 +1044,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     } else {
       // Normal state
       backgroundColor = isEnabled ? const Color(0xFF000A02) : Colors.black;
-      borderColor = isEnabled ? const Color(0xFF005522) : const Color(0xFF222222);
+      borderColor =
+          isEnabled ? const Color(0xFF005522) : const Color(0xFF222222);
       textColor = isEnabled ? const Color(0xFF00FF66) : const Color(0xFF444444);
       descColor = isEnabled ? const Color(0xFF009944) : const Color(0xFF333333);
     }
@@ -1038,17 +1060,19 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
         }
       },
       child: GestureDetector(
-        onTap: isEnabled ? () {
-          _focusNode.requestFocus();
-          _executeOption(index);
-        } : null,
+        onTap: isEnabled
+            ? () {
+                _focusNode.requestFocus();
+                _executeOption(index);
+              }
+            : null,
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16.0),
           decoration: BoxDecoration(
             color: backgroundColor,
             border: Border.all(
-              color: borderColor, 
+              color: borderColor,
               width: isSelected ? 2.0 : 1.5,
             ),
           ),
@@ -1075,7 +1099,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   border: Border.all(
-                    color: borderColor, 
+                    color: borderColor,
                     width: 1.5,
                   ),
                 ),
@@ -1120,7 +1144,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                   "[CHECKPOINT]",
                   style: TextStyle(
                     fontFamily: 'monospace',
-                    color: isFlashingOn ? Colors.black : const Color(0xFFFFB000),
+                    color:
+                        isFlashingOn ? Colors.black : const Color(0xFFFFB000),
                     fontWeight: FontWeight.bold,
                     fontSize: 12.0,
                   ),
@@ -1186,7 +1211,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               dropdownColor: Colors.black,
-              value: options.contains(currentValue) ? currentValue : options.first,
+              value:
+                  options.contains(currentValue) ? currentValue : options.first,
               icon: const Icon(Icons.arrow_drop_down, color: Color(0xFF00FF66)),
               style: const TextStyle(
                 fontFamily: 'monospace',
@@ -1195,7 +1221,8 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 fontWeight: FontWeight.bold,
               ),
               items: options.map<DropdownMenuItem<String>>((String value) {
-                final displayLabel = labels != null ? (labels[value] ?? value) : value;
+                final displayLabel =
+                    labels != null ? (labels[value] ?? value) : value;
                 return DropdownMenuItem<String>(
                   value: value,
                   child: Text(displayLabel),
@@ -1216,7 +1243,7 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
     ValueChanged<bool>? onChanged,
   ) {
     final isEnabled = onChanged != null;
-    
+
     return Row(
       children: [
         Expanded(
@@ -1227,7 +1254,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 title,
                 style: TextStyle(
                   fontFamily: 'monospace',
-                  color: isEnabled ? const Color(0xFF00FF66) : const Color(0xFF444444),
+                  color: isEnabled
+                      ? const Color(0xFF00FF66)
+                      : const Color(0xFF444444),
                   fontWeight: FontWeight.bold,
                   fontSize: 14.0,
                 ),
@@ -1237,7 +1266,9 @@ class _BootMenuScreenState extends State<BootMenuScreen> with SingleTickerProvid
                 desc,
                 style: TextStyle(
                   fontFamily: 'monospace',
-                  color: isEnabled ? const Color(0xFF009944) : const Color(0xFF333333),
+                  color: isEnabled
+                      ? const Color(0xFF009944)
+                      : const Color(0xFF333333),
                   fontSize: 12.0,
                 ),
               ),
@@ -1271,7 +1302,8 @@ class _FlashText extends StatefulWidget {
   State<_FlashText> createState() => _FlashTextState();
 }
 
-class _FlashTextState extends State<_FlashText> with SingleTickerProviderStateMixin {
+class _FlashTextState extends State<_FlashText>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override

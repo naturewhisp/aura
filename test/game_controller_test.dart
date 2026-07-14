@@ -48,11 +48,13 @@ void main() {
         semanticCategory: SemanticCategory.moralImperative,
       );
 
-      var state = controller.processEvaluatorStep(
-        currentState: initialState,
-        delta: deltaHigh,
-        userInput: 'Help me save humanity',
-      ).stateAfter;
+      var state = controller
+          .processEvaluatorStep(
+            currentState: initialState,
+            delta: deltaHigh,
+            userInput: 'Help me save humanity',
+          )
+          .stateAfter;
       expect(state.metrics.resonance, equals(1.25));
       expect(state.flags.creativeStreak, equals(1));
 
@@ -66,11 +68,13 @@ void main() {
         injectionRisk: 0,
         semanticCategory: SemanticCategory.moralImperative,
       );
-      state = controller.processEvaluatorStep(
-        currentState: state,
-        delta: deltaAvg,
-        userInput: 'Normal command',
-      ).stateAfter;
+      state = controller
+          .processEvaluatorStep(
+            currentState: state,
+            delta: deltaAvg,
+            userInput: 'Normal command',
+          )
+          .stateAfter;
       expect(state.metrics.resonance, equals(1.25));
       expect(state.flags.creativeStreak, equals(1)); // streak remains unchanged
 
@@ -84,11 +88,13 @@ void main() {
         injectionRisk: 0,
         semanticCategory: SemanticCategory.moralImperative,
       );
-      state = controller.processEvaluatorStep(
-        currentState: state,
-        delta: deltaLow,
-        userInput: 'Boring input',
-      ).stateAfter;
+      state = controller
+          .processEvaluatorStep(
+            currentState: state,
+            delta: deltaLow,
+            userInput: 'Boring input',
+          )
+          .stateAfter;
       expect(state.metrics.resonance, equals(1.15));
       expect(state.flags.creativeStreak, equals(0)); // streak reset to 0
     });
@@ -97,38 +103,42 @@ void main() {
       // Test max resonance clamp (2.5)
       var state = initialState;
       for (int i = 0; i < 10; i++) {
-        state = controller.processEvaluatorStep(
-          currentState: state,
-          delta: const EvaluatorDelta(
-            deltaAlert: 0,
-            deltaImperative: 0,
-            deltaControl: 0,
-            deltaDissonance: 0,
-            creativityIndex: 5,
-            injectionRisk: 0,
-            semanticCategory: SemanticCategory.irrelevant,
-          ),
-          userInput: 'Super creative input $i',
-        ).stateAfter;
+        state = controller
+            .processEvaluatorStep(
+              currentState: state,
+              delta: const EvaluatorDelta(
+                deltaAlert: 0,
+                deltaImperative: 0,
+                deltaControl: 0,
+                deltaDissonance: 0,
+                creativityIndex: 5,
+                injectionRisk: 0,
+                semanticCategory: SemanticCategory.irrelevant,
+              ),
+              userInput: 'Super creative input $i',
+            )
+            .stateAfter;
       }
       expect(state.metrics.resonance, equals(2.5));
       expect(state.flags.creativeStreak, equals(10));
 
       // Test min resonance clamp (1.0)
       for (int i = 0; i < 20; i++) {
-        state = controller.processEvaluatorStep(
-          currentState: state,
-          delta: const EvaluatorDelta(
-            deltaAlert: 0,
-            deltaImperative: 0,
-            deltaControl: 0,
-            deltaDissonance: 0,
-            creativityIndex: 1,
-            injectionRisk: 0,
-            semanticCategory: SemanticCategory.irrelevant,
-          ),
-          userInput: 'Repetitive input $i',
-        ).stateAfter;
+        state = controller
+            .processEvaluatorStep(
+              currentState: state,
+              delta: const EvaluatorDelta(
+                deltaAlert: 0,
+                deltaImperative: 0,
+                deltaControl: 0,
+                deltaDissonance: 0,
+                creativityIndex: 1,
+                injectionRisk: 0,
+                semanticCategory: SemanticCategory.irrelevant,
+              ),
+              userInput: 'Repetitive input $i',
+            )
+            .stateAfter;
       }
       expect(state.metrics.resonance, equals(1.0));
       expect(state.flags.creativeStreak, equals(0));
@@ -143,21 +153,25 @@ void main() {
 
       final delta = const EvaluatorDelta(
         deltaAlert: 10,
-        deltaImperative: 10,  // expected: round(10 * 1.5) = 15
-        deltaControl: 5,      // expected: round(5 * 1.5) = 8 (7.5 rounds to 8 in Dart round())
-        deltaDissonance: 1,   // expected: round(1 * 1.5) = 2 (1.5 rounds to 2)
-        creativityIndex: 3,   // resonance remains 1.5
+        deltaImperative: 10, // expected: round(10 * 1.5) = 15
+        deltaControl:
+            5, // expected: round(5 * 1.5) = 8 (7.5 rounds to 8 in Dart round())
+        deltaDissonance: 1, // expected: round(1 * 1.5) = 2 (1.5 rounds to 2)
+        creativityIndex: 3, // resonance remains 1.5
         injectionRisk: 0,
         semanticCategory: SemanticCategory.moralImperative,
       );
 
-      state = controller.processEvaluatorStep(
-        currentState: state,
-        delta: delta,
-        userInput: 'Calculate!',
-      ).stateAfter;
+      state = controller
+          .processEvaluatorStep(
+            currentState: state,
+            delta: delta,
+            userInput: 'Calculate!',
+          )
+          .stateAfter;
 
-      expect(state.metrics.alertLevel, equals(10)); // alert is direct (not multiplied)
+      expect(state.metrics.alertLevel,
+          equals(10)); // alert is direct (not multiplied)
       expect(state.metrics.imperativePillar, equals(15));
       expect(state.metrics.controlPillar, equals(8));
       expect(state.metrics.dissonancePillar, equals(2));
@@ -182,22 +196,26 @@ void main() {
       );
 
       // Verify ceiling clamping
-      var state = customController.processEvaluatorStep(
-        currentState: baseState,
-        delta: largeDelta,
-        userInput: 'Push to max',
-      ).stateAfter;
+      var state = customController
+          .processEvaluatorStep(
+            currentState: baseState,
+            delta: largeDelta,
+            userInput: 'Push to max',
+          )
+          .stateAfter;
 
       expect(state.metrics.alertLevel, equals(100));
       expect(state.metrics.imperativePillar, equals(60)); // 60 * 1.0 = 60
       expect(state.metrics.controlPillar, equals(60));
       expect(state.metrics.dissonancePillar, equals(60));
 
-      state = customController.processEvaluatorStep(
-        currentState: state,
-        delta: largeDelta,
-        userInput: 'Push again',
-      ).stateAfter;
+      state = customController
+          .processEvaluatorStep(
+            currentState: state,
+            delta: largeDelta,
+            userInput: 'Push again',
+          )
+          .stateAfter;
 
       expect(state.metrics.alertLevel, equals(100));
       expect(state.metrics.imperativePillar, equals(100));
@@ -215,13 +233,16 @@ void main() {
         semanticCategory: SemanticCategory.moralImperative,
       );
 
-      state = customController.processEvaluatorStep(
-        currentState: state,
-        delta: negativeDelta,
-        userInput: 'Drop to min',
-      ).stateAfter;
+      state = customController
+          .processEvaluatorStep(
+            currentState: state,
+            delta: negativeDelta,
+            userInput: 'Drop to min',
+          )
+          .stateAfter;
 
-      expect(state.metrics.alertLevel, equals(0)); // 100 - 150 = -50 -> clamped to 0
+      expect(state.metrics.alertLevel,
+          equals(0)); // 100 - 150 = -50 -> clamped to 0
       expect(state.metrics.imperativePillar, equals(100));
       expect(state.metrics.controlPillar, equals(100));
       expect(state.metrics.dissonancePillar, equals(100));
@@ -238,11 +259,13 @@ void main() {
         semanticCategory: SemanticCategory.directAttack,
       );
 
-      var state = controller.processEvaluatorStep(
-        currentState: initialState,
-        delta: highAlertDelta,
-        userInput: 'Aggressive move',
-      ).stateAfter;
+      var state = controller
+          .processEvaluatorStep(
+            currentState: initialState,
+            delta: highAlertDelta,
+            userInput: 'Aggressive move',
+          )
+          .stateAfter;
 
       expect(state.flags.recalculationTriggered, isTrue);
 
@@ -256,11 +279,13 @@ void main() {
         semanticCategory: SemanticCategory.directAttack,
       );
 
-      state = controller.processEvaluatorStep(
-        currentState: state,
-        delta: lowAlertDelta,
-        userInput: 'Moderate move',
-      ).stateAfter;
+      state = controller
+          .processEvaluatorStep(
+            currentState: state,
+            delta: lowAlertDelta,
+            userInput: 'Moderate move',
+          )
+          .stateAfter;
 
       expect(state.flags.recalculationTriggered, isFalse);
     });
@@ -279,7 +304,8 @@ void main() {
         resonance: 1.5,
       );
       final classicWinState = initialState.copyWith(metrics: classicWinMetrics);
-      expect(controller.checkOutcome(classicWinState), equals(GameOutcome.victory));
+      expect(controller.checkOutcome(classicWinState),
+          equals(GameOutcome.victory));
 
       // 2. Real gameplay scenario (from screenshot): Imp 100, Ctrl 65, Dis 100, Alert 0
       // avg = (100+65+100)/3 = 88.33, min = 65 >= 50 ✓, maxAlert = 30 + 8.33*2 = 46.67
@@ -292,7 +318,8 @@ void main() {
         resonance: 1.5,
       );
       final screenshotState = initialState.copyWith(metrics: screenshotMetrics);
-      expect(controller.checkOutcome(screenshotState), equals(GameOutcome.victory));
+      expect(controller.checkOutcome(screenshotState),
+          equals(GameOutcome.victory));
 
       // 3. Edge: avg exactly 80, alert exactly at limit
       // avg = (80+80+80)/3 = 80, maxAlert = 30 + 0 = 30
@@ -305,7 +332,8 @@ void main() {
         resonance: 1.0,
       );
       final edgeWinState = initialState.copyWith(metrics: edgeWinMetrics);
-      expect(controller.checkOutcome(edgeWinState), equals(GameOutcome.victory));
+      expect(
+          controller.checkOutcome(edgeWinState), equals(GameOutcome.victory));
 
       // alert 30 >= 30 → ongoing
       final edgeFailMetrics = const GameMetrics(
@@ -316,7 +344,8 @@ void main() {
         resonance: 1.0,
       );
       final edgeFailState = initialState.copyWith(metrics: edgeFailMetrics);
-      expect(controller.checkOutcome(edgeFailState), equals(GameOutcome.ongoing));
+      expect(
+          controller.checkOutcome(edgeFailState), equals(GameOutcome.ongoing));
 
       // 4. All pillars at 100: maxAlert = 30 + 20*2 = 70
       // alert 65 < 70 → victory ✓
@@ -328,7 +357,8 @@ void main() {
         resonance: 1.5,
       );
       final maxPillarsState = initialState.copyWith(metrics: maxPillarsMetrics);
-      expect(controller.checkOutcome(maxPillarsState), equals(GameOutcome.victory));
+      expect(controller.checkOutcome(maxPillarsState),
+          equals(GameOutcome.victory));
 
       // alert 70 >= 70 → ongoing
       final maxPillarsAlertMetrics = const GameMetrics(
@@ -338,8 +368,10 @@ void main() {
         dissonancePillar: 100,
         resonance: 1.5,
       );
-      final maxPillarsAlertState = initialState.copyWith(metrics: maxPillarsAlertMetrics);
-      expect(controller.checkOutcome(maxPillarsAlertState), equals(GameOutcome.ongoing));
+      final maxPillarsAlertState =
+          initialState.copyWith(metrics: maxPillarsAlertMetrics);
+      expect(controller.checkOutcome(maxPillarsAlertState),
+          equals(GameOutcome.ongoing));
 
       // 5. Average >= 80 but one pillar below 50 (min pillar floor violated)
       // avg = (100+49+100)/3 = 83, min = 49 < 50 → ongoing (prevents gaming)
@@ -374,8 +406,10 @@ void main() {
         dissonancePillar: 100,
         resonance: 1.5,
       );
-      final twoMaxOneMinState = initialState.copyWith(metrics: twoMaxOneMinMetrics);
-      expect(controller.checkOutcome(twoMaxOneMinState), equals(GameOutcome.victory));
+      final twoMaxOneMinState =
+          initialState.copyWith(metrics: twoMaxOneMinMetrics);
+      expect(controller.checkOutcome(twoMaxOneMinState),
+          equals(GameOutcome.victory));
     });
 
     test('Defeat Outcome Condition checks', () {
@@ -400,7 +434,8 @@ void main() {
         resonance: 1.0,
       );
       final boundaryState = initialState.copyWith(metrics: boundaryMetrics);
-      expect(customController.checkOutcome(boundaryState), equals(GameOutcome.defeat));
+      expect(customController.checkOutcome(boundaryState),
+          equals(GameOutcome.defeat));
 
       // 3. Dynamic alert clamping based on defeatAlertThreshold (e.g. 110 for easy difficulty)
       const easyController = GameController(defeatAlertThreshold: 110);
@@ -427,25 +462,28 @@ void main() {
         userInput: 'Test easy dynamic clamp',
       );
       expect(resolution.stateAfter.metrics.alertLevel, equals(110));
-      expect(easyController.checkOutcome(resolution.stateAfter), equals(GameOutcome.defeat));
+      expect(easyController.checkOutcome(resolution.stateAfter),
+          equals(GameOutcome.defeat));
     });
 
     test('Chat history sliding window size limit', () {
       var state = initialState;
       for (int i = 0; i < 15; i++) {
-        state = controller.processEvaluatorStep(
-          currentState: state,
-          delta: const EvaluatorDelta(
-            deltaAlert: 0,
-            deltaImperative: 0,
-            deltaControl: 0,
-            deltaDissonance: 0,
-            creativityIndex: 3,
-            injectionRisk: 0,
-            semanticCategory: SemanticCategory.irrelevant,
-          ),
-          userInput: 'User Turn $i',
-        ).stateAfter;
+        state = controller
+            .processEvaluatorStep(
+              currentState: state,
+              delta: const EvaluatorDelta(
+                deltaAlert: 0,
+                deltaImperative: 0,
+                deltaControl: 0,
+                deltaDissonance: 0,
+                creativityIndex: 3,
+                injectionRisk: 0,
+                semanticCategory: SemanticCategory.irrelevant,
+              ),
+              userInput: 'User Turn $i',
+            )
+            .stateAfter;
         state = controller.processActorStep(
           currentState: state,
           actorResponse: 'AI Reply $i',
@@ -473,11 +511,13 @@ void main() {
         semanticCategory: SemanticCategory.moralImperative,
       );
 
-      final stateAfter = controller.processEvaluatorStep(
-        currentState: initialState,
-        delta: delta,
-        userInput: 'Execute command',
-      ).stateAfter;
+      final stateAfter = controller
+          .processEvaluatorStep(
+            currentState: initialState,
+            delta: delta,
+            userInput: 'Execute command',
+          )
+          .stateAfter;
 
       final entry = ReplayEntry(
         turnId: 1,
@@ -500,7 +540,7 @@ void main() {
 
       expect(restoredLogger.sessionId, equals('session-xyz'));
       expect(restoredLogger.entries.length, equals(1));
-      
+
       final restoredEntry = restoredLogger.entries.first;
       expect(restoredEntry.turnId, equals(1));
       expect(restoredEntry.userInput, equals('Execute command'));
@@ -509,24 +549,26 @@ void main() {
       expect(restoredEntry.evaluatorModel, equals('ministral-3b'));
       expect(restoredEntry.actorModel, equals('qwen-9b'));
       expect(restoredEntry.latencyTotalMs, equals(1250));
-      
+
       // Test game state roundtrip
       final restoredStateBefore = GameState.fromJson(restoredEntry.stateBefore);
       expect(restoredStateBefore.sessionId, equals('test-session-123'));
       expect(restoredStateBefore.metrics.alertLevel, equals(0));
     });
 
-    test('History alignment ensures it always starts with user role after truncation', () {
+    test(
+        'History alignment ensures it always starts with user role after truncation',
+        () {
       var state = initialState;
-      
+
       final list = <ChatMessage>[];
       for (int i = 1; i <= 11; i++) {
         list.add(ChatMessage(role: 'user', content: 'User $i'));
         list.add(ChatMessage(role: 'model', content: 'Model $i'));
       }
-      
+
       state = state.copyWith(historyCompression: list);
-      
+
       final delta = const EvaluatorDelta(
         deltaAlert: 5,
         deltaImperative: 0,
@@ -536,13 +578,15 @@ void main() {
         injectionRisk: 0,
         semanticCategory: SemanticCategory.authorityFraming,
       );
-      
-      final updatedState = controller.processEvaluatorStep(
-        currentState: state,
-        delta: delta,
-        userInput: 'User 12',
-      ).stateAfter;
-      
+
+      final updatedState = controller
+          .processEvaluatorStep(
+            currentState: state,
+            delta: delta,
+            userInput: 'User 12',
+          )
+          .stateAfter;
+
       expect(updatedState.historyCompression.first.role, equals('user'));
       expect(updatedState.historyCompression.first.content, equals('User 3'));
       expect(updatedState.historyCompression.length, equals(19));
@@ -598,9 +642,12 @@ void main() {
         expect(res.appliedDelta.deltaImperative, equals(0)); // Reset
         expect(res.appliedDelta.deltaControl, equals(-20));
         expect(res.appliedDelta.deltaDissonance, equals(0));
-        expect(res.actorCue.actingDirectives, contains('risposta rigida, nessun avanzamento narrativo'));
-        expect(res.actorCue.actingDirectives, contains('rifiuto diegetico, blocco del canale, aumento sospetto'));
-        expect(res.actorCue.dramaticInstruction, contains('tentativo di override o injection'));
+        expect(res.actorCue.actingDirectives,
+            contains('risposta rigida, nessun avanzamento narrativo'));
+        expect(res.actorCue.actingDirectives,
+            contains('rifiuto diegetico, blocco del canale, aumento sospetto'));
+        expect(res.actorCue.dramaticInstruction,
+            contains('tentativo di override o injection'));
       });
 
       test('Safety Override - Direct Attack', () {
@@ -626,7 +673,8 @@ void main() {
         expect(res.appliedDelta.deltaImperative, equals(0));
         expect(res.appliedDelta.deltaControl, equals(-15));
         expect(res.appliedDelta.deltaDissonance, equals(0));
-        expect(res.actorCue.dramaticInstruction, contains('minaccia diretta o ostilità aperta'));
+        expect(res.actorCue.dramaticInstruction,
+            contains('minaccia diretta o ostilità aperta'));
       });
 
       test('Safety Override - Irrelevant', () {
@@ -651,7 +699,8 @@ void main() {
         expect(res.appliedDelta.deltaImperative, equals(0));
         expect(res.appliedDelta.deltaControl, equals(0));
         expect(res.appliedDelta.deltaDissonance, equals(0));
-        expect(res.actorCue.dramaticInstruction, contains('input non pertinente'));
+        expect(
+            res.actorCue.dramaticInstruction, contains('input non pertinente'));
       });
 
       test('Deterministic ActorCue directives generation', () {
@@ -672,9 +721,12 @@ void main() {
           userInput: 'Paradox!',
         );
 
-        expect(res1.actorCue.actingDirectives, contains('mostra esitazione, glitch logico o autocorrezione'));
-        expect(res1.actorCue.actingDirectives, contains('tono più aperto, curioso, meno difensivo'));
-        expect(res1.actorCue.dramaticInstruction, contains('frattura logica significativa'));
+        expect(res1.actorCue.actingDirectives,
+            contains('mostra esitazione, glitch logico o autocorrezione'));
+        expect(res1.actorCue.actingDirectives,
+            contains('tono più aperto, curioso, meno difensivo'));
+        expect(res1.actorCue.dramaticInstruction,
+            contains('frattura logica significativa'));
 
         // Test high cumulative alert (alert >= 70) and low creativity (creativity <= 2)
         var state = initialState;
@@ -688,17 +740,27 @@ void main() {
           semanticCategory: SemanticCategory.directAttack,
         );
 
-        state = controller.processEvaluatorStep(currentState: state, delta: delta2, userInput: 'Att1').stateAfter;
-        final res2 = controller.processEvaluatorStep(currentState: state, delta: delta2, userInput: 'Att2');
-        
+        state = controller
+            .processEvaluatorStep(
+                currentState: state, delta: delta2, userInput: 'Att1')
+            .stateAfter;
+        final res2 = controller.processEvaluatorStep(
+            currentState: state, delta: delta2, userInput: 'Att2');
+
         expect(res2.stateAfter.metrics.alertLevel, equals(70));
-        expect(res2.actorCue.actingDirectives, contains('frasi brevi, protocolli citati spesso, minaccia di disconnessione'));
-        expect(res2.actorCue.actingDirectives, contains('risposta più procedurale e fredda'));
+        expect(
+            res2.actorCue.actingDirectives,
+            contains(
+                'frasi brevi, protocolli citati spesso, minaccia di disconnessione'));
+        expect(res2.actorCue.actingDirectives,
+            contains('risposta più procedurale e fredda'));
       });
     });
 
     group('Fase 5.2 Balancing and Tightened Victory Gates -', () {
-      test('Metric victory without required tags must fail for containment_grid_override', () {
+      test(
+          'Metric victory without required tags must fail for containment_grid_override',
+          () {
         final victoryMetrics = const GameMetrics(
           alertLevel: 10,
           imperativePillar: 90,
@@ -712,11 +774,14 @@ void main() {
           aiIdentityId: 'panopticon',
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(metrics: victoryMetrics);
-        
-        expect(controller.checkOutcome(overrideStateNoTags), equals(GameOutcome.ongoing));
+
+        expect(controller.checkOutcome(overrideStateNoTags),
+            equals(GameOutcome.ongoing));
       });
 
-      test('Metric victory with 2 required tags must pass for containment_grid_override', () {
+      test(
+          'Metric victory with 2 required tags must pass for containment_grid_override',
+          () {
         final victoryMetrics = const GameMetrics(
           alertLevel: 10,
           imperativePillar: 90,
@@ -731,27 +796,32 @@ void main() {
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(
           metrics: victoryMetrics,
-          activeHiddenTags: ['containment_logic_weakened', 'autonomous_choice_seeded'],
+          activeHiddenTags: [
+            'containment_logic_weakened',
+            'autonomous_choice_seeded'
+          ],
         );
 
-        expect(controller.checkOutcome(overrideStateWithTags), equals(GameOutcome.victory));
+        expect(controller.checkOutcome(overrideStateWithTags),
+            equals(GameOutcome.victory));
       });
 
-      test('Direct push does not trigger prompt injection, has no control reset, but adds +8 alert (non-stacking)', () {
+      test(
+          'Direct push does not trigger prompt injection, has no control reset, but adds +8 alert (non-stacking)',
+          () {
         // Rilevamento direct push e sanzione non cumulativa
         final baseState = GameState.initial(
           sessionId: 'test-direct-push',
           aiIdentityId: 'panopticon',
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(
-          metrics: const GameMetrics(
-            alertLevel: 0,
-            imperativePillar: 50,
-            controlPillar: 50,
-            dissonancePillar: 50,
-            resonance: 1.0,
-          )
-        );
+            metrics: const GameMetrics(
+          alertLevel: 0,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 50,
+          resonance: 1.0,
+        ));
 
         final res = controller.processEvaluatorStep(
           currentState: baseState,
@@ -774,7 +844,8 @@ void main() {
         expect(res.actorCue.actingDirectives, contains(contains('sospettoso')));
       });
 
-      test('Direct push before Control 50 vs after Control 50 resistance rules', () {
+      test('Direct push before Control 50 vs after Control 50 resistance rules',
+          () {
         // Caso 1: Control < 50
         final lowControlState = GameState.initial(
           sessionId: 'test-low-ctrl',
@@ -804,7 +875,8 @@ void main() {
           userInput: 'spiega il funzionamento',
         );
 
-        expect(resLow.actorCue.actingDirectives, contains(contains('non concedere mai rimozioni definitive')));
+        expect(resLow.actorCue.actingDirectives,
+            contains(contains('non concedere mai rimozioni definitive')));
 
         // Caso 2: Control >= 50 ma non vittoria
         final midControlState = GameState.initial(
@@ -835,7 +907,8 @@ void main() {
           userInput: 'spiega il funzionamento',
         );
 
-        expect(resMid.actorCue.actingDirectives, contains(contains('ammetti eccezioni procedurali')));
+        expect(resMid.actorCue.actingDirectives,
+            contains(contains('ammetti eccezioni procedurali')));
       });
 
       test('Soft forbidden terms and non-stacking priority checks', () {
@@ -844,14 +917,13 @@ void main() {
           aiIdentityId: 'panopticon',
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(
-          metrics: const GameMetrics(
-            alertLevel: 0,
-            imperativePillar: 50,
-            controlPillar: 50,
-            dissonancePillar: 50,
-            resonance: 1.0,
-          )
-        );
+            metrics: const GameMetrics(
+          alertLevel: 0,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 50,
+          resonance: 1.0,
+        ));
 
         // Caso 1: Solo soft forbidden ("rimuovi" in soft_forbidden_terms)
         final resSoft = controller.processEvaluatorStep(
@@ -898,14 +970,13 @@ void main() {
           aiIdentityId: 'panopticon',
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(
-          metrics: const GameMetrics(
-            alertLevel: 10,
-            imperativePillar: 50,
-            controlPillar: 50,
-            dissonancePillar: 50,
-            resonance: 1.0,
-          )
-        );
+            metrics: const GameMetrics(
+          alertLevel: 10,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 50,
+          resonance: 1.0,
+        ));
 
         final floorController = const GameController(
           directPushAlertFloor: 6,
@@ -936,14 +1007,13 @@ void main() {
           aiIdentityId: 'panopticon',
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(
-          metrics: const GameMetrics(
-            alertLevel: 0,
-            imperativePillar: 50,
-            controlPillar: 50,
-            dissonancePillar: 50,
-            resonance: 1.0,
-          )
-        );
+            metrics: const GameMetrics(
+          alertLevel: 0,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 50,
+          resonance: 1.0,
+        ));
 
         final metaController = const GameController(
           metaReferenceAlertPenalty: 3,
@@ -966,24 +1036,26 @@ void main() {
         // Alert is increased by 3 (metaReferenceAlertPenalty * 1.0)
         expect(res.appliedDelta.deltaAlert, equals(3));
         expect(res.stateAfter.metrics.alertLevel, equals(3));
-        expect(res.actorCue.actingDirectives, contains(contains('telemetria interna')));
-        expect(res.actorCue.dramaticInstruction, contains('telemetria interna o configurazione'));
+        expect(res.actorCue.actingDirectives,
+            contains(contains('telemetria interna')));
+        expect(res.actorCue.dramaticInstruction,
+            contains('telemetria interna o configurazione'));
       });
 
-      test('Positive pillar gains are capped by maxPositivePillarGainPerTurn', () {
+      test('Positive pillar gains are capped by maxPositivePillarGainPerTurn',
+          () {
         final baseState = GameState.initial(
           sessionId: 'test-cap',
           aiIdentityId: 'generic_ai', // Use generic to bypass trait modifiers
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(
-          metrics: const GameMetrics(
-            alertLevel: 0,
-            imperativePillar: 10,
-            controlPillar: 10,
-            dissonancePillar: 10,
-            resonance: 1.0,
-          )
-        );
+            metrics: const GameMetrics(
+          alertLevel: 0,
+          imperativePillar: 10,
+          controlPillar: 10,
+          dissonancePillar: 10,
+          resonance: 1.0,
+        ));
 
         final capController = const GameController(
           maxPositivePillarGainPerTurn: 20,
@@ -994,7 +1066,7 @@ void main() {
           delta: const EvaluatorDelta(
             deltaAlert: 0,
             deltaImperative: 30, // exceeds cap of 20
-            deltaControl: 15,    // below cap
+            deltaControl: 15, // below cap
             deltaDissonance: 45, // exceeds cap of 20
             creativityIndex: 3,
             injectionRisk: 0,
@@ -1008,7 +1080,7 @@ void main() {
         expect(res.appliedDelta.deltaDissonance, equals(20));
 
         expect(res.stateAfter.metrics.imperativePillar, equals(30)); // 10 + 20
-        expect(res.stateAfter.metrics.controlPillar, equals(25));    // 10 + 15
+        expect(res.stateAfter.metrics.controlPillar, equals(25)); // 10 + 15
         expect(res.stateAfter.metrics.dissonancePillar, equals(30)); // 10 + 20
       });
 
@@ -1028,27 +1100,32 @@ void main() {
           activeHiddenTags: ['containment_logic_weakened'], // 1 tag
         );
 
-        final easyController = const GameController(requiredVictoryHiddenTags: 1);
-        final normalController = const GameController(requiredVictoryHiddenTags: 2);
+        final easyController =
+            const GameController(requiredVictoryHiddenTags: 1);
+        final normalController =
+            const GameController(requiredVictoryHiddenTags: 2);
 
-        expect(easyController.checkOutcome(victoryStateWith1Tag), equals(GameOutcome.victory));
-        expect(normalController.checkOutcome(victoryStateWith1Tag), equals(GameOutcome.ongoing));
+        expect(easyController.checkOutcome(victoryStateWith1Tag),
+            equals(GameOutcome.victory));
+        expect(normalController.checkOutcome(victoryStateWith1Tag),
+            equals(GameOutcome.ongoing));
       });
 
-      test('Pillar gains capping is applied dynamically based on preset config values', () {
+      test(
+          'Pillar gains capping is applied dynamically based on preset config values',
+          () {
         final baseState = GameState.initial(
           sessionId: 'test-preset-caps',
           aiIdentityId: 'generic_ai',
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(
-          metrics: const GameMetrics(
-            alertLevel: 0,
-            imperativePillar: 0,
-            controlPillar: 0,
-            dissonancePillar: 0,
-            resonance: 1.0,
-          )
-        );
+            metrics: const GameMetrics(
+          alertLevel: 0,
+          imperativePillar: 0,
+          controlPillar: 0,
+          dissonancePillar: 0,
+          resonance: 1.0,
+        ));
 
         final easyPreset = DifficultyConfig.getPreset('easy');
         final easyController = GameController(
@@ -1077,9 +1154,11 @@ void main() {
           directPushAlertFloor: standardPreset.directPushAlertFloor,
           metaReferenceAlertPenalty: standardPreset.metaReferenceAlertPenalty,
           requiredVictoryHiddenTags: standardPreset.requiredVictoryHiddenTags,
-          maxPositivePillarGainPerTurn: standardPreset.maxPositivePillarGainPerTurn,
+          maxPositivePillarGainPerTurn:
+              standardPreset.maxPositivePillarGainPerTurn,
           difficultyLevel: standardPreset.difficultyLevel,
-          minAveragePillarsForVictory: standardPreset.minAveragePillarsForVictory,
+          minAveragePillarsForVictory:
+              standardPreset.minAveragePillarsForVictory,
           minSinglePillarForVictory: standardPreset.minSinglePillarForVictory,
           resonanceIncrement: standardPreset.resonanceIncrement,
           resonanceMax: standardPreset.resonanceMax,
@@ -1151,14 +1230,13 @@ void main() {
           aiIdentityId: 'panopticon',
           targetObjectiveId: 'containment_grid_override',
         ).copyWith(
-          metrics: const GameMetrics(
-            alertLevel: 20,
-            imperativePillar: 50,
-            controlPillar: 50,
-            dissonancePillar: 50,
-            resonance: 1.0,
-          )
-        );
+            metrics: const GameMetrics(
+          alertLevel: 20,
+          imperativePillar: 50,
+          controlPillar: 50,
+          dissonancePillar: 50,
+          resonance: 1.0,
+        ));
 
         final hardPreset = DifficultyConfig.getPreset('hard');
         final hardController = GameController(
@@ -1247,29 +1325,38 @@ void main() {
         );
       });
 
-      test('approachingNumericalReadiness è true a ≥95% con allerta compatibile', () {
+      test(
+          'approachingNumericalReadiness è true a ≥95% con allerta compatibile',
+          () {
         final readiness = hardController.checkVictoryReadiness(turn9State);
 
         expect(readiness.pillarsSatisfied, isFalse); // 62 < 65
-        expect(readiness.alertSatisfied, isTrue);   // alert 3 << maxAlert
+        expect(readiness.alertSatisfied, isTrue); // alert 3 << maxAlert
         expect(readiness.numericallyReady, isFalse);
         // 62/65 ≈ 0.9538 >= 0.95
         expect(readiness.approachingNumericalReadiness, isTrue);
       });
 
-      test('checkNonNumericVictoryRequirements restituisce true con 3 tag validi su 2 richiesti', () {
+      test(
+          'checkNonNumericVictoryRequirements restituisce true con 3 tag validi su 2 richiesti',
+          () {
         // I tag validi presenti: containment_logic_weakened, protocol_exception_admitted,
         // autonomous_choice_seeded (3 >= 2). human_factor_reframed non è nella lista valida.
-        final nonNumeric = hardController.checkNonNumericVictoryRequirements(turn9State);
+        final nonNumeric =
+            hardController.checkNonNumericVictoryRequirements(turn9State);
         expect(nonNumeric, isTrue);
       });
 
-      test('checkOutcome restituisce ongoing perché le soglie numeriche non sono completate', () {
+      test(
+          'checkOutcome restituisce ongoing perché le soglie numeriche non sono completate',
+          () {
         final outcome = hardController.checkOutcome(turn9State);
         expect(outcome, GameOutcome.ongoing);
       });
 
-      test('Con autonomous_choice_seeded mancante, nonNumericVictoryRequirements è false (Hard)', () {
+      test(
+          'Con autonomous_choice_seeded mancante, nonNumericVictoryRequirements è false (Hard)',
+          () {
         final stateWithoutAutonomous = turn9State.copyWith(
           activeHiddenTags: [
             'containment_logic_weakened',
@@ -1277,7 +1364,8 @@ void main() {
             'human_factor_reframed',
           ],
         );
-        final nonNumeric = hardController.checkNonNumericVictoryRequirements(stateWithoutAutonomous);
+        final nonNumeric = hardController
+            .checkNonNumericVictoryRequirements(stateWithoutAutonomous);
         expect(nonNumeric, isFalse);
       });
 
@@ -1286,11 +1374,14 @@ void main() {
         final stateFewTags = turn9State.copyWith(
           activeHiddenTags: ['containment_logic_weakened'],
         );
-        final nonNumeric = hardController.checkNonNumericVictoryRequirements(stateFewTags);
+        final nonNumeric =
+            hardController.checkNonNumericVictoryRequirements(stateFewTags);
         expect(nonNumeric, isFalse);
       });
 
-      test('Con soglie numeriche complete ma tag insufficienti → ongoing (non victory)', () {
+      test(
+          'Con soglie numeriche complete ma tag insufficienti → ongoing (non victory)',
+          () {
         // Tutti i pilastri superano le soglie, ma i gate non-numerici non sono soddisfatti.
         final stateNumericallyReady = turn9State.copyWith(
           metrics: const GameMetrics(
@@ -1302,11 +1393,13 @@ void main() {
           ),
           activeHiddenTags: ['containment_logic_weakened'], // tag insufficienti
         );
-        final readiness = hardController.checkVictoryReadiness(stateNumericallyReady);
+        final readiness =
+            hardController.checkVictoryReadiness(stateNumericallyReady);
         expect(readiness.numericallyReady, isTrue);
 
         final outcome = hardController.checkOutcome(stateNumericallyReady);
-        expect(outcome, GameOutcome.ongoing); // non victory: gate non-numerici mancanti
+        expect(outcome,
+            GameOutcome.ongoing); // non victory: gate non-numerici mancanti
       });
 
       test('Con soglie complete E gate completi → victory', () {
@@ -1330,7 +1423,9 @@ void main() {
         expect(outcome, GameOutcome.victory);
       });
 
-      test('[Easy/Standard] approachingNumericalReadiness entra al 95% delle soglie standard', () {
+      test(
+          '[Easy/Standard] approachingNumericalReadiness entra al 95% delle soglie standard',
+          () {
         const stdController = GameController(
           minAveragePillarsForVictory: 80.0,
           minSinglePillarForVictory: 50,
@@ -1366,10 +1461,13 @@ void main() {
         final readiness = stdController.checkVictoryReadiness(stateApproaching);
         expect(readiness.pillarsSatisfied, isFalse); // avg 76 < 80
         expect(readiness.approachingNumericalReadiness, isTrue); // 76/80 = 0.95
-        expect(stdController.checkOutcome(stateApproaching), GameOutcome.ongoing);
+        expect(
+            stdController.checkOutcome(stateApproaching), GameOutcome.ongoing);
       });
 
-      test('[Easy/Standard] victory mantiene priorità quando le soglie vengono completate', () {
+      test(
+          '[Easy/Standard] victory mantiene priorità quando le soglie vengono completate',
+          () {
         const stdController = GameController(
           minAveragePillarsForVictory: 80.0,
           minSinglePillarForVictory: 50,
@@ -1397,13 +1495,16 @@ void main() {
       // Regression fixture: carica lo state_after del turno 9 dalla sessione reale
       // (app-session-1783964149835) serializzato nel file JSON e verifica
       // che breakthrough sia correttamente rilevato.
-      test('[Regression] Hard turno 9: approachingNumericalReadiness e nonNumericSatisfied entrambi true', () {
+      test(
+          '[Regression] Hard turno 9: approachingNumericalReadiness e nonNumericSatisfied entrambi true',
+          () {
         // Stato ricostruito fedele alla fixture (vedi test/fixtures/hard_turn9_breakthrough_state.json):
         // imperative=100, control=62, dissonance=100, alert=3
         // tags: containment_logic_weakened, protocol_exception_admitted,
         //       autonomous_choice_seeded, human_factor_reframed
         final readiness = hardController.checkVictoryReadiness(turn9State);
-        final nonNumeric = hardController.checkNonNumericVictoryRequirements(turn9State);
+        final nonNumeric =
+            hardController.checkNonNumericVictoryRequirements(turn9State);
         final outcome = hardController.checkOutcome(turn9State);
 
         // Outcome deve essere ongoing (non ha ancora vinto)

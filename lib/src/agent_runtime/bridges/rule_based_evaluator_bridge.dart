@@ -113,5 +113,3 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
     return const [];
   }
 }
-
-

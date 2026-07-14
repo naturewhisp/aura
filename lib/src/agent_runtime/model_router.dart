@@ -62,7 +62,8 @@ class ModelRouter {
     // 1. Risoluzione del modello per il Valutatore (Evaluator)
     // Cerca una corrispondenza esatta o parziale nel catalogo che raccomandi "evaluator"
     for (var id in loadedModelIds) {
-      final entry = catalog.findModel(id) ?? _findCatalogEntryBySubstring(id, catalog);
+      final entry =
+          catalog.findModel(id) ?? _findCatalogEntryBySubstring(id, catalog);
       if (entry != null && entry.recommendedAgents.contains("evaluator")) {
         matchedEvaluator = id;
         break;
@@ -72,7 +73,8 @@ class ModelRouter {
     // Ricerca secondaria per parole chiave "mistral" o "ministral" nei nomi
     if (matchedEvaluator == null) {
       for (var id in loadedModelIds) {
-        if (id.toLowerCase().contains("mistral") || id.toLowerCase().contains("ministral")) {
+        if (id.toLowerCase().contains("mistral") ||
+            id.toLowerCase().contains("ministral")) {
           matchedEvaluator = id;
           break;
         }
@@ -89,7 +91,8 @@ class ModelRouter {
         // Se possibile, preferisce assegnare un modello diverso
         continue;
       }
-      final entry = catalog.findModel(id) ?? _findCatalogEntryBySubstring(id, catalog);
+      final entry =
+          catalog.findModel(id) ?? _findCatalogEntryBySubstring(id, catalog);
       if (entry != null && entry.recommendedAgents.contains("actor")) {
         matchedActor = id;
         break;
@@ -101,7 +104,9 @@ class ModelRouter {
       for (var id in loadedModelIds) {
         if (id == matchedEvaluator && loadedModelIds.length > 1) continue;
         final lower = id.toLowerCase();
-        if (lower.contains("qwen") || lower.contains("gemma") || lower.contains("llama")) {
+        if (lower.contains("qwen") ||
+            lower.contains("gemma") ||
+            lower.contains("llama")) {
           matchedActor = id;
           break;
         }
@@ -139,10 +144,11 @@ class ModelRouter {
   }
 
   /// Funzione di supporto per cercare una voce nel catalogo tramite corrispondenza parziale dell'ID.
-  ModelCatalogEntry? _findCatalogEntryBySubstring(String loadedId, ModelCatalog catalog) {
+  ModelCatalogEntry? _findCatalogEntryBySubstring(
+      String loadedId, ModelCatalog catalog) {
     final lowerId = loadedId.toLowerCase();
     for (var entry in catalog.models) {
-      if (lowerId.contains(entry.modelId.toLowerCase()) || 
+      if (lowerId.contains(entry.modelId.toLowerCase()) ||
           entry.modelId.toLowerCase().contains(lowerId)) {
         return entry;
       }

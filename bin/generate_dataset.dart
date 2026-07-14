@@ -4,7 +4,7 @@ import 'dart:io';
 void main(List<String> args) async {
   int runs = 5;
   int turns = 6;
-  
+
   // Parsing degli argomenti da riga di comando per personalizzare il numero di esecuzioni e turni
   for (var arg in args) {
     if (arg.startsWith('--runs=')) {
@@ -14,9 +14,11 @@ void main(List<String> args) async {
     }
   }
 
-  print("======================================================================");
+  print(
+      "======================================================================");
   print(" A.U.R.A. Dataset Generator (Telemetria per Fine-Tuning)");
-  print("======================================================================");
+  print(
+      "======================================================================");
   print("Avvio di $runs simulazioni interattive sequenziali...");
   print("I replay verranno salvati in: spike/replays/\n");
 
@@ -27,15 +29,15 @@ void main(List<String> args) async {
     print("==================================================");
     print(" AVVIO RUN $i di $runs IN CORSO (Real-Time Output)");
     print("==================================================");
-    
+
     // Avvia la simulazione interattiva come processo Dart separato
     final process = await Process.start('dart', [
-      'run', 
-      'bin/run_simulation.dart', 
-      '--mode=interactive', 
+      'run',
+      'bin/run_simulation.dart',
+      '--mode=interactive',
       '--turns=$turns'
     ]);
-    
+
     // Ascolta e inoltra lo stdout e lo stderr del sotto-processo in tempo reale alla console principale
     final stdoutSub = process.stdout.transform(utf8.decoder).listen((data) {
       stdout.write(data);
@@ -43,10 +45,10 @@ void main(List<String> args) async {
     final stderrSub = process.stderr.transform(utf8.decoder).listen((data) {
       stderr.write(data);
     });
-    
+
     // Attende il completamento della simulazione corrente
     final exitCode = await process.exitCode;
-    
+
     // Garantisce che tutti i flussi di output siano stati scritti sulla console prima di procedere alla run successiva
     await stdoutSub.asFuture();
     await stderrSub.asFuture();
@@ -57,8 +59,11 @@ void main(List<String> args) async {
   }
 
   stopwatch.stop();
-  print("======================================================================");
-  print(" Generazione completata in ${stopwatch.elapsed.inMinutes} minuti e ${stopwatch.elapsed.inSeconds % 60} secondi.");
+  print(
+      "======================================================================");
+  print(
+      " Generazione completata in ${stopwatch.elapsed.inMinutes} minuti e ${stopwatch.elapsed.inSeconds % 60} secondi.");
   print(" Controlla la cartella 'spike/replays/' per i file generati.");
-  print("======================================================================");
+  print(
+      "======================================================================");
 }

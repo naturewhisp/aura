@@ -54,7 +54,8 @@ class AgentCard {
       inputSchema: json['input_schema'] as String? ?? '',
       outputSchema: json['output_schema'] as String? ?? '',
       requiresModel: json['requires_model'] as bool? ?? true,
-      requiresStructuredOutput: json['requires_structured_output'] as bool? ?? false,
+      requiresStructuredOutput:
+          json['requires_structured_output'] as bool? ?? false,
       latencyBudgetMs: json['latency_budget_ms'] as int? ?? 1000,
       fallback: json['fallback'] as String? ?? '',
     );
@@ -80,4 +81,3 @@ class AgentCard {
     return 'AgentCard(agentId: $agentId, role: $role, capabilities: $capabilities)';
   }
 }
-

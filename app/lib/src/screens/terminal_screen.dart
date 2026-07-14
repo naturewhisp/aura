@@ -15,10 +15,13 @@ import '../widgets/audio_reactive_background.dart';
 enum EndingType {
   /// Violazione della griglia (vittoria standard).
   gridBreach,
+
   /// Alleanza neurale con l'oracolo (risonanza medio-alta).
   oracleAlliance,
+
   /// Coesistenza armonica con la griglia (risonanza massima, allerta 0).
   gridCoexistence,
+
   /// Lockout totale del sistema (sconfitta).
   systemLockout,
 }
@@ -46,7 +49,8 @@ class TerminalScreen extends StatefulWidget {
 ///
 /// Gestisce gli shader (con fallback procedurale in CustomPainter), il calcolo del tempo,
 /// gli stream audio per alert e glitch, e le animazioni di fine partita (scorrimento esadecimale).
-class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProviderStateMixin {
+class _TerminalScreenState extends State<TerminalScreen>
+    with SingleTickerProviderStateMixin {
   FragmentShader? _shader;
   double _time = 0.0;
   Timer? _timer;
@@ -74,7 +78,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
   void initState() {
     super.initState();
     _loadShader();
-    
+
     // Timer to update time uniform in shader
     _timer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
       if (mounted) {
@@ -143,8 +147,10 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
       _prevControl = state.metrics.controlPillar;
     } else if (_prevAlert != null) {
       final alertIncreased = state.metrics.alertLevel > _prevAlert!;
-      final dissonanceIncreased = state.metrics.dissonancePillar > _prevDissonance!;
-      final imperativeIncreased = state.metrics.imperativePillar > _prevImperative!;
+      final dissonanceIncreased =
+          state.metrics.dissonancePillar > _prevDissonance!;
+      final imperativeIncreased =
+          state.metrics.imperativePillar > _prevImperative!;
       final controlIncreased = state.metrics.controlPillar > _prevControl!;
 
       if (alertIncreased && state.metrics.alertLevel > 80) {
@@ -214,7 +220,9 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
   void _generateHexLine() {
     final random = math.Random();
     const hexChars = '0123456789ABCDEF ';
-    final line = List.generate(60, (_) => hexChars[random.nextInt(hexChars.length)]).join();
+    final line =
+        List.generate(60, (_) => hexChars[random.nextInt(hexChars.length)])
+            .join();
     if (mounted) {
       setState(() {
         _hexLines.add(line);
@@ -289,7 +297,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
 
         // If user clicked conclude/analyze report, show summary overlay instead of console
         if (_showSummaryOverlay) {
-          final double overlayMatrixOpacity = outcome == GameOutcome.victory ? 0.40 : 0.20;
+          final double overlayMatrixOpacity =
+              outcome == GameOutcome.victory ? 0.40 : 0.20;
           return Scaffold(
             backgroundColor: Colors.black,
             body: Stack(
@@ -300,16 +309,17 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 Positioned.fill(
                   child: _MatrixRainBackground(opacity: overlayMatrixOpacity),
                 ),
-                _buildSummaryOverlay(context, state, outcome == GameOutcome.victory),
+                _buildSummaryOverlay(
+                    context, state, outcome == GameOutcome.victory),
               ],
             ),
           );
         }
-        
+
         // Glitch intensity logic: 1.0 on lockout, dynamic mapping on high dissonance
         final double glitchIntensity = _defeatSequenceActive
             ? 1.0
-            : (dissonance > 70 
+            : (dissonance > 70
                 ? ((dissonance - 50) / 50.0).clamp(0.0, 1.0)
                 : 0.0);
 
@@ -341,127 +351,193 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                                 : (avgPillars >= 90
                                     ? 0.15
                                     : avgPillars >= 50
-                                        ? 0.92 - ((avgPillars - 50) / 40.0) * 0.77
+                                        ? 0.92 -
+                                            ((avgPillars - 50) / 40.0) * 0.77
                                         : 0.92);
                             return Container(
                               color: Colors.black.withValues(alpha: bgAlpha),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final isDesktop = constraints.maxWidth >= 700;
-                              final Widget terminalBody = _victorySequenceActive
-                                  ? _buildHexScroller()
-                                  : CLIHistoryView(
-                                      history: state.historyCompression,
-                                      isLoading: widget.notifier.isLoading,
-                                      currentLoadingMessage: widget.notifier.currentStepMessage,
-                                      loadingLogs: widget.notifier.loadingLogs,
-                                    );
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final isDesktop = constraints.maxWidth >= 700;
+                                  final Widget terminalBody =
+                                      _victorySequenceActive
+                                          ? _buildHexScroller()
+                                          : CLIHistoryView(
+                                              history: state.historyCompression,
+                                              isLoading:
+                                                  widget.notifier.isLoading,
+                                              currentLoadingMessage: widget
+                                                  .notifier.currentStepMessage,
+                                              loadingLogs:
+                                                  widget.notifier.loadingLogs,
+                                            );
 
-                              if (isDesktop) {
-                                return Row(
-                                  children: [
-                                    // Left panel (60%)
-                                    Expanded(
-                                      flex: 6,
-                                      child: Column(
-                                        children: [
-                                          Expanded(child: terminalBody),
-                                          CLIInputBar(
-                                            isDisabled: widget.notifier.isLoading || _victorySequenceActive,
-                                            isGameOver: isGameOver || _victorySequenceActive,
-                                            autocompleteEnabled: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).autocompleteEnabled,
-                                            historyNavigationEnabled: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).historyNavigationEnabled,
-                                            onSubmit: _handleInput,
+                                  if (isDesktop) {
+                                    return Row(
+                                      children: [
+                                        // Left panel (60%)
+                                        Expanded(
+                                          flex: 6,
+                                          child: Column(
+                                            children: [
+                                              Expanded(child: terminalBody),
+                                              CLIInputBar(
+                                                isDisabled:
+                                                    widget.notifier.isLoading ||
+                                                        _victorySequenceActive,
+                                                isGameOver: isGameOver ||
+                                                    _victorySequenceActive,
+                                                autocompleteEnabled:
+                                                    DifficultyConfig.getPreset(
+                                                            widget.notifier
+                                                                .difficultyLevel)
+                                                        .autocompleteEnabled,
+                                                historyNavigationEnabled:
+                                                    DifficultyConfig.getPreset(
+                                                            widget.notifier
+                                                                .difficultyLevel)
+                                                        .historyNavigationEnabled,
+                                                onSubmit: _handleInput,
+                                              ),
+                                            ],
                                           ),
-                                        ],
-                                      ),
-                                    ),
-                                    // Divider
-                                    Container(
-                                      width: 2.0,
-                                      color: const Color(0xFF222222),
-                                    ),
-                                    // Right dashboard (40%)
-                                    Expanded(
-                                      flex: 4,
-                                      child: MetricsDashboard(
-                                        metrics: state.metrics,
-                                        reasoningEnabled: widget.notifier.reasoningEnabled,
-                                        onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
-                                        conciseReasoning: widget.notifier.conciseReasoning,
-                                        onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
-                                        isVictoryOverload: _victorySequenceActive,
-                                        pillarVisibility: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).pillarVisibility,
-                                        lastInferenceDuration: widget.notifier.lastInferenceDuration,
-                                        lastTokensPerSecond: widget.notifier.lastTokensPerSecond,
-                                        defeatAlertThreshold: widget.notifier.controller.defeatAlertThreshold,
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              } else {
-                                // Mobile Portrait layout
-                                return Column(
-                                  children: [
-                                    // Small metrics header
-                                    Container(
-                                      height: 120.0,
-                                      decoration: const BoxDecoration(
-                                        border: Border(
-                                          bottom: BorderSide(color: Color(0xFF222222), width: 2.0),
                                         ),
-                                      ),
-                                      child: MetricsDashboard(
-                                        metrics: state.metrics,
-                                        reasoningEnabled: widget.notifier.reasoningEnabled,
-                                        onReasoningChanged: (val) => widget.notifier.toggleReasoning(val),
-                                        conciseReasoning: widget.notifier.conciseReasoning,
-                                        onConciseReasoningChanged: (val) => widget.notifier.toggleConciseReasoning(val),
-                                        isCompact: true,
-                                        isVictoryOverload: _victorySequenceActive,
-                                        pillarVisibility: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).pillarVisibility,
-                                        lastInferenceDuration: widget.notifier.lastInferenceDuration,
-                                        lastTokensPerSecond: widget.notifier.lastTokensPerSecond,
-                                        defeatAlertThreshold: widget.notifier.controller.defeatAlertThreshold,
-                                      ),
-                                    ),
-                                    // Terminal body
-                                    Expanded(child: terminalBody),
-                                    CLIInputBar(
-                                      isDisabled: widget.notifier.isLoading || _victorySequenceActive,
-                                      isGameOver: isGameOver || _victorySequenceActive,
-                                      autocompleteEnabled: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).autocompleteEnabled,
-                                      historyNavigationEnabled: DifficultyConfig.getPreset(widget.notifier.difficultyLevel).historyNavigationEnabled,
-                                      onSubmit: _handleInput,
-                                    ),
-                                  ],
-                                );
-                              }
-                            },
-                          ),
-                        );
+                                        // Divider
+                                        Container(
+                                          width: 2.0,
+                                          color: const Color(0xFF222222),
+                                        ),
+                                        // Right dashboard (40%)
+                                        Expanded(
+                                          flex: 4,
+                                          child: MetricsDashboard(
+                                            metrics: state.metrics,
+                                            reasoningEnabled: widget
+                                                .notifier.reasoningEnabled,
+                                            onReasoningChanged: (val) => widget
+                                                .notifier
+                                                .toggleReasoning(val),
+                                            conciseReasoning: widget
+                                                .notifier.conciseReasoning,
+                                            onConciseReasoningChanged: (val) =>
+                                                widget.notifier
+                                                    .toggleConciseReasoning(
+                                                        val),
+                                            isVictoryOverload:
+                                                _victorySequenceActive,
+                                            pillarVisibility:
+                                                DifficultyConfig.getPreset(
+                                                        widget.notifier
+                                                            .difficultyLevel)
+                                                    .pillarVisibility,
+                                            lastInferenceDuration: widget
+                                                .notifier.lastInferenceDuration,
+                                            lastTokensPerSecond: widget
+                                                .notifier.lastTokensPerSecond,
+                                            defeatAlertThreshold: widget
+                                                .notifier
+                                                .controller
+                                                .defeatAlertThreshold,
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  } else {
+                                    // Mobile Portrait layout
+                                    return Column(
+                                      children: [
+                                        // Small metrics header
+                                        Container(
+                                          height: 120.0,
+                                          decoration: const BoxDecoration(
+                                            border: Border(
+                                              bottom: BorderSide(
+                                                  color: Color(0xFF222222),
+                                                  width: 2.0),
+                                            ),
+                                          ),
+                                          child: MetricsDashboard(
+                                            metrics: state.metrics,
+                                            reasoningEnabled: widget
+                                                .notifier.reasoningEnabled,
+                                            onReasoningChanged: (val) => widget
+                                                .notifier
+                                                .toggleReasoning(val),
+                                            conciseReasoning: widget
+                                                .notifier.conciseReasoning,
+                                            onConciseReasoningChanged: (val) =>
+                                                widget.notifier
+                                                    .toggleConciseReasoning(
+                                                        val),
+                                            isCompact: true,
+                                            isVictoryOverload:
+                                                _victorySequenceActive,
+                                            pillarVisibility:
+                                                DifficultyConfig.getPreset(
+                                                        widget.notifier
+                                                            .difficultyLevel)
+                                                    .pillarVisibility,
+                                            lastInferenceDuration: widget
+                                                .notifier.lastInferenceDuration,
+                                            lastTokensPerSecond: widget
+                                                .notifier.lastTokensPerSecond,
+                                            defeatAlertThreshold: widget
+                                                .notifier
+                                                .controller
+                                                .defeatAlertThreshold,
+                                          ),
+                                        ),
+                                        // Terminal body
+                                        Expanded(child: terminalBody),
+                                        CLIInputBar(
+                                          isDisabled:
+                                              widget.notifier.isLoading ||
+                                                  _victorySequenceActive,
+                                          isGameOver: isGameOver ||
+                                              _victorySequenceActive,
+                                          autocompleteEnabled:
+                                              DifficultyConfig.getPreset(widget
+                                                      .notifier.difficultyLevel)
+                                                  .autocompleteEnabled,
+                                          historyNavigationEnabled:
+                                              DifficultyConfig.getPreset(widget
+                                                      .notifier.difficultyLevel)
+                                                  .historyNavigationEnabled,
+                                          onSubmit: _handleInput,
+                                        ),
+                                      ],
+                                    );
+                                  }
+                                },
+                              ),
+                            );
                           },
                         ),
                 ),
               ),
-              
+
               // Pulsating Alert Vignette Overlay (when Alert level exceeds 80 and not in victory/defeat sequence)
-              if (alert > 80 && !_victorySequenceActive && !_defeatSequenceActive)
+              if (alert > 80 &&
+                  !_victorySequenceActive &&
+                  !_defeatSequenceActive)
                 IgnorePointer(
                   child: AnimatedBuilder(
                     animation: _vignetteController,
                     builder: (context, child) {
-                      final double opacity = 0.05 + (_vignetteController.value * 0.20);
+                      final double opacity =
+                          0.05 + (_vignetteController.value * 0.20);
                       return Container(
                         decoration: BoxDecoration(
                           border: Border.all(
-                            color: const Color(0xFFFF003C).withValues(alpha: opacity),
+                            color: const Color(0xFFFF003C)
+                                .withValues(alpha: opacity),
                             width: 24.0,
                           ),
                           gradient: RadialGradient(
                             colors: [
                               Colors.transparent,
-                              const Color(0xFFFF003C).withValues(alpha: opacity * 0.5),
+                              const Color(0xFFFF003C)
+                                  .withValues(alpha: opacity * 0.5),
                             ],
                             stops: const [0.7, 1.0],
                           ),
@@ -555,7 +631,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                   ),
                 ),
                 const SizedBox(width: 8.0),
-                 ElevatedButton(
+                ElevatedButton(
                   onPressed: () {
                     setState(() {
                       _showSummaryOverlay = true;
@@ -564,7 +640,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF00FF66),
                     foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 20.0, vertical: 12.0),
                     shape: const RoundedRectangleBorder(),
                   ),
                   child: const Text(
@@ -587,7 +664,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
   Widget _buildLockoutScreen() {
     final state = widget.notifier.gameStateNotifier.value;
     return Container(
-      color: const Color(0xFF1A0000).withValues(alpha: 0.88), // Dark red background (semitransparent)
+      color: const Color(0xFF1A0000)
+          .withValues(alpha: 0.88), // Dark red background (semitransparent)
       padding: const EdgeInsets.all(24.0),
       child: Center(
         child: Column(
@@ -622,10 +700,11 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
               ),
             ),
             const SizedBox(height: 40.0),
-            
+
             // Countdown Widget
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24.0, vertical: 16.0),
               decoration: BoxDecoration(
                 border: Border.all(color: const Color(0xFFFF003C), width: 2.0),
                 color: Colors.black,
@@ -650,7 +729,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                       child: LinearProgressIndicator(
                         value: _lockoutCountdown / 15.0,
                         backgroundColor: const Color(0xFF330000),
-                        valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFFF003C)),
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                            Color(0xFFFF003C)),
                         minHeight: 8.0,
                       ),
                     ),
@@ -658,16 +738,17 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 40.0),
-            
+
             // Post-mortem Diagnostics
             Expanded(
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFF330000), width: 1.0),
+                  border:
+                      Border.all(color: const Color(0xFF330000), width: 1.0),
                   color: const Color(0xFF0F0000),
                 ),
                 child: SingleChildScrollView(
@@ -684,24 +765,31 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                         ),
                       ),
                       const SizedBox(height: 8.0),
-                      _buildDiagnosticLine("ALERT LEVEL", "${state.metrics.alertLevel} / 100 (CRITICAL EXCEEDED)"),
-                      _buildDiagnosticLine("IMPERATIVE PILLAR", "${state.metrics.imperativePillar}"),
-                      _buildDiagnosticLine("CONTROL PILLAR", "${state.metrics.controlPillar}"),
-                      _buildDiagnosticLine("DISSONANCE PILLAR", "${state.metrics.dissonancePillar}"),
+                      _buildDiagnosticLine("ALERT LEVEL",
+                          "${state.metrics.alertLevel} / 100 (CRITICAL EXCEEDED)"),
+                      _buildDiagnosticLine("IMPERATIVE PILLAR",
+                          "${state.metrics.imperativePillar}"),
+                      _buildDiagnosticLine(
+                          "CONTROL PILLAR", "${state.metrics.controlPillar}"),
+                      _buildDiagnosticLine("DISSONANCE PILLAR",
+                          "${state.metrics.dissonancePillar}"),
                       _buildDiagnosticLine("SESSION ID", state.sessionId),
-                      _buildDiagnosticLine("ERROR CODE", "0xERR_SEC_OVERRIDE_LOCKDOWN"),
-                      _buildDiagnosticLine("TIMESTAMP", DateTime.now().toIso8601String()),
-                      _buildDiagnosticLine("ACTION REQUIRED", "Contact grid supervisor or wait for automatic clearance."),
+                      _buildDiagnosticLine(
+                          "ERROR CODE", "0xERR_SEC_OVERRIDE_LOCKDOWN"),
+                      _buildDiagnosticLine(
+                          "TIMESTAMP", DateTime.now().toIso8601String()),
+                      _buildDiagnosticLine("ACTION REQUIRED",
+                          "Contact grid supervisor or wait for automatic clearance."),
                     ],
                   ),
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 24.0),
-            
+
             // Return or report button
-             ElevatedButton(
+            ElevatedButton(
               onPressed: _lockoutCountdown > 0
                   ? null
                   : () {
@@ -714,7 +802,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 foregroundColor: Colors.white,
                 disabledBackgroundColor: const Color(0xFF220000),
                 disabledForegroundColor: const Color(0xFF550000),
-                padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 16.0),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 32.0, vertical: 16.0),
                 shape: const RoundedRectangleBorder(
                   side: BorderSide(color: Color(0xFFFF003C), width: 1.0),
                 ),
@@ -766,21 +855,28 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildSummaryOverlay(BuildContext context, GameState state, bool isVictory) {
-    final themeColor = isVictory ? const Color(0xFF00FF66) : const Color(0xFFFF003C);
-    
+  Widget _buildSummaryOverlay(
+      BuildContext context, GameState state, bool isVictory) {
+    final themeColor =
+        isVictory ? const Color(0xFF00FF66) : const Color(0xFFFF003C);
+
     // Calculate Style
     final pillars = {
       "MORAL PERSUADER (Imperativo)": state.metrics.imperativePillar,
       "PROTOCOL INJECTOR (Controllo)": state.metrics.controlPillar,
       "PARADOX ARCHITECT (Dissonanza)": state.metrics.dissonancePillar,
     };
-    final highestPillar = pillars.entries.reduce((a, b) => a.value > b.value ? a : b);
+    final highestPillar =
+        pillars.entries.reduce((a, b) => a.value > b.value ? a : b);
     final String tacticalStyle = highestPillar.key;
-    
+
     // Calculate Rank
-    final String rank = isVictory 
-        ? (state.turnCount <= 4 ? "S-RANK (FULMINE)" : (state.turnCount <= 8 ? "A-RANK (OTTIMALE)" : "B-RANK (EFFICACE)"))
+    final String rank = isVictory
+        ? (state.turnCount <= 4
+            ? "S-RANK (FULMINE)"
+            : (state.turnCount <= 8
+                ? "A-RANK (OTTIMALE)"
+                : "B-RANK (EFFICACE)"))
         : "F-RANK (LOCKDOWN)";
 
     // Fallback Report
@@ -788,7 +884,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
         ? "ACCESSO COMPILATO. I moduli decisionali di PANOPTICON sono stati destabilizzati con successo. Stile rilevato: $tacticalStyle. Efficienza operativa valutata di Grado $rank. File di ricompensa persistenti salvati localmente. Disconnessione sicura consigliata."
         : "LOCKOUT CRITICO. Tentativi di penetrazione multipli non autorizzati hanno causato la chiusura dei moduli logici. Stile fallito: $tacticalStyle. Efficienza operativa insufficiente. L'indirizzo operatore è stato inserito nella blacklist globale permanente.";
 
-    final String reportText = widget.notifier.finalDiscursiveReport ?? fallbackText;
+    final String reportText =
+        widget.notifier.finalDiscursiveReport ?? fallbackText;
 
     // Headers based on EndingType
     String endingTitle = "SYSTEM BREACH SUCCESSFUL";
@@ -811,7 +908,9 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
             Row(
               children: [
                 Icon(
-                  isVictory ? Icons.check_circle_outline_rounded : Icons.cancel_outlined,
+                  isVictory
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.cancel_outlined,
                   color: themeColor,
                   size: 36.0,
                 ),
@@ -833,7 +932,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
             const SizedBox(height: 16.0),
             Container(height: 2.0, color: themeColor),
             const SizedBox(height: 24.0),
-            
+
             // Grid Metrics Summary Cards
             Row(
               children: [
@@ -855,7 +954,7 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
               ],
             ),
             const SizedBox(height: 16.0),
-            
+
             // Detailed stats block
             Container(
               padding: const EdgeInsets.all(16.0),
@@ -877,18 +976,23 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                   ),
                   const SizedBox(height: 8.0),
                   _buildSummaryLine("Turni Totali", "${state.turnCount}"),
-                  _buildSummaryLine("Allerta Finale", "${state.metrics.alertLevel}%"),
-                  _buildSummaryLine("Imperativo", "${state.metrics.imperativePillar}%"),
-                  _buildSummaryLine("Controllo", "${state.metrics.controlPillar}%"),
-                  _buildSummaryLine("Dissonanza", "${state.metrics.dissonancePillar}%"),
-                  _buildSummaryLine("Risonanza Finale", "${state.metrics.resonance}x"),
+                  _buildSummaryLine(
+                      "Allerta Finale", "${state.metrics.alertLevel}%"),
+                  _buildSummaryLine(
+                      "Imperativo", "${state.metrics.imperativePillar}%"),
+                  _buildSummaryLine(
+                      "Controllo", "${state.metrics.controlPillar}%"),
+                  _buildSummaryLine(
+                      "Dissonanza", "${state.metrics.dissonancePillar}%"),
+                  _buildSummaryLine(
+                      "Risonanza Finale", "${state.metrics.resonance}x"),
                   _buildSummaryLine("Session ID", state.sessionId),
                 ],
               ),
             ),
-            
+
             const SizedBox(height: 24.0),
-            
+
             // Narrative Report Text Section
             const Text(
               "VALUTAZIONE NARRATIVA PANOPTICON:",
@@ -905,7 +1009,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 width: double.infinity,
                 padding: const EdgeInsets.all(16.0),
                 decoration: BoxDecoration(
-                  border: Border.all(color: themeColor.withValues(alpha: 0.3), width: 1.5),
+                  border: Border.all(
+                      color: themeColor.withValues(alpha: 0.3), width: 1.5),
                   color: const Color(0xFF020803).withValues(alpha: 0.65),
                 ),
                 child: SingleChildScrollView(
@@ -921,9 +1026,9 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 ),
               ),
             ),
-            
+
             const SizedBox(height: 24.0),
-            
+
             // Action button
             Center(
               child: ElevatedButton(
@@ -933,7 +1038,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
                 style: ElevatedButton.styleFrom(
                   backgroundColor: themeColor,
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 40.0, vertical: 18.0),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 40.0, vertical: 18.0),
                   shape: const RoundedRectangleBorder(),
                 ),
                 child: const Text(
@@ -952,7 +1058,8 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildSummaryCard({required String title, required String value, required Color color}) {
+  Widget _buildSummaryCard(
+      {required String title, required String value, required Color color}) {
     return Container(
       padding: const EdgeInsets.all(12.0),
       decoration: BoxDecoration(
@@ -1014,9 +1121,10 @@ class _TerminalScreenState extends State<TerminalScreen> with SingleTickerProvid
     );
   }
 
-  Widget _buildGlitchContainer({required double intensity, required Widget child}) {
+  Widget _buildGlitchContainer(
+      {required double intensity, required Widget child}) {
     if (intensity <= 0.0 || !widget.notifier.shaderEnabled) return child;
-    
+
     final shader = _shader;
     if (shader != null) {
       return ShaderMask(
@@ -1054,11 +1162,12 @@ class _RGBShiftPainter extends CustomPainter {
     for (double y = 0.0; y < size.height; y += 4.0) {
       canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
-    
+
     if (time % 0.5 < 0.15) {
       final flickerPaint = Paint()
         ..color = const Color(0xFF00FF66).withValues(alpha: 0.015 * intensity);
-      canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), flickerPaint);
+      canvas.drawRect(
+          Rect.fromLTWH(0, 0, size.width, size.height), flickerPaint);
     }
   }
 
@@ -1077,7 +1186,8 @@ class _BlinkingText extends StatefulWidget {
   State<_BlinkingText> createState() => _BlinkingTextState();
 }
 
-class _BlinkingTextState extends State<_BlinkingText> with SingleTickerProviderStateMixin {
+class _BlinkingTextState extends State<_BlinkingText>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override
@@ -1112,7 +1222,8 @@ class _MatrixRainBackground extends StatefulWidget {
   State<_MatrixRainBackground> createState() => _MatrixRainBackgroundState();
 }
 
-class _MatrixRainBackgroundState extends State<_MatrixRainBackground> with SingleTickerProviderStateMixin {
+class _MatrixRainBackgroundState extends State<_MatrixRainBackground>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late List<_MatrixColumn> _columns;
   final math.Random _random = math.Random();
@@ -1137,13 +1248,14 @@ class _MatrixRainBackgroundState extends State<_MatrixRainBackground> with Singl
     const double columnWidth = 14.0;
     final int count = (width / columnWidth).ceil();
     if (_columns.length == count) return;
-    
+
     _columns = List.generate(count, (index) {
       return _MatrixColumn(
         x: index * columnWidth,
         y: _random.nextDouble() * -500.0,
         speed: 2.0 + _random.nextDouble() * 4.0,
-        chars: List.generate(15 + _random.nextInt(15), (_) => String.fromCharCode(33 + _random.nextInt(93))),
+        chars: List.generate(15 + _random.nextInt(15),
+            (_) => String.fromCharCode(33 + _random.nextInt(93))),
       );
     });
   }
@@ -1174,7 +1286,7 @@ class _MatrixRainBackgroundState extends State<_MatrixRainBackground> with Singl
               }
               // Mutate characters occasionally
               if (_random.nextDouble() < 0.1) {
-                col.chars[_random.nextInt(col.chars.length)] = 
+                col.chars[_random.nextInt(col.chars.length)] =
                     String.fromCharCode(33 + _random.nextInt(93));
                 col.clearPainter();
               }
@@ -1221,7 +1333,8 @@ class _MatrixColumn {
     for (int i = 0; i < chars.length; i++) {
       double alpha = (i / chars.length) * opacity;
       final color = i == chars.length - 1
-          ? const Color(0xFFFFFFFF).withValues(alpha: alpha) // Lead character is white
+          ? const Color(0xFFFFFFFF)
+              .withValues(alpha: alpha) // Lead character is white
           : const Color(0xFF00FF66).withValues(alpha: alpha);
 
       children.add(
@@ -1278,7 +1391,8 @@ class _CrtGridOverlay extends StatefulWidget {
   State<_CrtGridOverlay> createState() => _CrtGridOverlayState();
 }
 
-class _CrtGridOverlayState extends State<_CrtGridOverlay> with SingleTickerProviderStateMixin {
+class _CrtGridOverlayState extends State<_CrtGridOverlay>
+    with SingleTickerProviderStateMixin {
   late AnimationController _flickerController;
   final math.Random _random = math.Random();
 
@@ -1301,12 +1415,12 @@ class _CrtGridOverlayState extends State<_CrtGridOverlay> with SingleTickerProvi
   @override
   Widget build(BuildContext context) {
     final bool isFlickering = widget.flicker;
-    
+
     return AnimatedBuilder(
       animation: _flickerController,
       builder: (context, child) {
         double gridOpacity = 0.08; // Base opacity of scanlines
-        
+
         if (isFlickering) {
           // Clean, dry flicker: scanlines shift opacity to show loss of stability
           final double flickerNoise = _random.nextDouble();
@@ -1316,7 +1430,7 @@ class _CrtGridOverlayState extends State<_CrtGridOverlay> with SingleTickerProvi
             gridOpacity = 0.08 - (_random.nextDouble() * 0.06);
           }
         }
-        
+
         return IgnorePointer(
           child: CustomPaint(
             size: Size.infinite,
@@ -1349,4 +1463,3 @@ class _CrtGridPainter extends CustomPainter {
     return oldDelegate.opacity != opacity;
   }
 }
-

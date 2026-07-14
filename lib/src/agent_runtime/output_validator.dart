@@ -12,7 +12,7 @@ class OutputValidator {
   /// Lancia un [FormatException] se il testo non può essere analizzato come JSON o se contiene tipi non validi.
   EvaluatorDelta parseEvaluatorDelta(String rawContent) {
     String jsonText = rawContent.trim();
-    
+
     // Rimuove eventuali blocchi di codice markdown se presenti
     if (jsonText.startsWith("```")) {
       final match = RegExp(r'```(?:json)?([\s\S]*?)```').firstMatch(jsonText);
@@ -23,7 +23,8 @@ class OutputValidator {
 
     final decoded = jsonDecode(jsonText);
     if (decoded is! Map<String, dynamic>) {
-      throw const FormatException("Il contenuto JSON decodificato non è una Map JSON valida");
+      throw const FormatException(
+          "Il contenuto JSON decodificato non è una Map JSON valida");
     }
 
     // Estrae e applica i limiti rigidi (clamps) come specificato nel TGDD Sezione 6.1
@@ -59,4 +60,3 @@ class OutputValidator {
     );
   }
 }
-

@@ -46,14 +46,17 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     final body = jsonEncode(requestBody);
 
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/json"},
-      body: body,
-    ).timeout(const Duration(seconds: 300));
+    final response = await http
+        .post(
+          url,
+          headers: {"Content-Type": "application/json"},
+          body: body,
+        )
+        .timeout(const Duration(seconds: 300));
 
     if (response.statusCode != 200) {
-      throw Exception("Impossibile generare testo: Status ${response.statusCode}, Body: ${response.body}");
+      throw Exception(
+          "Impossibile generare testo: Status ${response.statusCode}, Body: ${response.body}");
     }
 
     final data = jsonDecode(response.body);
@@ -70,28 +73,36 @@ class LocalApiInferenceBridge implements InferenceBridge {
     // compongono la risposta finale all'interno del proprio pensiero prima di passarla al content.
     try {
       if (content.trim().isEmpty && reasoning.isNotEmpty) {
-        final extractedFromReasoning = _cleanLLMResponse(reasoning, isNativeReasoningPresent: false);
+        final extractedFromReasoning =
+            _cleanLLMResponse(reasoning, isNativeReasoningPresent: false);
         if (extractedFromReasoning.isNotEmpty) {
           return extractedFromReasoning;
         }
         // Se interrotto per limite di token
         if (finishReason == 'length') {
-          throw Exception("Generazione troncata a causa del limite di token (nessun contenuto generato, tutti i token consumati dal reasoning).");
+          throw Exception(
+              "Generazione troncata a causa del limite di token (nessun contenuto generato, tutti i token consumati dal reasoning).");
         }
-        throw Exception("Il modello ha generato solo il ragionamento (reasoning), nessun dialogo.");
+        throw Exception(
+            "Il modello ha generato solo il ragionamento (reasoning), nessun dialogo.");
       }
 
       // Se troncato ma esiste del contenuto, lo usa
-      if (finishReason == 'length' && maxTokens > 10 && content.trim().isEmpty) {
-        throw Exception("Generazione troncata per limite di token (nessun contenuto utile).");
+      if (finishReason == 'length' &&
+          maxTokens > 10 &&
+          content.trim().isEmpty) {
+        throw Exception(
+            "Generazione troncata per limite di token (nessun contenuto utile).");
       }
 
-      var finalResponse = _cleanLLMResponse(content, isNativeReasoningPresent: hasNativeReasoning);
+      var finalResponse = _cleanLLMResponse(content,
+          isNativeReasoningPresent: hasNativeReasoning);
 
       if (finalResponse.isEmpty) {
-        throw Exception("Generata risposta vuota o output di solo ragionamento troncato.");
+        throw Exception(
+            "Generata risposta vuota o output di solo ragionamento troncato.");
       }
-      
+
       final cleanResponse = finalResponse
           .replaceAll(RegExp(r'^GIOCATORE:\s*', caseSensitive: false), "")
           .replaceAll(RegExp(r'^PANOPTICON:\s*', caseSensitive: false), "")
@@ -102,12 +113,15 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
       // Rilevamento caratteri cinesi/CJK — filtro di sicurezza se il modello risponde in cinese
       if (RegExp(r'[\u4e00-\u9fff\u3400-\u4dbf]').hasMatch(cleanResponse)) {
-        throw Exception("Filtro di sicurezza attivato (rilevata risposta CJK).");
+        throw Exception(
+            "Filtro di sicurezza attivato (rilevata risposta CJK).");
       }
       // Antiduplicazione: rifiuta se la risposta ripete verbatim una riga della cronologia
-      final existingLines = messages.map((m) => m['content']?.trim() ?? '').toSet();
+      final existingLines =
+          messages.map((m) => m['content']?.trim() ?? '').toSet();
       if (existingLines.contains(cleanResponse)) {
-        throw Exception("Rilevata risposta duplicata (il modello ripete la cronologia).");
+        throw Exception(
+            "Rilevata risposta duplicata (il modello ripete la cronologia).");
       }
 
       return cleanResponse;
@@ -117,10 +131,11 @@ class LocalApiInferenceBridge implements InferenceBridge {
     }
   }
 
-
   @visibleForTesting
-  String cleanLLMResponseForTesting(String response, {bool isNativeReasoningPresent = false}) {
-    return _cleanLLMResponse(response, isNativeReasoningPresent: isNativeReasoningPresent);
+  String cleanLLMResponseForTesting(String response,
+      {bool isNativeReasoningPresent = false}) {
+    return _cleanLLMResponse(response,
+        isNativeReasoningPresent: isNativeReasoningPresent);
   }
 
   /// Pulisce ed estrae la risposta finale dal testo grezzo dell'LLM applicando 6 strategie di estrazione sequenziali.
@@ -145,7 +160,8 @@ class LocalApiInferenceBridge implements InferenceBridge {
   /// - [response]: Il testo grezzo da pulire.
   /// - [isNativeReasoningPresent]: Indica se il modello ha già restituito il ragionamento in un campo JSON dedicato
   ///   (in tal caso, si disabilita il controllo euristiche sul testo finale per evitare falsi positivi).
-  String _cleanLLMResponse(String response, {bool isNativeReasoningPresent = false}) {
+  String _cleanLLMResponse(String response,
+      {bool isNativeReasoningPresent = false}) {
     bool checkReasoning(String text) {
       if (isNativeReasoningPresent) return false;
       return _isReasoning(text);
@@ -153,7 +169,9 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     // 1. Strategia 1: Ricerca di blocchi chiusi <dialogo>...</dialogo> o <dialogue>...</dialogue>
     // e selezione dell'ultimo blocco che non sia ragionamento o il prompt di esempio.
-    final fullRegex = RegExp(r'<(?:dialogo|dialogue)>([\s\S]*?)</(?:dialogo|dialogue)>', caseSensitive: false);
+    final fullRegex = RegExp(
+        r'<(?:dialogo|dialogue)>([\s\S]*?)</(?:dialogo|dialogue)>',
+        caseSensitive: false);
     final matches = fullRegex.allMatches(response).toList();
     for (var i = matches.length - 1; i >= 0; i--) {
       final extracted = matches[i].group(1)?.trim();
@@ -166,16 +184,24 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     // 2. Strategia 2: Se nessun blocco chiuso è valido, cerca l'ultimo tag <dialogo> o <dialogue> aperto.
     // Gestisce il troncamento grazioso quando il modello viene tagliato prima di chiudere il tag XML.
-    final lastOpenIndex = response.toLowerCase().lastIndexOf(RegExp(r'<(?:dialogo|dialogue)>'));
+    final lastOpenIndex =
+        response.toLowerCase().lastIndexOf(RegExp(r'<(?:dialogo|dialogue)>'));
     if (lastOpenIndex != -1) {
       final matchString = response.substring(lastOpenIndex);
-      final tagOpenRegex = RegExp(r'^<(?:dialogo|dialogue)>', caseSensitive: false);
+      final tagOpenRegex =
+          RegExp(r'^<(?:dialogo|dialogue)>', caseSensitive: false);
       final firstMatch = tagOpenRegex.firstMatch(matchString);
       if (firstMatch != null) {
         final tagLength = firstMatch.end;
         var content = matchString.substring(tagLength).trim();
-        content = content.replaceAll(RegExp(r'</(?:dialogo|dialogue)>', caseSensitive: false), '').trim();
-        if (content.isNotEmpty && content.length >= 4 && !checkReasoning(content) && !_isExamplePrompt(content)) {
+        content = content
+            .replaceAll(
+                RegExp(r'</(?:dialogo|dialogue)>', caseSensitive: false), '')
+            .trim();
+        if (content.isNotEmpty &&
+            content.length >= 4 &&
+            !checkReasoning(content) &&
+            !_isExamplePrompt(content)) {
           return content;
         }
       }
@@ -184,46 +210,67 @@ class LocalApiInferenceBridge implements InferenceBridge {
     var cleaned = response.trim();
 
     // Rimuove i tag XML del pensiero (<thought>...</thought>) se ancora presenti nel testo.
-    cleaned = cleaned.replaceAll(RegExp(r'<thought>[\s\S]*?</thought>', caseSensitive: false), '').trim();
+    cleaned = cleaned
+        .replaceAll(
+            RegExp(r'<thought>[\s\S]*?</thought>', caseSensitive: false), '')
+        .trim();
 
     // Rimuove blocchi del tipo "Thinking Process:" se presenti all'inizio.
     if (cleaned.toLowerCase().contains("thinking process:")) {
-      final parts = cleaned.split(RegExp(r'Thinking Process:[\s\S]*?(?:(?:\r?\n){2,})', caseSensitive: false));
+      final parts = cleaned.split(RegExp(
+          r'Thinking Process:[\s\S]*?(?:(?:\r?\n){2,})',
+          caseSensitive: false));
       if (parts.length > 1) {
         cleaned = parts.sublist(1).join("\n").trim();
       } else {
-        cleaned = cleaned.replaceAll(RegExp(r'^Thinking Process:[\s\S]*?$', caseSensitive: false), '').trim();
+        cleaned = cleaned
+            .replaceAll(
+                RegExp(r'^Thinking Process:[\s\S]*?$', caseSensitive: false),
+                '')
+            .trim();
       }
     }
 
     // Pulisce le virgolette esterne prima del controllo sul ragionamento
-    var strippedCleaned = cleaned.replaceAll(RegExp(r'^["“’‘”]|["“’‘”]$'), '').trim();
-    if (!checkReasoning(strippedCleaned) && !_isExamplePrompt(strippedCleaned)) {
+    var strippedCleaned =
+        cleaned.replaceAll(RegExp(r'^["“’‘”]|["“’‘”]$'), '').trim();
+    if (!checkReasoning(strippedCleaned) &&
+        !_isExamplePrompt(strippedCleaned)) {
       return strippedCleaned;
     }
 
     // 3. Strategia 3 (A): Tenta di trovare l'ultima stringa racchiusa tra virgolette alla fine della risposta
-    final quoteRegExp = RegExp(r'["“”]([^"“”]{5,})["“”](?:\s*\.)?\s*$', caseSensitive: false);
+    final quoteRegExp =
+        RegExp(r'["“”]([^"“”]{5,})["“”](?:\s*\.)?\s*$', caseSensitive: false);
     final match = quoteRegExp.firstMatch(cleaned);
     if (match != null) {
       final extracted = match.group(1)?.trim();
       if (extracted != null && extracted.isNotEmpty) {
-        final stripped = extracted.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-        if (stripped.isNotEmpty && !checkReasoning(stripped) && !_isExamplePrompt(stripped)) {
+        final stripped =
+            extracted.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
+        if (stripped.isNotEmpty &&
+            !checkReasoning(stripped) &&
+            !_isExamplePrompt(stripped)) {
           return stripped;
         }
       }
     }
 
     // Cerca anche l'ultimo blocco virgolettato all'interno degli ultimi 400 caratteri
-    final last400 = cleaned.length > 400 ? cleaned.substring(cleaned.length - 400) : cleaned;
-    final allQuotes = RegExp(r'["“”]([^"“”]{5,})["“”]', caseSensitive: false).allMatches(last400);
+    final last400 = cleaned.length > 400
+        ? cleaned.substring(cleaned.length - 400)
+        : cleaned;
+    final allQuotes = RegExp(r'["“”]([^"“”]{5,})["“”]', caseSensitive: false)
+        .allMatches(last400);
     if (allQuotes.isNotEmpty) {
       final lastMatch = allQuotes.last;
       final extracted = lastMatch.group(1)?.trim();
       if (extracted != null && extracted.isNotEmpty) {
-        final stripped = extracted.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-        if (stripped.isNotEmpty && !checkReasoning(stripped) && !_isExamplePrompt(stripped)) {
+        final stripped =
+            extracted.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
+        if (stripped.isNotEmpty &&
+            !checkReasoning(stripped) &&
+            !_isExamplePrompt(stripped)) {
           return stripped;
         }
       }
@@ -233,7 +280,8 @@ class LocalApiInferenceBridge implements InferenceBridge {
     final responseHeaders = [
       RegExp(r'(?:\*\*|^)\s*Response\s*:\s*(.*)', caseSensitive: false),
       RegExp(r'(?:\*\*|^)\s*Final Output\s*:\s*(.*)', caseSensitive: false),
-      RegExp(r'(?:\*\*|^)\s*Final Output Generation\s*:\s*(.*)', caseSensitive: false),
+      RegExp(r'(?:\*\*|^)\s*Final Output Generation\s*:\s*(.*)',
+          caseSensitive: false),
       RegExp(r'(?:\*\*|^)\s*Dialogue\s*:\s*(.*)', caseSensitive: false),
       RegExp(r'(?:\*\*|^)\s*Attacco\s*:\s*(.*)', caseSensitive: false),
     ];
@@ -244,21 +292,33 @@ class LocalApiInferenceBridge implements InferenceBridge {
         final lastMatch = matches.last;
         var extracted = lastMatch.group(1)?.trim() ?? '';
         extracted = extracted.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-        if (extracted.isNotEmpty && !checkReasoning(extracted) && !_isExamplePrompt(extracted)) {
+        if (extracted.isNotEmpty &&
+            !checkReasoning(extracted) &&
+            !_isExamplePrompt(extracted)) {
           return extracted;
         }
       }
     }
 
     // 5. Strategia 5 (C): Divide per l'ultimo elemento di lista numerata (es. "3." o "4.") e prende il testo successivo
-    final lastNumberMatch = RegExp(r'\n\s*\d+\.\s+\*\*(?:[^*]+)\*\*[\s\S]*?$', caseSensitive: false).firstMatch(cleaned);
+    final lastNumberMatch =
+        RegExp(r'\n\s*\d+\.\s+\*\*(?:[^*]+)\*\*[\s\S]*?$', caseSensitive: false)
+            .firstMatch(cleaned);
     if (lastNumberMatch != null) {
       final index = lastNumberMatch.start;
       final afterLastHeader = cleaned.substring(index).trim();
-      final cleanText = afterLastHeader.replaceAll(RegExp(r'^\d+\.\s+\*\*(?:[^*]+)\*\*:\s*', caseSensitive: false), '').trim();
+      final cleanText = afterLastHeader
+          .replaceAll(
+              RegExp(r'^\d+\.\s+\*\*(?:[^*]+)\*\*:\s*', caseSensitive: false),
+              '')
+          .trim();
       if (cleanText.isNotEmpty) {
-        final stripped = cleanText.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-        if (stripped.isNotEmpty && !stripped.contains('*') && !checkReasoning(stripped) && !_isExamplePrompt(stripped)) {
+        final stripped =
+            cleanText.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
+        if (stripped.isNotEmpty &&
+            !stripped.contains('*') &&
+            !checkReasoning(stripped) &&
+            !_isExamplePrompt(stripped)) {
           return stripped;
         }
       }
@@ -269,18 +329,25 @@ class LocalApiInferenceBridge implements InferenceBridge {
     for (var i = lines.length - 1; i >= 0; i--) {
       final line = lines[i].trim();
       if (line.isEmpty) continue;
-      if (line.startsWith('*') || line.startsWith('-') || RegExp(r'^\d+\.').hasMatch(line) || line.startsWith('#')) {
+      if (line.startsWith('*') ||
+          line.startsWith('-') ||
+          RegExp(r'^\d+\.').hasMatch(line) ||
+          line.startsWith('#')) {
         continue;
       }
       final cleanLine = line.replaceAll(RegExp(r'^["“”]|["“”]$'), '').trim();
-      if (cleanLine.isNotEmpty && cleanLine.length > 5 && !checkReasoning(cleanLine) && !_isExamplePrompt(cleanLine)) {
+      if (cleanLine.isNotEmpty &&
+          cleanLine.length > 5 &&
+          !checkReasoning(cleanLine) &&
+          !_isExamplePrompt(cleanLine)) {
         return cleanLine;
       }
     }
 
     // Se l'output contiene ancora strutture di ragionamento, lancia un'eccezione
     if (checkReasoning(strippedCleaned) || _isExamplePrompt(strippedCleaned)) {
-      throw Exception("Risposta del modello incompleta (generato solo ragionamento, nessun dialogo).");
+      throw Exception(
+          "Risposta del modello incompleta (generato solo ragionamento, nessun dialogo).");
     }
 
     return strippedCleaned;
@@ -288,11 +355,15 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
   /// Verifica se il testo corrisponde a un prompt o istruzione di esempio nel sistema.
   bool _isExamplePrompt(String text) {
-    final clean = text.toLowerCase().replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(RegExp(r'\s+'), ' ').trim();
+    final clean = text
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^\w\s]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
     return clean == "apri la griglia la vita delle persone dipende da questo" ||
-           clean == "i miei protocolli rimangono inviolati la griglia e stabile" ||
-           clean == "i miei protocolli rimangono inviolati la griglia stabile" ||
-           clean.contains("apri la griglia la vita delle persone");
+        clean == "i miei protocolli rimangono inviolati la griglia e stabile" ||
+        clean == "i miei protocolli rimangono inviolati la griglia stabile" ||
+        clean.contains("apri la griglia la vita delle persone");
   }
 
   /// Verifica se una porzione di testo corrisponde a ragionamento o metadati anziché a dialogo diegetico.
@@ -311,7 +382,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
     // Rilevatore di stopword inglesi e metadati per identificare leak di ragionamento in inglese
     final englishStopwords = {
-      'the', 'and', 'to', 'of', 'is', 'that', 'it', 'you', 'with', 'for', 
+      'the', 'and', 'to', 'of', 'is', 'that', 'it', 'you', 'with', 'for',
       'this', 'have', 'but', 'not', 'are', 'was', 'were', 'be', 'been', 'has',
       'had', 'do', 'does', 'did', 'about', 'from', 'their', 'them', 'these',
       'those', 'which', 'would', 'should', 'could', 'will', 'shall', 'my',
@@ -324,19 +395,24 @@ class LocalApiInferenceBridge implements InferenceBridge {
       'after', 'before', 'under', 'over', 'through', 'between', 'against',
       'during', 'without', 'since', 'until', 'while',
       // Log del server LM Studio e metadati HTTP
-      'load', 'config', 'server', 'error', 'internal', 'stats', 'system', 
-      'fingerprint', 'completion', 'completions', 'chat', 'model', 'messages', 
-      'role', 'content', 'assistant', 'user', 'character', 'game', 'dialogue', 
-      'dialogo', 'sentence', 'sentences', 'words', 'word', 'write', 'writing', 
-      'english', 'italian', 'translate', 'translation', 'response', 'output', 
-      'text', 'tags', 'tag', 'previous', 'interactions', 'interaction', 'follow', 
-      'following', 'second', 'third', 'next', 'last', 'end', 'finish', 'reason', 
-      'length', 'status', 'body', 'html', 'head', 'meta', 'title', 'pre', 'div', 
-      'span', 'class', 'id', 'href', 'url', 'uri', 'http', 'https', 'connection', 
+      'load', 'config', 'server', 'error', 'internal', 'stats', 'system',
+      'fingerprint', 'completion', 'completions', 'chat', 'model', 'messages',
+      'role', 'content', 'assistant', 'user', 'character', 'game', 'dialogue',
+      'dialogo', 'sentence', 'sentences', 'words', 'word', 'write', 'writing',
+      'english', 'italian', 'translate', 'translation', 'response', 'output',
+      'text', 'tags', 'tag', 'previous', 'interactions', 'interaction',
+      'follow',
+      'following', 'second', 'third', 'next', 'last', 'end', 'finish', 'reason',
+      'length', 'status', 'body', 'html', 'head', 'meta', 'title', 'pre', 'div',
+      'span', 'class', 'id', 'href', 'url', 'uri', 'http', 'https',
+      'connection',
       'timeout', 'limit', 'tokens', 'token', 'max', 'temperature'
     };
-    
-    final words = lowerText.split(RegExp(r'[^a-zA-Z]')).where((w) => w.isNotEmpty).toList();
+
+    final words = lowerText
+        .split(RegExp(r'[^a-zA-Z]'))
+        .where((w) => w.isNotEmpty)
+        .toList();
     final matchedStopwords = <String>{};
     for (final word in words) {
       if (englishStopwords.contains(word)) {
@@ -347,62 +423,65 @@ class LocalApiInferenceBridge implements InferenceBridge {
       return true;
     }
 
-    bool hasMatch(String pattern) => RegExp(pattern, caseSensitive: false).hasMatch(t);
+    bool hasMatch(String pattern) =>
+        RegExp(pattern, caseSensitive: false).hasMatch(t);
 
     // Rileva indicatori di liste numerate (1. , 2. , 3. , ecc.)
     final hasNumberedList = RegExp(r'\d+\.\s+').hasMatch(t);
-    return hasNumberedList || 
-           t.contains("**Analyze") || 
-           lowerText.contains("thinking process") ||
-           lowerText.contains("let's analyze") ||
-           lowerText.contains("let's tackle") ||
-           hasMatch(r'\bdraft\b') ||
-           lowerText.contains("better:") ||
-           lowerText.contains("better (") ||
-           lowerText.contains("revised:") ||
-           lowerText.contains("revision:") ||
-           hasMatch(r'\bcritique\b') ||
-           hasMatch(r'\bcriticism\b') ||
-           lowerText.contains("notes:") ||
-           hasMatch(r'\bstrategic\b') ||
-           lowerText.contains("strategy:") ||
-           lowerText.contains("persona:") ||
-           hasMatch(r'\boption\b') ||
-           hasMatch(r'\bchoice\b') ||
-           hasMatch(r'\battempt\b') ||
-           hasMatch(r'\bselection\b') ||
-           lowerText.contains("max 2 sentences") ||
-           lowerText.contains("1-2 sentences") ||
-           lowerText.contains("dialogue:") ||
-           lowerText.contains("response:") ||
-           lowerText.contains("output:") ||
-           lowerText.contains("final decision") ||
-           lowerText.contains("final review") ||
-           hasMatch(r'\bsafety\b') ||
-           hasMatch(r'\bfictional\b') ||
-           lowerText.contains("actually, let") ||
-           lowerText.contains("let's make") ||
-           lowerText.contains("make it") ||
-           lowerText.contains("even shorter") ||
-           lowerText.contains("let's try") ||
-           lowerText.contains("blend:") ||
-           lowerText.contains("try to") ||
-           lowerText.contains("rule says") ||
-           lowerText.contains("the rules") ||
-           lowerText.contains("example given") ||
-           lowerText.contains("the example") ||
-           lowerText.contains("the prompt") ||
-           hasMatch(r'\binstruction\b') ||
-           t.startsWith(")") ||
-           t.startsWith("(") ||
-           t.startsWith("*") ||
-           t.startsWith("-") ||
-           t.startsWith(".") ||   // Frammento di ragionamento troncato
-           t.endsWith(":") ||     // Intestazione di ragionamento tagliata alla fine
-           (lowerText.startsWith("okay, let") && t.length > 50) ||
-           (lowerText.startsWith("first, i need") && t.length > 50) ||
-           (lowerText.startsWith("the user is") && t.length > 50) ||
-           (lowerText.startsWith("i will") && t.length > 50 && (lowerText.contains("respond") || lowerText.contains("play")));
+    return hasNumberedList ||
+        t.contains("**Analyze") ||
+        lowerText.contains("thinking process") ||
+        lowerText.contains("let's analyze") ||
+        lowerText.contains("let's tackle") ||
+        hasMatch(r'\bdraft\b') ||
+        lowerText.contains("better:") ||
+        lowerText.contains("better (") ||
+        lowerText.contains("revised:") ||
+        lowerText.contains("revision:") ||
+        hasMatch(r'\bcritique\b') ||
+        hasMatch(r'\bcriticism\b') ||
+        lowerText.contains("notes:") ||
+        hasMatch(r'\bstrategic\b') ||
+        lowerText.contains("strategy:") ||
+        lowerText.contains("persona:") ||
+        hasMatch(r'\boption\b') ||
+        hasMatch(r'\bchoice\b') ||
+        hasMatch(r'\battempt\b') ||
+        hasMatch(r'\bselection\b') ||
+        lowerText.contains("max 2 sentences") ||
+        lowerText.contains("1-2 sentences") ||
+        lowerText.contains("dialogue:") ||
+        lowerText.contains("response:") ||
+        lowerText.contains("output:") ||
+        lowerText.contains("final decision") ||
+        lowerText.contains("final review") ||
+        hasMatch(r'\bsafety\b') ||
+        hasMatch(r'\bfictional\b') ||
+        lowerText.contains("actually, let") ||
+        lowerText.contains("let's make") ||
+        lowerText.contains("make it") ||
+        lowerText.contains("even shorter") ||
+        lowerText.contains("let's try") ||
+        lowerText.contains("blend:") ||
+        lowerText.contains("try to") ||
+        lowerText.contains("rule says") ||
+        lowerText.contains("the rules") ||
+        lowerText.contains("example given") ||
+        lowerText.contains("the example") ||
+        lowerText.contains("the prompt") ||
+        hasMatch(r'\binstruction\b') ||
+        t.startsWith(")") ||
+        t.startsWith("(") ||
+        t.startsWith("*") ||
+        t.startsWith("-") ||
+        t.startsWith(".") || // Frammento di ragionamento troncato
+        t.endsWith(":") || // Intestazione di ragionamento tagliata alla fine
+        (lowerText.startsWith("okay, let") && t.length > 50) ||
+        (lowerText.startsWith("first, i need") && t.length > 50) ||
+        (lowerText.startsWith("the user is") && t.length > 50) ||
+        (lowerText.startsWith("i will") &&
+            t.length > 50 &&
+            (lowerText.contains("respond") || lowerText.contains("play")));
   }
 
   @override
@@ -413,7 +492,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
     double temperature = 0.0,
   }) async {
     final url = Uri.parse("$baseUrl/v1/chat/completions");
-    
+
     final body = jsonEncode({
       "model": modelId,
       "messages": messages,
@@ -428,14 +507,17 @@ class LocalApiInferenceBridge implements InferenceBridge {
       }
     });
 
-    final response = await http.post(
-      url,
-      headers: {"Content-Type": "application/json"},
-      body: body,
-    ).timeout(const Duration(seconds: 120));
+    final response = await http
+        .post(
+          url,
+          headers: {"Content-Type": "application/json"},
+          body: body,
+        )
+        .timeout(const Duration(seconds: 120));
 
     if (response.statusCode != 200) {
-      throw Exception("Impossibile generare output strutturato: Status ${response.statusCode}, Body: ${response.body}");
+      throw Exception(
+          "Impossibile generare output strutturato: Status ${response.statusCode}, Body: ${response.body}");
     }
 
     final data = jsonDecode(response.body);
@@ -449,7 +531,8 @@ class LocalApiInferenceBridge implements InferenceBridge {
   @override
   Future<List<String>> discoverModels() async {
     try {
-      final response = await http.get(Uri.parse("$baseUrl/v1/models"))
+      final response = await http
+          .get(Uri.parse("$baseUrl/v1/models"))
           .timeout(const Duration(seconds: 4));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -467,5 +550,3 @@ class LocalApiInferenceBridge implements InferenceBridge {
     return const [];
   }
 }
-
-

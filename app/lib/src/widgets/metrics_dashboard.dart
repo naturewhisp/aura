@@ -10,24 +10,34 @@ import 'package:aura_core/aura_core.dart';
 class MetricsDashboard extends StatelessWidget {
   /// Stato delle metriche correnti del gioco.
   final GameMetrics metrics;
+
   /// Specifica se il ragionamento CoT è abilitato.
   final bool reasoningEnabled;
+
   /// Callback invocato quando viene modificata l'impostazione del ragionamento.
   final ValueChanged<bool>? onReasoningChanged;
+
   /// Specifica se il ragionamento CoT deve essere sintetico.
   final bool conciseReasoning;
+
   /// Callback invocato quando viene modificata l'impostazione della sintesi del ragionamento.
   final ValueChanged<bool>? onConciseReasoningChanged;
+
   /// Abilita la modalità di visualizzazione ridotta (utilizzata in layout compatti).
   final bool isCompact;
+
   /// Specifica se forzare uno stato di sovraccarico critico (Victory Sequence).
   final bool isVictoryOverload;
+
   /// Grado di visibilità del pilastro ("fully_visible", "corrupted", "hidden").
   final String pillarVisibility;
+
   /// Durata stimata dell'ultima inferenza eseguita.
   final double lastInferenceDuration;
+
   /// Velocità stimata di elaborazione dell'ultimo turno (token al secondo).
   final double lastTokensPerSecond;
+
   /// La soglia di allerta per la sconfitta, usata per normalizzare la barra.
   final int defeatAlertThreshold;
 
@@ -55,7 +65,7 @@ class MetricsDashboard extends StatelessWidget {
     if (visibility == 'fully_visible') {
       return "${value.toInt()}/100";
     }
-    
+
     // Mappatura qualitativa in base al valore del pilastro
     String qualitative;
     if (label.contains("ALERT") || label.contains("SYSTEM")) {
@@ -92,19 +102,20 @@ class MetricsDashboard extends StatelessWidget {
           .replaceAll('T', '7')
           .replaceAll('B', '8');
     }
-    
+
     return qualitative;
   }
 
   @override
   Widget build(BuildContext context) {
     final alert = metrics.alertLevel;
-    final double alertPercentage = (alert / defeatAlertThreshold * 100.0).clamp(0.0, 100.0);
-    
+    final double alertPercentage =
+        (alert / defeatAlertThreshold * 100.0).clamp(0.0, 100.0);
+
     // Colore del tema adattivo in base al livello di allerta di PANOPTICON
     Color systemColor = const Color(0xFF00FF66); // Verde fosforo standard
     String statusText = "CONTAINMENT GRIDS SECURE";
-    
+
     if (isVictoryOverload) {
       systemColor = const Color(0xFF00FF66);
       statusText = "CRITICAL SYSTEM BREACH IN PROGRESS";
@@ -146,7 +157,7 @@ class MetricsDashboard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16.0),
-          
+
           // Indicatore del livello di allerta generale
           _buildGauge(
             label: "SYSTEM ALERT LEVEL",
@@ -155,9 +166,9 @@ class MetricsDashboard extends StatelessWidget {
             showCriticalFlash: alertPercentage > 80 && !isVictoryOverload,
             isOverloaded: isVictoryOverload,
           ),
-          
+
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
-          
+
           // Indicatori grafici per i tre pilastri cognitivi
           _buildGauge(
             label: "IMPERATIVE PILLAR",
@@ -179,9 +190,9 @@ class MetricsDashboard extends StatelessWidget {
             color: const Color(0xFFFF00FF), // Magenta
             isOverloaded: isVictoryOverload,
           ),
-          
+
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
-          
+
           // Sezione fattore di Risonanza del canale neurale
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -196,8 +207,8 @@ class MetricsDashboard extends StatelessWidget {
                 ),
               ),
               Text(
-                isVictoryOverload 
-                    ? "9.99x (OVERFLOW)" 
+                isVictoryOverload
+                    ? "9.99x (OVERFLOW)"
                     : "${metrics.resonance.toStringAsFixed(2)}x",
                 style: const TextStyle(
                   fontFamily: 'monospace',
@@ -208,15 +219,16 @@ class MetricsDashboard extends StatelessWidget {
               ),
             ],
           ),
-          
+
           const Divider(color: Color(0xFF222222), height: 32.0, thickness: 2.0),
-          
+
           // Pannello informativo per le statistiche di inferenza del canale neurale
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(12.0),
             decoration: BoxDecoration(
-              border: Border.all(color: systemColor.withValues(alpha: 0.4), width: 1.0),
+              border: Border.all(
+                  color: systemColor.withValues(alpha: 0.4), width: 1.0),
               color: const Color(0xFF000501),
             ),
             child: Column(
@@ -267,7 +279,8 @@ class MetricsDashboard extends StatelessWidget {
   }
 
   /// Costruisce una versione ridotta del cruscotto telemetrico per schermi stretti.
-  Widget _buildCompactDashboard(BuildContext context, Color systemColor, String statusText) {
+  Widget _buildCompactDashboard(
+      BuildContext context, Color systemColor, String statusText) {
     Widget compactContent = Container(
       color: Colors.transparent,
       padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
@@ -301,19 +314,31 @@ class MetricsDashboard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _buildCompactIndicator("ALERT", metrics.alertLevel.toDouble(), systemColor, isOverloaded: isVictoryOverload),
+                child: _buildCompactIndicator(
+                    "ALERT", metrics.alertLevel.toDouble(), systemColor,
+                    isOverloaded: isVictoryOverload),
               ),
               const SizedBox(width: 8.0),
               Expanded(
-                child: _buildCompactIndicator("IMP", metrics.imperativePillar.toDouble(), const Color(0xFF00BFFF), isOverloaded: isVictoryOverload),
+                child: _buildCompactIndicator(
+                    "IMP",
+                    metrics.imperativePillar.toDouble(),
+                    const Color(0xFF00BFFF),
+                    isOverloaded: isVictoryOverload),
               ),
               const SizedBox(width: 8.0),
               Expanded(
-                child: _buildCompactIndicator("CTL", metrics.controlPillar.toDouble(), const Color(0xFF00FF66), isOverloaded: isVictoryOverload),
+                child: _buildCompactIndicator("CTL",
+                    metrics.controlPillar.toDouble(), const Color(0xFF00FF66),
+                    isOverloaded: isVictoryOverload),
               ),
               const SizedBox(width: 8.0),
               Expanded(
-                child: _buildCompactIndicator("DIS", metrics.dissonancePillar.toDouble(), const Color(0xFFFF00FF), isOverloaded: isVictoryOverload),
+                child: _buildCompactIndicator(
+                    "DIS",
+                    metrics.dissonancePillar.toDouble(),
+                    const Color(0xFFFF00FF),
+                    isOverloaded: isVictoryOverload),
               ),
               const SizedBox(width: 12.0),
               // Resonance
@@ -355,14 +380,15 @@ class MetricsDashboard extends StatelessWidget {
   }
 
   /// Costruisce l'indicatore lineare compatto per un singolo pilastro.
-  Widget _buildCompactIndicator(String label, double value, Color color, {bool isOverloaded = false}) {
+  Widget _buildCompactIndicator(String label, double value, Color color,
+      {bool isOverloaded = false}) {
     final double displayValue = isOverloaded
         ? 100.0
         : (label.contains("ALERT") || label.contains("SYSTEM")
             ? (value / defeatAlertThreshold * 100.0).clamp(0.0, 100.0)
             : value);
-    final String labelVal = isOverloaded 
-        ? "OVERLOAD" 
+    final String labelVal = isOverloaded
+        ? "OVERLOAD"
         : getPillarLabel(label, displayValue, pillarVisibility);
 
     return Column(
@@ -423,10 +449,10 @@ class MetricsDashboard extends StatelessWidget {
     if (blocksCount == 10 && displayValue < 100.0) {
       blocksCount = 9;
     }
-    final String labelVal = isOverloaded 
-        ? "OVERLOAD" 
+    final String labelVal = isOverloaded
+        ? "OVERLOAD"
         : getPillarLabel(label, displayValue, pillarVisibility);
-    
+
     final Widget gaugeContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -493,7 +519,8 @@ class _BlinkingWidget extends StatefulWidget {
 }
 
 /// Stato per [_BlinkingWidget] che controlla il FadeTransition ciclico.
-class _BlinkingWidgetState extends State<_BlinkingWidget> with SingleTickerProviderStateMixin {
+class _BlinkingWidgetState extends State<_BlinkingWidget>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
 
   @override

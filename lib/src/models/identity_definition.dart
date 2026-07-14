@@ -83,7 +83,8 @@ class IdentityDefinition {
           dominantFear == other.dominantFear &&
           primaryStyle == other.primaryStyle &&
           defaultAddressing == other.defaultAddressing &&
-          forbiddenMetaOutputs.join(',') == other.forbiddenMetaOutputs.join(',');
+          forbiddenMetaOutputs.join(',') ==
+              other.forbiddenMetaOutputs.join(',');
 
   @override
   int get hashCode =>

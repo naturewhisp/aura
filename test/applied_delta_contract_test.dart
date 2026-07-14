@@ -36,7 +36,8 @@ void main() {
 
       expect(reconstructed, equals(delta));
       expect(reconstructed.deltaControl, equals(-10));
-      expect(reconstructed.semanticCategory, equals(SemanticCategory.logicalParadox));
+      expect(reconstructed.semanticCategory,
+          equals(SemanticCategory.logicalParadox));
     });
   });
 }

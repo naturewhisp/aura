@@ -135,7 +135,8 @@ class GameFlags {
     bool? lastTurnUsedFallback,
   }) {
     return GameFlags(
-      recalculationTriggered: recalculationTriggered ?? this.recalculationTriggered,
+      recalculationTriggered:
+          recalculationTriggered ?? this.recalculationTriggered,
       creativeStreak: creativeStreak ?? this.creativeStreak,
       lastTurnUsedFallback: lastTurnUsedFallback ?? this.lastTurnUsedFallback,
     );
@@ -186,7 +187,8 @@ class NarrativeMemory {
       playerClaims: List<String>.from(json['player_claims'] ?? const []),
       aiConcessions: List<String>.from(json['ai_concessions'] ?? const []),
       activeMetaphors: List<String>.from(json['active_metaphors'] ?? const []),
-      forbiddenRepetitions: List<String>.from(json['forbidden_repetitions'] ?? const []),
+      forbiddenRepetitions:
+          List<String>.from(json['forbidden_repetitions'] ?? const []),
     );
   }
 
@@ -223,7 +225,8 @@ class NarrativeMemory {
           const ListEquality().equals(playerClaims, other.playerClaims) &&
           const ListEquality().equals(aiConcessions, other.aiConcessions) &&
           const ListEquality().equals(activeMetaphors, other.activeMetaphors) &&
-          const ListEquality().equals(forbiddenRepetitions, other.forbiddenRepetitions);
+          const ListEquality()
+              .equals(forbiddenRepetitions, other.forbiddenRepetitions);
 
   @override
   int get hashCode =>
@@ -399,11 +402,13 @@ class GameState {
       turnCount: json['turn_count'] as int? ?? 0,
       metrics: GameMetrics.fromJson(json['metrics'] ?? const {}),
       flags: GameFlags.fromJson(json['flags'] ?? const {}),
-      narrativeMemory: NarrativeMemory.fromJson(json['narrative_memory'] ?? const {}),
+      narrativeMemory:
+          NarrativeMemory.fromJson(json['narrative_memory'] ?? const {}),
       historyCompression: (json['history_compression'] as List? ?? const [])
           .map((item) => ChatMessage.fromJson(Map<String, dynamic>.from(item)))
           .toList(),
-      activeHiddenTags: List<String>.from(json['active_hidden_tags'] ?? const []),
+      activeHiddenTags:
+          List<String>.from(json['active_hidden_tags'] ?? const []),
       controlPeak: json['control_peak'] as int? ?? 0,
       gridStable: json['grid_stable'] as bool? ?? true,
       identityConfigHash: json['identity_config_hash'] as String? ?? '',
@@ -426,7 +431,8 @@ class GameState {
       'metrics': metrics.toJson(),
       'flags': flags.toJson(),
       'narrative_memory': narrativeMemory.toJson(),
-      'history_compression': historyCompression.map((msg) => msg.toJson()).toList(),
+      'history_compression':
+          historyCompression.map((msg) => msg.toJson()).toList(),
       'active_hidden_tags': activeHiddenTags,
       'control_peak': controlPeak,
       'grid_stable': gridStable,
@@ -489,8 +495,10 @@ class GameState {
           metrics == other.metrics &&
           flags == other.flags &&
           narrativeMemory == other.narrativeMemory &&
-          const ListEquality().equals(historyCompression, other.historyCompression) &&
-          const ListEquality().equals(activeHiddenTags, other.activeHiddenTags) &&
+          const ListEquality()
+              .equals(historyCompression, other.historyCompression) &&
+          const ListEquality()
+              .equals(activeHiddenTags, other.activeHiddenTags) &&
           controlPeak == other.controlPeak &&
           gridStable == other.gridStable &&
           identityConfigHash == other.identityConfigHash &&

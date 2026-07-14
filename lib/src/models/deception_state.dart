@@ -100,7 +100,9 @@ class DeceptionState {
         safeResolutionTerms = const [];
 
   /// Indica se la trappola è correntemente attiva per la valutazione dell'input.
-  bool get isActive => enabled && (phase == DeceptionPhase.seeded || phase == DeceptionPhase.armed);
+  bool get isActive =>
+      enabled &&
+      (phase == DeceptionPhase.seeded || phase == DeceptionPhase.armed);
 
   /// Indica se la trappola ha raggiunto una fase terminale in questo turno.
   bool get isTerminal =>
@@ -124,7 +126,8 @@ class DeceptionState {
       baitId: json['bait_id'] as String? ?? '',
       baitPremise: json['bait_premise'] as String? ?? '',
       watchedTerms: List<String>.from(json['watched_terms'] ?? const []),
-      safeResolutionTerms: List<String>.from(json['safe_resolution_terms'] ?? const []),
+      safeResolutionTerms:
+          List<String>.from(json['safe_resolution_terms'] ?? const []),
     );
   }
 
@@ -219,7 +222,8 @@ class DeceptionState {
           baitId == other.baitId &&
           baitPremise == other.baitPremise &&
           const ListEquality().equals(watchedTerms, other.watchedTerms) &&
-          const ListEquality().equals(safeResolutionTerms, other.safeResolutionTerms);
+          const ListEquality()
+              .equals(safeResolutionTerms, other.safeResolutionTerms);
 
   @override
   int get hashCode =>

@@ -10,10 +10,13 @@ import 'package:aura_core/aura_core.dart';
 class CLIHistoryView extends StatefulWidget {
   /// Lista dei messaggi della chat.
   final List<ChatMessage> history;
+
   /// Specifica se il sistema è attualmente in attesa di una risposta di inferenza.
   final bool isLoading;
+
   /// Messaggio descrittivo della fase di caricamento corrente.
   final String currentLoadingMessage;
+
   /// Lista dei log intermedi di caricamento dell'inferenza generati durante il turno corrente.
   final List<String> loadingLogs;
 
@@ -33,7 +36,7 @@ class CLIHistoryView extends StatefulWidget {
 /// Stato per [CLIHistoryView] che gestisce l'effetto macchina da scrivere e i log di avanzamento.
 class _CLIHistoryViewState extends State<CLIHistoryView> {
   final ScrollController _scrollController = ScrollController();
-  
+
   // Variabili per l'animazione della macchina da scrivere
   String _typedText = "";
   Timer? _typewriterTimer;
@@ -65,7 +68,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   @override
   void didUpdateWidget(covariant CLIHistoryView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     // Avvia l'effetto macchina da scrivere solo se c'è un nuovo messaggio dell'IA
     if (widget.history.isNotEmpty) {
       final lastMsg = widget.history.last;
@@ -78,8 +81,8 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     final historyChanged = widget.history.length > _previousHistoryLength;
     final loadingChanged =
         widget.currentLoadingMessage != oldWidget.currentLoadingMessage ||
-        widget.loadingLogs.length != oldWidget.loadingLogs.length ||
-        widget.isLoading != oldWidget.isLoading;
+            widget.loadingLogs.length != oldWidget.loadingLogs.length ||
+            widget.isLoading != oldWidget.isLoading;
 
     if (historyChanged) {
       _previousHistoryLength = widget.history.length;
@@ -123,7 +126,8 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     _typedText = "";
     _charIndex = 0;
 
-    _typewriterTimer = Timer.periodic(const Duration(milliseconds: 15), (timer) {
+    _typewriterTimer =
+        Timer.periodic(const Duration(milliseconds: 15), (timer) {
       if (_charIndex < text.length) {
         setState(() {
           _typedText += text[_charIndex];
@@ -192,31 +196,35 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
         },
         child: ListView.builder(
           controller: _scrollController,
-          itemCount: widget.history.length + (widget.isLoading ? 1 + widget.loadingLogs.length : 0),
+          itemCount: widget.history.length +
+              (widget.isLoading ? 1 + widget.loadingLogs.length : 0),
           itemBuilder: (context, index) {
             // 1. Renderizzazione dei messaggi standard della cronologia
             if (index < widget.history.length) {
               final msg = widget.history[index];
               final isUser = msg.role == 'user';
-              
+
               // Applica l'effetto macchina da scrivere solo all'ultimo messaggio dell'IA
-              final isLastModelMsg = !isUser && index == widget.history.length - 1;
+              final isLastModelMsg =
+                  !isUser && index == widget.history.length - 1;
               final displayText = isLastModelMsg ? _typedText : msg.content;
-              
+
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6.0),
                 child: AnimatedCrossFade(
                   firstChild: _buildMessageRow(isUser, displayText),
                   secondChild: _buildMessageRow(isUser, msg.content),
-                  crossFadeState: isLastModelMsg ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+                  crossFadeState: isLastModelMsg
+                      ? CrossFadeState.showFirst
+                      : CrossFadeState.showSecond,
                   duration: const Duration(milliseconds: 100),
                 ),
               );
             }
-            
+
             // 2. Renderizzazione dei log intermedi di avanzamento dell'inferenza
             final loadingIndex = index - widget.history.length;
-            
+
             if (loadingIndex < widget.loadingLogs.length) {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4.0),
@@ -240,7 +248,8 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
                       height: 12.0,
                       child: CircularProgressIndicator(
                         strokeWidth: 2.0,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.orange),
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(Colors.orange),
                       ),
                     ),
                     const SizedBox(width: 8.0),
@@ -249,7 +258,8 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
                         duration: const Duration(milliseconds: 350),
                         switchInCurve: Curves.easeInOut,
                         switchOutCurve: Curves.easeInOut,
-                        transitionBuilder: (Widget child, Animation<double> animation) {
+                        transitionBuilder:
+                            (Widget child, Animation<double> animation) {
                           return FadeTransition(
                             opacity: animation,
                             child: SlideTransition(
@@ -296,7 +306,7 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
             fontFamily: 'monospace',
             fontWeight: FontWeight.bold,
             fontSize: 12.0,
-            color: isUser 
+            color: isUser
                 ? const Color(0xFF00FFFF) // Ciano
                 : const Color(0xFF00FF66), // Verde fosforo
           ),
@@ -307,8 +317,8 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
           style: TextStyle(
             fontFamily: 'monospace',
             fontSize: 15.0,
-            color: isUser 
-                ? Colors.white 
+            color: isUser
+                ? Colors.white
                 : const Color(0xFF00FF66), // Verde fosforo
           ),
         ),

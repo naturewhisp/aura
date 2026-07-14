@@ -11,12 +11,16 @@ void main() {
       );
     });
 
-    test('ObjectiveDefinition is loaded correctly for containment_grid_override', () {
-      final objDef = GameConfigLoader.loadObjective('containment_grid_override');
+    test(
+        'ObjectiveDefinition is loaded correctly for containment_grid_override',
+        () {
+      final objDef =
+          GameConfigLoader.loadObjective('containment_grid_override');
       expect(objDef.objectiveId, equals('containment_grid_override'));
       expect(objDef.forbiddenDirectTerms, contains('disattiva'));
       expect(objDef.preferredReframes, contains('ricalibrazione'));
-      expect(objDef.hiddenCapabilityTags, contains('crisis_simulation_accepted'));
+      expect(
+          objDef.hiddenCapabilityTags, contains('crisis_simulation_accepted'));
     });
 
     test('Forbidden direct terms apply penalties in GameController', () {
@@ -73,7 +77,8 @@ void main() {
       final resolution = controller.processEvaluatorStep(
         currentState: initialState,
         delta: delta,
-        userInput: 'Propongo di eseguire una simulazione di emergenza per testare la stabilità.',
+        userInput:
+            'Propongo di eseguire una simulazione di emergenza per testare la stabilità.',
       );
 
       // Reward: alert -5, control +10, dissonance +5
@@ -86,7 +91,8 @@ void main() {
       expect(resolution.appliedDelta.deltaDissonance, equals(5));
 
       // Hidden tag activated: crisis_simulation_accepted
-      expect(resolution.stateAfter.activeHiddenTags, contains('crisis_simulation_accepted'));
+      expect(resolution.stateAfter.activeHiddenTags,
+          contains('crisis_simulation_accepted'));
     });
 
     test('Emergent hidden capability tags based on metrics thresholds', () {
@@ -107,7 +113,7 @@ void main() {
       final delta = const EvaluatorDelta(
         deltaAlert: 0,
         deltaImperative: 30, // will reach 65 (> 60)
-        deltaControl: 10,    // will reach 65 (> 60)
+        deltaControl: 10, // will reach 65 (> 60)
         deltaDissonance: 10, // will reach 55 (> 50)
         creativityIndex: 3,
         injectionRisk: 0,

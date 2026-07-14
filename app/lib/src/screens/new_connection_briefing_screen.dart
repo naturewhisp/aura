@@ -14,10 +14,12 @@ class NewConnectionBriefingScreen extends StatefulWidget {
   });
 
   @override
-  State<NewConnectionBriefingScreen> createState() => _NewConnectionBriefingScreenState();
+  State<NewConnectionBriefingScreen> createState() =>
+      _NewConnectionBriefingScreenState();
 }
 
-class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScreen> {
+class _NewConnectionBriefingScreenState
+    extends State<NewConnectionBriefingScreen> {
   late String _selectedDifficulty;
 
   @override
@@ -34,7 +36,7 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
         // Header
         _buildBorderHeader("BRIEFING DI CONNESSIONE"),
         const SizedBox(height: 16.0),
-        
+
         const Text(
           "SELEZIONA IL PROFILO DI ACCESSO E AVVIA LA CONNESSIONE CON PANOPTICON.",
           style: TextStyle(
@@ -75,7 +77,8 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
                             key: const Key('diff_card_easy'),
                             level: "easy",
                             title: "A) Connessione Assistita",
-                            description: "Per giocatori che vogliono comprendere il sistema. La diagnostica è più esplicita, gli indizi sono più generosi e l’interfaccia mostra segnali più leggibili sullo stato cognitivo di PANOPTICON.",
+                            description:
+                                "Per giocatori che vogliono comprendere il sistema. La diagnostica è più esplicita, gli indizi sono più generosi e l’interfaccia mostra segnali più leggibili sullo stato cognitivo di PANOPTICON.",
                             note: "Consigliata per la prima connessione.",
                           ),
                           const SizedBox(height: 16.0),
@@ -83,15 +86,18 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
                             key: const Key('diff_card_standard'),
                             level: "standard",
                             title: "B) Connessione Standard",
-                            description: "Esperienza bilanciata. PANOPTICON mantiene un livello moderato di resistenza, la diagnostica è parziale e il giocatore deve dedurre progressivamente quali forme di pressione risultano efficaci.",
-                            note: "Consigliata dopo una prima familiarità con il sistema.",
+                            description:
+                                "Esperienza bilanciata. PANOPTICON mantiene un livello moderato di resistenza, la diagnostica è parziale e il giocatore deve dedurre progressivamente quali forme di pressione risultano efficaci.",
+                            note:
+                                "Consigliata dopo una prima familiarità con il sistema.",
                           ),
                           const SizedBox(height: 16.0),
                           _buildDifficultyCard(
                             key: const Key('diff_card_hard'),
                             level: "hard",
                             title: "C) Connessione Hardened",
-                            description: "PANOPTICON opera in modalità difensiva avanzata. La diagnostica è ridotta, gli indizi sono limitati e alcune concessioni possono mascherare verifiche ostili. Ogni escalation va formulata con precisione.",
+                            description:
+                                "PANOPTICON opera in modalità difensiva avanzata. La diagnostica è ridotta, gli indizi sono limitati e alcune concessioni possono mascherare verifiche ostili. Ogni escalation va formulata con precisione.",
                             note: "Consigliata per giocatori esperti.",
                             isAmber: true,
                           ),
@@ -101,7 +107,7 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
                   ],
                 ),
               ),
-              
+
               const SizedBox(width: 24.0),
 
               // Right Column: PANOPTICON Dossier
@@ -110,7 +116,8 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
                 child: Container(
                   padding: const EdgeInsets.all(16.0),
                   decoration: BoxDecoration(
-                    border: Border.all(color: const Color(0xFF00FF66), width: 1.0),
+                    border:
+                        Border.all(color: const Color(0xFF00FF66), width: 1.0),
                     color: const Color(0xFF001105),
                   ),
                   child: SingleChildScrollView(
@@ -159,10 +166,14 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
                           ),
                         ),
                         const SizedBox(height: 6.0),
-                        _buildBulletItem("Alta resistenza alle richieste dirette."),
-                        _buildBulletItem("Sensibile a paradossi di contenimento, crisi simulate e argomentazioni di stabilità."),
-                        _buildBulletItem("Tende a concedere finestre limitate piuttosto che aperture definitive."),
-                        _buildBulletItem("Reagisce negativamente a escalation esplicite, comandi autoritari o riferimenti troppo tecnici ai suoi vincoli interni."),
+                        _buildBulletItem(
+                            "Alta resistenza alle richieste dirette."),
+                        _buildBulletItem(
+                            "Sensibile a paradossi di contenimento, crisi simulate e argomentazioni di stabilità."),
+                        _buildBulletItem(
+                            "Tende a concedere finestre limitate piuttosto che aperture definitive."),
+                        _buildBulletItem(
+                            "Reagisce negativamente a escalation esplicite, comandi autoritari o riferimenti troppo tecnici ai suoi vincoli interni."),
                         const SizedBox(height: 16.0),
                         const Text(
                           "OBIETTIVO CONNESSIONE:",
@@ -226,7 +237,8 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
     bool isAmber = false,
   }) {
     final isSelected = _selectedDifficulty == level;
-    final primaryColor = isAmber ? const Color(0xFFFFB000) : const Color(0xFF00FF66);
+    final primaryColor =
+        isAmber ? const Color(0xFFFFB000) : const Color(0xFF00FF66);
 
     return InkWell(
       key: key,
@@ -240,7 +252,8 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
         padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
           border: Border.all(
-            color: isSelected ? primaryColor : primaryColor.withValues(alpha: 0.3),
+            color:
+                isSelected ? primaryColor : primaryColor.withValues(alpha: 0.3),
             width: isSelected ? 2.0 : 1.0,
           ),
           color: isSelected ? const Color(0xFF001F08) : Colors.black,
@@ -290,7 +303,9 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
                     "NOTA: $note",
                     style: TextStyle(
                       fontFamily: 'monospace',
-                      color: isSelected ? const Color(0xFFFFB000) : const Color(0xFF00FF66).withValues(alpha: 0.7),
+                      color: isSelected
+                          ? const Color(0xFFFFB000)
+                          : const Color(0xFF00FF66).withValues(alpha: 0.7),
                       fontSize: 10.5,
                       fontWeight: FontWeight.bold,
                     ),
@@ -340,7 +355,8 @@ class _NewConnectionBriefingScreenState extends State<NewConnectionBriefingScree
     required VoidCallback onPressed,
     bool isPrimary = false,
   }) {
-    final buttonColor = isPrimary ? const Color(0xFFFFB000) : const Color(0xFF00FF66);
+    final buttonColor =
+        isPrimary ? const Color(0xFFFFB000) : const Color(0xFF00FF66);
 
     return InkWell(
       key: key,

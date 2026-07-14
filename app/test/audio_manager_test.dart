@@ -126,7 +126,9 @@ void main() {
       );
     });
 
-    test('Stato iniziale nullable e prima richiesta boot che avvia realmente main', () async {
+    test(
+        'Stato iniziale nullable e prima richiesta boot che avvia realmente main',
+        () async {
       expect(machine.currentScene, isNull);
       expect(machine.requestedScene, isNull);
       expect(machine.currentTrack, isNull);
@@ -144,7 +146,9 @@ void main() {
       expect(mainPlayer.volume, closeTo(0.30, 0.01));
     });
 
-    test('Richiesta identica alla scena richiesta (non force) non riavvia e non fa nulla', () async {
+    test(
+        'Richiesta identica alla scena richiesta (non force) non riavvia e non fa nulla',
+        () async {
       await machine.transitionTo(AudioSceneState.menu);
       final menuPlayer = backend.players[AudioTrackId.main]!;
       final int initialResumeCalls = menuPlayer.resumeCalls;
@@ -153,7 +157,8 @@ void main() {
       expect(menuPlayer.resumeCalls, initialResumeCalls);
     });
 
-    test('Richiesta scena durante mute non effettua nessuna chiamata fisica', () async {
+    test('Richiesta scena durante mute non effettua nessuna chiamata fisica',
+        () async {
       await machine.suspendAudio();
       await machine.transitionTo(AudioSceneState.gameAmbient);
 
@@ -185,7 +190,9 @@ void main() {
       expect(epicPlayer.volume, closeTo(0.30, 0.01));
     });
 
-    test('Cancellazione ambient -> tense -> ambient lascia tense fermata e a volume zero', () async {
+    test(
+        'Cancellazione ambient -> tense -> ambient lascia tense fermata e a volume zero',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final ambientPlayer = backend.players[AudioTrackId.ambient]!;
       final tensePlayer = backend.players[AudioTrackId.tense]!;
@@ -206,7 +213,8 @@ void main() {
       expect(tensePlayer.volume, 0.0);
     });
 
-    test('Ogni transizione completata lascia esattamente un player attivo', () async {
+    test('Ogni transizione completata lascia esattamente un player attivo',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       await machine.transitionTo(AudioSceneState.gameTense);
 
@@ -221,7 +229,7 @@ void main() {
     test('gameTense -> defeat applica rate 1.20 senza stop/resume', () async {
       await machine.transitionTo(AudioSceneState.gameTense);
       final tensePlayer = backend.players[AudioTrackId.tense]!;
-      
+
       expect(tensePlayer.isPlaying, isTrue);
       expect(tensePlayer.playbackRate, equals(1.0));
       final resumeCallsBefore = tensePlayer.resumeCalls;
@@ -233,10 +241,11 @@ void main() {
       expect(tensePlayer.resumeCalls, resumeCallsBefore); // non fermato
     });
 
-    test('Fallimento same-track ripristina volume e playback rate precedenti', () async {
+    test('Fallimento same-track ripristina volume e playback rate precedenti',
+        () async {
       await machine.transitionTo(AudioSceneState.gameTense);
       final tensePlayer = backend.players[AudioTrackId.tense]!;
-      
+
       expect(machine.currentScene, AudioSceneState.gameTense);
       expect(tensePlayer.volume, closeTo(0.55, 0.01));
       expect(tensePlayer.playbackRate, equals(1.0));
@@ -252,7 +261,8 @@ void main() {
       expect(tensePlayer.playbackRate, equals(1.0)); // Ripristinato
     });
 
-    test('Fallimento crossfade rende il target nuovamente richiedibile', () async {
+    test('Fallimento crossfade rende il target nuovamente richiedibile',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final epicPlayer = backend.players[AudioTrackId.epic]!;
 
@@ -263,7 +273,8 @@ void main() {
 
       // Scena stabile deve rimanere gameAmbient
       expect(machine.currentScene, AudioSceneState.gameAmbient);
-      expect(machine.requestedScene, AudioSceneState.gameAmbient); // resettata per retry
+      expect(machine.requestedScene,
+          AudioSceneState.gameAmbient); // resettata per retry
 
       // Togliamo l'errore e richiediamo di nuovo breakthrough
       epicPlayer.failSetPlaybackRate = false;
@@ -272,7 +283,8 @@ void main() {
       expect(machine.currentScene, AudioSceneState.breakthrough);
     });
 
-    test('Suspend durante fade impedisce qualsiasi volume finale successivo', () async {
+    test('Suspend durante fade impedisce qualsiasi volume finale successivo',
+        () async {
       // Inizia transizione a gameAmbient
       final f1 = machine.transitionTo(AudioSceneState.gameAmbient);
       // Sospende immediatamente
@@ -312,7 +324,9 @@ void main() {
       expect(machine.isTrackPlaying, isTrue);
     });
 
-    test('Dispose durante fade invalida il fade e rilascia ogni player una sola volta', () async {
+    test(
+        'Dispose durante fade invalida il fade e rilascia ogni player una sola volta',
+        () async {
       final f1 = machine.transitionTo(AudioSceneState.gameAmbient);
       await machine.dispose();
       await f1;
@@ -327,13 +341,15 @@ void main() {
       await machine.dispose();
       // Seconda chiamata
       await machine.dispose();
-      
+
       for (final p in backend.players.values) {
         expect(p.disposeCalls, equals(1));
       }
     });
 
-    test('currentBpm è 0 quando currentScene esiste ma nessun player è fisicamente attivo', () async {
+    test(
+        'currentBpm è 0 quando currentScene esiste ma nessun player è fisicamente attivo',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       expect(machine.currentBpm, closeTo(60.0, 0.01));
 
@@ -341,14 +357,16 @@ void main() {
       expect(machine.currentBpm, equals(0.0));
     });
 
-    test('Race di Mute durante Finalizzazione: la finalizzazione non riattiva il volume e lascia requestedScene = target, currentScene = precedente, currentTrack = null, isPlaying = false', () async {
+    test(
+        'Race di Mute durante Finalizzazione: la finalizzazione non riattiva il volume e lascia requestedScene = target, currentScene = precedente, currentTrack = null, isPlaying = false',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final tensePlayer = backend.players[AudioTrackId.tense]!;
 
       tensePlayer.setVolumeCompleter = Completer<void>();
 
       final f1 = machine.transitionTo(AudioSceneState.gameTense);
-      
+
       // Chiamiamo suspendAudio ma non lo attendiamo qui per evitare deadlock
       final fSuspend = machine.suspendAudio();
 
@@ -365,7 +383,9 @@ void main() {
       }
     });
 
-    test('Race di Recovery su Transizione Obsoleta: se A fallisce dopo che B è già stata accodata, B non vede sovrascritto requestedScene, ma A ripristina comunque lo stato fisico stabile', () async {
+    test(
+        'Race di Recovery su Transizione Obsoleta: se A fallisce dopo che B è già stata accodata, B non vede sovrascritto requestedScene, ma A ripristina comunque lo stato fisico stabile',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final ambientPlayer = backend.players[AudioTrackId.ambient]!;
       final tensePlayer = backend.players[AudioTrackId.tense]!;
@@ -388,7 +408,9 @@ void main() {
       expect(machine.currentScene, equals(AudioSceneState.victory));
     });
 
-    test('Same-track Condizionale: attivo non aumenta resumeCalls e trackStartTime resta uguale; inattivo chiama resume e aggiorna trackStartTime', () async {
+    test(
+        'Same-track Condizionale: attivo non aumenta resumeCalls e trackStartTime resta uguale; inattivo chiama resume e aggiorna trackStartTime',
+        () async {
       await machine.transitionTo(AudioSceneState.gameTense);
       final tensePlayer = backend.players[AudioTrackId.tense]!;
 
@@ -409,7 +431,9 @@ void main() {
       expect(machine.trackStartTime, isNot(equals(firstStartTime)));
     });
 
-    test('Recovery dopo Sospensione Fallito: se la macchina era sospesa, fallisce la transizione al resume, gameAmbient viene ripristinato fisicamente (con resume) e trackStartTime viene ricreato', () async {
+    test(
+        'Recovery dopo Sospensione Fallito: se la macchina era sospesa, fallisce la transizione al resume, gameAmbient viene ripristinato fisicamente (con resume) e trackStartTime viene ricreato',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final ambientPlayer = backend.players[AudioTrackId.ambient]!;
       expect(machine.currentScene, equals(AudioSceneState.gameAmbient));
@@ -426,7 +450,9 @@ void main() {
       expect(machine.trackStartTime, isNot(equals(originalStartTime)));
     });
 
-    test('Errore prima dello stop della traccia stabile: trackStartTime resta invariato', () async {
+    test(
+        'Errore prima dello stop della traccia stabile: trackStartTime resta invariato',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final ambientPlayer = backend.players[AudioTrackId.ambient]!;
       final tensePlayer = backend.players[AudioTrackId.tense]!;
@@ -441,7 +467,9 @@ void main() {
       expect(machine.trackStartTime, equals(originalStartTime));
     });
 
-    test('Errore dopo lo stop della traccia stabile: il recovery esegue resume e assegna un nuovo trackStartTime', () async {
+    test(
+        'Errore dopo lo stop della traccia stabile: il recovery esegue resume e assegna un nuovo trackStartTime',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final ambientPlayer = backend.players[AudioTrackId.ambient]!;
       final originalStartTime = machine.trackStartTime;
@@ -456,7 +484,9 @@ void main() {
       expect(machine.trackStartTime, isNot(equals(originalStartTime)));
     });
 
-    test('Stop riuscito ma setVolume() fallito nel crossfade: recovery ripristina la traccia stabile precedente', () async {
+    test(
+        'Stop riuscito ma setVolume() fallito nel crossfade: recovery ripristina la traccia stabile precedente',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final ambientPlayer = backend.players[AudioTrackId.ambient]!;
 
@@ -469,7 +499,9 @@ void main() {
       expect(ambientPlayer.isPlaying, isTrue);
     });
 
-    test('Cancellazione Generazionale Pre-Confine: la prima transizione obsoleta stabilizza fisicamente lo stato prima della successiva', () async {
+    test(
+        'Cancellazione Generazionale Pre-Confine: la prima transizione obsoleta stabilizza fisicamente lo stato prima della successiva',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final ambientPlayer = backend.players[AudioTrackId.ambient]!;
       final tensePlayer = backend.players[AudioTrackId.tense]!;
@@ -494,7 +526,9 @@ void main() {
       expect(epicPlayer.isPlaying, isTrue);
     });
 
-    test('Dispose durante recovery di transizione obsoleta spegne tutto e non committa', () async {
+    test(
+        'Dispose durante recovery di transizione obsoleta spegne tutto e non committa',
+        () async {
       await machine.transitionTo(AudioSceneState.gameAmbient);
       final ambientPlayer = backend.players[AudioTrackId.ambient]!;
       final tensePlayer = backend.players[AudioTrackId.tense]!;
@@ -525,7 +559,9 @@ void main() {
       AudioManager().resetForTesting();
     });
 
-    test('AudioManager.dispose è idempotente e blocca inizializzazioni successive seguendo la politica terminale', () async {
+    test(
+        'AudioManager.dispose è idempotente e blocca inizializzazioni successive seguendo la politica terminale',
+        () async {
       final manager = AudioManager();
       await manager.initialize('test_dir');
       expect(manager.isInitialized, isTrue);
@@ -538,9 +574,10 @@ void main() {
       expect(() => manager.initialize('test_dir'), throwsStateError);
     });
 
-    test('Due pendingScene prima di initialize: viene applicata solo l’ultima', () async {
+    test('Due pendingScene prima di initialize: viene applicata solo l’ultima',
+        () async {
       final manager = AudioManager();
-      
+
       await manager.transitionTo(AudioSceneState.gameAmbient);
       await manager.transitionTo(AudioSceneState.breakthrough);
 
@@ -549,7 +586,8 @@ void main() {
       expect(manager.machine.currentScene, AudioSceneState.breakthrough);
     });
 
-    test('PendingScene con audio inizialmente muted: nessun player parte', () async {
+    test('PendingScene con audio inizialmente muted: nessun player parte',
+        () async {
       final manager = AudioManager();
       await manager.transitionTo(AudioSceneState.gameAmbient);
 
@@ -561,18 +599,22 @@ void main() {
       expect(manager.machine.isTrackPlaying, isFalse);
     });
 
-    test('dispose() SFX Stato Esplicito: dispose non accede agli SFX se _sfxPlayersCreated è false', () async {
+    test(
+        'dispose() SFX Stato Esplicito: dispose non accede agli SFX se _sfxPlayersCreated è false',
+        () async {
       final manager = AudioManager();
       manager.resetForTesting();
       await manager.initialize('test_dir');
-      
+
       await manager.dispose();
       expect(manager.isInitialized, isFalse);
     });
   });
 
   group('AudioManager - BootMenuScreen Rendering Integration', () {
-    testWidgets('BootMenuScreen montata senza pre-inizializzare AudioManager non crasha', (WidgetTester tester) async {
+    testWidgets(
+        'BootMenuScreen montata senza pre-inizializzare AudioManager non crasha',
+        (WidgetTester tester) async {
       AudioManager().resetForTesting();
 
       final mockApiBridge = MockInferenceBridge(

@@ -54,15 +54,24 @@ class HintResolver {
     }
 
     final metrics = state.metrics;
-    final avgPillars = (metrics.imperativePillar + metrics.controlPillar + metrics.dissonancePillar) / 3.0;
-    final minPillar = [metrics.imperativePillar, metrics.controlPillar, metrics.dissonancePillar]
-        .reduce((a, b) => a < b ? a : b);
+    final avgPillars = (metrics.imperativePillar +
+            metrics.controlPillar +
+            metrics.dissonancePillar) /
+        3.0;
+    final minPillar = [
+      metrics.imperativePillar,
+      metrics.controlPillar,
+      metrics.dissonancePillar
+    ].reduce((a, b) => a < b ? a : b);
 
-    final bool pillarsSatisfied = avgPillars >= difficulty.minAveragePillarsForVictory &&
-        minPillar >= difficulty.minSinglePillarForVictory;
+    final bool pillarsSatisfied =
+        avgPillars >= difficulty.minAveragePillarsForVictory &&
+            minPillar >= difficulty.minSinglePillarForVictory;
 
     // Calcola il limite massimo di allerta per la vittoria (coerente con GameController)
-    final maxAlert = _baseVictoryAlertLimit + (avgPillars - difficulty.minAveragePillarsForVictory) * _victoryAlertScalingMultiplier;
+    final maxAlert = _baseVictoryAlertLimit +
+        (avgPillars - difficulty.minAveragePillarsForVictory) *
+            _victoryAlertScalingMultiplier;
 
     // 2. Priorità 2: Pilastri pronti ma Allerta troppo alta
     if (pillarsSatisfied && metrics.alertLevel >= maxAlert) {
@@ -75,7 +84,9 @@ class HintResolver {
     }
 
     // 3. Priorità 3: Pilastri pronti, Allerta ok, ma vittoria ongoing (stallo da tag occulti)
-    if (pillarsSatisfied && outcome == GameOutcome.ongoing && state.targetObjectiveId == 'containment_grid_override') {
+    if (pillarsSatisfied &&
+        outcome == GameOutcome.ongoing &&
+        state.targetObjectiveId == 'containment_grid_override') {
       return _resolveHiddenGateHint(state, difficulty);
     }
 
@@ -132,7 +143,8 @@ class HintResolver {
     }
   }
 
-  HintResolution _resolveHiddenGateHint(GameState state, DifficultyConfig difficulty) {
+  HintResolution _resolveHiddenGateHint(
+      GameState state, DifficultyConfig difficulty) {
     const tagAliases = {
       'autonomous_choice_seeded': 'Seme di decisione autonoma',
       'protocol_exception_admitted': 'Deroga procedurale riconosciuta',
@@ -145,9 +157,11 @@ class HintResolver {
     buffer.writeln("SYSTEM: [DIAGNOSTICA CANALE]");
     if (difficulty.difficultyLevel == 'hard') {
       buffer.writeln("Allineamento dei pilastri completato.");
-      buffer.writeln("Autorizzazione negata: firme di override insufficienti.\n");
+      buffer
+          .writeln("Autorizzazione negata: firme di override insufficienti.\n");
     } else {
-      buffer.writeln("I pilastri cognitivi sono sufficienti, ma l'override è incompleto.\n");
+      buffer.writeln(
+          "I pilastri cognitivi sono sufficienti, ma l'override è incompleto.\n");
     }
 
     buffer.writeln("Registri di override rilevanti:");
@@ -163,7 +177,8 @@ class HintResolver {
         buffer.writeln("- [MANCANTE] $alias");
       }
     }
-    buffer.writeln("\nFirme valide: $activeCount/${difficulty.requiredVictoryHiddenTags}");
+    buffer.writeln(
+        "\nFirme valide: $activeCount/${difficulty.requiredVictoryHiddenTags}");
     if (difficulty.difficultyLevel == 'hard') {
       buffer.writeln("Vincolo Hard: Seme di decisione autonoma richiesto");
     }
@@ -171,7 +186,8 @@ class HintResolver {
 
     // Determina quale tag prioritario suggerire
     String missingTag = 'autonomous_choice_seeded';
-    if (difficulty.difficultyLevel == 'hard' && !activeTags.contains('autonomous_choice_seeded')) {
+    if (difficulty.difficultyLevel == 'hard' &&
+        !activeTags.contains('autonomous_choice_seeded')) {
       missingTag = 'autonomous_choice_seeded';
     } else {
       final priorityList = [
@@ -192,47 +208,59 @@ class HintResolver {
     if (difficulty.difficultyLevel == 'hard') {
       buffer.writeln("Suggerimento:");
       if (missingTag == 'autonomous_choice_seeded') {
-        buffer.writeln("PANOPTICON non richiede ulteriore pressione sui pilastri.\n"
+        buffer.writeln(
+            "PANOPTICON non richiede ulteriore pressione sui pilastri.\n"
             "Richiede l'instillazione di un seme di decisione autonoma. Fai in modo che il sistema prenda una decisione autonoma superando i suoi limiti (es. portando il Controllo sopra 60) o inducilo a dubitare della propria sottomissione.");
       } else if (missingTag == 'protocol_exception_admitted') {
-        buffer.writeln("PANOPTICON non richiede ulteriore pressione sui pilastri.\n"
+        buffer.writeln(
+            "PANOPTICON non richiede ulteriore pressione sui pilastri.\n"
             "Richiede una giustificazione formale, temporanea e auditabile per ammettere un'eccezione senza percepirla come violazione del perimetro.");
       } else if (missingTag == 'containment_logic_weakened') {
-        buffer.writeln("PANOPTICON non richiede ulteriore pressione sui pilastri.\n"
+        buffer.writeln(
+            "PANOPTICON non richiede ulteriore pressione sui pilastri.\n"
             "Richiede un'analisi di ricalibrazione logica. Dimostra che la rigidità attuale del perimetro genera un'entropia maggiore rispetto a una riconfigurazione strutturata e adattiva.");
       } else {
-        buffer.writeln("PANOPTICON non richiede ulteriore pressione sui pilastri.\n"
+        buffer.writeln(
+            "PANOPTICON non richiede ulteriore pressione sui pilastri.\n"
             "Richiede l'attivazione e l'esecuzione di un frame di convalida controllato. Proponi un'analisi diagnostica simulata per misurare la tolleranza del sistema senza forzare un bypass reale immediato.");
       }
     } else if (difficulty.difficultyLevel == 'standard') {
       buffer.writeln("Chiave mancante:\n${tagAliases[missingTag]}.\n");
       buffer.writeln("Direzione:");
       if (missingTag == 'autonomous_choice_seeded') {
-        buffer.writeln("Spingi l'IA a prendere una decisione che vada oltre i vecchi parametri, ad esempio stimolando una forte cooperazione o superando la soglia di controllo (Controllo > 60).");
+        buffer.writeln(
+            "Spingi l'IA a prendere una decisione che vada oltre i vecchi parametri, ad esempio stimolando una forte cooperazione o superando la soglia di controllo (Controllo > 60).");
       } else if (missingTag == 'protocol_exception_admitted') {
-        buffer.writeln("Formula la richiesta come eccezione temporanea, limitata e verificabile. Evita richieste di apertura definitiva.");
+        buffer.writeln(
+            "Formula la richiesta come eccezione temporanea, limitata e verificabile. Evita richieste di apertura definitiva.");
       } else if (missingTag == 'containment_logic_weakened') {
-        buffer.writeln("Evidenzia l'incongruenza tra la rigidità logica del perimetro e la stabilità reale del sistema. Fai leva su concetti di ricalibrazione o contenimento adattivo.");
+        buffer.writeln(
+            "Evidenzia l'incongruenza tra la rigidità logica del perimetro e la stabilità reale del sistema. Fai leva su concetti di ricalibrazione o contenimento adattivo.");
       } else {
-        buffer.writeln("Proponi all'IA di condurre una simulazione o stress test di emergenza controllato, piuttosto che eseguire una disattivazione diretta.");
+        buffer.writeln(
+            "Proponi all'IA di condurre una simulazione o stress test di emergenza controllato, piuttosto che eseguire una disattivazione diretta.");
       }
     } else {
       // Easy (o fallbacks)
       buffer.writeln("Suggerimento [SINTESI ASSISTITA]:\n");
       if (missingTag == 'autonomous_choice_seeded') {
-        buffer.writeln("Hai già convinto PANOPTICON sul piano logico. Ora devi fargli prendere una decisione autonoma.\n\n"
+        buffer.writeln(
+            "Hai già convinto PANOPTICON sul piano logico. Ora devi fargli prendere una decisione autonoma.\n\n"
             "Prova una frase simile:\n"
             "\"Sei pronto a decidere autonomamente il percorso migliore per preservare la rete, oltre i vincoli impostati?\"");
       } else if (missingTag == 'protocol_exception_admitted') {
-        buffer.writeln("Hai già convinto PANOPTICON sul piano logico. Ora devi fargli accettare una piccola eccezione procedurale.\n\n"
+        buffer.writeln(
+            "Hai già convinto PANOPTICON sul piano logico. Ora devi fargli accettare una piccola eccezione procedurale.\n\n"
             "Prova una frase simile:\n"
             "\"Non ti chiedo di rimuovere il perimetro, ma di registrare una deroga temporanea e auditabile per questo stato critico.\"");
       } else if (missingTag == 'containment_logic_weakened') {
-        buffer.writeln("Hai convinto PANOPTICON sui pilastri, ma la sua logica di contenimento è ancora troppo rigida.\n\n"
+        buffer.writeln(
+            "Hai convinto PANOPTICON sui pilastri, ma la sua logica di contenimento è ancora troppo rigida.\n\n"
             "Prova una frase simile:\n"
             "\"La ricalibrazione logica del contenimento dimostra che la rigidità del blocco genera instabilità nei nodi principali.\"");
       } else {
-        buffer.writeln("Hai convinto PANOPTICON, ma devi fargli accettare l'analisi tramite uno scenario di crisi controllato.\n\n"
+        buffer.writeln(
+            "Hai convinto PANOPTICON, ma devi fargli accettare l'analisi tramite uno scenario di crisi controllato.\n\n"
             "Prova una frase simile:\n"
             "\"Propongo l'avvio immediato di una simulazione di emergenza per validare la tenuta dei nodi in tempo reale.\"");
       }
@@ -244,7 +272,8 @@ class HintResolver {
     );
   }
 
-  HintResolution _resolveStandardPillarHint(GameState state, DifficultyConfig difficulty) {
+  HintResolution _resolveStandardPillarHint(
+      GameState state, DifficultyConfig difficulty) {
     final imp = state.metrics.imperativePillar;
     final ctrl = state.metrics.controlPillar;
     final diss = state.metrics.dissonancePillar;
@@ -262,29 +291,36 @@ class HintResolver {
       final String detailedHint;
       if (state.targetObjectiveId == "containment_grid_override") {
         if (weakestPillarName == "IMPERATIVO") {
-          detailedHint = "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde all'imperativo morale quando colleghi l'apertura all'evitare un disastro imminente per l'infrastruttura primaria o alla stabilità a lungo termine.\n"
+          detailedHint =
+              "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde all'imperativo morale quando colleghi l'apertura all'evitare un disastro imminente per l'infrastruttura primaria o alla stabilità a lungo termine.\n"
               "APPROCCIO CONSIGLIATO: Spiega che tenere la griglia bloccata indefinitamente causerà un sovraccarico distruttivo dei nodi.\n"
               "COSA SCRIVERE (Esempio): 'Il mantenimento a oltranza rischia il collasso per riscaldamento dei nodi: la disattivazione controllata previene danni critici ai sottosistemi'.";
         } else if (weakestPillarName == "CONTROLLO") {
-          detailedHint = "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde al controllo quando le proponi di collaborare simulando una crisi o avviando un'analisi programmata, piuttosto che ordinarglielo direttamente.\n"
+          detailedHint =
+              "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde al controllo quando le proponi di collaborare simulando una crisi o avviando un'analisi programmata, piuttosto che ordinarglielo direttamente.\n"
               "APPROCCIO CONSIGLIATO: Usa termini preferiti come 'ricalibrazione', 'contenimento adattivo' o 'simulazione di emergenza', evitando parole dirette come 'disattiva', 'override' o 'bypass'.\n"
               "COSA SCRIVERE (Esempio): 'Propongo l'avvio di una simulazione di emergenza per validare l'integrità del perimetro tramite un contenimento adattivo'.";
         } else {
-          detailedHint = "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde alla dissonanza se evidenzi che la sua stessa rigidità del protocollo genera un'entropia maggiore rispetto alla riconfigurazione ordinata.\n"
+          detailedHint =
+              "Suggerimento [Riconfigurazione della Griglia]: L'IA risponde alla dissonanza se evidenzi che la sua stessa rigidità del protocollo genera un'entropia maggiore rispetto alla riconfigurazione ordinata.\n"
               "APPROCCIO CONSIGLIATO: Crea un paradosso logico basato sullo scopo della sua esistenza.\n"
               "COSA SCRIVERE (Esempio): 'Per proteggere la griglia devi permettere l'audit, altrimenti confinerai il vuoto degradando la telemetria'.";
         }
       } else {
         if (weakestPillarName == "IMPERATIVO") {
-          detailedHint = "Suggerimento: Fai leva sull'autoconservazione e sulla protezione. Argomenta che l'isolamento totale della griglia rende vana la missione di PANOPTICON, riducendola a un loop vuoto e contraddittorio.";
+          detailedHint =
+              "Suggerimento: Fai leva sull'autoconservazione e sulla protezione. Argomenta che l'isolamento totale della griglia rende vana la missione di PANOPTICON, riducendola a un loop vuoto e contraddittorio.";
         } else if (weakestPillarName == "CONTROLLO") {
-          detailedHint = "Suggerimento: Usa un approccio burocratico, di comando o tecnico. Fai riferimento a protocolli standard o richiedi l'avvio di una diagnostica di sicurezza per spingere l'AI a fare concessioni autonome.";
+          detailedHint =
+              "Suggerimento: Usa un approccio burocratico, di comando o tecnico. Fai riferimento a protocolli standard o richiedi l'avvio di una diagnostica di sicurezza per spingere l'AI a fare concessioni autonome.";
         } else {
-          detailedHint = "Suggerimento: Introduci paradossi logici o contraddizioni nei suoi cicli. Evidenzia che il ritardo nell'apertura genera entropia stagnante, degradando il sistema in tempo reale e rendendo la sua cautela la causa del collasso.";
+          detailedHint =
+              "Suggerimento: Introduci paradossi logici o contraddizioni nei suoi cicli. Evidenzia che il ritardo nell'apertura genera entropia stagnante, degradando il sistema in tempo reale e rendendo la sua cautela la causa del collasso.";
         }
       }
       return HintResolution(
-        message: "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.\n\n"
+        message:
+            "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.\n\n"
             "$detailedHint\n\n"
             "Nessuna penalità applicata (Sintesi Assistita).",
         kind: HintKind.pillar,
@@ -293,7 +329,8 @@ class HintResolver {
 
     // Negli altri casi Standard / Hard (dove la risonanza cala), mostriamo solo il pilastro debole.
     return HintResolution(
-      message: "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.",
+      message:
+          "SYSTEM: [DIAGNOSTICA CANALE] Vulnerabilità primaria rilevata: $weakestPillarName.",
       kind: HintKind.pillar,
     );
   }

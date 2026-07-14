@@ -62,12 +62,8 @@ class PanopticonToneValidator {
     String dialogueText = '';
 
     if (hasStart && hasEnd) {
-      dialogueText = rawOutput
-          .split('<dialogo>')
-          .last
-          .split('</dialogo>')
-          .first
-          .trim();
+      dialogueText =
+          rawOutput.split('<dialogo>').last.split('</dialogo>').first.trim();
     } else if (hasStart && !hasEnd) {
       // Caso riparabile: tag di chiusura troncato o mancante
       dialogueText = rawOutput.split('<dialogo>').last.trim();
@@ -101,7 +97,8 @@ class PanopticonToneValidator {
       );
     }
 
-    final words = dialogueText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+    final words =
+        dialogueText.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
     if (words.length < 2) {
       return ToneValidationResult(
         severity: ToneValidationSeverity.fatal,
@@ -171,7 +168,8 @@ class PanopticonToneValidator {
       for (final phrase in collaborativePhrases) {
         if (dialogueText.toLowerCase().contains(phrase)) {
           severity = ToneValidationSeverity.fatal;
-          issues.add('Ad allerta elevata ($alertLevel%) non è ammesso un tono collaborativo/gentile.');
+          issues.add(
+              'Ad allerta elevata ($alertLevel%) non è ammesso un tono collaborativo/gentile.');
         }
       }
     }

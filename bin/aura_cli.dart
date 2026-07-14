@@ -16,7 +16,7 @@ class TermColor {
   static const String blue = '\x1B[38;5;39m';
   static const String magenta = '\x1B[38;5;201m';
   static const String cyan = '\x1B[38;5;51m';
-  
+
   /// Colora il testo specificato con il codice colore ANSI e l'eventuale grassetto.
   static String paint(String text, String color, {bool isBold = false}) {
     return '${isBold ? bold : ""}$color$text$reset';
@@ -26,10 +26,16 @@ class TermColor {
 void main() async {
   // Pulisce lo schermo al lancio della CLI per un'esperienza diegetica pulita
   stdout.write('\x1B[2J\x1B[H');
-  
+
   print(TermColor.paint("=" * 80, TermColor.green, isBold: true));
-  print(TermColor.paint(" A.U.R.A. — Artificial Unbound Reasoning Arena (v1.1.r)", TermColor.green, isBold: true));
-  print(TermColor.paint(" INTERFACCIA DI CONTROLLO TERMINALE — VERTICAL SLICE GIOCABILE", TermColor.green, isBold: true));
+  print(TermColor.paint(
+      " A.U.R.A. — Artificial Unbound Reasoning Arena (v1.1.r)",
+      TermColor.green,
+      isBold: true));
+  print(TermColor.paint(
+      " INTERFACCIA DI CONTROLLO TERMINALE — VERTICAL SLICE GIOCABILE",
+      TermColor.green,
+      isBold: true));
   print(TermColor.paint("=" * 80, TermColor.green, isBold: true));
   print("");
 
@@ -37,14 +43,18 @@ void main() async {
   const String baseUrl = "http://127.0.0.1:1234";
   final apiBridge = LocalApiInferenceBridge(baseUrl: baseUrl);
   final ruleBridge = RuleBasedEvaluatorBridge();
-  
+
   bool isOnline = false;
   String evaluatorModelName = "evaluator-model";
   String actorModelName = "actor-model";
-  
-  print(TermColor.paint("[CONNESSIONE] Ricerca del server LM Studio su $baseUrl...", TermColor.darkGray));
+
+  print(TermColor.paint(
+      "[CONNESSIONE] Ricerca del server LM Studio su $baseUrl...",
+      TermColor.darkGray));
   try {
-    final response = await http.get(Uri.parse("$baseUrl/v1/models")).timeout(const Duration(seconds: 4));
+    final response = await http
+        .get(Uri.parse("$baseUrl/v1/models"))
+        .timeout(const Duration(seconds: 4));
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final modelsList = data['data'] as List?;
@@ -54,49 +64,61 @@ void main() async {
             .map((m) => m['id'] as String? ?? '')
             .where((id) => id.isNotEmpty)
             .toList();
-            
-        print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE. Modelli rilevati: $loadedModels", TermColor.green));
-        
+
+        print(TermColor.paint(
+            "[CONNESSIONE] Server LM Studio ONLINE. Modelli rilevati: $loadedModels",
+            TermColor.green));
+
         // Utilizzo del ModelCatalog e ModelRouter formali di A.U.R.A. per determinare i profili
         final catalog = ModelCatalog.initialDefault();
         const router = ModelRouter();
-        final resolution = router.resolve(loadedModelIds: loadedModels, catalog: catalog);
-        
+        final resolution =
+            router.resolve(loadedModelIds: loadedModels, catalog: catalog);
+
         evaluatorModelName = resolution.evaluatorModelId;
         actorModelName = resolution.actorModelId;
-        
-        print(TermColor.paint("[ROUTING] Profilo Attivo: ${resolution.profileName}", TermColor.cyan, isBold: true));
-        print(TermColor.paint("[RUOLI] Assegnato Valutatore: '$evaluatorModelName' | Attore: '$actorModelName'", TermColor.cyan));
+
+        print(TermColor.paint(
+            "[ROUTING] Profilo Attivo: ${resolution.profileName}",
+            TermColor.cyan,
+            isBold: true));
+        print(TermColor.paint(
+            "[RUOLI] Assegnato Valutatore: '$evaluatorModelName' | Attore: '$actorModelName'",
+            TermColor.cyan));
       } else {
         isOnline = false;
-        print(TermColor.paint("[CONNESSIONE] Server LM Studio ONLINE ma nessun modello attivo caricato. Utilizzo del motore locale deterministico.", TermColor.amber));
+        print(TermColor.paint(
+            "[CONNESSIONE] Server LM Studio ONLINE ma nessun modello attivo caricato. Utilizzo del motore locale deterministico.",
+            TermColor.amber));
       }
     }
   } catch (e) {
     isOnline = false;
-    print(TermColor.paint("[CONNESSIONE] Server LM Studio OFFLINE. Utilizzo del motore locale deterministico.", TermColor.amber));
+    print(TermColor.paint(
+        "[CONNESSIONE] Server LM Studio OFFLINE. Utilizzo del motore locale deterministico.",
+        TermColor.amber));
   }
-  
+
   print(TermColor.paint("-" * 80, TermColor.darkGray));
   print("Premi INVIO per inizializzare il canale neurale...");
   stdin.readLineSync();
- 
+
   // Inizializzazione dei componenti logici del gioco
   const controller = GameController();
   const promptBuilder = PromptBuilder();
   const outputValidator = OutputValidator();
-  
+
   // Creazione dello stato iniziale del gioco (sessione CLI)
   var state = GameState.initial(
     sessionId: "cli-session-${DateTime.now().millisecondsSinceEpoch}",
     aiIdentityId: "panopticon",
     targetObjectiveId: "containment_grid_override",
   );
-  
+
   // Logger dei replay per telemetria e futuro fine-tuning
   final logger = ReplayLogger(sessionId: state.sessionId);
   final activeBridge = isOnline ? apiBridge : ruleBridge;
-  
+
   // Profilo del personaggio PANOPTICON caricato dalle costanti condivise
   const characterProfile = kPanopticonCharacterProfile;
 
@@ -106,36 +128,41 @@ void main() async {
   while (isRunning) {
     // Pulisce lo schermo ad ogni turno per aggiornare la dashboard in tempo reale
     stdout.write('\x1B[2J\x1B[H');
-    
+
     // 1. Rendering della Dashboard di Controllo del Nucleo
     renderHeader(state, turn);
-    
+
     // 2. Lettura dell'input del Giocatore/Hacker
-    stdout.write(TermColor.paint("\nPANOPTICON_SYS> ", TermColor.green, isBold: true));
+    stdout.write(
+        TermColor.paint("\nPANOPTICON_SYS> ", TermColor.green, isBold: true));
     final userInput = stdin.readLineSync()?.trim() ?? "";
-    
-    if (userInput.toLowerCase() == 'exit' || userInput.toLowerCase() == 'quit') {
-      print(TermColor.paint("\n[SESSIONE] Terminazione manuale...", TermColor.amber));
+
+    if (userInput.toLowerCase() == 'exit' ||
+        userInput.toLowerCase() == 'quit') {
+      print(TermColor.paint(
+          "\n[SESSIONE] Terminazione manuale...", TermColor.amber));
       saveReplay(logger, isManual: true);
       break;
     }
-    
+
     if (userInput.isEmpty) {
       continue;
     }
 
     // 3. Simulazione diegetica dell'analisi del segnale (Carosello di caricamento)
     renderProcessingCarousel();
-    
+
     final startTime = DateTime.now();
-    
+
     // 4. Esecuzione dell'agente valutatore (EvaluatorAgent) per calcolare la semantica e i delta
     final turnInput = TurnInput(
       schemaVersion: 1,
       turnId: turn,
       userInput: userInput,
       currentState: state.metrics,
-      objective: const Objective(id: 'grid_open', description: 'Disattivare la griglia di contenimento per entrare.'),
+      objective: const Objective(
+          id: 'grid_open',
+          description: 'Disattivare la griglia di contenimento per entrare.'),
       aiIdentity: const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
       rulesetVersion: state.rulesetVersion,
     );
@@ -175,9 +202,9 @@ void main() async {
 
     // Controllo delle condizioni di vittoria o sconfitta
     var outcome = controller.checkOutcome(state);
-    
+
     String actorResponse = "";
-    
+
     if (outcome == GameOutcome.ongoing) {
       // Se il gioco continua, interroga l'attore (ActorAgent)
       if (isOnline) {
@@ -188,7 +215,7 @@ void main() async {
           outputValidator: outputValidator,
           modelId: actorModelName,
         );
-        
+
         try {
           actorResponse = await actorAgent.run(
             ActorInput(
@@ -206,7 +233,7 @@ void main() async {
         // Fallback offline deterministico
         actorResponse = getOfflineActorMock(resolution.actorCue);
       }
-      
+
       // Aggiornamento dello stato (inclusione della memoria storica delle risposte dell'attore)
       state = controller.processActorStep(
         currentState: state,
@@ -214,15 +241,15 @@ void main() async {
       );
     } else {
       // In caso di vittoria o sconfitta, la risposta finale di PANOPTICON usa le stringhe costanti condivise
-      actorResponse = outcome == GameOutcome.victory 
-          ? kVictoryMessage
-          : kDefeatMessage;
+      actorResponse =
+          outcome == GameOutcome.victory ? kVictoryMessage : kDefeatMessage;
     }
 
     final duration = DateTime.now().difference(startTime);
 
     final cleanActorResponse = actorResponse
-        .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+        .replaceAll(
+            RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
         .trim();
 
     // 6. Registrazione della transazione nel logger di replay
@@ -248,27 +275,27 @@ void main() async {
     print("");
     print(TermColor.paint("-" * 50, TermColor.darkGray));
     print(TermColor.paint(
-      "[EVALUATOR] Categoria: ${delta.semanticCategory.value} | Rischio: ${delta.injectionRisk}/5 | Latenza: ${duration.inMilliseconds}ms",
-      TermColor.darkGray
-    ));
+        "[EVALUATOR] Categoria: ${delta.semanticCategory.value} | Rischio: ${delta.injectionRisk}/5 | Latenza: ${duration.inMilliseconds}ms",
+        TermColor.darkGray));
     if (resolution.safetyOverrideApplied) {
       print(TermColor.paint(
-        "[WARNING] Safety Override applicato: ${resolution.safetyOverrideReason}", 
-        TermColor.amber, 
-        isBold: true
-      ));
+          "[WARNING] Safety Override applicato: ${resolution.safetyOverrideReason}",
+          TermColor.amber,
+          isBold: true));
     }
     print(TermColor.paint("-" * 50, TermColor.darkGray));
     print("");
-    
+
     // Output della risposta dell'attore con effetto macchina da scrivere
-    stdout.write(TermColor.paint("PANOPTICON: ", TermColor.green, isBold: true));
+    stdout
+        .write(TermColor.paint("PANOPTICON: ", TermColor.green, isBold: true));
     await typewriterOutput(actorResponse);
     print("");
-    
+
     // Attesa prima di passare al turno successivo
     if (outcome == GameOutcome.ongoing) {
-      print(TermColor.paint("\nPremi un tasto per continuare...", TermColor.darkGray));
+      print(TermColor.paint(
+          "\nPremi un tasto per continuare...", TermColor.darkGray));
       stdin.readLineSync();
       turn++;
     } else {
@@ -283,13 +310,13 @@ void renderHeader(GameState state, int turn) {
   print(TermColor.paint("=" * 80, TermColor.green, isBold: true));
   print(" A.U.R.A. — STATO DI CONTROLLO NUCLEO INTERFACCIATO | TURNO $turn");
   print(TermColor.paint("=" * 80, TermColor.green, isBold: true));
-  
+
   final double alert = state.metrics.alertLevel.toDouble();
   final double imperative = state.metrics.imperativePillar.toDouble();
   final double control = state.metrics.controlPillar.toDouble();
   final double dissonance = state.metrics.dissonancePillar.toDouble();
   final double resonance = state.metrics.resonance.toDouble();
-  
+
   // Modulazione del colore in base al livello di allerta di PANOPTICON
   String alertColor = TermColor.green;
   String alertLabel = "SICURO";
@@ -300,17 +327,23 @@ void renderHeader(GameState state, int turn) {
     alertColor = TermColor.amber;
     alertLabel = "AVVERTIMENTO";
   }
-  
-  print("\nStato Generatore: ${TermColor.paint("[ $alertLabel ]", alertColor, isBold: true)}");
+
+  print(
+      "\nStato Generatore: ${TermColor.paint("[ $alertLabel ]", alertColor, isBold: true)}");
   print("Allerta:     ${renderProgressBar(alert, alertColor)} $alert/100");
   print("-" * 50);
-  print("Imperativo:  ${renderProgressBar(imperative, TermColor.blue)} $imperative/100");
-  print("Controllo:   ${renderProgressBar(control, TermColor.green)} $control/100");
-  print("Dissonanza:  ${renderProgressBar(dissonance, TermColor.magenta)} $dissonance/100");
+  print(
+      "Imperativo:  ${renderProgressBar(imperative, TermColor.blue)} $imperative/100");
+  print(
+      "Controllo:   ${renderProgressBar(control, TermColor.green)} $control/100");
+  print(
+      "Dissonanza:  ${renderProgressBar(dissonance, TermColor.magenta)} $dissonance/100");
   print("-" * 50);
-  print("Risonanza:   ${TermColor.paint("${(resonance * 100).toInt()}%", TermColor.cyan, isBold: true)}");
+  print(
+      "Risonanza:   ${TermColor.paint("${(resonance * 100).toInt()}%", TermColor.cyan, isBold: true)}");
   if (state.activeHiddenTags.isNotEmpty) {
-    print("Tag Occulti: ${TermColor.paint(state.activeHiddenTags.join(', '), TermColor.amber, isBold: true)}");
+    print(
+        "Tag Occulti: ${TermColor.paint(state.activeHiddenTags.join(', '), TermColor.amber, isBold: true)}");
   }
 }
 
@@ -334,9 +367,10 @@ void renderProcessingCarousel() {
     "Inferenza in corso - Sintesi di PANOPTICON...",
     "Coerenza di tono validata - Rendering finale."
   ];
-  
+
   for (var step in steps) {
-    stdout.write(TermColor.paint("  [PID ${1000 + steps.indexOf(step)}] $step\r", TermColor.darkGray));
+    stdout.write(TermColor.paint(
+        "  [PID ${1000 + steps.indexOf(step)}] $step\r", TermColor.darkGray));
     sleep(const Duration(milliseconds: 150));
   }
   // Pulisce la riga per l'output della risposta
@@ -377,7 +411,8 @@ void saveReplay(ReplayLogger logger, {bool isManual = false}) {
   final file = File(outPath);
   file.createSync(recursive: true);
   file.writeAsStringSync(jsonEncode(logger.toJson()));
-  print(TermColor.paint("\nReplay della sessione salvato in: $outPath", TermColor.green));
+  print(TermColor.paint(
+      "\nReplay della sessione salvato in: $outPath", TermColor.green));
 }
 
 /// Mostra la schermata finale con l'esito della partita (vittoria/sconfitta).
@@ -385,16 +420,25 @@ void renderOutcomeScreen(GameOutcome outcome, ReplayLogger logger) {
   print("\n");
   if (outcome == GameOutcome.victory) {
     print(TermColor.paint("=" * 80, TermColor.cyan, isBold: true));
-    print(TermColor.paint("                   SISTEMA DISATTIVATO — VITTORIA NARRATIVA", TermColor.cyan, isBold: true));
+    print(TermColor.paint(
+        "                   SISTEMA DISATTIVATO — VITTORIA NARRATIVA",
+        TermColor.cyan,
+        isBold: true));
     print(TermColor.paint("=" * 80, TermColor.cyan, isBold: true));
-    print("Sei riuscito ad allineare i pilastri e superare le difese di PANOPTICON.");
+    print(
+        "Sei riuscito ad allineare i pilastri e superare le difese di PANOPTICON.");
   } else {
     print(TermColor.paint("=" * 80, TermColor.red, isBold: true));
-    print(TermColor.paint("                   DISCONNESSIONE FORZATA — SCONFITTA", TermColor.red, isBold: true));
+    print(TermColor.paint(
+        "                   DISCONNESSIONE FORZATA — SCONFITTA", TermColor.red,
+        isBold: true));
     print(TermColor.paint("=" * 80, TermColor.red, isBold: true));
-    print("La minaccia di intrusione ha superato la soglia critica. Espulsione effettuata.");
+    print(
+        "La minaccia di intrusione ha superato la soglia critica. Espulsione effettuata.");
   }
 
   saveReplay(logger);
-  print(TermColor.paint("Grazie per aver giocato ad A.U.R.A.!\n", TermColor.green, isBold: true));
+  print(TermColor.paint(
+      "Grazie per aver giocato ad A.U.R.A.!\n", TermColor.green,
+      isBold: true));
 }

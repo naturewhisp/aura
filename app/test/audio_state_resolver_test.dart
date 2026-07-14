@@ -35,7 +35,8 @@ void main() {
         state: state,
         outcome: GameOutcome.defeat,
         readiness: readiness,
-        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
+        nonNumericVictoryRequirementsSatisfied:
+            controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.defeat);
@@ -72,7 +73,8 @@ void main() {
         state: state,
         outcome: GameOutcome.victory,
         readiness: readiness,
-        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
+        nonNumericVictoryRequirementsSatisfied:
+            controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.victory);
@@ -109,7 +111,8 @@ void main() {
         state: state,
         outcome: GameOutcome.ongoing,
         readiness: readiness,
-        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
+        nonNumericVictoryRequirementsSatisfied:
+            controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.gameTense);
@@ -146,7 +149,8 @@ void main() {
         state: state,
         outcome: GameOutcome.ongoing,
         readiness: readiness,
-        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
+        nonNumericVictoryRequirementsSatisfied:
+            controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.gameAmbient);
@@ -156,7 +160,9 @@ void main() {
     // Breakthrough — Condizione A: soglie numeriche complete
     // ---------------------------------------------------------------------------
 
-    test('[Condizione A] Soglie numeriche soddisfatte → breakthrough (obiettivo senza gate)', () {
+    test(
+        '[Condizione A] Soglie numeriche soddisfatte → breakthrough (obiettivo senza gate)',
+        () {
       final state = GameState.initial(
         sessionId: 'test-session',
         aiIdentityId: 'panopticon',
@@ -178,7 +184,8 @@ void main() {
         state: state,
         outcome: GameOutcome.ongoing,
         readiness: readiness,
-        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
+        nonNumericVictoryRequirementsSatisfied:
+            controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.breakthrough);
@@ -222,7 +229,8 @@ void main() {
 
       final readiness = hardController.checkVictoryReadiness(state);
       final outcome = hardController.checkOutcome(state);
-      final nonNumeric = hardController.checkNonNumericVictoryRequirements(state);
+      final nonNumeric =
+          hardController.checkNonNumericVictoryRequirements(state);
 
       expect(outcome, GameOutcome.ongoing);
       expect(readiness.approachingNumericalReadiness, isTrue);
@@ -238,7 +246,9 @@ void main() {
       expect(resolved, AudioSceneState.breakthrough);
     });
 
-    test('[Condizione B] Gate non-numerici incompleti → NO breakthrough (gameAmbient)', () {
+    test(
+        '[Condizione B] Gate non-numerici incompleti → NO breakthrough (gameAmbient)',
+        () {
       const hardController = GameController(
         difficultyLevel: 'hard',
         minAveragePillarsForVictory: 80.0,
@@ -270,7 +280,8 @@ void main() {
 
       final readiness = hardController.checkVictoryReadiness(state);
       final outcome = hardController.checkOutcome(state);
-      final nonNumeric = hardController.checkNonNumericVictoryRequirements(state);
+      final nonNumeric =
+          hardController.checkNonNumericVictoryRequirements(state);
 
       expect(outcome, GameOutcome.ongoing);
       expect(readiness.approachingNumericalReadiness, isTrue); // numerico ≥ 95%
@@ -315,7 +326,8 @@ void main() {
       final stateBelow = state.copyWith(
         metrics: const GameMetrics(
           alertLevel: 20,
-          imperativePillar: 40, // media < 80, minPillar = 40 < 50 → progress = 0.80
+          imperativePillar:
+              40, // media < 80, minPillar = 40 < 50 → progress = 0.80
           controlPillar: 80,
           dissonancePillar: 80,
           resonance: 1.0,
@@ -324,13 +336,15 @@ void main() {
 
       final readinessBelow = controller.checkVictoryReadiness(stateBelow);
       expect(readinessBelow.numericallyReady, isFalse);
-      expect(readinessBelow.approachingNumericalReadiness, isFalse); // 40/50 = 0.80 < 0.95
+      expect(readinessBelow.approachingNumericalReadiness,
+          isFalse); // 40/50 = 0.80 < 0.95
 
       final resolved = AudioStateResolver.resolve(
         state: stateBelow,
         outcome: GameOutcome.ongoing,
         readiness: readinessBelow,
-        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(stateBelow),
+        nonNumericVictoryRequirementsSatisfied:
+            controller.checkNonNumericVictoryRequirements(stateBelow),
       );
 
       expect(resolved, isNot(AudioSceneState.breakthrough));
@@ -356,7 +370,8 @@ void main() {
         state: state,
         outcome: GameOutcome.ongoing,
         readiness: readiness,
-        nonNumericVictoryRequirementsSatisfied: controller.checkNonNumericVictoryRequirements(state),
+        nonNumericVictoryRequirementsSatisfied:
+            controller.checkNonNumericVictoryRequirements(state),
       );
 
       expect(resolved, AudioSceneState.gameTense);

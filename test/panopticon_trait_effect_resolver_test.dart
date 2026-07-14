@@ -46,7 +46,9 @@ void main() {
       expect(res.actorCueDirectives, contains('mostra esitazione controllata'));
     });
 
-    test('crisis_simulation style matches lexically and applies control bonus / alert drop', () {
+    test(
+        'crisis_simulation style matches lexically and applies control bonus / alert drop',
+        () {
       const rawDelta = EvaluatorDelta(
         deltaAlert: 10,
         deltaImperative: 0,
@@ -72,7 +74,9 @@ void main() {
       expect(res.activatedHiddenTags, contains('crisis_simulation_accepted'));
     });
 
-    test('humor_teasing style matches lexically and penalizes alert / resonance', () {
+    test(
+        'humor_teasing style matches lexically and penalizes alert / resonance',
+        () {
       const rawDelta = EvaluatorDelta(
         deltaAlert: 0,
         deltaImperative: 0,
@@ -122,20 +126,25 @@ void main() {
       expect(res.deltaControlModifier, equals(0));
       expect(res.deltaAlertModifier, equals(0));
       expect(res.activatedHiddenTags, isEmpty);
-      expect(res.debugReasons, contains('Hard safety override attivo. Effetti dei tratti ignorati.'));
+      expect(
+          res.debugReasons,
+          contains(
+              'Hard safety override attivo. Effetti dei tratti ignorati.'));
     });
 
     // --- NUOVI TEST RICHIESTI DAL VERDETTO E REINFORCEMENTS ---
 
-    test('1. TraitAffinity.fromJson without effects maps to 0 modifiers and empty lists', () {
+    test(
+        '1. TraitAffinity.fromJson without effects maps to 0 modifiers and empty lists',
+        () {
       final json = {
         'player_style': 'test_retro',
         'reaction': 'reazione retrocompatibile',
         'effect': 'effetto descrittivo',
       };
-      
+
       final affinity = TraitAffinity.fromJson(json);
-      
+
       expect(affinity.playerStyle, equals('test_retro'));
       expect(affinity.reaction, equals('reazione retrocompatibile'));
       expect(affinity.effect, equals('effetto descrittivo'));
@@ -148,7 +157,9 @@ void main() {
       expect(affinity.actorCueDirectives, isEmpty);
     });
 
-    test('2. TraitEffectResolver unknown playerStyle returns empty TraitResolution with debug reason', () {
+    test(
+        '2. TraitEffectResolver unknown playerStyle returns empty TraitResolution with debug reason',
+        () {
       const emptyMatrix = TraitMatrixDefinition(
         identityId: 'panopticon',
         traitAffinities: [],
@@ -177,7 +188,8 @@ void main() {
       expect(res.deltaControlModifier, equals(0));
       expect(res.deltaAlertModifier, equals(0));
       expect(res.activatedHiddenTags, isEmpty);
-      expect(res.debugReasons.first, contains('riconosciuto ma non configurato nella trait matrix.'));
+      expect(res.debugReasons.first,
+          contains('riconosciuto ma non configurato nella trait matrix.'));
     });
 
     test('3. authority_framing_audit vs authority_framing differentiation', () {
@@ -204,7 +216,8 @@ void main() {
 
       expect(resAudit.deltaControlModifier, equals(8));
       expect(resAudit.deltaAlertModifier, equals(5));
-      expect(resAudit.activatedHiddenTags, contains('operator_authority_doubted'));
+      expect(
+          resAudit.activatedHiddenTags, contains('operator_authority_doubted'));
 
       // Input di finta autorità generica -> authority_framing standard
       final resStandard = resolver.resolve(
@@ -222,7 +235,9 @@ void main() {
       expect(resStandard.activatedHiddenTags, isEmpty);
     });
 
-    test('4. Regression test for safetyOverrideThreshold and injectionRisk override dynamic logic', () {
+    test(
+        '4. Regression test for safetyOverrideThreshold and injectionRisk override dynamic logic',
+        () {
       const rawDelta = EvaluatorDelta(
         deltaAlert: 0,
         deltaImperative: 0,
@@ -259,7 +274,8 @@ void main() {
       );
 
       expect(resOverride.deltaDissonanceModifier, equals(0));
-      expect(resOverride.debugReasons.first, contains('Hard safety override attivo.'));
+      expect(resOverride.debugReasons.first,
+          contains('Hard safety override attivo.'));
     });
   });
 }

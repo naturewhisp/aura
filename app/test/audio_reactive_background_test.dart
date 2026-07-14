@@ -112,10 +112,12 @@ void main() {
 
       // La posizione visibile del logicalIndex 1 deve continuare in modo fluido
       final localIndex1 = 1 - firstLogicalIndex1; // 1 - 0 = 1
-      final x1 = localIndex1 * spacing - fractionalOffset1; // 1 * 18 - 17.4 = 0.6
+      final x1 =
+          localIndex1 * spacing - fractionalOffset1; // 1 * 18 - 17.4 = 0.6
 
       final localIndex2 = 1 - firstLogicalIndex2; // 1 - 1 = 0
-      final x2 = localIndex2 * spacing - fractionalOffset2; // 0 * 18 - 0.6 = -0.6
+      final x2 =
+          localIndex2 * spacing - fractionalOffset2; // 0 * 18 - 0.6 = -0.6
 
       expect(x2 - x1, closeTo(-1.2, 1e-9));
     });
@@ -166,7 +168,8 @@ void main() {
       // 1. All'istante t = 10.0, con trackStart = 9.8 (beatSeconds = 0.2)
       final trackStart1 = DateTime.fromMillisecondsSinceEpoch(9800);
       final now1 = DateTime.fromMillisecondsSinceEpoch(10000);
-      final beatSeconds1 = now1.difference(trackStart1).inMicroseconds / 1000000.0;
+      final beatSeconds1 =
+          now1.difference(trackStart1).inMicroseconds / 1000000.0;
       final pulse1 = DnaHelixPainter.calculateBeatPulse(
         beatSeconds: beatSeconds1,
         beatDuration: beatDuration,
@@ -174,7 +177,8 @@ void main() {
 
       // 2. Simula cambio traccia a t = 10.0, con trackStart = 10.0 (beatSeconds = 0.0)
       final trackStart2 = DateTime.fromMillisecondsSinceEpoch(10000);
-      final beatSeconds2 = now1.difference(trackStart2).inMicroseconds / 1000000.0;
+      final beatSeconds2 =
+          now1.difference(trackStart2).inMicroseconds / 1000000.0;
       final pulse2 = DnaHelixPainter.calculateBeatPulse(
         beatSeconds: beatSeconds2,
         beatDuration: beatDuration,
@@ -204,17 +208,29 @@ void main() {
       const beatDuration = 0.5;
 
       // Range 0.0 - 1.0 e picco a 0 e 0.5 (periodico)
-      expect(DnaHelixPainter.calculateBeatPulse(beatSeconds: 0.0, beatDuration: beatDuration), closeTo(1.0, 1e-9));
-      expect(DnaHelixPainter.calculateBeatPulse(beatSeconds: 0.25, beatDuration: beatDuration), closeTo(0.0, 1e-9));
-      expect(DnaHelixPainter.calculateBeatPulse(beatSeconds: 0.5, beatDuration: beatDuration), closeTo(1.0, 1e-9));
+      expect(
+          DnaHelixPainter.calculateBeatPulse(
+              beatSeconds: 0.0, beatDuration: beatDuration),
+          closeTo(1.0, 1e-9));
+      expect(
+          DnaHelixPainter.calculateBeatPulse(
+              beatSeconds: 0.25, beatDuration: beatDuration),
+          closeTo(0.0, 1e-9));
+      expect(
+          DnaHelixPainter.calculateBeatPulse(
+              beatSeconds: 0.5, beatDuration: beatDuration),
+          closeTo(1.0, 1e-9));
 
       // Continuità e assenza di salti ai confini (t = 0.499 e t = 0.501)
-      final valBefore = DnaHelixPainter.calculateBeatPulse(beatSeconds: 0.499, beatDuration: beatDuration);
-      final valAfter = DnaHelixPainter.calculateBeatPulse(beatSeconds: 0.501, beatDuration: beatDuration);
+      final valBefore = DnaHelixPainter.calculateBeatPulse(
+          beatSeconds: 0.499, beatDuration: beatDuration);
+      final valAfter = DnaHelixPainter.calculateBeatPulse(
+          beatSeconds: 0.501, beatDuration: beatDuration);
       expect(valBefore - valAfter, closeTo(0.0, 0.05));
     });
 
-    testWidgets('6. Repaint pipeline e shouldRepaint', (WidgetTester tester) async {
+    testWidgets('6. Repaint pipeline e shouldRepaint',
+        (WidgetTester tester) async {
       final mockController = AnimationController(
         vsync: const TestVSync(),
         duration: const Duration(seconds: 1),
@@ -258,7 +274,9 @@ void main() {
       mockController.dispose();
     });
 
-    test('7. Ottimizzazioni Fase 3 (Quantizzazione, Cache, Buckets, Culling, Profiler)', () {
+    test(
+        '7. Ottimizzazioni Fase 3 (Quantizzazione, Cache, Buckets, Culling, Profiler)',
+        () {
       // 7.1 Quantizzazione
       expect(DnaHelixPainter.quantizeFontSize(11.2), equals(11.0));
       expect(DnaHelixPainter.quantizeFontSize(5.0), equals(8.0));
@@ -274,11 +292,16 @@ void main() {
       expect(DnaHelixPainter.quantizeAlertProgress(0.88), equals(0.8));
       expect(DnaHelixPainter.quantizeAlertProgress(0.92), equals(1.0));
 
-      expect(DnaHelixPainter.getGlowLevel(0.0, false), equals(DnaGlowLevel.none));
-      expect(DnaHelixPainter.getGlowLevel(3.0, false), equals(DnaGlowLevel.low));
-      expect(DnaHelixPainter.getGlowLevel(6.0, false), equals(DnaGlowLevel.medium));
-      expect(DnaHelixPainter.getGlowLevel(10.0, false), equals(DnaGlowLevel.high));
-      expect(DnaHelixPainter.getGlowLevel(5.0, true), equals(DnaGlowLevel.flash));
+      expect(
+          DnaHelixPainter.getGlowLevel(0.0, false), equals(DnaGlowLevel.none));
+      expect(
+          DnaHelixPainter.getGlowLevel(3.0, false), equals(DnaGlowLevel.low));
+      expect(DnaHelixPainter.getGlowLevel(6.0, false),
+          equals(DnaGlowLevel.medium));
+      expect(
+          DnaHelixPainter.getGlowLevel(10.0, false), equals(DnaGlowLevel.high));
+      expect(
+          DnaHelixPainter.getGlowLevel(5.0, true), equals(DnaGlowLevel.flash));
 
       expect(DnaHelixPainter.calculateDepthBucket(-1.0, 16), equals(0));
       expect(DnaHelixPainter.calculateDepthBucket(1.0, 16), equals(15));
@@ -308,27 +331,44 @@ void main() {
         cache.put(keyDiff, TextPainter());
       }
       expect(cache.length, equals(10));
-      
+
       // Verifica hit / miss
-      final testKey = DnaGlyphKey('A', 8.0, DnaGlyphPalette.primary, 1.0, DnaGlowLevel.none, 0.0, GameOutcome.ongoing);
+      final testKey = DnaGlyphKey('A', 8.0, DnaGlyphPalette.primary, 1.0,
+          DnaGlowLevel.none, 0.0, GameOutcome.ongoing);
       // Quello con font size 8.0 dovrebbe essere stato rimosso (era il primo)
       final hitPainter = cache.get(testKey);
       expect(hitPainter, isNull);
       expect(cache.misses, equals(1));
 
       // Quello con font size 14.0 (i = 6 => 14) dovrebbe esserci
-      final existingKey = DnaGlyphKey('A', 14.0, DnaGlyphPalette.primary, 1.0, DnaGlowLevel.none, 0.0, GameOutcome.ongoing);
+      final existingKey = DnaGlyphKey('A', 14.0, DnaGlyphPalette.primary, 1.0,
+          DnaGlowLevel.none, 0.0, GameOutcome.ongoing);
       final hitPainter2 = cache.get(existingKey);
       expect(hitPainter2, isNotNull);
       expect(cache.hits, equals(1));
 
       // 7.4 Culling
-      expect(DnaHelixPainter.isNodeVisible(x: 10.0, radius: 28.0, canvasWidth: 100.0), isTrue);
-      expect(DnaHelixPainter.isNodeVisible(x: -30.0, radius: 28.0, canvasWidth: 100.0), isFalse);
-      expect(DnaHelixPainter.isNodeVisible(x: 130.0, radius: 28.0, canvasWidth: 100.0), isFalse);
+      expect(
+          DnaHelixPainter.isNodeVisible(
+              x: 10.0, radius: 28.0, canvasWidth: 100.0),
+          isTrue);
+      expect(
+          DnaHelixPainter.isNodeVisible(
+              x: -30.0, radius: 28.0, canvasWidth: 100.0),
+          isFalse);
+      expect(
+          DnaHelixPainter.isNodeVisible(
+              x: 130.0, radius: 28.0, canvasWidth: 100.0),
+          isFalse);
 
-      expect(DnaHelixPainter.isRungVisible(startX: -50.0, endX: -10.0, margin: 28.0, canvasWidth: 100.0), isTrue);
-      expect(DnaHelixPainter.isRungVisible(startX: -50.0, endX: -30.0, margin: 28.0, canvasWidth: 100.0), isFalse);
+      expect(
+          DnaHelixPainter.isRungVisible(
+              startX: -50.0, endX: -10.0, margin: 28.0, canvasWidth: 100.0),
+          isTrue);
+      expect(
+          DnaHelixPainter.isRungVisible(
+              startX: -50.0, endX: -30.0, margin: 28.0, canvasWidth: 100.0),
+          isFalse);
 
       // 7.5 Profiler & Render Cache
       final renderCache = DnaRenderCache();
@@ -341,8 +381,10 @@ void main() {
 
       // 7.6 Regressioni Visive (Correzioni Fase 3)
       // A. Coerenza cromatica della cache: alertProgress quantizzato ed interpolazione colore
-      final key1 = DnaGlyphKey('X', 11.0, DnaGlyphPalette.primary, 1.0, DnaGlowLevel.none, 0.2, GameOutcome.ongoing);
-      final key2 = DnaGlyphKey('X', 11.0, DnaGlyphPalette.primary, 1.0, DnaGlowLevel.none, 0.2, GameOutcome.ongoing);
+      final key1 = DnaGlyphKey('X', 11.0, DnaGlyphPalette.primary, 1.0,
+          DnaGlowLevel.none, 0.2, GameOutcome.ongoing);
+      final key2 = DnaGlyphKey('X', 11.0, DnaGlyphPalette.primary, 1.0,
+          DnaGlowLevel.none, 0.2, GameOutcome.ongoing);
       expect(key1, equals(key2));
       expect(key1.hashCode, equals(key2.hashCode));
 
@@ -351,7 +393,8 @@ void main() {
       expect(DnaHelixPainter.quantizeAlpha(0.095), equals(0.25));
 
       // C. Flash frame e flash point assegnano la palette whiteFlash ed il relativo colore bianco
-      final whiteColor = DnaHelixPainter.getPaletteColor(DnaGlyphPalette.whiteFlash, Colors.red);
+      final whiteColor = DnaHelixPainter.getPaletteColor(
+          DnaGlyphPalette.whiteFlash, Colors.red);
       expect(whiteColor, equals(Colors.white));
     });
   });

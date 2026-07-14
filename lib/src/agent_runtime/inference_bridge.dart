@@ -33,5 +33,3 @@ abstract class InferenceBridge {
   /// Rileva e restituisce l'elenco dei modelli attivi e caricati nel backend.
   Future<List<String>> discoverModels();
 }
-
-

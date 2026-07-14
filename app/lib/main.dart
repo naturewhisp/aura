@@ -57,33 +57,37 @@ class AuraApp extends StatelessWidget {
       child: MaterialApp(
         title: 'A.U.R.A.',
         debugShowCheckedModeBanner: false,
-      // Configurazione del tema grafico retro terminale
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: Colors.black,
-        primaryColor: const Color(0xFF00FF66), // Verde fosforo
-        fontFamily: 'monospace', // Enfatizza il font a spaziatura fissa di sistema
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Color(0xFF00FF66), fontFamily: 'monospace'),
-          bodyMedium: TextStyle(color: Color(0xFF00FF66), fontFamily: 'monospace'),
+        // Configurazione del tema grafico retro terminale
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          scaffoldBackgroundColor: Colors.black,
+          primaryColor: const Color(0xFF00FF66), // Verde fosforo
+          fontFamily:
+              'monospace', // Enfatizza il font a spaziatura fissa di sistema
+          textTheme: const TextTheme(
+            bodyLarge:
+                TextStyle(color: Color(0xFF00FF66), fontFamily: 'monospace'),
+            bodyMedium:
+                TextStyle(color: Color(0xFF00FF66), fontFamily: 'monospace'),
+          ),
+          colorScheme: const ColorScheme.dark(
+            primary: Color(0xFF00FF66),
+            secondary: Color(0xFFFFB000), // Ambra
+            surface: Colors.black,
+          ),
         ),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF00FF66),
-          secondary: Color(0xFFFFB000), // Ambra
-          surface: Colors.black,
+        home: ListenableBuilder(
+          listenable: notifier,
+          builder: (context, _) {
+            // Switch dinamico della schermata in base allo stato attuale del notifier
+            if (notifier.currentScreen == "terminal") {
+              return TerminalScreen(notifier: notifier);
+            } else {
+              return BootMenuScreen(notifier: notifier);
+            }
+          },
         ),
       ),
-      home: ListenableBuilder(
-        listenable: notifier,
-        builder: (context, _) {
-          // Switch dinamico della schermata in base allo stato attuale del notifier
-          if (notifier.currentScreen == "terminal") {
-            return TerminalScreen(notifier: notifier);
-          } else {
-            return BootMenuScreen(notifier: notifier);
-          }
-        },
-      ),
-    ),);
+    );
   }
 }

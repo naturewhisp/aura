@@ -75,10 +75,12 @@ class ModelCatalogEntry {
       quantization: json['quantization'] as String? ?? '',
       minRamGb: json['min_ram_gb'] as int?,
       minVramGb: json['min_vram_gb'] as int?,
-      recommendedAgents: List<String>.from(json['recommended_agents'] ?? const []),
+      recommendedAgents:
+          List<String>.from(json['recommended_agents'] ?? const []),
       capabilities: List<String>.from(json['capabilities'] ?? const []),
       supportsGrammar: json['supports_grammar'] as bool? ?? false,
-      supportsStructuredOutput: json['supports_structured_output'] as bool? ?? false,
+      supportsStructuredOutput:
+          json['supports_structured_output'] as bool? ?? false,
       preferredBackend: json['preferred_backend'] as String? ?? '',
     );
   }
@@ -134,7 +136,8 @@ class ModelCatalog {
     final list = data['models'] as List? ?? const [];
     _models.clear();
     for (var item in list) {
-      registerEntry(ModelCatalogEntry.fromJson(Map<String, dynamic>.from(item)));
+      registerEntry(
+          ModelCatalogEntry.fromJson(Map<String, dynamic>.from(item)));
     }
   }
 
@@ -152,7 +155,11 @@ class ModelCatalog {
       minRamGb: 8,
       minVramGb: 4,
       recommendedAgents: ["evaluator"],
-      capabilities: ["score_user_input", "produce_json_delta", "detect_injection_attempt"],
+      capabilities: [
+        "score_user_input",
+        "produce_json_delta",
+        "detect_injection_attempt"
+      ],
       supportsGrammar: true,
       supportsStructuredOutput: true,
       preferredBackend: "llama_cpp",
@@ -168,7 +175,11 @@ class ModelCatalog {
       minRamGb: 16,
       minVramGb: 8,
       recommendedAgents: ["actor"],
-      capabilities: ["generate_character_response", "adapt_tone_to_alert_level", "reference_narrative_memory"],
+      capabilities: [
+        "generate_character_response",
+        "adapt_tone_to_alert_level",
+        "reference_narrative_memory"
+      ],
       supportsGrammar: true,
       supportsStructuredOutput: true,
       preferredBackend: "llama_cpp",
@@ -192,4 +203,3 @@ class ModelCatalog {
     return catalog;
   }
 }
-

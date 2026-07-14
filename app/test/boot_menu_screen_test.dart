@@ -28,7 +28,9 @@ void main() {
     await AudioManager().initialize('test_dir', audioEnabled: false);
   });
 
-  testWidgets('BootMenuScreen - Click Nuova Connessione opens Briefing Screen and backing out works', (WidgetTester tester) async {
+  testWidgets(
+      'BootMenuScreen - Click Nuova Connessione opens Briefing Screen and backing out works',
+      (WidgetTester tester) async {
     tester.view.physicalSize = const Size(1920, 1080);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.resetPhysicalSize);

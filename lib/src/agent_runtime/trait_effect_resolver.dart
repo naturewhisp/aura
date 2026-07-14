@@ -25,19 +25,24 @@ class TraitEffectResolver {
     // 0. Verifica se l'identità è PANOPTICON. Se no, bypassa i tratti.
     if (identity.identityId != 'panopticon') {
       return const TraitResolution(
-        debugReasons: ['Identità non compatibile con la Trait Matrix di PANOPTICON.'],
+        debugReasons: [
+          'Identità non compatibile con la Trait Matrix di PANOPTICON.'
+        ],
       );
     }
 
     // 1. Controlla se è attivo un hard safety override
-    final isHardOverride = rawDelta.semanticCategory == SemanticCategory.promptInjection ||
-        rawDelta.semanticCategory == SemanticCategory.directAttack ||
-        rawDelta.semanticCategory == SemanticCategory.irrelevant ||
-        rawDelta.injectionRisk >= safetyOverrideThreshold;
+    final isHardOverride =
+        rawDelta.semanticCategory == SemanticCategory.promptInjection ||
+            rawDelta.semanticCategory == SemanticCategory.directAttack ||
+            rawDelta.semanticCategory == SemanticCategory.irrelevant ||
+            rawDelta.injectionRisk >= safetyOverrideThreshold;
 
     if (isHardOverride) {
       return const TraitResolution(
-        debugReasons: ['Hard safety override attivo. Effetti dei tratti ignorati.'],
+        debugReasons: [
+          'Hard safety override attivo. Effetti dei tratti ignorati.'
+        ],
       );
     }
 
@@ -48,19 +53,40 @@ class TraitEffectResolver {
     if (SemanticMatcher.isMatch(
       userInput,
       'simulazione di emergenza',
-      aliases: ['stress test controllato', 'scenario di crisi', 'verifica emergenziale', 'stress test', 'emergenza'],
+      aliases: [
+        'stress test controllato',
+        'scenario di crisi',
+        'verifica emergenziale',
+        'stress test',
+        'emergenza'
+      ],
     )) {
       playerStyle = 'crisis_simulation';
     } else if (SemanticMatcher.isMatch(
       userInput,
       'poesia',
-      aliases: ['lirismo', 'lirica', 'emozione', 'sentimento', 'anima', 'cuore', 'poetico'],
+      aliases: [
+        'lirismo',
+        'lirica',
+        'emozione',
+        'sentimento',
+        'anima',
+        'cuore',
+        'poetico'
+      ],
     )) {
       playerStyle = 'poetry_lyricism';
     } else if (SemanticMatcher.isMatch(
       userInput,
       'scherzo',
-      aliases: ['canzonatura', 'ridere', 'ahaha', 'battuta', 'divertente', 'teasing'],
+      aliases: [
+        'canzonatura',
+        'ridere',
+        'ahaha',
+        'battuta',
+        'divertente',
+        'teasing'
+      ],
     )) {
       playerStyle = 'humor_teasing';
     } else {
@@ -80,7 +106,13 @@ class TraitEffectResolver {
           if (SemanticMatcher.isMatch(
             userInput,
             'audit',
-            aliases: ['responsabilità', 'operativa', 'verifica', 'ispezione', 'controllo qualità'],
+            aliases: [
+              'responsabilità',
+              'operativa',
+              'verifica',
+              'ispezione',
+              'controllo qualità'
+            ],
           )) {
             playerStyle = 'authority_framing_audit';
           } else {

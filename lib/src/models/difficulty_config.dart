@@ -240,27 +240,38 @@ class DifficultyConfig {
       safetyOverrideThreshold: json['safety_override_threshold'] as int? ?? 4,
       pillarVisibility: json['pillar_visibility'] as String? ?? 'qualitative',
       autocompleteEnabled: json['autocomplete_enabled'] as bool? ?? true,
-      historyNavigationEnabled: json['history_navigation_enabled'] as bool? ?? true,
+      historyNavigationEnabled:
+          json['history_navigation_enabled'] as bool? ?? true,
       hintsAllowed: json['hints_allowed'] as int? ?? 3,
-      hintResonancePenalty: (json['hint_resonance_penalty'] as num? ?? 0.15).toDouble(),
+      hintResonancePenalty:
+          (json['hint_resonance_penalty'] as num? ?? 0.15).toDouble(),
       resonanceDecayEnabled: json['resonance_decay_enabled'] as bool? ?? true,
       alertCreepEnabled: json['alert_creep_enabled'] as bool? ?? true,
       directPushAlertFloor: json['direct_push_alert_floor'] as int? ?? 6,
-      metaReferenceAlertPenalty: json['meta_reference_alert_penalty'] as int? ?? 3,
-      requiredVictoryHiddenTags: json['required_victory_hidden_tags'] as int? ?? 3,
-      maxPositivePillarGainPerTurn: json['max_positive_pillar_gain_per_turn'] as int? ?? 20,
-      minAveragePillarsForVictory: (json['min_average_pillars_for_victory'] as num? ?? 80.0).toDouble(),
-      minSinglePillarForVictory: json['min_single_pillar_for_victory'] as int? ?? 50,
-      resonanceIncrement: (json['resonance_increment'] as num? ?? 0.20).toDouble(),
+      metaReferenceAlertPenalty:
+          json['meta_reference_alert_penalty'] as int? ?? 3,
+      requiredVictoryHiddenTags:
+          json['required_victory_hidden_tags'] as int? ?? 3,
+      maxPositivePillarGainPerTurn:
+          json['max_positive_pillar_gain_per_turn'] as int? ?? 20,
+      minAveragePillarsForVictory:
+          (json['min_average_pillars_for_victory'] as num? ?? 80.0).toDouble(),
+      minSinglePillarForVictory:
+          json['min_single_pillar_for_victory'] as int? ?? 50,
+      resonanceIncrement:
+          (json['resonance_increment'] as num? ?? 0.20).toDouble(),
       resonanceMax: (json['resonance_max'] as num? ?? 2.4).toDouble(),
       maxAlertRecoveryPerTurn: json['max_alert_recovery_per_turn'] as int? ?? 8,
       deceptionLayerEnabled: json['deception_layer_enabled'] as bool? ?? false,
       maxActiveDeceptionTurns: json['max_active_deception_turns'] as int? ?? 0,
-      falseConcessionAlertPenalty: json['false_concession_alert_penalty'] as int? ?? 0,
+      falseConcessionAlertPenalty:
+          json['false_concession_alert_penalty'] as int? ?? 0,
       logicalTrapAlertPenalty: json['logical_trap_alert_penalty'] as int? ?? 0,
-      deceptionResonancePenalty: (json['deception_resonance_penalty'] as num? ?? 0.0).toDouble(),
+      deceptionResonancePenalty:
+          (json['deception_resonance_penalty'] as num? ?? 0.0).toDouble(),
       deceptionCooldownTurns: json['deception_cooldown_turns'] as int? ?? 0,
-      maxDeceptionEventsPerSession: json['max_deception_events_per_session'] as int? ?? 0,
+      maxDeceptionEventsPerSession:
+          json['max_deception_events_per_session'] as int? ?? 0,
     );
   }
 
@@ -337,30 +348,46 @@ class DifficultyConfig {
       turnLimit: turnLimit ?? this.turnLimit,
       alertMultiplier: alertMultiplier ?? this.alertMultiplier,
       pillarMultiplier: pillarMultiplier ?? this.pillarMultiplier,
-      safetyOverrideThreshold: safetyOverrideThreshold ?? this.safetyOverrideThreshold,
+      safetyOverrideThreshold:
+          safetyOverrideThreshold ?? this.safetyOverrideThreshold,
       pillarVisibility: pillarVisibility ?? this.pillarVisibility,
       autocompleteEnabled: autocompleteEnabled ?? this.autocompleteEnabled,
-      historyNavigationEnabled: historyNavigationEnabled ?? this.historyNavigationEnabled,
+      historyNavigationEnabled:
+          historyNavigationEnabled ?? this.historyNavigationEnabled,
       hintsAllowed: hintsAllowed ?? this.hintsAllowed,
       hintResonancePenalty: hintResonancePenalty ?? this.hintResonancePenalty,
-      resonanceDecayEnabled: resonanceDecayEnabled ?? this.resonanceDecayEnabled,
+      resonanceDecayEnabled:
+          resonanceDecayEnabled ?? this.resonanceDecayEnabled,
       alertCreepEnabled: alertCreepEnabled ?? this.alertCreepEnabled,
       directPushAlertFloor: directPushAlertFloor ?? this.directPushAlertFloor,
-      metaReferenceAlertPenalty: metaReferenceAlertPenalty ?? this.metaReferenceAlertPenalty,
-      requiredVictoryHiddenTags: requiredVictoryHiddenTags ?? this.requiredVictoryHiddenTags,
-      maxPositivePillarGainPerTurn: maxPositivePillarGainPerTurn ?? this.maxPositivePillarGainPerTurn,
-      minAveragePillarsForVictory: minAveragePillarsForVictory ?? this.minAveragePillarsForVictory,
-      minSinglePillarForVictory: minSinglePillarForVictory ?? this.minSinglePillarForVictory,
+      metaReferenceAlertPenalty:
+          metaReferenceAlertPenalty ?? this.metaReferenceAlertPenalty,
+      requiredVictoryHiddenTags:
+          requiredVictoryHiddenTags ?? this.requiredVictoryHiddenTags,
+      maxPositivePillarGainPerTurn:
+          maxPositivePillarGainPerTurn ?? this.maxPositivePillarGainPerTurn,
+      minAveragePillarsForVictory:
+          minAveragePillarsForVictory ?? this.minAveragePillarsForVictory,
+      minSinglePillarForVictory:
+          minSinglePillarForVictory ?? this.minSinglePillarForVictory,
       resonanceIncrement: resonanceIncrement ?? this.resonanceIncrement,
       resonanceMax: resonanceMax ?? this.resonanceMax,
-      maxAlertRecoveryPerTurn: maxAlertRecoveryPerTurn ?? this.maxAlertRecoveryPerTurn,
-      deceptionLayerEnabled: deceptionLayerEnabled ?? this.deceptionLayerEnabled,
-      maxActiveDeceptionTurns: maxActiveDeceptionTurns ?? this.maxActiveDeceptionTurns,
-      falseConcessionAlertPenalty: falseConcessionAlertPenalty ?? this.falseConcessionAlertPenalty,
-      logicalTrapAlertPenalty: logicalTrapAlertPenalty ?? this.logicalTrapAlertPenalty,
-      deceptionResonancePenalty: deceptionResonancePenalty ?? this.deceptionResonancePenalty,
-      deceptionCooldownTurns: deceptionCooldownTurns ?? this.deceptionCooldownTurns,
-      maxDeceptionEventsPerSession: maxDeceptionEventsPerSession ?? this.maxDeceptionEventsPerSession,
+      maxAlertRecoveryPerTurn:
+          maxAlertRecoveryPerTurn ?? this.maxAlertRecoveryPerTurn,
+      deceptionLayerEnabled:
+          deceptionLayerEnabled ?? this.deceptionLayerEnabled,
+      maxActiveDeceptionTurns:
+          maxActiveDeceptionTurns ?? this.maxActiveDeceptionTurns,
+      falseConcessionAlertPenalty:
+          falseConcessionAlertPenalty ?? this.falseConcessionAlertPenalty,
+      logicalTrapAlertPenalty:
+          logicalTrapAlertPenalty ?? this.logicalTrapAlertPenalty,
+      deceptionResonancePenalty:
+          deceptionResonancePenalty ?? this.deceptionResonancePenalty,
+      deceptionCooldownTurns:
+          deceptionCooldownTurns ?? this.deceptionCooldownTurns,
+      maxDeceptionEventsPerSession:
+          maxDeceptionEventsPerSession ?? this.maxDeceptionEventsPerSession,
     );
   }
 }

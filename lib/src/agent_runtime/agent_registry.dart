@@ -21,4 +21,3 @@ class AgentRegistry {
   /// Restituisce la lista di tutti gli agenti registrati.
   List<AuraAgent> get allAgents => List.unmodifiable(_agents.values);
 }
-

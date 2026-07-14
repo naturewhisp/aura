@@ -20,7 +20,8 @@ class AudioReactiveBackground extends StatefulWidget {
       _AudioReactiveBackgroundState();
 }
 
-class _AudioReactiveBackgroundState extends State<AudioReactiveBackground> with TickerProviderStateMixin {
+class _AudioReactiveBackgroundState extends State<AudioReactiveBackground>
+    with TickerProviderStateMixin {
   late final AnimationController _controller;
   late final Ticker _motionTicker;
   Duration? _previousTick;
@@ -53,7 +54,8 @@ class _AudioReactiveBackgroundState extends State<AudioReactiveBackground> with 
           _motionSeconds += delta;
         }
       }
-    })..start();
+    })
+      ..start();
 
     if (kProfileMode && enableDnaProfiling) {
       DnaFrameProfiler.instance.start();
@@ -109,9 +111,36 @@ class DnaHelixPainter extends CustomPainter {
 
   // Lista di caratteri speciali in stile Matrix e cyberpunk
   static const List<String> _matrixChars = [
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-    'A', 'B', 'C', 'D', 'E', 'F', 'X', 'Y', 'Z', 'Ø',
-    '⌱', '⍟', '⎔', '⌧', '◈', '◇', '◆', '❖', '▲', '▼'
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+    '5',
+    '6',
+    '7',
+    '8',
+    '9',
+    'A',
+    'B',
+    'C',
+    'D',
+    'E',
+    'F',
+    'X',
+    'Y',
+    'Z',
+    'Ø',
+    '⌱',
+    '⍟',
+    '⎔',
+    '⌧',
+    '◈',
+    '◇',
+    '◆',
+    '❖',
+    '▲',
+    '▼'
   ];
 
   // Restituisce la cromia differenziata per i tre filamenti
@@ -141,7 +170,8 @@ class DnaHelixPainter extends CustomPainter {
   }) {
     final double scrollDistance = motionSeconds * scrollPixelsPerSecond;
     final int firstLogicalIndex = (scrollDistance / spacing).floor();
-    final double fractionalOffset = scrollDistance - firstLogicalIndex * spacing;
+    final double fractionalOffset =
+        scrollDistance - firstLogicalIndex * spacing;
     final int localIndex = logicalIndex - firstLogicalIndex;
     return localIndex * spacing - fractionalOffset;
   }
@@ -172,7 +202,8 @@ class DnaHelixPainter extends CustomPainter {
     double exponent = 3.0,
   }) {
     final double beatPhase = (beatSeconds / beatDuration) % 1.0;
-    final double cosinePulse = (1.0 + math.cos(2.0 * math.pi * beatPhase)) / 2.0;
+    final double cosinePulse =
+        (1.0 + math.cos(2.0 * math.pi * beatPhase)) / 2.0;
     return math.pow(cosinePulse, exponent).toDouble();
   }
 
@@ -191,7 +222,7 @@ class DnaHelixPainter extends CustomPainter {
   static double quantizeFontSize(double value) {
     final double clamped = value.clamp(8.0, 14.0);
     const List<double> fontLevels = [8.0, 9.5, 11.0, 12.5, 14.0];
-    
+
     double nearest = fontLevels.first;
     double distance = (clamped - nearest).abs();
 
@@ -270,7 +301,8 @@ class DnaHelixPainter extends CustomPainter {
       case DnaGlyphPalette.cyan:
         return Color.lerp(mainColor, const Color(0xFF00E5FF), 0.3) ?? mainColor;
       case DnaGlyphPalette.lime:
-        return Color.lerp(mainColor, const Color(0xFFD4FF00), 0.25) ?? mainColor;
+        return Color.lerp(mainColor, const Color(0xFFD4FF00), 0.25) ??
+            mainColor;
       case DnaGlyphPalette.alert:
         return const Color(0xFFFF003C);
       case DnaGlyphPalette.victory:
@@ -313,16 +345,18 @@ class DnaHelixPainter extends CustomPainter {
       mainColor = const Color(0xFF00FF66);
     } else {
       mainColor = Color.lerp(
-        const Color(0xFF00FF66),
-        const Color(0xFFFF003C),
-        alertProgress,
-      ) ?? const Color(0xFF00FF66);
+            const Color(0xFF00FF66),
+            const Color(0xFFFF003C),
+            alertProgress,
+          ) ??
+          const Color(0xFF00FF66);
     }
 
     final double centerY = size.height / 2.0;
     final double baseAmplitude = size.height * 0.12;
     final double amplitudeBoost = size.height * 0.08;
-    final double currentAmplitude = baseAmplitude + (amplitudeBoost * beatPulse);
+    final double currentAmplitude =
+        baseAmplitude + (amplitudeBoost * beatPulse);
 
     const double scrollPixelsPerSecond = 60.0;
     const double phaseSpeed = 2.0;
@@ -332,9 +366,11 @@ class DnaHelixPainter extends CustomPainter {
 
     final double scrollDistance = motionSeconds * scrollPixelsPerSecond;
     final int firstLogicalIndex = (scrollDistance / spacing).floor();
-    final double fractionalOffset = scrollDistance - firstLogicalIndex * spacing;
+    final double fractionalOffset =
+        scrollDistance - firstLogicalIndex * spacing;
 
-    final double phase = (motionSeconds * phaseSpeed) + (beatPulse * twistAmount);
+    final double phase =
+        (motionSeconds * phaseSpeed) + (beatPulse * twistAmount);
 
     final int totalPoints = (size.width / spacing).ceil();
     const int extraPoints = 2;
@@ -359,7 +395,9 @@ class DnaHelixPainter extends CustomPainter {
               ? cache.wire1
               : cache.wire2;
 
-      for (int localIndex = -extraPoints; localIndex < totalPoints + extraPoints; localIndex++) {
+      for (int localIndex = -extraPoints;
+          localIndex < totalPoints + extraPoints;
+          localIndex++) {
         final int pointIndexInList = localIndex + extraPoints;
         final MutableHelixPoint point = wireList[pointIndexInList];
 
@@ -371,7 +409,9 @@ class DnaHelixPainter extends CustomPainter {
         double y = centerY + currentAmplitude * math.sin(angle);
 
         if (alertLevel > 10) {
-          final double glitch = math.sin(worldX * 0.3 + motionSeconds * 25.0) * (spacing * 0.4) * alertProgress;
+          final double glitch = math.sin(worldX * 0.3 + motionSeconds * 25.0) *
+              (spacing * 0.4) *
+              alertProgress;
           y += glitch;
         }
 
@@ -385,13 +425,16 @@ class DnaHelixPainter extends CustomPainter {
     }
 
     final int elapsedTick = motionSeconds.floor();
-    final double quantizedAlertProgress = DnaHelixPainter.quantizeAlertProgress(alertProgress);
+    final double quantizedAlertProgress =
+        DnaHelixPainter.quantizeAlertProgress(alertProgress);
 
     // Metà dimensione del glifo quantizzato max (14) + max blur radius (12) + stroke
     const double maxVisualRadius = 28.0;
 
     // 3. Popola i depth buckets con handle interi compatti
-    for (int localIndex = -extraPoints; localIndex < totalPoints + extraPoints; localIndex++) {
+    for (int localIndex = -extraPoints;
+        localIndex < totalPoints + extraPoints;
+        localIndex++) {
       final int pointIndexInList = localIndex + extraPoints;
       final MutableHelixPoint p0 = cache.wire0[pointIndexInList];
       final MutableHelixPoint p1 = cache.wire1[pointIndexInList];
@@ -399,10 +442,15 @@ class DnaHelixPainter extends CustomPainter {
 
       // 3.1 Nodi dei filamenti
       for (int w = 0; w < 3; w++) {
-        final MutableHelixPoint point = w == 0 ? p0 : w == 1 ? p1 : p2;
+        final MutableHelixPoint point = w == 0
+            ? p0
+            : w == 1
+                ? p1
+                : p2;
 
         // Culling conservativo orizzontale
-        if (!DnaHelixPainter.isNodeVisible(x: point.x, radius: maxVisualRadius, canvasWidth: size.width)) {
+        if (!DnaHelixPainter.isNodeVisible(
+            x: point.x, radius: maxVisualRadius, canvasWidth: size.width)) {
           continue;
         }
 
@@ -410,7 +458,8 @@ class DnaHelixPainter extends CustomPainter {
         final double trailFactor = (point.x / size.width).clamp(0.0, 1.0);
         final double baseOpacity = (normalizedZ * 0.5) + 0.15;
         final double positionOpacity = baseOpacity * (0.3 + 0.7 * trailFactor);
-        final double opacity = (positionOpacity + 0.25 * beatPulse).clamp(0.0, 1.0);
+        final double opacity =
+            (positionOpacity + 0.25 * beatPulse).clamp(0.0, 1.0);
 
         // Salta elementi con opacità trascurabile
         if (opacity <= 0.01) {
@@ -418,7 +467,8 @@ class DnaHelixPainter extends CustomPainter {
         }
 
         final double fontSize = (normalizedZ * 6.0) + 8.0;
-        final double quantizedFontSize = DnaHelixPainter.quantizeFontSize(fontSize);
+        final double quantizedFontSize =
+            DnaHelixPainter.quantizeFontSize(fontSize);
         final double quantizedAlpha = DnaHelixPainter.quantizeAlpha(opacity);
 
         final DnaGlyphPalette palette;
@@ -427,7 +477,11 @@ class DnaHelixPainter extends CustomPainter {
         } else if (outcome == GameOutcome.defeat) {
           palette = DnaGlyphPalette.defeat;
         } else {
-          palette = w == 0 ? DnaGlyphPalette.primary : w == 1 ? DnaGlyphPalette.cyan : DnaGlyphPalette.lime;
+          palette = w == 0
+              ? DnaGlyphPalette.primary
+              : w == 1
+                  ? DnaGlyphPalette.cyan
+                  : DnaGlyphPalette.lime;
         }
 
         // Lampi di luce e Glow
@@ -435,10 +489,12 @@ class DnaHelixPainter extends CustomPainter {
         final bool isFlashPoint = (point.logicalIndex + elapsedTick) % 6 == 0;
         final bool drawFlash = isFlashFrame && isFlashPoint;
 
-        final DnaGlyphPalette effectivePalette = drawFlash ? DnaGlyphPalette.whiteFlash : palette;
+        final DnaGlyphPalette effectivePalette =
+            drawFlash ? DnaGlyphPalette.whiteFlash : palette;
 
         final double glowRadius = beatPulse * 12.0;
-        final DnaGlowLevel glowLevel = DnaHelixPainter.getGlowLevel(glowRadius, drawFlash);
+        final DnaGlowLevel glowLevel =
+            DnaHelixPainter.getGlowLevel(glowRadius, drawFlash);
 
         final int glyphTick = DnaHelixPainter.calculateGlyphTick(
           motionSeconds: motionSeconds,
@@ -446,7 +502,9 @@ class DnaHelixPainter extends CustomPainter {
           wireIndex: w,
         );
 
-        final int charIndex = (point.logicalIndex * 31 + w * 17 + glyphTick * 7).abs() % _matrixChars.length;
+        final int charIndex =
+            (point.logicalIndex * 31 + w * 17 + glyphTick * 7).abs() %
+                _matrixChars.length;
         final String char = _matrixChars[charIndex];
 
         // Acquisisci nodo dal pool
@@ -463,7 +521,8 @@ class DnaHelixPainter extends CustomPainter {
           glowLevel: glowLevel,
         );
 
-        final int bucketIndex = DnaHelixPainter.calculateDepthBucket(point.z, 16);
+        final int bucketIndex =
+            DnaHelixPainter.calculateDepthBucket(point.z, 16);
         cache.depthBuckets[bucketIndex].add(DnaRenderHandle.packNode(nodeIdx));
       }
 
@@ -487,13 +546,18 @@ class DnaHelixPainter extends CustomPainter {
       final double avgX = (start.x + end.x) / 2.0;
       final double normalizedZ = (avgZ + 1.0) / 2.0;
       final double trailFactor = (avgX / size.width).clamp(0.0, 1.0);
-      
+
       final double baseOpacity = (normalizedZ * 0.35) + 0.1;
       final double positionOpacity = baseOpacity * (0.3 + 0.7 * trailFactor);
-      final double opacity = (positionOpacity + 0.15 * beatPulse).clamp(0.0, 1.0);
+      final double opacity =
+          (positionOpacity + 0.15 * beatPulse).clamp(0.0, 1.0);
 
       // Culling rung passante
-      if (!DnaHelixPainter.isRungVisible(startX: start.x, endX: end.x, margin: maxVisualRadius, canvasWidth: size.width)) {
+      if (!DnaHelixPainter.isRungVisible(
+          startX: start.x,
+          endX: end.x,
+          margin: maxVisualRadius,
+          canvasWidth: size.width)) {
         continue;
       }
 
@@ -503,11 +567,13 @@ class DnaHelixPainter extends CustomPainter {
 
       final double thickness = (normalizedZ * 1.5 + 0.5) + (1.5 * beatPulse);
 
-      final Color cStart = _getFilamentColor(start.wireIndex, mainColor, outcome);
+      final Color cStart =
+          _getFilamentColor(start.wireIndex, mainColor, outcome);
       final Color cEnd = _getFilamentColor(end.wireIndex, mainColor, outcome);
       final Color rungBaseColor = Color.lerp(cStart, cEnd, 0.5) ?? mainColor;
       final Color rungColor = rungBaseColor.withValues(alpha: opacity);
-      final Color rungGlowColor = rungBaseColor.withValues(alpha: opacity * beatPulse);
+      final Color rungGlowColor =
+          rungBaseColor.withValues(alpha: opacity * beatPulse);
 
       final int rungIdx = cache.activeRungCount;
       final DnaRungElement rung = cache.acquireRung();
@@ -556,13 +622,16 @@ class DnaHelixPainter extends CustomPainter {
               quantizedMainColor = const Color(0xFF00FF66);
             } else {
               quantizedMainColor = Color.lerp(
-                const Color(0xFF00FF66),
-                const Color(0xFFFF003C),
-                key.alertProgress,
-              ) ?? const Color(0xFF00FF66);
+                    const Color(0xFF00FF66),
+                    const Color(0xFFFF003C),
+                    key.alertProgress,
+                  ) ??
+                  const Color(0xFF00FF66);
             }
 
-            final Color resolvedColor = DnaHelixPainter.getPaletteColor(node.palette, quantizedMainColor).withValues(alpha: node.alpha);
+            final Color resolvedColor = DnaHelixPainter.getPaletteColor(
+                    node.palette, quantizedMainColor)
+                .withValues(alpha: node.alpha);
             final Color? resolvedGlowColor;
             final double glowRad;
             if (node.glowLevel == DnaGlowLevel.none) {
@@ -576,7 +645,9 @@ class DnaHelixPainter extends CustomPainter {
                       : 12.0;
               resolvedGlowColor = node.glowLevel == DnaGlowLevel.flash
                   ? Colors.white.withValues(alpha: node.alpha)
-                  : DnaHelixPainter.getPaletteColor(node.palette, quantizedMainColor).withValues(alpha: node.alpha);
+                  : DnaHelixPainter.getPaletteColor(
+                          node.palette, quantizedMainColor)
+                      .withValues(alpha: node.alpha);
             }
 
             tp = TextPainter(
@@ -606,21 +677,23 @@ class DnaHelixPainter extends CustomPainter {
           final double dx = node.x - tp.width / 2.0;
           final double dy = node.y - tp.height / 2.0;
           tp.paint(canvas, Offset(dx, dy));
-
         } else {
           final DnaRungElement rung = cache.rungPool[index];
           // Disegna il rung riutilizzando Paint e aggiornando solo i parametri necessari
           if (rung.beatPulse > 0.1) {
             cache.rungGlowPaint
-              ..color = rung.glowColor.withValues(alpha: rung.opacity * rung.beatPulse * 0.22)
+              ..color = rung.glowColor
+                  .withValues(alpha: rung.opacity * rung.beatPulse * 0.22)
               ..strokeWidth = rung.thickness + 4.0 * rung.beatPulse;
-            canvas.drawLine(Offset(rung.startX, rung.startY), Offset(rung.endX, rung.endY), cache.rungGlowPaint);
+            canvas.drawLine(Offset(rung.startX, rung.startY),
+                Offset(rung.endX, rung.endY), cache.rungGlowPaint);
           }
 
           cache.rungPaint
             ..color = rung.color
             ..strokeWidth = rung.thickness;
-          canvas.drawLine(Offset(rung.startX, rung.startY), Offset(rung.endX, rung.endY), cache.rungPaint);
+          canvas.drawLine(Offset(rung.startX, rung.startY),
+              Offset(rung.endX, rung.endY), cache.rungPaint);
         }
       }
     }
@@ -773,7 +846,8 @@ class DnaGlyphKey {
 
 class DnaGlyphCache {
   final int capacity;
-  final LinkedHashMap<DnaGlyphKey, TextPainter> _entries = LinkedHashMap<DnaGlyphKey, TextPainter>();
+  final LinkedHashMap<DnaGlyphKey, TextPainter> _entries =
+      LinkedHashMap<DnaGlyphKey, TextPainter>();
 
   int hits = 0;
   int misses = 0;
@@ -951,7 +1025,8 @@ class DnaFrameProfiler {
     const int minimumSamples = 100;
 
     if (_timings.length < warmupFrames + minimumSamples) {
-      debugPrint('[DNA PROFILER] Campione troppo piccolo (${_timings.length} frame). Richiesti almeno ${warmupFrames + minimumSamples} frame.');
+      debugPrint(
+          '[DNA PROFILER] Campione troppo piccolo (${_timings.length} frame). Richiesti almeno ${warmupFrames + minimumSamples} frame.');
       return;
     }
 
@@ -959,24 +1034,38 @@ class DnaFrameProfiler {
     if (sample.isEmpty) return;
 
     final totalFrames = sample.length;
-    final List<double> buildTimes = sample.map((t) => t.buildDuration.inMicroseconds / 1000.0).toList()..sort();
-    final List<double> rasterTimes = sample.map((t) => t.rasterDuration.inMicroseconds / 1000.0).toList()..sort();
-    final List<double> totalTimes = sample.map((t) => t.totalSpan.inMicroseconds / 1000.0).toList()..sort();
+    final List<double> buildTimes = sample
+        .map((t) => t.buildDuration.inMicroseconds / 1000.0)
+        .toList()
+      ..sort();
+    final List<double> rasterTimes = sample
+        .map((t) => t.rasterDuration.inMicroseconds / 1000.0)
+        .toList()
+      ..sort();
+    final List<double> totalTimes =
+        sample.map((t) => t.totalSpan.inMicroseconds / 1000.0).toList()..sort();
 
     double p50(List<double> list) => list[(list.length * 0.50).floor()];
     double p95(List<double> list) => list[(list.length * 0.95).floor()];
     double p99(List<double> list) => list[(list.length * 0.99).floor()];
 
-    final framesOver16 = sample.where((t) => t.totalSpan.inMicroseconds > 16667).length;
-    final framesOver33 = sample.where((t) => t.totalSpan.inMicroseconds > 33333).length;
+    final framesOver16 =
+        sample.where((t) => t.totalSpan.inMicroseconds > 16667).length;
+    final framesOver33 =
+        sample.where((t) => t.totalSpan.inMicroseconds > 33333).length;
 
     debugPrint('================ DNA HELIX PROFILE REPORT ================');
     debugPrint('Total Sampled Frames (after 10 warmup): $totalFrames');
-    debugPrint('Build Duration (ms):  p50: ${p50(buildTimes).toStringAsFixed(2)} | p95: ${p95(buildTimes).toStringAsFixed(2)} | p99: ${p99(buildTimes).toStringAsFixed(2)}');
-    debugPrint('Raster Duration (ms): p50: ${p50(rasterTimes).toStringAsFixed(2)} | p95: ${p95(rasterTimes).toStringAsFixed(2)} | p99: ${p99(rasterTimes).toStringAsFixed(2)}');
-    debugPrint('Total Span (ms):       p50: ${p50(totalTimes).toStringAsFixed(2)} | p95: ${p95(totalTimes).toStringAsFixed(2)} | p99: ${p99(totalTimes).toStringAsFixed(2)}');
-    debugPrint('Janky Frames (>16.67ms): $framesOver16 (${(framesOver16 / totalFrames * 100.0).toStringAsFixed(1)}%)');
-    debugPrint('Severe Janky (>33.3ms):  $framesOver33 (${(framesOver33 / totalFrames * 100.0).toStringAsFixed(1)}%)');
+    debugPrint(
+        'Build Duration (ms):  p50: ${p50(buildTimes).toStringAsFixed(2)} | p95: ${p95(buildTimes).toStringAsFixed(2)} | p99: ${p99(buildTimes).toStringAsFixed(2)}');
+    debugPrint(
+        'Raster Duration (ms): p50: ${p50(rasterTimes).toStringAsFixed(2)} | p95: ${p95(rasterTimes).toStringAsFixed(2)} | p99: ${p99(rasterTimes).toStringAsFixed(2)}');
+    debugPrint(
+        'Total Span (ms):       p50: ${p50(totalTimes).toStringAsFixed(2)} | p95: ${p95(totalTimes).toStringAsFixed(2)} | p99: ${p99(totalTimes).toStringAsFixed(2)}');
+    debugPrint(
+        'Janky Frames (>16.67ms): $framesOver16 (${(framesOver16 / totalFrames * 100.0).toStringAsFixed(1)}%)');
+    debugPrint(
+        'Severe Janky (>33.3ms):  $framesOver33 (${(framesOver33 / totalFrames * 100.0).toStringAsFixed(1)}%)');
     debugPrint('==========================================================');
   }
 }

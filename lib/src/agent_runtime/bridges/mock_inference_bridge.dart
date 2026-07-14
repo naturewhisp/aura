@@ -41,5 +41,3 @@ class MockInferenceBridge implements InferenceBridge {
     return const ["mistralai/ministral-3-3b", "qwen/qwen3.5-9b"];
   }
 }
-
-

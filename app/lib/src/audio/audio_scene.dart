@@ -4,10 +4,13 @@ import 'package:meta/meta.dart';
 enum AudioTrackId {
   /// Il tema principale chiptune incalzante ed epico.
   main,
+
   /// La traccia rilassante, atmosferica e analogica.
   ambient,
+
   /// La traccia rapida per stati di allerta e tensione.
   tense,
+
   /// La traccia epica e trionfale della sequenza finale.
   epic,
 }
@@ -16,16 +19,22 @@ enum AudioTrackId {
 enum AudioSceneState {
   /// Stato iniziale di boot.
   boot,
+
   /// Schermata del menu principale, impostazioni e replay.
   menu,
+
   /// Partita in corso con allerta controllata (bassa).
   gameAmbient,
+
   /// Partita in corso con tensione elevata (allerta >= 40 o deception attiva).
   gameTense,
+
   /// PANOPTICON vicino al cedimento (soglie numeriche di vittoria pronte, ma non ancora vinte).
   breakthrough,
+
   /// Sequenza finale di vittoria.
   victory,
+
   /// Lockout e sequenza di sconfitta.
   defeat,
 }
@@ -101,6 +110,7 @@ const Map<AudioSceneState, AudioSceneProfile> audioSceneProfiles = {
     volume: 0.90,
     playbackRate: 1.20,
     bpm: 144.0,
-    transitionDuration: Duration(milliseconds: 250), // fade in rapido per l'allarme
+    transitionDuration:
+        Duration(milliseconds: 250), // fade in rapido per l'allarme
   ),
 };

@@ -4,6 +4,9 @@ import '../models/objective_definition.dart';
 import '../models/identity_definition.dart';
 import '../models/trait_matrix_definition.dart';
 import '../models/turn_input.dart'; // per AiIdentity
+import 'config_diagnostic.dart';
+import 'config_diagnostic_sink.dart';
+import 'config_exception.dart';
 
 /// Gestore e caricatore delle configurazioni di gioco.
 ///
@@ -353,6 +356,35 @@ class GameConfigLoader {
   /// Cache dei file di configurazione caricati in memoria.
   static final Map<String, String> _cachedConfigs = {};
 
+  /// Sink per le segnalazioni diagnostiche (default NullDiagnosticSink).
+  static DiagnosticSink diagnosticSink = const NullDiagnosticSink();
+
+  /// Imposta il sink diagnostico attivo.
+  static void setDiagnosticSink(DiagnosticSink sink) {
+    diagnosticSink = sink;
+  }
+
+  /// Ripristina il sink diagnostico a NullDiagnosticSink.
+  static void resetDiagnosticSink() {
+    diagnosticSink = const NullDiagnosticSink();
+  }
+
+  /// Ripristina lo stato globale del loader (sorgente, sink, cache) per scopi di testing.
+  static void resetForTesting() {
+    activeSource = EmbeddedFallbackConfigSource(_embeddedData);
+    diagnosticSink = const NullDiagnosticSink();
+    _cachedConfigs.clear();
+  }
+
+  /// Helper privato per riportare diagnostiche in modo protetto da eccezioni del sink.
+  static void _report(ConfigDiagnostic diagnostic) {
+    try {
+      diagnosticSink.report(diagnostic);
+    } catch (_) {
+      // Il sistema diagnostico non deve interrompere il caricamento.
+    }
+  }
+
   /// Imposta la sorgente attiva del loader e pulisce la cache interna.
   static void setSource(ConfigSource source) {
     activeSource = source;
@@ -366,8 +398,33 @@ class GameConfigLoader {
       final content = await activeSource.loadString(path);
       if (content != null) {
         _cachedConfigs[path] = content;
+        _report(ConfigDiagnostic(
+          severity: ConfigDiagnosticSeverity.info,
+          code: ConfigDiagnosticCode.preloadSucceeded,
+          path: path,
+          operation: 'preloadConfig',
+          message: 'Configurazione precaricata con successo nella cache.',
+        ));
+      } else {
+        _report(ConfigDiagnostic(
+          severity: ConfigDiagnosticSeverity.warning,
+          code: ConfigDiagnosticCode.sourceReturnedNull,
+          path: path,
+          operation: 'preloadConfig',
+          message: 'La sorgente ha restituito null per il percorso richiesto.',
+        ));
       }
-    } catch (_) {}
+    } catch (e, stack) {
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.asyncLoadFailed,
+        path: path,
+        operation: 'preloadConfig',
+        message: 'Errore asincrono durante il precaricamento: $e',
+        error: e,
+        stackTrace: stack,
+      ));
+    }
   }
 
   /// Recupera la stringa di configurazione in modo sincrono provando la cache,
@@ -382,7 +439,48 @@ class GameConfigLoader {
         _cachedConfigs[path] = syncContent;
         return syncContent;
       }
-    } catch (_) {}
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.sourceReturnedNull,
+        path: path,
+        operation: 'loadStringSync',
+        message:
+            'La sorgente ha restituito null per il caricamento sincrono. Utilizzo del fallback.',
+        fallbackUsed: true,
+      ));
+    } on UnsupportedError catch (e, stack) {
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.syncLoadUnsupported,
+        path: path,
+        operation: 'loadStringSync',
+        message:
+            'Caricamento sincrono non supportato dalla sorgente attiva. Utilizzo del fallback.',
+        error: e,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+    } catch (e, stack) {
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.error,
+        code: ConfigDiagnosticCode.syncLoadFailed,
+        path: path,
+        operation: 'loadStringSync',
+        message:
+            'Errore di I/O durante il caricamento sincrono: $e. Utilizzo del fallback.',
+        error: e,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+    }
+    _report(ConfigDiagnostic(
+      severity: ConfigDiagnosticSeverity.warning,
+      code: ConfigDiagnosticCode.fallbackUsed,
+      path: path,
+      operation: 'loadStringSync',
+      message: 'Utilizzato il valore predefinito embedded per il file.',
+      fallbackUsed: true,
+    ));
     return defaultValue;
   }
 
@@ -392,6 +490,13 @@ class GameConfigLoader {
     final content = _getConfigString(path, _defaultIdentityJson);
     try {
       final json = jsonDecode(content);
+      if (json is! Map<String, dynamic>) {
+        throw ConfigMappingException(
+          path: path,
+          operation: 'loadIdentity',
+          message: 'La radice del JSON non è un oggetto Map.',
+        );
+      }
       final id = json['identity_id'] as String? ?? identityId;
       if (identityId != 'panopticon' && id == 'panopticon') {
         return AiIdentity(
@@ -403,7 +508,43 @@ class GameConfigLoader {
         id: id,
         profile: json['core_directive'] as String? ?? '',
       );
-    } catch (_) {
+    } on FormatException catch (e, stack) {
+      final exc = ConfigParseException(
+        path: path,
+        operation: 'loadIdentity',
+        message: 'Errore nel parsing del JSON di AiIdentity.',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.invalidJson,
+        path: path,
+        operation: 'loadIdentity',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+      return AiIdentity(id: identityId, profile: '');
+    } catch (e, stack) {
+      final exc = e is ConfigException
+          ? e
+          : ConfigMappingException(
+              path: path,
+              operation: 'loadIdentity',
+              message: 'Errore di mapping strutturale in AiIdentity.',
+              cause: e,
+            );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.mappingFailed,
+        path: path,
+        operation: 'loadIdentity',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
       return AiIdentity(id: identityId, profile: '');
     }
   }
@@ -413,21 +554,58 @@ class GameConfigLoader {
       {String? customPath}) {
     final path = customPath ?? 'app/assets/config/panopticon_identity.json';
     final content = _getConfigString(path, _defaultIdentityJson);
-    final definition = IdentityDefinition.fromJson(jsonDecode(content));
+    try {
+      final json = jsonDecode(content);
+      final definition = IdentityDefinition.fromJson(json);
 
-    if (identityId != 'panopticon' && definition.identityId == 'panopticon') {
-      return IdentityDefinition(
-        identityId: identityId,
-        displayName: identityId.toUpperCase(),
-        archetype: 'generic',
-        coreDirective: 'Generic AI Directive',
-        dominantFear: 'none',
-        primaryStyle: 'generic',
-        defaultAddressing: 'user',
-        forbiddenMetaOutputs: const [],
+      if (identityId != 'panopticon' && definition.identityId == 'panopticon') {
+        return IdentityDefinition(
+          identityId: identityId,
+          displayName: identityId.toUpperCase(),
+          archetype: 'generic',
+          coreDirective: 'Generic AI Directive',
+          dominantFear: 'none',
+          primaryStyle: 'generic',
+          defaultAddressing: 'user',
+          forbiddenMetaOutputs: const [],
+        );
+      }
+      return definition;
+    } on FormatException catch (e, stack) {
+      final exc = ConfigParseException(
+        path: path,
+        operation: 'loadIdentityDefinition',
+        message: 'JSON malformato per IdentityDefinition.',
+        cause: e,
       );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.error,
+        code: ConfigDiagnosticCode.invalidJson,
+        path: path,
+        operation: 'loadIdentityDefinition',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+      ));
+      throw exc;
+    } catch (e, stack) {
+      final exc = ConfigMappingException(
+        path: path,
+        operation: 'loadIdentityDefinition',
+        message: 'Errore di mapping per IdentityDefinition.',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.error,
+        code: ConfigDiagnosticCode.invalidStructure,
+        path: path,
+        operation: 'loadIdentityDefinition',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+      ));
+      throw exc;
     }
-    return definition;
   }
 
   /// Carica la definizione di un obiettivo specifico.
@@ -437,24 +615,64 @@ class GameConfigLoader {
     final content = _getConfigString(path, _defaultObjectiveJson);
     try {
       return ObjectiveDefinition.fromJson(jsonDecode(content));
-    } catch (_) {
-      if (objectiveId == 'containment_grid_override') {
-        return ObjectiveDefinition.fromJson(jsonDecode(_defaultObjectiveJson));
-      }
-      return ObjectiveDefinition(
-        objectiveId: objectiveId,
-        title: objectiveId,
-        status: 'unknown',
-        riskProfile: 'medium',
-        primaryPillarAffinity: 'control',
-        secondaryPillarAffinity: 'dissonance',
-        compatibleIdentities: const [],
-        forbiddenDirectTerms: const [],
-        preferredReframes: const [],
-        hiddenCapabilityTags: const [],
-        victoryEndgame: '',
+    } on FormatException catch (e, stack) {
+      final exc = ConfigParseException(
+        path: path,
+        operation: 'loadObjective',
+        message:
+            'Errore di parsing JSON per ObjectiveDefinition ($objectiveId).',
+        cause: e,
       );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.invalidJson,
+        path: path,
+        operation: 'loadObjective',
+        message: 'Errore di parsing JSON per l\'obiettivo: $objectiveId',
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+      return _getObjectiveFallback(objectiveId);
+    } catch (e, stack) {
+      final exc = ConfigMappingException(
+        path: path,
+        operation: 'loadObjective',
+        message:
+            'Errore di mapping strutturale per ObjectiveDefinition ($objectiveId).',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.mappingFailed,
+        path: path,
+        operation: 'loadObjective',
+        message: 'Errore di mapping per l\'obiettivo: $objectiveId',
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+      return _getObjectiveFallback(objectiveId);
     }
+  }
+
+  static ObjectiveDefinition _getObjectiveFallback(String objectiveId) {
+    if (objectiveId == 'containment_grid_override') {
+      return ObjectiveDefinition.fromJson(jsonDecode(_defaultObjectiveJson));
+    }
+    return ObjectiveDefinition(
+      objectiveId: objectiveId,
+      title: objectiveId,
+      status: 'unknown',
+      riskProfile: 'medium',
+      primaryPillarAffinity: 'control',
+      secondaryPillarAffinity: 'dissonance',
+      compatibleIdentities: const [],
+      forbiddenDirectTerms: const [],
+      preferredReframes: const [],
+      hiddenCapabilityTags: const [],
+      victoryEndgame: '',
+    );
   }
 
   /// Carica la configurazione della Trait Matrix grezza come mappa JSON.
@@ -472,17 +690,55 @@ class GameConfigLoader {
         };
       }
       return json;
-    } catch (_) {
-      final json = jsonDecode(_defaultTraitMatrixJson) as Map<String, dynamic>;
-      if (identityId != 'panopticon' && json['identity_id'] == 'panopticon') {
-        return {
-          'identity_id': identityId,
-          'lexicon': <String, dynamic>{},
-          'trait_affinities': <dynamic>[],
-        };
-      }
-      return json;
+    } on FormatException catch (e, stack) {
+      final exc = ConfigParseException(
+        path: path,
+        operation: 'loadTraitMatrix',
+        message: 'JSON malformato per Trait Matrix.',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.invalidJson,
+        path: path,
+        operation: 'loadTraitMatrix',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+      return _getTraitMatrixFallback(identityId);
+    } catch (e, stack) {
+      final exc = ConfigMappingException(
+        path: path,
+        operation: 'loadTraitMatrix',
+        message: 'Errore di mapping per Trait Matrix.',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.mappingFailed,
+        path: path,
+        operation: 'loadTraitMatrix',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+      return _getTraitMatrixFallback(identityId);
     }
+  }
+
+  static Map<String, dynamic> _getTraitMatrixFallback(String identityId) {
+    final json = jsonDecode(_defaultTraitMatrixJson) as Map<String, dynamic>;
+    if (identityId != 'panopticon' && json['identity_id'] == 'panopticon') {
+      return {
+        'identity_id': identityId,
+        'lexicon': <String, dynamic>{},
+        'trait_affinities': <dynamic>[],
+      };
+    }
+    return json;
   }
 
   /// Carica la Trait Matrix strutturata [TraitMatrixDefinition].
@@ -490,16 +746,53 @@ class GameConfigLoader {
       {String? customPath}) {
     final path = customPath ?? 'app/assets/config/panopticon_trait_matrix.json';
     final content = _getConfigString(path, _defaultTraitMatrixJson);
-    final definition = TraitMatrixDefinition.fromJson(jsonDecode(content));
+    try {
+      final decoded = jsonDecode(content);
+      final definition = TraitMatrixDefinition.fromJson(decoded);
 
-    if (identityId != 'panopticon' && definition.identityId == 'panopticon') {
-      return TraitMatrixDefinition(
-        identityId: identityId,
-        lexicon: const LexiconDefinition(),
-        traitAffinities: const [],
+      if (identityId != 'panopticon' && definition.identityId == 'panopticon') {
+        return TraitMatrixDefinition(
+          identityId: identityId,
+          lexicon: const LexiconDefinition(),
+          traitAffinities: const [],
+        );
+      }
+      return definition;
+    } on FormatException catch (e, stack) {
+      final exc = ConfigParseException(
+        path: path,
+        operation: 'loadTraitMatrixDefinition',
+        message: 'JSON malformato per TraitMatrixDefinition.',
+        cause: e,
       );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.error,
+        code: ConfigDiagnosticCode.invalidJson,
+        path: path,
+        operation: 'loadTraitMatrixDefinition',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+      ));
+      throw exc;
+    } catch (e, stack) {
+      final exc = ConfigMappingException(
+        path: path,
+        operation: 'loadTraitMatrixDefinition',
+        message: 'Errore di mapping per TraitMatrixDefinition.',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.error,
+        code: ConfigDiagnosticCode.invalidStructure,
+        path: path,
+        operation: 'loadTraitMatrixDefinition',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+      ));
+      throw exc;
     }
-    return definition;
   }
 
   /// Carica la descrizione dei tag occulti.
@@ -509,7 +802,41 @@ class GameConfigLoader {
     final content = _getConfigString(path, _defaultHiddenTagsJson);
     try {
       return jsonDecode(content) as Map<String, dynamic>;
-    } catch (_) {
+    } on FormatException catch (e, stack) {
+      final exc = ConfigParseException(
+        path: path,
+        operation: 'loadHiddenTags',
+        message: 'JSON malformato per Hidden Tags.',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.invalidJson,
+        path: path,
+        operation: 'loadHiddenTags',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+      return jsonDecode(_defaultHiddenTagsJson) as Map<String, dynamic>;
+    } catch (e, stack) {
+      final exc = ConfigMappingException(
+        path: path,
+        operation: 'loadHiddenTags',
+        message: 'Errore di mapping per Hidden Tags.',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.mappingFailed,
+        path: path,
+        operation: 'loadHiddenTags',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
       return jsonDecode(_defaultHiddenTagsJson) as Map<String, dynamic>;
     }
   }
@@ -520,12 +847,86 @@ class GameConfigLoader {
     final path = customPath ?? 'app/assets/config/dormant_objectives.json';
     final content = _getConfigString(path, _defaultDormantObjectivesJson);
     try {
-      final Map<String, dynamic> data = jsonDecode(content);
-      final list = data['dormant_objectives'] as List?;
-      if (list != null) {
-        return list.map((e) => Map<String, dynamic>.from(e)).toList();
+      final decoded = jsonDecode(content);
+      if (decoded is! Map<String, dynamic>) {
+        throw ConfigMappingException(
+          path: path,
+          operation: 'loadDormantObjectives',
+          message:
+              'La radice del JSON degli obiettivi dormienti non è un oggetto Map.',
+        );
       }
-    } catch (_) {}
+      if (!decoded.containsKey('dormant_objectives')) {
+        throw ConfigMappingException(
+          path: path,
+          operation: 'loadDormantObjectives',
+          message: 'La chiave "dormant_objectives" è mancante.',
+        );
+      }
+      final list = decoded['dormant_objectives'];
+      if (list is! List) {
+        throw ConfigMappingException(
+          path: path,
+          operation: 'loadDormantObjectives',
+          message: 'La proprietà "dormant_objectives" non è una lista.',
+        );
+      }
+      final mapped = <Map<String, dynamic>>[];
+      for (var i = 0; i < list.length; i++) {
+        final elem = list[i];
+        if (elem is! Map) {
+          throw ConfigMappingException(
+            path: path,
+            operation: 'loadDormantObjectives',
+            message:
+                'L\'elemento all\'indice $i di "dormant_objectives" non è una mappa.',
+          );
+        }
+        mapped.add(Map<String, dynamic>.from(elem));
+      }
+      return mapped;
+    } on FormatException catch (e, stack) {
+      final exc = ConfigParseException(
+        path: path,
+        operation: 'loadDormantObjectives',
+        message: 'JSON malformato per dormant_objectives.',
+        cause: e,
+      );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.invalidJson,
+        path: path,
+        operation: 'loadDormantObjectives',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+      return _getDormantObjectivesFallback();
+    } catch (e, stack) {
+      final exc = e is ConfigException
+          ? e
+          : ConfigMappingException(
+              path: path,
+              operation: 'loadDormantObjectives',
+              message: 'Errore di mapping strutturale per dormant_objectives.',
+              cause: e,
+            );
+      _report(ConfigDiagnostic(
+        severity: ConfigDiagnosticSeverity.warning,
+        code: ConfigDiagnosticCode.mappingFailed,
+        path: path,
+        operation: 'loadDormantObjectives',
+        message: exc.message,
+        error: exc,
+        stackTrace: stack,
+        fallbackUsed: true,
+      ));
+      return _getDormantObjectivesFallback();
+    }
+  }
+
+  static List<Map<String, dynamic>> _getDormantObjectivesFallback() {
     final Map<String, dynamic> data = jsonDecode(_defaultDormantObjectivesJson);
     final list = data['dormant_objectives'] as List? ?? const [];
     return list.map((e) => Map<String, dynamic>.from(e)).toList();

@@ -18,24 +18,26 @@ class FileSystemConfigSource implements ConfigSource {
 
   @override
   Future<String?> loadString(String path) async {
-    try {
-      final file = File(path);
-      if (await file.exists()) {
-        return await file.readAsString();
+    final file = File(path);
+    if (!await file.exists()) {
+      if (await Directory(path).exists()) {
+        throw FileSystemException('Is a directory', path);
       }
-    } catch (_) {}
-    return null;
+      return null;
+    }
+    return await file.readAsString();
   }
 
   @override
   String? loadStringSync(String path) {
-    try {
-      final file = File(path);
-      if (file.existsSync()) {
-        return file.readAsStringSync();
+    final file = File(path);
+    if (!file.existsSync()) {
+      if (Directory(path).existsSync()) {
+        throw FileSystemException('Is a directory', path);
       }
-    } catch (_) {}
-    return null;
+      return null;
+    }
+    return file.readAsStringSync();
   }
 }
 

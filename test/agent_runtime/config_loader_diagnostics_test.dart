@@ -151,10 +151,6 @@ void main() {
             collectingSink.diagnostics
                 .any((d) => d.code == ConfigDiagnosticCode.sourceReturnedNull),
             isTrue);
-        expect(
-            collectingSink.diagnostics
-                .any((d) => d.code == ConfigDiagnosticCode.fallbackUsed),
-            isTrue);
       });
 
       test(
@@ -170,10 +166,6 @@ void main() {
         expect(
             collectingSink.diagnostics
                 .any((d) => d.code == ConfigDiagnosticCode.syncLoadUnsupported),
-            isTrue);
-        expect(
-            collectingSink.diagnostics
-                .any((d) => d.code == ConfigDiagnosticCode.fallbackUsed),
             isTrue);
       });
 
@@ -193,10 +185,6 @@ void main() {
         expect(
             collectingSink.diagnostics
                 .any((d) => d.code == ConfigDiagnosticCode.syncLoadFailed),
-            isTrue);
-        expect(
-            collectingSink.diagnostics
-                .any((d) => d.code == ConfigDiagnosticCode.fallbackUsed),
             isTrue);
       });
 
@@ -263,7 +251,7 @@ void main() {
         });
 
         test(
-            'mapping invalid structure -> minimal fallback and mappingFailed diagnostic',
+            'mapping invalid structure -> minimal fallback and invalidStructure diagnostic',
             () {
           fakeSource.syncValue = '["not", "a", "map"]';
           final res = GameConfigLoader.loadIdentity('panopticon',
@@ -272,7 +260,7 @@ void main() {
           expect(res.profile, isEmpty);
           expect(
               collectingSink.diagnostics
-                  .any((d) => d.code == ConfigDiagnosticCode.mappingFailed),
+                  .any((d) => d.code == ConfigDiagnosticCode.invalidStructure),
               isTrue);
         });
       });
@@ -308,8 +296,38 @@ void main() {
           );
           expect(
               collectingSink.diagnostics
-                  .any((d) => d.code == ConfigDiagnosticCode.invalidStructure),
+                  .any((d) => d.code == ConfigDiagnosticCode.mappingFailed),
               isTrue);
+        });
+
+        test(
+            'invalid structure throws ConfigMappingException with cause and causeStackTrace preserved',
+            () {
+          fakeSource.syncValue =
+              '{"identity_id": 1234}'; // wrong types to cause TypeError inside fromJson
+          try {
+            GameConfigLoader.loadIdentityDefinition('panopticon',
+                customPath: 'id_def.json');
+            fail('Expected ConfigMappingException');
+          } on ConfigMappingException catch (e) {
+            expect(e.cause, isNotNull);
+            expect(e.causeStackTrace, isNotNull);
+          }
+        });
+
+        test(
+            'valid JSON syntax but invalid DTO structure produces ConfigMappingException, not ConfigParseException',
+            () {
+          fakeSource.syncValue =
+              '{"identity_id": 1234}'; // Valid JSON syntax, but invalid DTO mapping type
+          try {
+            GameConfigLoader.loadIdentityDefinition('panopticon',
+                customPath: 'id_def.json');
+            fail('Expected ConfigMappingException');
+          } on ConfigException catch (e) {
+            expect(e, isA<ConfigMappingException>());
+            expect(e, isNot(isA<ConfigParseException>()));
+          }
         });
       });
 
@@ -398,14 +416,14 @@ void main() {
               isTrue);
         });
 
-        test('root not map -> fallback embedded and mappingFailed', () {
+        test('root not map -> fallback embedded and invalidStructure', () {
           fakeSource.syncValue = '["not", "a", "map"]';
           final res = GameConfigLoader.loadDormantObjectives(
               customPath: 'dormant.json');
           expect(res, isNotEmpty);
           expect(
               collectingSink.diagnostics
-                  .any((d) => d.code == ConfigDiagnosticCode.mappingFailed),
+                  .any((d) => d.code == ConfigDiagnosticCode.invalidStructure),
               isTrue);
         });
 

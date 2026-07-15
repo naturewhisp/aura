@@ -4,12 +4,14 @@ sealed class ConfigException implements Exception {
   final String operation;
   final String message;
   final Object? cause;
+  final StackTrace? causeStackTrace;
 
   const ConfigException({
     required this.path,
     required this.operation,
     required this.message,
     this.cause,
+    this.causeStackTrace,
   });
 
   @override
@@ -24,6 +26,7 @@ final class ConfigSourceException extends ConfigException {
     required super.operation,
     required super.message,
     super.cause,
+    super.causeStackTrace,
   });
 }
 
@@ -34,6 +37,7 @@ final class ConfigParseException extends ConfigException {
     required super.operation,
     required super.message,
     super.cause,
+    super.causeStackTrace,
   });
 }
 
@@ -44,5 +48,6 @@ final class ConfigMappingException extends ConfigException {
     required super.operation,
     required super.message,
     super.cause,
+    super.causeStackTrace,
   });
 }

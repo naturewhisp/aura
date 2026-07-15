@@ -73,7 +73,8 @@ final class ActiveSession {
           );
         }
         if (rawVer < 1 || rawVer > currentSchemaVersion) {
-          throw FormatException("Unsupported active session schema version: $rawVer");
+          throw FormatException(
+              "Unsupported active session schema version: $rawVer");
         }
 
         final rawState = json['state'];

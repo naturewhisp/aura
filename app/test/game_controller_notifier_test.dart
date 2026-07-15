@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aura_core/aura_core.dart';
+import 'package:aura_app/src/session/active_session.dart';
+import 'package:aura_app/src/session/file_session_repository.dart';
+import 'package:aura_app/src/session/session_repository.dart';
 import 'package:aura_app/src/settings/app_settings.dart';
 import 'package:aura_app/src/settings/settings_repository.dart';
 import 'package:aura_app/src/state_management/game_controller_notifier.dart';
@@ -11,6 +14,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   _settingsTests();
+  _sessionTests();
 
   group('GameControllerNotifier - Slash Commands & Override Tests', () {
     late MockInferenceBridge mockApiBridge;
@@ -1469,8 +1473,371 @@ void _settingsTests() {
   });
 }
 
-// Invochiamo il gruppo settings dalla funzione main originale
-// tramite un'aggiunta alla fine del main() — vedi punto di iniezione.
+// =============================================================================
+// Fase 7 — Typed SessionRepository
+// =============================================================================
+
+/// Implementazione fake del [SessionRepository] per i test del notifier.
+final class FakeSessionRepository implements SessionRepository {
+  ActiveSession? loaded;
+  ActiveSession? saved;
+  Object? existsError;
+  Object? loadError;
+  Object? saveError;
+  Object? deleteError;
+
+  bool existsValue = false;
+
+  int existsCallCount = 0;
+  int loadCallCount = 0;
+  int saveCallCount = 0;
+  int deleteCallCount = 0;
+
+  final Completer<void> _saveCompleter = Completer<void>();
+  final Completer<void> _deleteCompleter = Completer<void>();
+
+  Future<void> get savedOnce => _saveCompleter.future;
+  Future<void> get deletedOnce => _deleteCompleter.future;
+
+  @override
+  Future<bool> exists() async {
+    existsCallCount++;
+    if (existsError != null) throw existsError!;
+    return existsValue;
+  }
+
+  @override
+  Future<ActiveSession?> load() async {
+    loadCallCount++;
+    if (loadError != null) throw loadError!;
+    return loaded;
+  }
+
+  @override
+  Future<void> save(ActiveSession session) async {
+    saveCallCount++;
+    if (saveError != null) throw saveError!;
+    saved = session;
+    existsValue = true;
+    if (!_saveCompleter.isCompleted) _saveCompleter.complete();
+  }
+
+  @override
+  Future<void> delete() async {
+    deleteCallCount++;
+    if (deleteError != null) throw deleteError!;
+    saved = null;
+    existsValue = false;
+    if (!_deleteCompleter.isCompleted) _deleteCompleter.complete();
+  }
+}
+
+void _sessionTests() {
+  group('GameControllerNotifier — Fase 7: SessionRepository', () {
+    late MockInferenceBridge mockBridge;
+    late GameState baseState;
+    late Directory tempDir;
+
+    setUp(() async {
+      mockBridge = MockInferenceBridge(
+        mockStructuredResponse: const {
+          'delta_alert': 0,
+          'delta_imperative': 5,
+          'delta_control': 5,
+          'delta_dissonance': 5,
+          'creativity_index': 2,
+          'injection_risk': 0,
+          'semantic_category': 'authority_framing',
+        },
+        mockTextResponse: '<dialogo>PANOPTICON: Risposta di test.</dialogo>',
+      );
+      baseState = GameState.initial(
+        sessionId: 'test-session-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      );
+      tempDir =
+          await Directory.systemTemp.createTemp('notifier_session_tests_');
+    });
+
+    tearDown(() async {
+      if (tempDir.existsSync()) {
+        await tempDir.delete(recursive: true);
+      }
+    });
+
+    GameControllerNotifier makeNotifier({
+      FakeSettingsRepository? settingsRepo,
+      SessionRepository? sessionRepo,
+      String? customPath,
+    }) {
+      return GameControllerNotifier(
+        bridge: mockBridge,
+        initialState: baseState,
+        settingsRepository: settingsRepo ?? FakeSettingsRepository(),
+        sessionRepository: sessionRepo ?? FakeSessionRepository(),
+        customStoragePath: customPath ?? tempDir.path,
+      );
+    }
+
+    test(
+        '1. saveActiveSession salva state, difficultyLevel, hintsUsed e schemaVersion 1',
+        () async {
+      final repo = FakeSessionRepository();
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      notifier.difficultyLevel = 'hard';
+      notifier.hintsUsed = 2;
+
+      await notifier.saveActiveSession();
+
+      expect(repo.saveCallCount, equals(1));
+      expect(repo.saved, isNotNull);
+      expect(repo.saved!.schemaVersion, equals(1));
+      expect(repo.saved!.difficultyLevel, equals('hard'));
+      expect(repo.saved!.hintsUsed, equals(2));
+      expect(repo.saved!.state.sessionId, equals(baseState.sessionId));
+    });
+
+    test(
+        '2. save riuscito imposta activeSessionExists a true ed emette notifyListeners',
+        () async {
+      final repo = FakeSessionRepository();
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      var notified = false;
+      notifier.addListener(() {
+        notified = true;
+      });
+
+      await notifier.saveActiveSession();
+
+      expect(notifier.activeSessionExists, isTrue);
+      expect(notified, isTrue);
+    });
+
+    test(
+        '3. save fallito non propaga errore ed activeSessionExists rimane invariato',
+        () async {
+      final repo = FakeSessionRepository()
+        ..saveError = const FileSystemException('I/O error');
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      expect(notifier.activeSessionExists, isFalse);
+
+      await expectLater(notifier.saveActiveSession(), completes);
+
+      expect(notifier.activeSessionExists, isFalse);
+    });
+
+    test('4. delete riuscito aggiorna il flag ed emette notifyListeners',
+        () async {
+      final repo = FakeSessionRepository()..existsValue = true;
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      // Impostiamo prima a true simulando che esista
+      await notifier.saveActiveSession();
+      expect(notifier.activeSessionExists, isTrue);
+
+      var notified = false;
+      notifier.addListener(() {
+        notified = true;
+      });
+
+      await notifier.deleteActiveSession();
+
+      expect(repo.deleteCallCount, equals(1)); // una in deleteActiveSession
+      expect(notifier.activeSessionExists, isFalse);
+      expect(notified, isTrue);
+    });
+
+    test('5. delete fallito non propaga errore e non altera il flag', () async {
+      final repo = FakeSessionRepository()..existsValue = true;
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      await notifier.saveActiveSession();
+      expect(notifier.activeSessionExists, isTrue);
+
+      repo.deleteError = const FileSystemException('I/O error');
+
+      await expectLater(notifier.deleteActiveSession(), completes);
+
+      expect(notifier.activeSessionExists, isTrue);
+    });
+
+    test(
+        '6. checkActiveSessionExists interroga il repository e gestisce gli errori',
+        () async {
+      final repo = FakeSessionRepository()..existsValue = true;
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      expect(await notifier.checkActiveSessionExists(), isTrue);
+
+      repo.existsValue = false;
+      expect(await notifier.checkActiveSessionExists(), isFalse);
+
+      repo.existsError = const FileSystemException('I/O error');
+      expect(await notifier.checkActiveSessionExists(), isFalse);
+    });
+
+    test(
+        '7. resumeGame con null non esegue il ripristino e non naviga al terminale',
+        () async {
+      final repo = FakeSessionRepository()..loaded = null;
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      final prevScreen = notifier.currentScreen;
+
+      await notifier.resumeGame();
+
+      expect(notifier.currentScreen, equals(prevScreen));
+      expect(notifier.gameStateNotifier.value.sessionId,
+          equals(baseState.sessionId));
+    });
+
+    test(
+        '8. resumeGame applica correttamente tutti i campi dello stato e il controller',
+        () async {
+      final savedState = baseState.copyWith(
+        sessionId: 'restored-session-123',
+        turnCount: 4,
+        metrics: const GameMetrics(
+          alertLevel: 10,
+          imperativePillar: 60,
+          controlPillar: 70,
+          dissonancePillar: 80,
+          resonance: 1.5,
+        ),
+      );
+
+      final repo = FakeSessionRepository()
+        ..loaded = ActiveSession.current(
+          state: savedState,
+          difficultyLevel: 'hard',
+          hintsUsed: 3,
+        );
+
+      final notifier = makeNotifier(sessionRepo: repo);
+      await notifier.resumeGame();
+
+      expect(notifier.gameStateNotifier.value.sessionId,
+          equals('restored-session-123'));
+      expect(notifier.difficultyLevel, equals('hard'));
+      expect(notifier.hintsUsed, equals(3));
+      expect(notifier.controller.difficultyLevel, equals('hard'));
+      expect(notifier.currentScreen, equals('terminal'));
+    });
+
+    test('9. resumeGame mantiene compatibilità con il ReplayLogger se presente',
+        () async {
+      final savedState = baseState.copyWith(sessionId: 'session-with-replay');
+      final repo = FakeSessionRepository()
+        ..loaded = ActiveSession.current(
+          state: savedState,
+          difficultyLevel: 'standard',
+          hintsUsed: 0,
+        );
+
+      // Scriviamo un file replay finto
+      final replaysDir = Directory('${tempDir.path}/replays');
+      await replaysDir.create(recursive: true);
+      final replayFile =
+          File('${replaysDir.path}/play_session_session-with-replay.json');
+
+      final replayData = {
+        'session_id': 'session-with-replay',
+        'entries': [
+          {
+            'turn_id': 1,
+            'user_input': 'command',
+            'actor_response': 'response',
+            'timestamp': '2026-07-15T12:00:00Z',
+          }
+        ]
+      };
+      await replayFile.writeAsString(jsonEncode(replayData));
+
+      final notifier = makeNotifier(sessionRepo: repo);
+      await notifier.resumeGame();
+
+      expect(notifier.logger.sessionId, equals('session-with-replay'));
+      expect(notifier.logger.entries.length, equals(1));
+      expect(notifier.logger.entries.first.userInput, equals('command'));
+    });
+
+    test('10. resumeGame con errore di caricamento non propaga', () async {
+      final repo = FakeSessionRepository()
+        ..loadError = const FormatException('invalid json');
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      await expectLater(notifier.resumeGame(), completes);
+    });
+
+    test('11. startNewGame chiama delete sul repository e azzera gli hints',
+        () async {
+      final repo = FakeSessionRepository();
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      notifier.hintsUsed = 5;
+
+      await notifier.startNewGame(difficulty: 'easy');
+
+      expect(repo.deleteCallCount, equals(1)); // una in startNewGame
+      expect(notifier.hintsUsed, equals(0));
+      expect(notifier.difficultyLevel, equals('easy'));
+    });
+
+    test('12. startTutorial chiama delete sul repository e avvia il tutorial',
+        () async {
+      final repo = FakeSessionRepository();
+      final notifier = makeNotifier(sessionRepo: repo);
+
+      await notifier.startTutorial();
+
+      expect(repo.deleteCallCount, equals(1)); // una in startTutorial
+      expect(notifier.gameStateNotifier.value.targetObjectiveId,
+          equals('sindrome_tutorial'));
+    });
+
+    // -------------------------------------------------------------------------
+    // Test di compatibilità ed end-to-end con FileSessionRepository reale
+    // -------------------------------------------------------------------------
+    test(
+        '13. E2E: Legge envelope legacy e migra a schema_version = 1 al salvataggio',
+        () async {
+      final realRepo = FileSessionRepository(basePath: tempDir.path);
+      final notifier = makeNotifier(sessionRepo: realRepo);
+
+      // Scriviamo manualmente il file legacy pre-versionato
+      final file = File('${tempDir.path}/active_session.json');
+      final legacyEnvelope = {
+        'state': baseState.copyWith(sessionId: 'legacy-e2e').toJson(),
+        'difficulty_level': 'hard',
+        'hints_used': 3,
+      };
+      await file.writeAsString(jsonEncode(legacyEnvelope));
+
+      // Ripristiniamo la sessione
+      await notifier.resumeGame();
+
+      expect(notifier.gameStateNotifier.value.sessionId, equals('legacy-e2e'));
+      expect(notifier.difficultyLevel, equals('hard'));
+      expect(notifier.hintsUsed, equals(3));
+
+      // Salviamo nuovamente per migrare al nuovo formato
+      await notifier.saveActiveSession();
+
+      // Verifichiamo il file su disco
+      final updatedContent = await file.readAsString();
+      final updatedJson = jsonDecode(updatedContent) as Map<String, dynamic>;
+
+      expect(updatedJson['schema_version'], equals(1));
+      expect(updatedJson['difficulty_level'], equals('hard'));
+      expect(updatedJson['hints_used'], equals(3));
+      expect(updatedJson['state']['session_id'], equals('legacy-e2e'));
+    });
+  });
+}
 
 class ControllableInferenceBridge implements InferenceBridge {
   final Completer<Map<String, dynamic>> evaluatorCompleter =

@@ -6,6 +6,9 @@ import 'package:flutter/widgets.dart';
 import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 import 'package:aura_app/src/audio/audio_scene.dart';
+import 'package:aura_app/src/session/active_session.dart';
+import 'package:aura_app/src/session/file_session_repository.dart';
+import 'package:aura_app/src/session/session_repository.dart';
 import 'package:aura_app/src/settings/app_settings.dart';
 import 'package:aura_app/src/settings/file_settings_repository.dart';
 import 'package:aura_app/src/settings/settings_repository.dart';
@@ -280,10 +283,13 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Repository per la persistenza delle impostazioni.
   late final SettingsRepository _settingsRepository;
 
+  /// Repository per la persistenza della sessione attiva.
+  late final SessionRepository _sessionRepository;
+
   /// Crea un notifier di gestione dello stato a partire dallo stato iniziale e dal bridge.
   ///
-  /// Accetta un [settingsRepository] opzionale per l'iniezione della dipendenza nei test.
-  /// Se non fornito, utilizza [FileSettingsRepository] con il percorso canonico.
+  /// Accetta un [settingsRepository] e un [sessionRepository] opzionali per l'iniezione della dipendenza nei test.
+  /// Se non forniti, utilizza rispettivamente [FileSettingsRepository] e [FileSessionRepository] con il percorso canonico.
   GameControllerNotifier({
     this.controller = const GameController(),
     this.promptBuilder = const PromptBuilder(),
@@ -292,6 +298,7 @@ class GameControllerNotifier extends ChangeNotifier {
     required GameState initialState,
     String? customStoragePath,
     SettingsRepository? settingsRepository,
+    SessionRepository? sessionRepository,
   }) : _storagePath = customStoragePath ??
             ((Platform.environment.containsKey('FLUTTER_TEST') ||
                     Platform.environment.containsKey('DART_TEST'))
@@ -299,6 +306,8 @@ class GameControllerNotifier extends ChangeNotifier {
                 : _getAppDataPathStatic()) {
     _settingsRepository =
         settingsRepository ?? FileSettingsRepository(basePath: _storagePath);
+    _sessionRepository =
+        sessionRepository ?? FileSessionRepository(basePath: _storagePath);
     gameStateNotifier = ValueNotifier<GameState>(initialState);
     logger = ReplayLogger(sessionId: initialState.sessionId);
 
@@ -979,144 +988,9 @@ class GameControllerNotifier extends ChangeNotifier {
     return path ?? "replays";
   }
 
-  /// Salva lo stato della sessione corrente nel file active_session.json.
-  Future<void> saveActiveSession() async {
-    try {
-      final baseDir = _getAppDataPath();
-      final dir = Directory(baseDir);
-      if (!dir.existsSync()) {
-        dir.createSync(recursive: true);
-      }
-      final file = File("${dir.path}/active_session.json");
-      final sessionData = {
-        'state': gameStateNotifier.value.toJson(),
-        'difficulty_level': difficultyLevel,
-        'hints_used': hintsUsed,
-      };
-      await file.writeAsString(jsonEncode(sessionData));
-      debugPrint("[AUTO-SAVE] Sessione attiva salvata in: ${file.path}");
-
-      _activeSessionExists = true;
-      notifyListeners();
-    } catch (e) {
-      debugPrint("[AUTO-SAVE] Errore durante il salvataggio: $e");
-    }
-  }
-
-  /// Elimina il file active_session.json per invalidare la sessione attiva.
-  Future<void> deleteActiveSession() async {
-    try {
-      final baseDir = _getAppDataPath();
-      final file = File("$baseDir/active_session.json");
-      if (await file.exists()) {
-        await file.delete();
-        debugPrint("[AUTO-SAVE] Sessione attiva eliminata.");
-      }
-      _activeSessionExists = false;
-      notifyListeners();
-    } catch (e) {
-      debugPrint("[AUTO-SAVE] Errore durante l'eliminazione: $e");
-    }
-  }
-
-  /// Verifica se esiste un file active_session.json.
-  Future<bool> checkActiveSessionExists() async {
-    try {
-      final baseDir = _getAppDataPath();
-      final file = File("$baseDir/active_session.json");
-      return await file.exists();
-    } catch (_) {
-      return false;
-    }
-  }
-
-  /// Ripristina lo stato del gioco a partire dal file active_session.json.
-  Future<void> resumeGame() async {
-    _invalidatePendingOperations();
-    try {
-      finalDiscursiveReport = null;
-      final baseDir = _getAppDataPath();
-      final file = File("$baseDir/active_session.json");
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final jsonMap = jsonDecode(content) as Map<String, dynamic>;
-
-        final GameState state;
-        if (jsonMap.containsKey('state')) {
-          state = GameState.fromJson(jsonMap['state']);
-          difficultyLevel =
-              jsonMap['difficulty_level'] as String? ?? 'standard';
-          hintsUsed = jsonMap['hints_used'] as int? ?? 0;
-        } else {
-          state = GameState.fromJson(jsonMap);
-          difficultyLevel = 'standard';
-          hintsUsed = 0;
-        }
-
-        final preset = DifficultyConfig.getPreset(difficultyLevel);
-        controller = GameController(
-          defeatAlertThreshold: preset.defeatAlertThreshold,
-          alertMultiplier: preset.alertMultiplier,
-          pillarMultiplier: preset.pillarMultiplier,
-          safetyOverrideThreshold: preset.safetyOverrideThreshold,
-          directPushAlertFloor: preset.directPushAlertFloor,
-          metaReferenceAlertPenalty: preset.metaReferenceAlertPenalty,
-          requiredVictoryHiddenTags: preset.requiredVictoryHiddenTags,
-          maxPositivePillarGainPerTurn: preset.maxPositivePillarGainPerTurn,
-          difficultyLevel: preset.difficultyLevel,
-          minAveragePillarsForVictory: preset.minAveragePillarsForVictory,
-          minSinglePillarForVictory: preset.minSinglePillarForVictory,
-          resonanceIncrement: preset.resonanceIncrement,
-          resonanceMax: preset.resonanceMax,
-          maxAlertRecoveryPerTurn: preset.maxAlertRecoveryPerTurn,
-          deceptionLayerEnabled: preset.deceptionLayerEnabled,
-          maxActiveDeceptionTurns: preset.maxActiveDeceptionTurns,
-          falseConcessionAlertPenalty: preset.falseConcessionAlertPenalty,
-          logicalTrapAlertPenalty: preset.logicalTrapAlertPenalty,
-          deceptionResonancePenalty: preset.deceptionResonancePenalty,
-          deceptionCooldownTurns: preset.deceptionCooldownTurns,
-          maxDeceptionEventsPerSession: preset.maxDeceptionEventsPerSession,
-        );
-
-        gameStateNotifier.value = state;
-
-        // Ripristina le voci di ReplayLogger se il file della sessione esiste
-        final replayFile =
-            File("$baseDir/replays/play_session_${state.sessionId}.json");
-        if (await replayFile.exists()) {
-          final replayContent = await replayFile.readAsString();
-          logger = ReplayLogger.fromJson(jsonDecode(replayContent));
-        } else {
-          logger = ReplayLogger(sessionId: state.sessionId);
-        }
-
-        // Ricostruisce lo stato di stabilità della griglia leggendo il GameState pre-esistente
-        _hasExceededControl50 = state.controlPeak >= 50;
-        _isGridStable = state.gridStable;
-
-        switchScreen("terminal");
-        debugPrint(
-            "[AUTO-SAVE] Connessione ripristinata per la sessione: ${state.sessionId}");
-      }
-    } catch (e) {
-      debugPrint("[AUTO-SAVE] Errore durante il ripristino della sessione: $e");
-    }
-  }
-
-  /// Avvia una nuova sessione di gioco pulita, eliminando eventuali salvataggi precedenti.
-  Future<void> startNewGame({String? difficulty}) async {
-    _invalidatePendingOperations();
-    finalDiscursiveReport = null;
-    await deleteActiveSession();
-    hintsUsed = 0;
-    lastInferenceDuration = 0.0;
-    lastTokensPerSecond = 0.0;
-    _isGridStable = true;
-    _hasExceededControl50 = false;
-
-    difficultyLevel = difficulty ?? defaultDifficulty;
-    final preset = DifficultyConfig.getPreset(difficultyLevel);
-    controller = GameController(
+  GameController _buildControllerForDifficulty(String level) {
+    final preset = DifficultyConfig.getPreset(level);
+    return GameController(
       defeatAlertThreshold: preset.defeatAlertThreshold,
       alertMultiplier: preset.alertMultiplier,
       pillarMultiplier: preset.pillarMultiplier,
@@ -1139,6 +1013,97 @@ class GameControllerNotifier extends ChangeNotifier {
       deceptionCooldownTurns: preset.deceptionCooldownTurns,
       maxDeceptionEventsPerSession: preset.maxDeceptionEventsPerSession,
     );
+  }
+
+  /// Salva lo stato della sessione corrente tramite il repository attivo.
+  Future<void> saveActiveSession() async {
+    try {
+      final session = ActiveSession.current(
+        state: gameStateNotifier.value,
+        difficultyLevel: difficultyLevel,
+        hintsUsed: hintsUsed,
+      );
+      await _sessionRepository.save(session);
+      _activeSessionExists = true;
+      notifyListeners();
+      debugPrint("[AUTO-SAVE] Sessione attiva salvata.");
+    } catch (e) {
+      debugPrint("[AUTO-SAVE] Errore durante il salvataggio: $e");
+    }
+  }
+
+  /// Elimina la sessione attiva corrente tramite il repository.
+  Future<void> deleteActiveSession() async {
+    try {
+      await _sessionRepository.delete();
+      _activeSessionExists = false;
+      notifyListeners();
+      debugPrint("[AUTO-SAVE] Sessione attiva eliminata.");
+    } catch (e) {
+      debugPrint("[AUTO-SAVE] Errore durante l'eliminazione: $e");
+    }
+  }
+
+  /// Verifica se esiste una sessione attiva tramite il repository.
+  Future<bool> checkActiveSessionExists() async {
+    try {
+      return await _sessionRepository.exists();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Ripristina lo stato del gioco a partire dalla sessione caricata dal repository.
+  Future<void> resumeGame() async {
+    _invalidatePendingOperations();
+    try {
+      finalDiscursiveReport = null;
+      final session = await _sessionRepository.load();
+      if (session == null) {
+        return;
+      }
+
+      final state = session.state;
+      difficultyLevel = session.difficultyLevel;
+      hintsUsed = session.hintsUsed;
+
+      controller = _buildControllerForDifficulty(difficultyLevel);
+      gameStateNotifier.value = state;
+
+      final baseDir = _getAppDataPath();
+      final replayFile =
+          File("$baseDir/replays/play_session_${state.sessionId}.json");
+      if (await replayFile.exists()) {
+        final replayContent = await replayFile.readAsString();
+        logger = ReplayLogger.fromJson(jsonDecode(replayContent));
+      } else {
+        logger = ReplayLogger(sessionId: state.sessionId);
+      }
+
+      _hasExceededControl50 = state.controlPeak >= 50;
+      _isGridStable = state.gridStable;
+
+      switchScreen("terminal");
+      debugPrint(
+          "[AUTO-SAVE] Connessione ripristinata per la sessione: ${state.sessionId}");
+    } catch (e) {
+      debugPrint("[AUTO-SAVE] Errore durante il ripristino della sessione: $e");
+    }
+  }
+
+  /// Avvia una nuova sessione di gioco pulita, eliminando eventuali salvataggi precedenti.
+  Future<void> startNewGame({String? difficulty}) async {
+    _invalidatePendingOperations();
+    finalDiscursiveReport = null;
+    await deleteActiveSession();
+    hintsUsed = 0;
+    lastInferenceDuration = 0.0;
+    lastTokensPerSecond = 0.0;
+    _isGridStable = true;
+    _hasExceededControl50 = false;
+
+    difficultyLevel = difficulty ?? defaultDifficulty;
+    controller = _buildControllerForDifficulty(difficultyLevel);
 
     final state = GameState.initial(
       sessionId: "app-session-${DateTime.now().millisecondsSinceEpoch}",

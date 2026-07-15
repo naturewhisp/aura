@@ -3,6 +3,22 @@ import 'aura_agent.dart';
 import '../../models/actor_cue.dart';
 import '../../models/actor_input.dart';
 import '../agent_card.dart';
+import '../inference_timeout_exception.dart';
+
+/// Helper generico per applicare il timeout alle chiamate di inferenza.
+Future<T> _withInferenceTimeout<T>({
+  required Future<T> future,
+  required Duration? timeout,
+  required InferenceTimeoutException Function() onTimeout,
+}) {
+  if (timeout == null) {
+    return future;
+  }
+  return future.timeout(
+    timeout,
+    onTimeout: () => throw onTimeout(),
+  );
+}
 
 /// Agente responsabile della generazione di risposte testuali diegetiche e in-character.
 ///
@@ -50,12 +66,23 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
     );
 
     try {
-      final response = await context.inferenceBridge.generateText(
+      final primaryFuture = context.inferenceBridge.generateText(
         modelId: context.modelId,
         messages: messages,
         temperature: 0.7,
         maxTokens: context.conciseReasoning ? 800 : 4096,
         thinking: context.thinking,
+      );
+
+      final response = await _withInferenceTimeout(
+        future: primaryFuture,
+        timeout: context.inferenceTimeout,
+        onTimeout: () => InferenceTimeoutException(
+          agentId: id,
+          modelId: context.modelId,
+          timeout: context.inferenceTimeout!,
+          operation: 'generateText',
+        ),
       );
 
       return response.trim();

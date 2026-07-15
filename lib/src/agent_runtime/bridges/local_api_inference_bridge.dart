@@ -11,6 +11,10 @@ class LocalApiInferenceBridge implements InferenceBridge {
   /// L'URL di base del server API locale (es. 'http://127.0.0.1:1234').
   final String baseUrl;
 
+  /// Il timeout a livello di trasporto HTTP. Rappresenta una protezione ultima della connessione,
+  /// differente dal timeout applicativo degli agenti.
+  static const Duration httpTransportTimeout = Duration(seconds: 300);
+
   const LocalApiInferenceBridge({
     this.baseUrl = "http://127.0.0.1:1234",
   });
@@ -52,7 +56,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
           headers: {"Content-Type": "application/json"},
           body: body,
         )
-        .timeout(const Duration(seconds: 300));
+        .timeout(httpTransportTimeout);
 
     if (response.statusCode != 200) {
       throw Exception(
@@ -513,7 +517,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
           headers: {"Content-Type": "application/json"},
           body: body,
         )
-        .timeout(const Duration(seconds: 120));
+        .timeout(httpTransportTimeout);
 
     if (response.statusCode != 200) {
       throw Exception(

@@ -5,6 +5,22 @@ import '../../models/evaluator_delta.dart';
 import '../../models/turn_input.dart';
 import '../agent_card.dart';
 import '../bridges/rule_based_evaluator_bridge.dart';
+import '../inference_timeout_exception.dart';
+
+/// Helper generico per applicare il timeout alle chiamate di inferenza.
+Future<T> _withInferenceTimeout<T>({
+  required Future<T> future,
+  required Duration? timeout,
+  required InferenceTimeoutException Function() onTimeout,
+}) {
+  if (timeout == null) {
+    return future;
+  }
+  return future.timeout(
+    timeout,
+    onTimeout: () => throw onTimeout(),
+  );
+}
 
 /// Agente responsabile della valutazione dell'impatto matematico (delta) dell'input dell'utente.
 ///
@@ -105,18 +121,29 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
     );
 
     try {
-      // 2. Richiede l'output strutturato conforme allo schema JSON
-      final rawMap = await context.inferenceBridge.generateStructured(
+      // 2. Richiede l'output strutturato conforme allo schema JSON sotto il timeout configurato
+      final primaryFuture = context.inferenceBridge.generateStructured(
         modelId: context.modelId,
         messages: messages,
         schema: _getJsonSchema(),
         temperature: 0.0,
       );
 
+      final rawMap = await _withInferenceTimeout(
+        future: primaryFuture,
+        timeout: context.inferenceTimeout,
+        onTimeout: () => InferenceTimeoutException(
+          agentId: id,
+          modelId: context.modelId,
+          timeout: context.inferenceTimeout!,
+          operation: 'generateStructured',
+        ),
+      );
+
       // 3. Valida e applica i limiti (clamps) ai parametri
       return context.outputValidator.parseEvaluatorDelta(jsonEncode(rawMap));
     } catch (e) {
-      // 4. Esecuzione di fallback: ricorre alla valutazione basata su regole in caso di fallimento dell'LLM
+      // 4. Esecuzione di fallback: ricorre alla valutazione basata su regole in caso di fallimento o timeout dell'LLM
       try {
         final fallbackBridge = const RuleBasedEvaluatorBridge();
         final fallbackMap = await fallbackBridge.generateStructured(

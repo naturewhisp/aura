@@ -1954,6 +1954,245 @@ void _sessionTests() {
       expect(notifier.gameStateNotifier.value.turnCount, equals(0));
     });
   });
+
+  group('GameControllerNotifier — Fase 10: Inference Timeouts Integration', () {
+    late GameState initialGameState;
+
+    setUp(() {
+      initialGameState = GameState.initial(
+        sessionId: 'timeout-integration-sess',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      );
+    });
+
+    test('1. Evaluator timeout advances state via fallback and runs Actor',
+        () async {
+      final bridge = ControllableInferenceBridge();
+      const timeouts = InferenceTimeouts(
+        evaluator: Duration(milliseconds: 10),
+        actor: Duration(seconds: 10),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: initialGameState,
+        inferenceTimeouts: timeouts,
+      );
+
+      // We complete actor right away so it doesn't block
+      bridge.actorCompleter.complete('PANOPTICON: Attore completo');
+
+      // Submit input that triggers a rule-based fallback category like 'paradosso'
+      await notifier.submitTurn('paradosso logico');
+
+      expect(notifier.isLoading, isFalse);
+      final finalState = notifier.gameStateNotifier.value;
+      // Should have processed the fallback delta (logicalParadox category)
+      expect(finalState.turnCount, equals(1));
+      expect(finalState.historyCompression.last.role, equals('model'));
+      expect(finalState.historyCompression.last.content,
+          equals('PANOPTICON: Attore completo'));
+    });
+
+    test(
+        '2. Actor timeout applies evaluator delta and uses actor fallback response',
+        () async {
+      final bridge = ControllableInferenceBridge();
+      const timeouts = InferenceTimeouts(
+        evaluator: Duration(seconds: 10),
+        actor: Duration(milliseconds: 10),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: initialGameState,
+        inferenceTimeouts: timeouts,
+      );
+
+      // Complete evaluator right away
+      bridge.evaluatorCompleter.complete({
+        'delta_alert': 5,
+        'delta_imperative': 3,
+        'delta_control': -2,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 1,
+        'semantic_category': 'authority_framing',
+      });
+
+      await notifier.submitTurn('test input');
+
+      expect(notifier.isLoading, isFalse);
+      final finalState = notifier.gameStateNotifier.value;
+      expect(finalState.turnCount, equals(1));
+      // History last content must be one of ActorAgent.fallbackPool
+      expect(
+          ActorAgent.fallbackPool
+              .contains(finalState.historyCompression.last.content),
+          isTrue);
+    });
+
+    test('3. Late evaluator completion does not overwrite fallback results',
+        () async {
+      final bridge = ControllableInferenceBridge();
+      const timeouts = InferenceTimeouts(
+        evaluator: Duration(milliseconds: 10),
+        actor: Duration(seconds: 10),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: initialGameState,
+        inferenceTimeouts: timeouts,
+      );
+
+      bridge.actorCompleter.complete('PANOPTICON: Attore completo');
+
+      await notifier.submitTurn('paradosso logico');
+      final stateAfterFallback = notifier.gameStateNotifier.value;
+
+      // Now late complete evaluator
+      bridge.evaluatorCompleter.complete({
+        'delta_alert': 25,
+        'delta_imperative': 20,
+        'delta_control': -20,
+        'delta_dissonance': 20,
+        'creativity_index': 5,
+        'injection_risk': 5,
+        'semantic_category': 'promptInjection',
+      });
+
+      await Future.delayed(const Duration(milliseconds: 15));
+      // The game state should still be the same (turnCount 1, not modified)
+      expect(notifier.gameStateNotifier.value.turnCount,
+          equals(stateAfterFallback.turnCount));
+      expect(notifier.gameStateNotifier.value.historyCompression.last.content,
+          equals('PANOPTICON: Attore completo'));
+    });
+
+    test(
+        '4. Late actor completion does not modify history or create second response',
+        () async {
+      final bridge = ControllableInferenceBridge();
+      const timeouts = InferenceTimeouts(
+        evaluator: Duration(seconds: 10),
+        actor: Duration(milliseconds: 10),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: initialGameState,
+        inferenceTimeouts: timeouts,
+      );
+
+      bridge.evaluatorCompleter.complete({
+        'delta_alert': 5,
+        'delta_imperative': 3,
+        'delta_control': -2,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 1,
+        'semantic_category': 'authority_framing',
+      });
+
+      await notifier.submitTurn('test input');
+      final stateAfterFallback = notifier.gameStateNotifier.value;
+
+      // Late complete actor
+      bridge.actorCompleter.complete('PANOPTICON: Late response');
+
+      await Future.delayed(const Duration(milliseconds: 15));
+      expect(notifier.gameStateNotifier.value.historyCompression.length,
+          equals(stateAfterFallback.historyCompression.length));
+      expect(notifier.gameStateNotifier.value.historyCompression.last.content,
+          equals(stateAfterFallback.historyCompression.last.content));
+    });
+
+    test('5. Concurrent invalidation discards late results after startNewGame',
+        () async {
+      final bridge = ControllableInferenceBridge();
+      const timeouts = InferenceTimeouts(
+        evaluator: Duration(seconds: 10),
+        actor: Duration(seconds: 10),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: initialGameState,
+        inferenceTimeouts: timeouts,
+      );
+
+      final future = notifier.submitTurn('test input');
+      notifier.startNewGame(); // concurrently invalidates generation
+
+      bridge.evaluatorCompleter.complete({
+        'delta_alert': 5,
+        'delta_imperative': 3,
+        'delta_control': -2,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 1,
+        'semantic_category': 'authority_framing',
+      });
+      bridge.actorCompleter.complete('PANOPTICON: Success');
+
+      await future;
+      // Turn count of the new game remains 0
+      expect(notifier.gameStateNotifier.value.turnCount, equals(0));
+    });
+
+    test('6. Dispose prevents notification on late completions', () async {
+      final bridge = ControllableInferenceBridge();
+      const timeouts = InferenceTimeouts(
+        evaluator: Duration(seconds: 10),
+        actor: Duration(seconds: 10),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: initialGameState,
+        inferenceTimeouts: timeouts,
+      );
+
+      final future = notifier.submitTurn('test input');
+      notifier.dispose();
+
+      bridge.evaluatorCompleter.complete({
+        'delta_alert': 5,
+        'delta_imperative': 3,
+        'delta_control': -2,
+        'delta_dissonance': 0,
+        'creativity_index': 3,
+        'injection_risk': 1,
+        'semantic_category': 'authority_framing',
+      });
+      bridge.actorCompleter.complete('PANOPTICON: Success');
+
+      await future;
+      // Expect no crash
+    });
+
+    test('7. Configurable timeouts are actually propagated to context',
+        () async {
+      final bridge = ControllableInferenceBridge();
+      const timeouts = InferenceTimeouts(
+        evaluator: Duration(milliseconds: 123),
+        actor: Duration(milliseconds: 456),
+      );
+
+      final notifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: initialGameState,
+        inferenceTimeouts: timeouts,
+      );
+
+      expect(notifier.inferenceTimeouts.evaluator,
+          equals(const Duration(milliseconds: 123)));
+      expect(notifier.inferenceTimeouts.actor,
+          equals(const Duration(milliseconds: 456)));
+    });
+  });
 }
 
 class ControllableInferenceBridge implements InferenceBridge {

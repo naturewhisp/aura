@@ -38,6 +38,8 @@ export 'src/agent_runtime/config_diagnostic.dart';
 export 'src/agent_runtime/config_diagnostic_sink.dart';
 export 'src/agent_runtime/config_exception.dart';
 export 'src/agent_runtime/validators/panopticon_tone_validator.dart';
+export 'src/agent_runtime/inference_timeouts.dart';
+export 'src/agent_runtime/inference_timeout_exception.dart';
 
 // Concrete Agents
 export 'src/agent_runtime/agents/aura_agent.dart';

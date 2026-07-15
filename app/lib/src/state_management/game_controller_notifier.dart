@@ -290,6 +290,9 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Controller per la sessione di tutorial.
   final TutorialSessionController tutorialController;
 
+  /// Configurazione dei timeout per le inferenze degli agenti.
+  final InferenceTimeouts inferenceTimeouts;
+
   /// Crea un notifier di gestione dello stato a partire dallo stato iniziale e dal bridge.
   ///
   /// Accetta un [settingsRepository] e un [sessionRepository] opzionali per l'iniezione della dipendenza nei test.
@@ -304,6 +307,7 @@ class GameControllerNotifier extends ChangeNotifier {
     SettingsRepository? settingsRepository,
     SessionRepository? sessionRepository,
     this.tutorialController = const TutorialSessionController(),
+    this.inferenceTimeouts = InferenceTimeouts.defaults,
   }) : _storagePath = customStoragePath ??
             ((Platform.environment.containsKey('FLUTTER_TEST') ||
                     Platform.environment.containsKey('DART_TEST'))
@@ -692,6 +696,7 @@ class GameControllerNotifier extends ChangeNotifier {
         inferenceBridge: bridge,
         outputValidator: outputValidator,
         modelId: evaluatorModelId,
+        inferenceTimeout: inferenceTimeouts.evaluator,
       );
 
       // Run classification
@@ -813,6 +818,7 @@ class GameControllerNotifier extends ChangeNotifier {
           modelId: actorModelId,
           thinking: reasoningEnabled,
           conciseReasoning: reasoningEnabled && conciseReasoning,
+          inferenceTimeout: inferenceTimeouts.actor,
         );
 
         final actorStartTime = DateTime.now();

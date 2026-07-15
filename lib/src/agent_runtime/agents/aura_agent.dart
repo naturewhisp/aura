@@ -23,6 +23,9 @@ class AgentRuntimeContext {
   /// Flag per richiedere una Chain of Thought (CoT) concisa e limitata nel prompt.
   final bool conciseReasoning;
 
+  /// Timeout massimo opzionale per l'esecuzione dell'inferenza primaria dell'agente.
+  final Duration? inferenceTimeout;
+
   const AgentRuntimeContext({
     required this.promptBuilder,
     required this.inferenceBridge,
@@ -30,6 +33,7 @@ class AgentRuntimeContext {
     required this.modelId,
     this.thinking,
     this.conciseReasoning = false,
+    this.inferenceTimeout,
   });
 }
 

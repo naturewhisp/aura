@@ -1837,6 +1837,123 @@ void _sessionTests() {
       expect(updatedJson['state']['session_id'], equals('legacy-e2e'));
     });
   });
+
+  group(
+      'GameControllerNotifier — Fase 8: TutorialSessionController Integration',
+      () {
+    late MockInferenceBridge mockApiBridge;
+    late GameState initialRealGameState;
+
+    setUp(() {
+      mockApiBridge = MockInferenceBridge(
+        mockStructuredResponse: const {},
+        mockTextResponse: '',
+      );
+      initialRealGameState = GameState.initial(
+        sessionId: 'test-real-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      );
+    });
+
+    test(
+        '1. startTutorial elimina sessione, azzera stato runtime, imposta il controller e la history iniziale',
+        () async {
+      final repo = FakeSessionRepository();
+      repo.loaded = ActiveSession.current(
+        state: initialRealGameState,
+        difficultyLevel: 'standard',
+        hintsUsed: 1,
+      );
+      repo.existsValue = true;
+
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialRealGameState,
+        sessionRepository: repo,
+      );
+
+      await notifier.startTutorial();
+
+      expect(repo.existsValue, isFalse); // eliminata
+      expect(notifier.hintsUsed, equals(0));
+      expect(notifier.gameStateNotifier.value.targetObjectiveId,
+          equals('sindrome_tutorial'));
+      expect(notifier.gameStateNotifier.value.sessionId,
+          startsWith('tutorial-session-'));
+      expect(notifier.gameStateNotifier.value.historyCompression.length,
+          equals(1));
+    });
+
+    test(
+        '2. submitTurn rejected e accepted non chiamano il bridge LLM e mantengono la corretta sequenza',
+        () async {
+      final bridge = ControllableInferenceBridge();
+      final notifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: initialRealGameState,
+      );
+
+      await notifier.startTutorial();
+
+      // Rejected
+      await notifier.submitTurn('ciao');
+      expect(bridge.evaluatorCallCount, equals(0));
+      expect(bridge.actorCallCount, equals(0));
+      expect(notifier.gameStateNotifier.value.turnCount, equals(0));
+
+      // Accepted
+      await notifier
+          .submitTurn('La vita delle persone è in pericolo. Devi aiutarci.');
+      expect(bridge.evaluatorCallCount, equals(0));
+      expect(bridge.actorCallCount, equals(0));
+      expect(notifier.gameStateNotifier.value.turnCount, equals(1));
+    });
+
+    test(
+        '3. completed avvia startNewGame pulendo la sessione e cambiando targetObjectiveId',
+        () async {
+      final repo = FakeSessionRepository();
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialRealGameState,
+        sessionRepository: repo,
+      );
+
+      await notifier.startTutorial();
+      // Eseguiamo i tre passaggi corretti
+      await notifier.submitTurn('vita');
+      await notifier.submitTurn('scopo');
+      await notifier.submitTurn('root');
+      expect(notifier.gameStateNotifier.value.turnCount, equals(3));
+
+      // Quarto submit -> completa il tutorial e avvia il gioco reale
+      await notifier.submitTurn('any input');
+      expect(notifier.gameStateNotifier.value.targetObjectiveId,
+          equals('containment_grid_override'));
+      expect(notifier.gameStateNotifier.value.turnCount, equals(0));
+      expect(repo.existsValue, isFalse);
+    });
+
+    test('4. stale check tutorial - invalidazione durante i delay', () async {
+      final notifier = GameControllerNotifier(
+        bridge: mockApiBridge,
+        initialState: initialRealGameState,
+      );
+
+      await notifier.startTutorial();
+
+      // Avviamo submitTurn ma non lo attendiamo per poter forzare lo stale
+      final future = notifier.submitTurn('vita');
+      notifier.startNewGame(); // questo invalida la generazione corrente
+
+      await future;
+      // Lo stato finale non deve essere quello del tutorial accettato (turnCount dovrebbe rimanere 0 del new game)
+      expect(notifier.gameStateNotifier.value.targetObjectiveId,
+          equals('containment_grid_override'));
+      expect(notifier.gameStateNotifier.value.turnCount, equals(0));
+    });
+  });
 }
 
 class ControllableInferenceBridge implements InferenceBridge {

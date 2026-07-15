@@ -3,10 +3,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aura_core/aura_core.dart';
+import 'package:aura_app/src/settings/app_settings.dart';
+import 'package:aura_app/src/settings/settings_repository.dart';
 import 'package:aura_app/src/state_management/game_controller_notifier.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  _settingsTests();
 
   group('GameControllerNotifier - Slash Commands & Override Tests', () {
     late MockInferenceBridge mockApiBridge;
@@ -1109,6 +1113,364 @@ void main() {
     });
   });
 }
+
+// =============================================================================
+// Fase 6 — Typed SettingsRepository
+// =============================================================================
+
+/// Implementazione fake del [SettingsRepository] per i test del notifier.
+final class FakeSettingsRepository implements SettingsRepository {
+  AppSettings? loaded;
+  AppSettings? saved;
+  Object? loadError;
+  Object? saveError;
+  int loadCallCount = 0;
+  int saveCallCount = 0;
+
+  /// Completer che si completa quando [save] viene chiamato.
+  final Completer<void> _saveCompleter = Completer<void>();
+
+  /// Future che si risolve quando save è stato chiamato almeno una volta.
+  Future<void> get savedOnce => _saveCompleter.future;
+
+  @override
+  Future<AppSettings?> load() async {
+    loadCallCount++;
+    if (loadError != null) throw loadError!;
+    return loaded;
+  }
+
+  @override
+  Future<void> save(AppSettings settings) async {
+    saveCallCount++;
+    if (saveError != null) throw saveError!;
+    saved = settings;
+    if (!_saveCompleter.isCompleted) _saveCompleter.complete();
+  }
+}
+
+void _settingsTests() {
+  group('GameControllerNotifier — Fase 6: SettingsRepository', () {
+    late MockInferenceBridge mockBridge;
+    late GameState baseState;
+
+    setUp(() {
+      mockBridge = MockInferenceBridge(
+        mockStructuredResponse: const {
+          'delta_alert': 0,
+          'delta_imperative': 5,
+          'delta_control': 5,
+          'delta_dissonance': 5,
+          'creativity_index': 2,
+          'injection_risk': 0,
+          'semantic_category': 'authority_framing',
+        },
+        mockTextResponse: '<dialogo>PANOPTICON: Risposta di test.</dialogo>',
+      );
+      baseState = GameState.initial(
+        sessionId: 'test-session-settings',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'containment_grid_override',
+      );
+    });
+
+    GameControllerNotifier makeNotifier({
+      FakeSettingsRepository? repo,
+    }) {
+      return GameControllerNotifier(
+        bridge: mockBridge,
+        initialState: baseState,
+        settingsRepository: repo ?? FakeSettingsRepository(),
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // 1. loadSettings applica tutti i campi
+    // -------------------------------------------------------------------------
+    test('1. loadSettings applica tutti i campi al notifier', () async {
+      final repo = FakeSettingsRepository()
+        ..loaded = const AppSettings(
+          evaluatorModelId: 'custom/eval',
+          actorModelId: 'custom/actor',
+          reasoningEnabled: true,
+          conciseReasoning: true,
+          shaderEnabled: false,
+          audioEnabled: false,
+          defaultDifficulty: 'hard',
+          userCustomizedModels: false,
+        );
+
+      final notifier = makeNotifier(repo: repo);
+      await notifier.loadSettings();
+
+      expect(notifier.evaluatorModelId, equals('custom/eval'));
+      expect(notifier.actorModelId, equals('custom/actor'));
+      expect(notifier.reasoningEnabled, isTrue);
+      expect(notifier.conciseReasoning, isTrue);
+      expect(notifier.shaderEnabled, isFalse);
+      expect(notifier.audioEnabled, isFalse);
+      expect(notifier.defaultDifficulty, equals('hard'));
+    });
+
+    // -------------------------------------------------------------------------
+    // 2. loadSettings con null mantiene i valori correnti
+    // -------------------------------------------------------------------------
+    test('2. loadSettings con null dal repo mantiene i valori correnti',
+        () async {
+      final repo = FakeSettingsRepository()..loaded = null;
+      final notifier = makeNotifier(repo: repo);
+
+      // Valori di default del notifier prima del load
+      final defaultEval = notifier.evaluatorModelId;
+      final defaultActor = notifier.actorModelId;
+
+      await notifier.loadSettings();
+
+      expect(notifier.evaluatorModelId, equals(defaultEval));
+      expect(notifier.actorModelId, equals(defaultActor));
+    });
+
+    // -------------------------------------------------------------------------
+    // 3. loadSettings con errore non propaga
+    // -------------------------------------------------------------------------
+    test('3. loadSettings con errore non propaga eccezione', () async {
+      final repo = FakeSettingsRepository()
+        ..loadError = const FormatException('file corrotto');
+
+      final notifier = makeNotifier(repo: repo);
+
+      // Non deve lanciare
+      await expectLater(notifier.loadSettings(), completes);
+    });
+
+    // -------------------------------------------------------------------------
+    // 4. Custom models impostano activeProfile
+    // -------------------------------------------------------------------------
+    test('4. loadSettings con userCustomizedModels imposta activeProfile',
+        () async {
+      final repo = FakeSettingsRepository()
+        ..loaded = AppSettings.defaults().copyWith(userCustomizedModels: true);
+
+      final notifier = makeNotifier(repo: repo);
+      await notifier.loadSettings();
+
+      expect(notifier.activeProfile, equals('Configurazione Personalizzata'));
+    });
+
+    // -------------------------------------------------------------------------
+    // 5. difficultyLevel viene allineato a defaultDifficulty
+    // -------------------------------------------------------------------------
+    test('5. loadSettings allinea difficultyLevel a defaultDifficulty',
+        () async {
+      final repo = FakeSettingsRepository()
+        ..loaded = AppSettings.defaults().copyWith(defaultDifficulty: 'easy');
+
+      final notifier = makeNotifier(repo: repo);
+      await notifier.loadSettings();
+
+      expect(notifier.difficultyLevel, equals('easy'));
+      expect(notifier.defaultDifficulty, equals('easy'));
+    });
+
+    // -------------------------------------------------------------------------
+    // 6. saveSettings salva l'aggregate corrente completo
+    // -------------------------------------------------------------------------
+    test('6. saveSettings salva un AppSettings completo e coerente', () async {
+      final repo = FakeSettingsRepository();
+      final notifier = makeNotifier(repo: repo);
+
+      notifier.evaluatorModelId = 'my/eval';
+      notifier.actorModelId = 'my/actor';
+      notifier.shaderEnabled = false;
+      notifier.defaultDifficulty = 'hard';
+
+      await notifier.saveSettings();
+
+      expect(repo.saved, isNotNull);
+      expect(repo.saved!.evaluatorModelId, equals('my/eval'));
+      expect(repo.saved!.actorModelId, equals('my/actor'));
+      expect(repo.saved!.shaderEnabled, isFalse);
+      expect(repo.saved!.defaultDifficulty, equals('hard'));
+      expect(repo.saveCallCount, equals(1));
+    });
+
+    // -------------------------------------------------------------------------
+    // 7. saveSettings con errore non propaga
+    // -------------------------------------------------------------------------
+    test('7. saveSettings con errore non propaga eccezione', () async {
+      final repo = FakeSettingsRepository()
+        ..saveError = const FileSystemException('disco pieno');
+
+      final notifier = makeNotifier(repo: repo);
+
+      await expectLater(notifier.saveSettings(), completes);
+    });
+
+    // -------------------------------------------------------------------------
+    // 8. updateEvaluatorModel cambia valore, imposta custom, salva
+    // -------------------------------------------------------------------------
+    test('8. updateEvaluatorModel cambia valore, imposta custom e salva',
+        () async {
+      final repo = FakeSettingsRepository();
+      final notifier = makeNotifier(repo: repo);
+
+      notifier.updateEvaluatorModel('new/evaluator');
+      await repo.savedOnce;
+
+      expect(notifier.evaluatorModelId, equals('new/evaluator'));
+      expect(notifier.activeProfile, equals('Configurazione Personalizzata'));
+      expect(repo.saved!.evaluatorModelId, equals('new/evaluator'));
+      expect(repo.saved!.userCustomizedModels, isTrue);
+    });
+
+    // -------------------------------------------------------------------------
+    // 9. updateActorModel cambia valore, imposta custom, salva
+    // -------------------------------------------------------------------------
+    test('9. updateActorModel cambia valore, imposta custom e salva', () async {
+      final repo = FakeSettingsRepository();
+      final notifier = makeNotifier(repo: repo);
+
+      notifier.updateActorModel('new/actor');
+      await repo.savedOnce;
+
+      expect(notifier.actorModelId, equals('new/actor'));
+      expect(notifier.activeProfile, equals('Configurazione Personalizzata'));
+      expect(repo.saved!.actorModelId, equals('new/actor'));
+      expect(repo.saved!.userCustomizedModels, isTrue);
+    });
+
+    // -------------------------------------------------------------------------
+    // 10. updateDefaultDifficulty salva il nuovo default
+    // -------------------------------------------------------------------------
+    test('10. updateDefaultDifficulty salva il nuovo defaultDifficulty',
+        () async {
+      final repo = FakeSettingsRepository();
+      final notifier = makeNotifier(repo: repo);
+
+      notifier.updateDefaultDifficulty('easy');
+      await repo.savedOnce;
+
+      expect(notifier.defaultDifficulty, equals('easy'));
+      expect(repo.saved!.defaultDifficulty, equals('easy'));
+    });
+
+    // -------------------------------------------------------------------------
+    // 11. toggleReasoning salva
+    // -------------------------------------------------------------------------
+    test('11. toggleReasoning aggiorna il campo e salva', () async {
+      final repo = FakeSettingsRepository();
+      final notifier = makeNotifier(repo: repo);
+
+      notifier.toggleReasoning(true);
+      await repo.savedOnce;
+
+      expect(notifier.reasoningEnabled, isTrue);
+      expect(repo.saved!.reasoningEnabled, isTrue);
+    });
+
+    // -------------------------------------------------------------------------
+    // 12. toggleConciseReasoning salva
+    // -------------------------------------------------------------------------
+    test('12. toggleConciseReasoning aggiorna il campo e salva', () async {
+      final repo = FakeSettingsRepository();
+      final notifier = makeNotifier(repo: repo);
+
+      notifier.toggleConciseReasoning(true);
+      await repo.savedOnce;
+
+      expect(notifier.conciseReasoning, isTrue);
+      expect(repo.saved!.conciseReasoning, isTrue);
+    });
+
+    // -------------------------------------------------------------------------
+    // 13. toggleShader salva
+    // -------------------------------------------------------------------------
+    test('13. toggleShader aggiorna il campo e salva', () async {
+      final repo = FakeSettingsRepository();
+      final notifier = makeNotifier(repo: repo);
+
+      notifier.toggleShader(false);
+      await repo.savedOnce;
+
+      expect(notifier.shaderEnabled, isFalse);
+      expect(repo.saved!.shaderEnabled, isFalse);
+    });
+
+    // -------------------------------------------------------------------------
+    // 14. toggleAudio: audioEnabled, AudioManager, save
+    // -------------------------------------------------------------------------
+    test('14. toggleAudio aggiorna audioEnabled e salva', () async {
+      final repo = FakeSettingsRepository();
+      final notifier = makeNotifier(repo: repo);
+
+      await notifier.toggleAudio(false);
+
+      expect(notifier.audioEnabled, isFalse);
+      expect(repo.saved, isNotNull);
+      expect(repo.saved!.audioEnabled, isFalse);
+    });
+
+    // -------------------------------------------------------------------------
+    // 15. initializeModels: custom models non vengono sovrascritti dal router
+    // -------------------------------------------------------------------------
+    test(
+        '15. initializeModels con userCustomizedModels=true non sovrascrive i modelli',
+        () async {
+      const customEval = 'my-custom/evaluator';
+      const customActor = 'my-custom/actor';
+
+      final repo = FakeSettingsRepository()
+        ..loaded = AppSettings.defaults().copyWith(
+          evaluatorModelId: customEval,
+          actorModelId: customActor,
+          userCustomizedModels: true,
+        );
+
+      final notifier = makeNotifier(repo: repo);
+      await notifier.initializeModels();
+
+      expect(notifier.evaluatorModelId, equals(customEval));
+      expect(notifier.actorModelId, equals(customActor));
+    });
+
+    // -------------------------------------------------------------------------
+    // 16. initializeModels: senza custom, il router può assegnare i modelli
+    // -------------------------------------------------------------------------
+    test(
+        '16. initializeModels con userCustomizedModels=false permette il routing',
+        () async {
+      final repo = FakeSettingsRepository()
+        ..loaded = AppSettings.defaults().copyWith(userCustomizedModels: false);
+
+      final notifier = makeNotifier(repo: repo);
+      final result = await notifier.initializeModels();
+
+      expect(result.status, equals(ModelInitializationStatus.online));
+    });
+
+    // -------------------------------------------------------------------------
+    // 17. initializeModels: settings assenti → comportamento invariato
+    // -------------------------------------------------------------------------
+    test('17. initializeModels con settings assenti usa i valori di default',
+        () async {
+      final repo = FakeSettingsRepository()..loaded = null;
+      final notifier = makeNotifier(repo: repo);
+
+      await notifier.initializeModels();
+
+      // Il router potrebbe modificare evaluatorModelId; ciò che conta è
+      // che non si sia sollevata un'eccezione e il notifier sia in uno
+      // stato valido.
+      expect(notifier.evaluatorModelId, isNotEmpty);
+      // Se il bridge ritorna modelli, il routing sovrascrive il default
+      // (comportamento atteso invariato rispetto alla fase precedente).
+      expect(notifier.evaluatorModelId, isNot(equals('custom/eval')));
+    });
+  });
+}
+
+// Invochiamo il gruppo settings dalla funzione main originale
+// tramite un'aggiunta alla fine del main() — vedi punto di iniezione.
 
 class ControllableInferenceBridge implements InferenceBridge {
   final Completer<Map<String, dynamic>> evaluatorCompleter =

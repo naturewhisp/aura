@@ -6,6 +6,9 @@ import 'package:flutter/widgets.dart';
 import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 import 'package:aura_app/src/audio/audio_scene.dart';
+import 'package:aura_app/src/settings/app_settings.dart';
+import 'package:aura_app/src/settings/file_settings_repository.dart';
+import 'package:aura_app/src/settings/settings_repository.dart';
 import 'flutter_asset_config_source.dart';
 
 /// Fasi dell'avanzamento dell'inferenza rappresentate nel carosello di caricamento dell'interfaccia utente.
@@ -274,7 +277,13 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Percorso dello storage per i file delle sessioni e delle impostazioni.
   final String _storagePath;
 
+  /// Repository per la persistenza delle impostazioni.
+  late final SettingsRepository _settingsRepository;
+
   /// Crea un notifier di gestione dello stato a partire dallo stato iniziale e dal bridge.
+  ///
+  /// Accetta un [settingsRepository] opzionale per l'iniezione della dipendenza nei test.
+  /// Se non fornito, utilizza [FileSettingsRepository] con il percorso canonico.
   GameControllerNotifier({
     this.controller = const GameController(),
     this.promptBuilder = const PromptBuilder(),
@@ -282,11 +291,14 @@ class GameControllerNotifier extends ChangeNotifier {
     required this.bridge,
     required GameState initialState,
     String? customStoragePath,
+    SettingsRepository? settingsRepository,
   }) : _storagePath = customStoragePath ??
             ((Platform.environment.containsKey('FLUTTER_TEST') ||
                     Platform.environment.containsKey('DART_TEST'))
                 ? "${Directory.systemTemp.path}/aura_test_${initialState.sessionId}"
                 : _getAppDataPathStatic()) {
+    _settingsRepository =
+        settingsRepository ?? FileSettingsRepository(basePath: _storagePath);
     gameStateNotifier = ValueNotifier<GameState>(initialState);
     logger = ReplayLogger(sessionId: initialState.sessionId);
 
@@ -322,77 +334,87 @@ class GameControllerNotifier extends ChangeNotifier {
 
   bool _userCustomizedModels = false;
 
-  /// Carica le impostazioni persistenti da disco (file settings.json) se presente.
-  Future<void> loadSettings() async {
-    try {
-      final baseDir = _getAppDataPath();
-      final file = File("$baseDir/settings.json");
-      if (await file.exists()) {
-        final content = await file.readAsString();
-        final data = jsonDecode(content) as Map<String, dynamic>;
+  // ---------------------------------------------------------------------------
+  // Mapping notifier ↔ AppSettings
+  // ---------------------------------------------------------------------------
 
-        evaluatorModelId =
-            data['evaluator_model_id'] as String? ?? evaluatorModelId;
-        actorModelId = data['actor_model_id'] as String? ?? actorModelId;
-        reasoningEnabled =
-            data['reasoning_enabled'] as bool? ?? reasoningEnabled;
-        conciseReasoning =
-            data['concise_reasoning'] as bool? ?? conciseReasoning;
-        shaderEnabled = data['shader_enabled'] as bool? ?? shaderEnabled;
-        audioEnabled = data['audio_enabled'] as bool? ?? audioEnabled;
-        defaultDifficulty = data['default_difficulty'] as String? ??
-            data['difficulty_level'] as String? ??
-            'standard';
-        difficultyLevel = defaultDifficulty;
-        _userCustomizedModels =
-            data['user_customized_models'] as bool? ?? false;
+  /// Costruisce un [AppSettings] snapshot a partire dallo stato corrente del notifier.
+  AppSettings _currentSettings() {
+    return AppSettings(
+      evaluatorModelId: evaluatorModelId,
+      actorModelId: actorModelId,
+      reasoningEnabled: reasoningEnabled,
+      conciseReasoning: conciseReasoning,
+      shaderEnabled: shaderEnabled,
+      audioEnabled: audioEnabled,
+      defaultDifficulty: defaultDifficulty,
+      userCustomizedModels: _userCustomizedModels,
+    );
+  }
 
-        if (_userCustomizedModels) {
-          activeProfile = "Configurazione Personalizzata";
-        }
+  /// Applica un [AppSettings] allo stato corrente del notifier.
+  ///
+  /// Allinea [difficultyLevel] a [defaultDifficulty] e imposta
+  /// [activeProfile] se la configurazione è personalizzata.
+  void _applySettings(AppSettings settings) {
+    evaluatorModelId = settings.evaluatorModelId;
+    actorModelId = settings.actorModelId;
+    reasoningEnabled = settings.reasoningEnabled;
+    conciseReasoning = settings.conciseReasoning;
+    shaderEnabled = settings.shaderEnabled;
+    audioEnabled = settings.audioEnabled;
+    defaultDifficulty = settings.defaultDifficulty;
+    difficultyLevel = settings.defaultDifficulty;
+    _userCustomizedModels = settings.userCustomizedModels;
 
-        await AudioManager().setAudioEnabled(audioEnabled);
-        debugPrint(
-            "[SETTINGS] Impostazioni caricate con successo da settings.json");
-      }
-    } catch (e) {
-      debugPrint(
-          "[SETTINGS] Errore durante il caricamento delle impostazioni: $e");
+    if (_userCustomizedModels) {
+      activeProfile = 'Configurazione Personalizzata';
     }
   }
 
-  /// Salva la configurazione corrente delle impostazioni nel file settings.json su disco.
+  // ---------------------------------------------------------------------------
+  // Persistenza impostazioni
+  // ---------------------------------------------------------------------------
+
+  /// Carica le impostazioni persistenti tramite [_settingsRepository].
+  ///
+  /// Se il file non esiste, mantiene i valori correnti (nessun effetto).
+  /// Gli errori vengono loggati senza propagazione per non bloccare il boot.
+  Future<void> loadSettings() async {
+    try {
+      final settings = await _settingsRepository.load();
+      if (settings == null) {
+        return;
+      }
+
+      _applySettings(settings);
+
+      await AudioManager().setAudioEnabled(audioEnabled);
+      debugPrint(
+          '[SETTINGS] Impostazioni caricate con successo da settings.json');
+    } catch (error) {
+      debugPrint(
+          '[SETTINGS] Errore durante il caricamento delle impostazioni: $error');
+    }
+  }
+
+  /// Salva la configurazione corrente tramite [_settingsRepository].
+  ///
+  /// Gli errori vengono loggati senza propagazione per non bloccare la UI.
   Future<void> saveSettings() async {
     try {
-      final baseDir = _getAppDataPath();
-      final dir = Directory(baseDir);
-      if (!dir.existsSync()) {
-        dir.createSync(recursive: true);
-      }
-      final file = File("${dir.path}/settings.json");
-      final data = {
-        'evaluator_model_id': evaluatorModelId,
-        'actor_model_id': actorModelId,
-        'reasoning_enabled': reasoningEnabled,
-        'concise_reasoning': conciseReasoning,
-        'shader_enabled': shaderEnabled,
-        'audio_enabled': audioEnabled,
-        'difficulty_level': defaultDifficulty, // per retrocompatibilità
-        'default_difficulty': defaultDifficulty,
-        'user_customized_models': _userCustomizedModels,
-      };
-      await file.writeAsString(jsonEncode(data));
-      debugPrint("[SETTINGS] Impostazioni salvate in: ${file.path}");
-    } catch (e) {
+      await _settingsRepository.save(_currentSettings());
+      debugPrint('[SETTINGS] Impostazioni salvate.');
+    } catch (error) {
       debugPrint(
-          "[SETTINGS] Errore durante il salvataggio delle impostazioni: $e");
+          '[SETTINGS] Errore durante il salvataggio delle impostazioni: $error');
     }
   }
 
   /// Aggiorna il livello di difficoltà predefinito per le nuove sessioni e persiste la scelta su disco.
   void updateDefaultDifficulty(String level) {
     defaultDifficulty = level;
-    saveSettings();
+    unawaited(saveSettings());
     notifyListeners();
   }
 
@@ -400,8 +422,8 @@ class GameControllerNotifier extends ChangeNotifier {
   void updateEvaluatorModel(String modelId) {
     evaluatorModelId = modelId;
     _userCustomizedModels = true;
-    activeProfile = "Configurazione Personalizzata";
-    saveSettings();
+    activeProfile = 'Configurazione Personalizzata';
+    unawaited(saveSettings());
     notifyListeners();
   }
 
@@ -409,8 +431,8 @@ class GameControllerNotifier extends ChangeNotifier {
   void updateActorModel(String modelId) {
     actorModelId = modelId;
     _userCustomizedModels = true;
-    activeProfile = "Configurazione Personalizzata";
-    saveSettings();
+    activeProfile = 'Configurazione Personalizzata';
+    unawaited(saveSettings());
     notifyListeners();
   }
 
@@ -471,21 +493,21 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Attiva/disattiva la Chain-of-Thought (CoT/ragionamento) per l'Attore.
   void toggleReasoning(bool value) {
     reasoningEnabled = value;
-    saveSettings();
+    unawaited(saveSettings());
     notifyListeners();
   }
 
   /// Attiva/disattiva se forzare un ragionamento estremamente conciso via prompt.
   void toggleConciseReasoning(bool value) {
     conciseReasoning = value;
-    saveSettings();
+    unawaited(saveSettings());
     notifyListeners();
   }
 
   /// Attiva/disattiva lo shader CRT per gli effetti di sfarfallio e distorsione.
   void toggleShader(bool value) {
     shaderEnabled = value;
-    saveSettings();
+    unawaited(saveSettings());
     notifyListeners();
   }
 

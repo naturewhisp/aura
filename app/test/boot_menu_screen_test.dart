@@ -90,11 +90,13 @@ void main() {
           milliseconds: 1800)); // wait for boot to complete including delays
 
       expect(events, contains('audio:complete'));
+      expect(events, contains('audio:boot'));
       expect(
           events,
           isNot(contains(
               'audio:transition'))); // Transition happens at menu proceed
       expect(fakeAudio.initializeCallCount, equals(1));
+      expect(fakeAudio.transitionToBootCallCount, equals(1));
       expect(fakeAudio.transitionCallCount, equals(0));
 
       // Confirm log prints for online profile
@@ -464,6 +466,7 @@ class FakeBootAudioService implements BootAudioService {
   void Function(String)? onEvent;
 
   int initializeCallCount = 0;
+  int transitionToBootCallCount = 0;
   int transitionCallCount = 0;
 
   @override
@@ -478,6 +481,12 @@ class FakeBootAudioService implements BootAudioService {
       throw Exception("Simulated audio error");
     }
     onEvent?.call('audio:complete');
+  }
+
+  @override
+  Future<void> transitionToBoot() async {
+    transitionToBootCallCount++;
+    onEvent?.call('audio:boot');
   }
 
   @override

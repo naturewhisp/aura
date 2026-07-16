@@ -132,6 +132,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
           audioEnabled: widget.notifier.audioEnabled,
         );
         if (!mounted) return;
+        await widget.audioService.transitionToBoot();
+        if (!mounted) return;
         _appendBootLog(
             "AURA_INIT> Soundscape initialized: [${widget.notifier.audioEnabled ? 'ENABLED' : 'MUTED'}].");
       } catch (audioError) {

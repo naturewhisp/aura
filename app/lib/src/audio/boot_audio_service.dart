@@ -7,6 +7,8 @@ abstract interface class BootAudioService {
     required bool audioEnabled,
   });
 
+  Future<void> transitionToBoot();
+
   Future<void> transitionToMenu();
 }
 
@@ -22,6 +24,11 @@ final class AudioManagerBootService implements BootAudioService {
       appDataPath,
       audioEnabled: audioEnabled,
     );
+  }
+
+  @override
+  Future<void> transitionToBoot() {
+    return AudioManager().transitionTo(AudioSceneState.boot);
   }
 
   @override

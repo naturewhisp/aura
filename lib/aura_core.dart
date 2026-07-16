@@ -54,3 +54,8 @@ export 'src/agent_runtime/bridges/local_api_inference_bridge.dart';
 // Deception Layer
 export 'src/deception/deception_evaluator.dart';
 export 'src/deception/deception_evaluation.dart';
+
+// Lexical Tag Evaluator
+export 'src/lexical/lexical_tag_evaluator.dart';
+export 'src/lexical/lexical_scan_result.dart';
+export 'src/lexical/hidden_tag_evaluation.dart';

@@ -13,8 +13,8 @@ Il workspace è organizzato come un monorepo Dart/Flutter composto dalle seguent
 *   `lib/`: Il core engine deterministico in puro Dart. Contiene i modelli dati (`GameState`, `ActorCue`, `EvaluatorResolution`), gli agenti (`EvaluatorAgent`, `ActorAgent`) e i bridge di inferenza.
 *   `app/`: L'applicazione grafica client sviluppata in **Flutter**. Dispone di un layout desktop split-pane, fragment shader per glitch visivi sincronizzati con la dissonanza, e controlli per regolare il reasoning dei modelli in tempo reale.
 *   `bin/`: Gli eseguibili CLI e gli strumenti di simulazione:
-    *   [aura_cli.dart](file:///c:/Users/dendo/Documents/GitHub/aura/bin/aura_cli.dart): Un client di gioco colorato in console ad effetto macchina da scrivere.
-    *   [run_simulation.dart](file:///c:/Users/dendo/Documents/GitHub/aura/bin/run_simulation.dart): Esegue simulazioni batch automatiche o interattive per validare il bilanciamento matematico dei pilastri.
+    *   [aura_cli.dart](bin/aura_cli.dart): Un client di gioco colorato in console ad effetto macchina da scrivere.
+    *   [run_simulation.dart](bin/run_simulation.dart): Esegue simulazioni batch automatiche o interattive per validare il bilanciamento matematico dei pilastri.
 *   `test/`: Suite di test unitari, di integrazione ed avversari (oltre 50 test passanti) per garantire la non-regressione dell'engine.
 
 ---

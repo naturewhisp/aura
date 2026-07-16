@@ -50,7 +50,10 @@ graph TD
 
 ## 3. Flusso Dati e Interfacce
 
-Gli agenti implementano il contratto astratto `AuraAgent<I, O>` definito in [aura_agent.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/agents/aura_agent.dart):
+Gli agenti implementano il contratto astratto `AuraAgent<I, O>` definito in [aura_agent.dart](lib/src/agent_runtime/agents/aura_agent.dart). Il perimetro pubblico del pacchetto è suddiviso in tre entry point principali:
+- `package:aura_core/aura_core.dart`: Contiene contratti generali, modelli e i valutatori deterministici pure.
+- `package:aura_core/aura_offline.dart`: Contiene implementazioni di agenti concreti (`EvaluatorAgent`, `ActorAgent`), model catalog/router e bridges per l'esecuzione locale/offline.
+- `package:aura_core/aura_testing.dart`: Contiene helper di test come `MockInferenceBridge` e implementazioni di fallback.
 
 ```dart
 abstract class AuraAgent<I, O> {
@@ -145,7 +148,7 @@ In caso di minacce rilevate dall'agente valutatore, il `GameController` applica 
 
 ## 7. Linee Guida di Prompt Engineering
 
-I prompt sono generati in modo agnostico e centralizzato dalla classe `PromptBuilder` ([prompt_builder.dart](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/agent_runtime/prompt_builder.dart)):
+I prompt sono generati in modo agnostico e centralizzato dalla classe `PromptBuilder` ([prompt_builder.dart](lib/src/agent_runtime/prompt_builder.dart)):
 
 ### 7.1 La Struttura dell'ActorCue
 Il prompt di sistema dell'Attore contiene una sezione esplicita denominata `[DRAMATURGICAL CUE]` compilata a runtime:
@@ -198,7 +201,7 @@ Se desideri estendere o modificare l'architettura agentica:
                 *   Ogni risposta dell'attore (PANOPTICON) deve essere registrata nei log di replay (`ReplayEntry`) e nelle viste storiche priva dei tag XML di delimitazione dell'agent-loop (es. `<dialogo>...</dialogo>`).
                 *   Rimuovere sempre i tag a monte del log e all'atto della renderizzazione nei replay vecchi e nuovi.
 6.  **Manutenzione e Allineamento della Documentazione:** Quando si modificano elementi della roadmap o modelli architetturali, è obbligatorio tenere allineati i documenti principali:
-    *   **Roadmap di Gioco:** Qualsiasi modifica alle fasi della roadmap (es. definizioni di tratti, obiettivi o test di validazione della Fase 5) deve essere aggiornata sia nel file di Game Design [AURA_TGDD_v1_1_revised.md](file:///c:/Users/dendo/Documents/GitHub/aura/AURA_TGDD_v1_1_revised.md#fase-5--panopticon-pilot--hidden-gameplay-model) sia allineata con i dettagli implementativi e tecnici descritti in [ARCHITECTURE.md](file:///c:/Users/dendo/Documents/GitHub/aura/ARCHITECTURE.md#9-fase-5--panopticon-pilot--hidden-gameplay-model).
-    *   **Flusso degli Agenti:** Modifiche al loop a due livelli o alla pipeline di inferenza richiedono l'aggiornamento simultaneo dello schema di flusso di [ARCHITECTURE.md](file:///c:/Users/dendo/Documents/GitHub/aura/ARCHITECTURE.md#1-panoramica-architetturale) e dei contratti e delle interfacce in questo file [AGENTS.md](file:///c:/Users/dendo/Documents/GitHub/aura/AGENTS.md#3-flusso-dati-e-interfacce).
-    *   **Link Clickable (file://):** Ogni riferimento incrociato tra documenti o verso file di codice sorgente deve sempre contenere link cliccabili assoluti in formato standard Markdown con schema `file://` (usando le barre in avanti per compatibilità universale).
+    *   **Roadmap di Gioco:** Qualsiasi modifica alle fasi della roadmap (es. definizioni di tratti, obiettivi o test di validazione della Fase 5) deve essere aggiornata sia nel file di Game Design [AURA_TGDD_v1_1_revised.md](AURA_TGDD_v1_1_revised.md#fase-5--panopticon-pilot--hidden-gameplay-model) sia allineata con i dettagli implementativi e tecnici descritti in [ARCHITECTURE.md](ARCHITECTURE.md#9-fase-5--panopticon-pilot--hidden-gameplay-model).
+    *   **Flusso degli Agenti:** Modifiche al loop a due livelli o alla pipeline di inferenza richiedono l'aggiornamento simultaneo dello schema di flusso di [ARCHITECTURE.md](ARCHITECTURE.md#1-panoramica-architetturale) e dei contratti e delle interfacce in questo file [AGENTS.md](AGENTS.md#3-flusso-dati-e-interfacce).
+    *   **Link Clickable:** Ogni riferimento incrociato tra documenti o verso file di codice sorgente deve sempre contenere link cliccabili relativi in formato standard Markdown (usando le barre in avanti per compatibilità universale).
 

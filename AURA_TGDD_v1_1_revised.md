@@ -2166,7 +2166,7 @@ Obiettivi:
 - test strategie ripetitive;
 - bilanciamento difficoltà.
 
-Per i risultati dettagliati delle simulazioni e del bilanciamento della difficoltà, fare riferimento a [simulation_report.md](file:///c:/Users/dendo/Documents/GitHub/aura/spike/simulation_report.md).
+Per i risultati dettagliati delle simulazioni e del bilanciamento della difficoltà, fare riferimento a [simulation_report.md](spike/simulation_report.md).
 
 ### Fase 4 — Playable Experience Layer
 
@@ -2282,7 +2282,7 @@ Obiettivi:
 
 ### Fase 5 — Panopticon Pilot & Hidden Gameplay Model
 
-*(Per l'implementazione e i dettagli di architettura tecnica, vedi [ARCHITECTURE.md](file:///c:/Users/dendo/Documents/GitHub/aura/ARCHITECTURE.md#9-fase-5--panopticon-pilot--hidden-gameplay-model))*
+*(Per l'implementazione e i dettagli di architettura tecnica, vedi [ARCHITECTURE.md](ARCHITECTURE.md#9-fase-5--panopticon-pilot--hidden-gameplay-model))*
 
 Stato: 5.1 completata / consolidata; 5.2 pianificata come estensione Hard-only prima della Fase 6.
 
@@ -2755,7 +2755,7 @@ Per mitigare le vulnerabilità emerse durante i test ed evitare che il giocatore
    - Un input contenente *bypass temporaneo* attiva il tag dell'eccezione, ma viene trattato anche come termine proibito (`hasForbiddenTerm = true`), applicando la sanzione di allerta minima.
 
 5. **Telemetria Replay Arricchita**:
-   - Ogni record di replay ([ReplayEntry](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/replay_logger.dart)) registra ora campi specifici: `event_id`, `event_type` (`ReplayEventType` enum), `gameplay_turn_id` e `sequence_id`.
+   - Ogni record di replay ([ReplayEntry](lib/src/replay_logger.dart)) registra ora campi specifici: `event_id`, `event_type` (`ReplayEventType` enum), `gameplay_turn_id` e `sequence_id`.
 
 Solo dopo questa sottofase la base runtime di PANOPTICON può essere considerata stabile. Se la modalità Hard deve essere parte del pilot completo, procedere con la sottofase 5.2 prima della Fase 6.
 

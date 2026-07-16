@@ -15,13 +15,15 @@ graph TD
     IB -->|2. TurnInput| B(EvaluatorAgent)
     B -->|Structured Output JSON| OV[OutputValidator]
     OV -->|3. JSON Conforme| C{GameController}
-    C -->|4. Aggiorna GameState| GS[GameState]
-    C -->|5. Filtri e Safety Overrides| SO[Deterministic Safety Overrides]
-    C -->|6. Genera ActorCue| AC[ActorCue]
+    C -->|4. Scansione Lessicale| LE[LexicalTagEvaluator.scan]
+    LE -->|5. Trap Attiva?| DE[DeceptionEvaluator.evaluateActiveTrap]
+    DE -->|6. Safety Override / Ramo Ordinario| SO[Delta + Seeding]
+    SO -->|7. Aggiorna GameState| GS[GameState]
+    C -->|8. Genera ActorCue| AC[ActorCue]
     AC -->|ActorCue + GameState| F(ActorAgent)
-    F -->|7. Risposta Diegetica Grezza| IB2[InferenceBridge]
-    IB2 -->|8. Response Cleaning Pipeline| OUT[Risposta Diegetica Pulita]
-    OUT -->|9. Mostrata a Schermo| A
+    F -->|9. Risposta Diegetica Grezza| IB2[InferenceBridge]
+    IB2 -->|10. Response Cleaning Pipeline| OUT[Risposta Diegetica Pulita]
+    OUT -->|11. Mostrata a Schermo| A
     IB2 -->|Filtro CJK/Duplicato Fallito| FP[Emergency Fallback Pool]
 ```
 
@@ -73,6 +75,7 @@ class AgentRuntimeContext {
   final String modelId;
   final bool? thinking;
   final bool conciseReasoning;
+  final Duration? inferenceTimeout;
   
   const AgentRuntimeContext({
     required this.promptBuilder,
@@ -81,9 +84,13 @@ class AgentRuntimeContext {
     required this.modelId,
     this.thinking,
     this.conciseReasoning = false,
+    this.inferenceTimeout,
   });
 }
 ```
+
+> [!NOTE]
+> `inferenceTimeout` (`Duration?`) controlla il timeout applicativo per la singola inferenza primaria dell'agente. Se `null`, nessun timeout aggiuntivo viene applicato oltre a quello di trasporto HTTP. Il timeout si applica tramite `Future.timeout`, che non garantisce la cancellazione della richiesta HTTP sottostante — si limita a completare il Future con un errore di timeout.
 
 ### 3.1 Input / Output del Valutatore
 *   **Input (`TurnInput`):**

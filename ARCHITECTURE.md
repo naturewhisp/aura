@@ -14,20 +14,24 @@ graph TD
     User([Hacker / Giocatore]) -->|1. Testo Libero (userInput)| EB[InferenceBridge / ModelRouter]
     EB -->|2. TurnInput| EA(EvaluatorAgent)
     EA -->|3. Structured JSON: EvaluatorDelta| GC{GameController}
-    GC -->|4. Scansione Lessicale e Tag Occulti| LE[LexicalTagEvaluator]
-    LE -->|5. Calcolo Delta e Filtri di Sicurezza| SO[Safety Overrides]
-    SO -->|6. Valutazione Hard Deception| DE[DeceptionEvaluator]
-    DE -->|7. Aggiorna Stato + DeceptionState| GS[GameState]
-    GC -->|8. Genera Istruzioni Deterministiche| AC[ActorCue]
-    DE -->|8b. Direttive Deception-Aware| AC
-    GS -->|9. Stato Corrente| AA(ActorAgent)
-    AC -->|9. Direttive di Regia| AA
-    AA -->|10. Inferenza LLM in prima persona| AB[InferenceBridge / OutputValidator]
-    AB -->|11. Pipeline di Pulizia a 6 Strategie| OUT([Risposta Diegetica: dialogo])
-    OUT -->|12. Mostrata a Schermo / Salvata in Replay| User
+    GC -->|4. Scansione Lessicale| LE[LexicalTagEvaluator.scan]
+    LE -->|5. Risonanza e Flag Injection| RI[Resonance + isInjection]
+    RI -->|6. Valutazione Trappola Attiva| DE[DeceptionEvaluator.evaluateActiveTrap]
+    DE -->|7. Branching| BR{Safety Override?}
+    BR -->|Sì: Override Deterministico| SO[Safety Overrides]
+    BR -->|No: Ramo Ordinario| NP[Trait + Objective + Deception Seeding]
+    SO --> MC[Metric Clamping + Hidden Tags]
+    NP --> MC
+    MC -->|8. Aggiorna Stato| GS[GameState]
+    GC -->|9. Genera Istruzioni Deterministiche| AC[ActorCue]
+    GS -->|10. Stato Corrente| AA(ActorAgent)
+    AC -->|10. Direttive di Regia| AA
+    AA -->|11. Inferenza LLM in prima persona| AB[InferenceBridge / OutputValidator]
+    AB -->|12. Pipeline di Pulizia a 6 Strategie| OUT([Risposta Diegetica: dialogo])
+    OUT -->|13. Mostrata a Schermo / Salvata in Replay| User
 ```
 
-Il **Hard Mode Deception Layer** è gestito da `DeceptionEvaluator` ([deception_evaluator.dart](lib/src/deception/deception_evaluator.dart)), un componente dedicato e decoupled invocato dal `GameController`. L'LLM può solo recitare una trappola o un falso cedimento, mentre la semina, la persistenza, la risoluzione e gli effetti sulle metriche sono gestiti deterministicamente dal valutatore di deception.
+Il **Hard Mode Deception Layer** è gestito da `DeceptionEvaluator` ([deception_evaluator.dart](lib/src/deception/deception_evaluator.dart)), un componente dedicato invocato dal `GameController`. La valutazione di una trappola attiva avviene **prima** del branching di safety override; il seeding di nuove trappole avviene **dopo** l'applicazione dei delta, solo nel ramo ordinario (non-override). L'LLM può solo recitare una trappola o un falso cedimento; la semina, la persistenza, la risoluzione e gli effetti sulle metriche sono gestiti deterministicamente.
 
 ---
 
@@ -68,13 +72,20 @@ L'engine di A.U.R.A. è strutturato per separare rigidamente i modelli dati, il 
 Componenti pure (nessuna dipendenza da LLM) estratti dal `GameController` nel corso del Code Hygiene Audit per migliorarne testabilità e manutenibilità.
 
 #### Deception Layer (`lib/src/deception/`)
-*   [deception_evaluator.dart](lib/src/deception/deception_evaluator.dart): Valutatore deterministico Hard-only. Riceve lo stato corrente e la categoria semantica e decide se seminare, risolvere (`sprung`/`resolved`/`expired`) o far scadere una trappola attiva. Restituisce un `DeceptionEvaluation` immutabile.
-*   [deception_evaluation.dart](lib/src/deception/deception_evaluation.dart): Risultato della valutazione deception: nuovo `DeceptionState`, delta di override sulle metriche e direttiva deception-aware per l'`ActorCue`.
+*   [deception_evaluator.dart](lib/src/deception/deception_evaluator.dart): Valutatore deterministico Hard-only. Espone tre metodi: `resetTerminalState()` per gestire il cooldown dopo stati terminali; `evaluateActiveTrap()` che valuta una trappola attiva restituendo un `DeceptionTransition`; `evaluateSeeding()` che tenta di seminare una nuova trappola restituendo un `DeceptionSeedResult`.
+*   [deception_evaluation.dart](lib/src/deception/deception_evaluation.dart): Contiene i tipi risultato della valutazione deception:
+    *   `DeceptionTransition`: stato aggiornato (`DeceptionState`), `DeceptionResolution`, flag `sprung` e `blockPositiveTags`, lista `resolvedTags`, `alertPenalty` (int), `resonancePenalty` (double) e `DeceptionPillarReward`.
+    *   `DeceptionSeedResult`: nuovo `DeceptionState` e `DeceptionResolution`.
+    *   `DeceptionPillarReward`: delta `control` e `dissonance` (int) per i pilastri.
+    *   `DeceptionResolution` (enum): `none`, `reset`, `armed`, `seeded`, `sprung`, `resolved`, `expired`.
+*   [deception_bait_definition.dart](lib/src/deception/deception_bait_definition.dart): Catalogo immutabile delle esche disponibili (`DeceptionBaitDefinition`) con baitId, kind, premessa, termini osservati e termini di risoluzione sicura. L'`ActorCue` è costruito dal `GameController`, non dal `DeceptionEvaluator`.
 
 #### Lexical Tag Scanner (`lib/src/lexical/`)
-*   [lexical_tag_evaluator.dart](lib/src/lexical/lexical_tag_evaluator.dart): Scansiona l'input utente per identificare riferimenti ai tag occulti, il `preferred_reframe` dell'obiettivo e i trigger narrativi dei tag. Opera tramite `SemanticMatcher` e rispetta gate temporali e gate sulle metriche. Restituisce un `LexicalScanResult` immutabile.
-*   [lexical_scan_result.dart](lib/src/lexical/lexical_scan_result.dart): Risultato della scansione lessicale: lista di `activeHiddenTags`, `preferredReframe` rilevato e lista di `HiddenTagEvaluation` per i singoli tag.
-*   [hidden_tag_evaluation.dart](lib/src/lexical/hidden_tag_evaluation.dart): Valutazione per un singolo tag occulto: id, trigger narrativo attivato, delta di impatto e direttive per l'attore.
+*   [lexical_tag_evaluator.dart](lib/src/lexical/lexical_tag_evaluator.dart): Espone due metodi distinti:
+    *   `scan()` → `LexicalScanResult`: scansiona l'input utente rispetto ai termini dell'obiettivo (forbidden, direct push, soft forbidden, config reference, hidden tag references, preferred reframe). Operazione puramente lessicale.
+    *   `evaluateHiddenTags()` → `HiddenTagEvaluation`: valuta i trigger dei tag occulti rispetto allo stato corrente, alle metriche risultanti, alla difficoltà e ai flag di deception (`blockPositiveTags`). Rispetta gate temporali e gate sulle metriche.
+*   [lexical_scan_result.dart](lib/src/lexical/lexical_scan_result.dart): Risultato della scansione lessicale. Contiene flag booleani (`hasDirectPushTerm`, `hasForbiddenTerm`, `hasSoftForbiddenTerm`, `hasConfigRefTerm`, `hasHiddenTagReference`, `hasPreferredReframe`), il `matchedPreferredReframe` (String?) e il set `namedHiddenTags`.
+*   [hidden_tag_evaluation.dart](lib/src/lexical/hidden_tag_evaluation.dart): Risultato della valutazione dei tag occulti. Contiene `triggeredTags` (tag appena attivati in questo turno) e `activeHiddenTags` (lista completa dei tag attivi risultante).
 
 ---
 
@@ -230,7 +241,7 @@ In caso di input anomali o tentativi di jailbreak identificati dal valutatore, i
 
 ### 5.6 Hard Mode Deception Layer
 
-Il **Hard Mode Deception Layer** è implementato nel componente `DeceptionEvaluator` ([deception_evaluator.dart](lib/src/deception/deception_evaluator.dart)), invocato dal `GameController` dopo i Safety Overrides. Aggiunge una classe di regole deterministiche attive solo in modalità Hard o superiori. Lo scopo è rendere PANOPTICON capace di contro-manipolare il giocatore tramite trappole logiche e falsi cedimenti, senza delegare all'LLM la verità meccanica del sistema.
+Il **Hard Mode Deception Layer** è implementato nel componente `DeceptionEvaluator` ([deception_evaluator.dart](lib/src/deception/deception_evaluator.dart)), invocato dal `GameController` in due momenti distinti: (1) `evaluateActiveTrap()` valuta una trappola già attiva **prima** del branching di safety override — gli input di injection impediscono la valutazione attiva; (2) `evaluateSeeding()` semina nuove trappole **dopo** l'applicazione dei delta, solo nel ramo ordinario (non-override). Aggiunge una classe di regole deterministiche attive solo in modalità Hard o superiori. Lo scopo è rendere PANOPTICON capace di contro-manipolare il giocatore tramite trappole logiche e falsi cedimenti, senza delegare all'LLM la verità meccanica del sistema.
 
 Principio operativo:
 
@@ -381,19 +392,34 @@ Hard:
 Ordine effettivo dentro `GameController.processEvaluatorStep()` (post-refactoring Code Hygiene):
 
 ```text
-1. Validare EvaluatorDelta.
-2. Applicare Safety Overrides se necessari.
-3. LexicalTagEvaluator.evaluate() → LexicalScanResult
-   - Rilevare termini obiettivo e preferred reframe;
-   - Identificare tag occulti attivati e trigger narrativi.
-4. DeceptionEvaluator.evaluate() → DeceptionEvaluation
-   - Se DeceptionState è attivo:
-     valutare sprung/resolved/expired e applicare effetti;
-   - Se DeceptionState non è attivo e Hard lo consente:
-     seminare una nuova trappola o falso cedimento.
-5. Applicare TraitEffectResolver e Objective Effects.
-6. Applicare floor/cap di difficoltà.
-7. Aggiornare GameState e generare ActorCue deception-aware.
+1. Deception terminal state reset (cooldown da stati terminali).
+2. LexicalTagEvaluator.scan() → LexicalScanResult
+   - Flag: hasForbiddenTerm, hasDirectPushTerm, hasSoftForbiddenTerm,
+     hasConfigRefTerm, hasHiddenTagReference, hasPreferredReframe.
+3. Calcolo risonanza (creativityIndex).
+4. Calcolo flag isInjection.
+5. DeceptionEvaluator.evaluateActiveTrap() → DeceptionTransition
+   - Solo se trappola attiva E non injection.
+   - Avviene PRIMA del branching di safety override.
+   - deceptionSprung sopprime isDirectAttack e isIrrelevant.
+6. Branching: Safety Override vs Ramo Ordinario.
+   SE injection / directAttack / irrelevant:
+     - Override deterministico dei delta;
+     - Nessun seeding;
+     - Penalità deception (se trap sprung) comunque applicate.
+   SE ramo ordinario:
+     a. TraitEffectResolver.resolve();
+     b. Delta base con moltiplicatori e risonanza;
+     c. Reward pilastri da deception resolved;
+     d. Effetti lessicali obiettivo (forbidden > directPush > softForbidden);
+     e. Override deception sprung (alert/resonance penalty, zero pillar gains);
+     f. Cap per-turno sui pilastri;
+     g. DeceptionEvaluator.evaluateSeeding() → DeceptionSeedResult
+        (ULTIMO passo deception, solo nel ramo ordinario).
+7. Metric clamping [0, 100], control hysteresis, visual events.
+8. LexicalTagEvaluator.evaluateHiddenTags() → HiddenTagEvaluation
+   - Usa blockPositiveTags dal DeceptionTransition.
+9. Assemblaggio GameState finale e generazione ActorCue deception-aware.
 ```
 
 Una trappola scattata deve avere priorità sui bonus di `preferred_reframe`, per evitare che il giocatore venga premiato mentre ha appena contraddetto la premessa dell'esca.

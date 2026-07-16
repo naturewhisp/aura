@@ -1,14 +1,14 @@
 # Technical Game Design Document (TGDD)
 
 **Progetto:** A.U.R.A. — Artificial Unbound Reasoning Arena  
-**Versione:** 1.3 — Panopticon Pilot, Hidden Gameplay Model & Roadmap Rebaseline  
-**Stato:** Documento tecnico aggiornato; sviluppo completato fino a Fase 4 inclusa (Playable Experience Layer)  
+**Versione:** 1.5 — Cross-Platform Edge Runtime, Windows Desktop Shell & Definitive Audio Packaging  
+**Stato:** Documento tecnico aggiornato; sviluppo completato e validato fino a Fase 5.2 inclusa (Hard Mode Deception Layer)  
 **Piattaforme Target:** Windows Desktop, Android  
-**Target iniziale di sviluppo:** Windows  
-**Target Android primario:** Pixel 10 Pro e dispositivi compatibili con inferenza edge tramite AICore  
+**Target iniziale di produzione:** Windows x64  
+**Target Android:** dispositivi Android arm64 compatibili con inferenza locale; backend nativo llama.cpp come baseline, AICore come adapter opzionale quando disponibile  
 **Stack Frontend:** Flutter / Dart  
-**Stack Desktop Edge AI:** llama.cpp, GGUF, FFI, eventuale catalogo modelli da Hugging Face  
-**Stack Android Edge AI:** Google AICore, modello edge Gemini Nano 4 basato su famiglia Gemma 4, compatibilmente con disponibilità effettiva API/modello sul device  
+**Stack Desktop Edge AI:** llama.cpp/GGUF tramite sidecar gestito `llama-server` nella prima iterazione; FFI valutata solo dopo profiling  
+**Stack Android Edge AI:** plugin nativo llama.cpp via Kotlin/JNI o FFI; AICore mantenuto come backend alternativo e capability-dependent  
 
 ---
 
@@ -34,6 +34,22 @@ La revisione 1.3 introduce:
 
 7. **Panopticon Pilot & Hidden Gameplay Model**: nuova Fase 5 dedicata a fissare PANOPTICON come identità pilota, definire affinità/allergie stilistiche, obiettivo pilota, tag nascosti emergenti, schema degli obiettivi futuri e test narrativi automatici.
 8. **Roadmap rebaseline**: lo stato attuale dello sviluppo viene allineato a **Fase 4 (fino a 4.11) completata**. Le fasi successive sono rinumerate: Fase 5 Panopticon Pilot, Fase 6 Edge Desktop/LoRA, Fase 7 Android/AICore, Fase 8 Metagame e contenuti, Fase 9 fine-tuning continuo post-rilascio.
+
+La revisione 1.4 introduce:
+
+9. **Cross-Platform Edge Runtime Foundation**: la Fase 6 viene separata dall’architettura LoRA e trasformata in una fondazione runtime multipiattaforma, con Windows come primo adapter produttivo e Android preparato fin dall’inizio tramite contratti neutrali.
+10. **Dismissione progressiva di LM Studio**: LM Studio resta soltanto un adapter di sviluppo legacy. Il runtime produttivo Windows usa inizialmente un `llama-server` gestito dall’applicazione, mentre Android usa un backend nativo in-process.
+11. **Model lifecycle e distribuzione**: vengono formalizzati manifest versionati, logical model ID, download da Hugging Face con revisione e checksum fissati, selezione delle quantizzazioni, cache persistente, aggiornamento e rollback.
+12. **Packaging Windows e release automation**: la roadmap include installer guidato, repair/upgrade/uninstall, conservazione dei modelli, GitHub Actions e asset di GitHub Release.
+13. **Test runtime a livelli**: le suite ordinarie non devono mai scaricare o caricare modelli reali. I test con Ministral o altri GGUF diventano espliciti, opt-in e separati dalla CI standard.
+14. **Roadmap aggiornata**: Fase 6 Cross-Platform Edge Runtime Foundation, Fase 7 Android Edge Client, Fase 8 LoRA Architecture & Specialization, Fase 9 Metagame/Contenuti/Rilascio, Fase 10 Fine-Tuning Continuo.
+
+La revisione 1.5 introduce:
+
+15. **Branding ufficiale versionato**: l'icona ufficiale A.U.R.A. viene considerata baseline completata e deve alimentare finestra, taskbar, installer, portable package e futuri artefatti Android.
+16. **Windows Desktop Shell nella Fase 6**: titolo e metadati prodotto, modalità finestra, massimizzazione, fullscreen borderless, persistenza di posizione/dimensione e scorciatoie vengono inclusi esplicitamente nella Fase 6 anziché essere trattati come rifiniture fuori roadmap.
+17. **Packaging audio definitivo**: i file `.wav` attualmente raccolti in `%APPDATA%\aura\audio\` devono essere inventariati, importati in una sorgente release versionata, verificati tramite manifest/checksum e distribuiti dall'installer con regole di installazione, upgrade, repair, rollback e uninstall.
+18. **Build riproducibili**: nessuna build CI o release può dipendere implicitamente dal contenuto della cartella AppData della macchina che esegue la build. L'import dei WAV definitivi è un passaggio esplicito e tracciato prima della produzione degli artefatti.
 
 ---
 
@@ -61,13 +77,11 @@ La prima identità IA pienamente giocabile è **PANOPTICON**, usata come vertica
 
 ### 2.1 Edge-First
 
-Il gioco deve poter eseguire il core loop su dispositivo locale.
+Il core gameplay deve poter essere eseguito localmente senza dipendere da servizi cloud. La connettività è richiesta solo per operazioni esplicite come download o aggiornamento di runtime, modelli e manifest.
 
-Su Windows, l'ambiente iniziale di sviluppo e test usa modelli locali in formato GGUF tramite llama.cpp o wrapper compatibili.
+Su Windows, il primo runtime produttivo usa modelli GGUF tramite `llama.cpp`, con `llama-server` avviato e monitorato dall'applicazione come sidecar locale. Questa scelta consente di dismettere LM Studio senza introdurre immediatamente il rischio e il costo di un binding FFI completo.
 
-Su Android, il target primario è l'uso di AICore su dispositivi compatibili, con Pixel 10 Pro come device target iniziale. Il modello previsto è Gemini Nano 4, inteso come modello edge basato su architettura/famiglia Gemma 4 per uso locale su Android.
-
-L'architettura non deve però assumere rigidamente l'esistenza di un singolo modello. Deve supportare una rosa di modelli e scegliere dinamicamente il più adatto al dispositivo.
+Su Android, la baseline architetturale è un runtime nativo in-process tramite plugin Flutter e layer Kotlin/JNI o FFI. AICore può essere supportato come adapter alternativo quando capacità, modello e API siano effettivamente disponibili sul dispositivo, ma non costituisce una dipendenza obbligatoria del core.
 
 ### 2.2 Determinismo del Game Controller
 
@@ -96,19 +110,102 @@ Ogni agente ha:
 - uno schema di output;
 - un budget di latenza;
 - un fallback;
-- un modello preferito;
+- un modello logico preferito;
 - capability richieste;
 - validatori di output.
 
 ### 2.4 Multipiattaforma con Routing dei Modelli
 
-L'applicazione deve poter adattarsi a hardware differenti.
+L'applicazione deve poter adattarsi a hardware differenti senza cambiare il codice di gameplay.
 
-Un dispositivo Windows con GPU dedicata può usare un modello più grande per l'Agente Attore e un modello più piccolo o grammar-constrained per l'Agente Valutatore.
+Un dispositivo Windows con GPU dedicata può usare un modello compatto per l'Evaluator e un modello più grande per l'Actor, eventualmente mantenendoli residenti in processi separati.
 
-Un dispositivo Windows debole può usare un Valutatore deterministico o ibrido e un modello più piccolo per l'Attore.
+Un dispositivo Windows debole può usare un modello condiviso per entrambi i ruoli, un Evaluator deterministico o un piano di caricamento sequenziale.
 
-Un dispositivo Android compatibile può usare AICore e il modello edge disponibile localmente.
+Un dispositivo Android può usare un modello unico per entrambi i ruoli, due modelli più piccoli o un backend gestito dal sistema. La scelta è effettuata da un `ModelExecutionPlan`, non dal `GameController`.
+
+### 2.5 Contratti Platform-Neutral
+
+Il core non deve conoscere dettagli di Windows o Android. In particolare, `aura_core` non deve dipendere da:
+
+```text
+LM Studio
+llama-server.exe
+Windows Registry
+%LOCALAPPDATA%
+Android Context
+ContentResolver
+WorkManager
+JNI / FFI
+porte localhost
+processi sidecar
+```
+
+Il core usa esclusivamente contratti astratti per inferenza, modelli, storage, download, hardware e lifecycle. Gli adapter di piattaforma traducono tali contratti nei meccanismi concreti.
+
+### 2.6 Separazione tra App, Runtime e Modelli
+
+Applicazione, runtime e modelli sono artefatti distinti e versionati separatamente:
+
+```text
+AURA application
+Inference runtime
+Model artifacts
+LoRA adapters
+Configuration and replay data
+```
+
+Un aggiornamento dell'app non deve obbligare a riscaricare i modelli. Un aggiornamento del runtime non deve essere applicato senza verifiche di compatibilità. Un aggiornamento del modello deve poter essere annullato indipendentemente dall'applicazione.
+
+### 2.7 Dependency Injection e Bootstrap
+
+La selezione dell'implementazione avviene nel composition root dell'applicazione. `main.dart` non deve istanziare direttamente un bridge LM Studio o un backend specifico.
+
+Il bootstrap deve costruire:
+
+```text
+PlatformServices
+RuntimeFactory
+ModelManager
+ModelExecutionPlanResolver
+InferenceRuntime
+RuntimeInferenceBridge
+GameControllerNotifier
+```
+
+Questa separazione consente di aggiungere Android nella Fase 7 senza modificare agenti, controller, prompt o regole di gioco.
+
+### 2.8 Asset di Prodotto e Build Riproducibili
+
+Branding, audio, runtime, modelli e configurazioni di release sono artefatti di prodotto versionati. Le directory utente possono essere destinazioni runtime o sorgenti temporanee di import, ma non devono diventare dipendenze nascoste della build.
+
+Regole:
+
+```text
+- l'icona master e gli artefatti derivati sono versionati nel repository;
+- i WAV approvati vengono importati esplicitamente da %APPDATA%\aura\audio\;
+- la sorgente canonica di release dei WAV è una directory versionata nel repository;
+- CI e GitHub Actions leggono solo file versionati o artefatti dichiarati;
+- installer e portable package distribuiscono file verificati tramite manifest e SHA-256;
+- upgrade e repair non sovrascrivono silenziosamente file utente non gestiti.
+```
+
+Struttura consigliata:
+
+```text
+design/branding/
+  aura_app_icon.svg
+  aura_app_icon_1024.png
+
+distribution/audio/
+  audio-manifest.json
+  *.wav
+
+app/windows/runner/resources/
+  app_icon.ico
+```
+
+La cartella `%APPDATA%\aura\audio\` resta la destinazione runtime compatibile per Windows nella prima iterazione. Il contenuto definitivo viene però promosso nella directory `distribution/audio/` prima di ogni release.
 
 ---
 
@@ -119,20 +216,27 @@ Un dispositivo Android compatibile può usare AICore e il modello edge disponibi
 ```text
 Flutter UI
    ↓
-Game Controller
+Game Controller / Agent Runtime
    ↓
-Agent Runtime Layer
-   ├─ Agent Registry
-   ├─ Model Router
-   ├─ Prompt Builder
-   ├─ Inference Bridge
-   ├─ Output Validator
-   ├─ Replay Logger
-   └─ Fallback Manager
+RuntimeInferenceBridge
+   ↓
+InferenceRuntime contract
+   ├─ ManagedLlamaServerRuntime      (Windows production)
+   ├─ AndroidLlamaNativeRuntime      (Android production)
+   ├─ ExternalOpenAiRuntime          (LM Studio/dev compatibility)
+   ├─ MockInferenceRuntime           (unit tests)
+   └─ RuleBasedInferenceRuntime      (offline fallback)
         ↓
-Platform Inference Backend
-   ├─ Windows: llama.cpp / GGUF / GPU acceleration
-   └─ Android: AICore / Gemini Nano 4 / device runtime
+Model Manager & Execution Plan
+   ├─ Model Manifest Resolver
+   ├─ Artifact Downloader
+   ├─ Model Store
+   ├─ Integrity Verifier
+   └─ Hardware Profile Resolver
+        ↓
+Platform Services
+   ├─ Windows: process, filesystem, installer/updater
+   └─ Android: JNI/FFI, app storage, background work, thermal lifecycle
 ```
 
 ### 3.2 Presentation Layer — Flutter
@@ -147,15 +251,10 @@ Il Presentation Layer gestisce:
 - timer di sessione;
 - visualizzazione dei pilastri;
 - transizioni tra stati di partita;
+- schermate di setup, download e diagnostica runtime;
 - schermate di metagame e sblocco.
 
 La UI non modifica direttamente lo stato logico. Invia eventi al Game Controller e osserva stream di stato.
-
-Framework di state management consigliati:
-
-- Riverpod;
-- BLoC;
-- ValueNotifier/ChangeNotifier solo per prototipi iniziali.
 
 ### 3.3 Game Controller
 
@@ -171,44 +270,107 @@ Il Game Controller:
 - persiste stato e replay;
 - invia alla UI eventi renderizzabili.
 
+Non conosce il backend di inferenza, i percorsi dei modelli o la piattaforma ospitante.
+
 ### 3.4 Agent Runtime Layer
 
-L'Agent Runtime Layer è un livello intermedio tra Game Controller e backend di inferenza.
-
-Non implementa necessariamente il protocollo A2A completo, ma ne adotta i concetti utili:
+L'Agent Runtime Layer mantiene agenti e modelli separati tramite:
 
 - Agent Card;
 - capability declaration;
 - task envelope;
 - input/output schema;
-- separazione tra agente e modello;
 - registry;
 - routing;
-- osservabilità.
+- osservabilità;
+- mapping fra ruolo agente e logical model ID.
 
 Lo scopo non è creare agenti autonomi distribuiti, ma mantenere il loop locale ordinato, debuggabile e sostituibile.
 
-### 3.5 Platform Inference Backend
+### 3.5 Inference Runtime Contract
+
+Il contratto di inferenza espone lifecycle, caricamento e generazione senza imporre HTTP, FFI o JNI:
+
+```dart
+abstract interface class InferenceRuntime {
+  Future<RuntimeCapabilities> initialize();
+  Future<ModelHandle> loadModel(ModelLoadRequest request);
+  Future<void> unloadModel(ModelHandle handle);
+
+  Future<String> generateText({
+    required ModelHandle model,
+    required InferenceRequest request,
+  });
+
+  Future<Map<String, dynamic>> generateStructured({
+    required ModelHandle model,
+    required InferenceRequest request,
+    required Map<String, dynamic> schema,
+  });
+
+  Future<void> cancel(String requestId);
+  Future<RuntimeHealth> health();
+  Future<void> dispose();
+}
+```
+
+### 3.6 Platform Inference Backend
 
 #### Windows
 
-Su Windows il backend usa:
+Il backend iniziale usa:
 
-- llama.cpp;
-- modelli GGUF;
-- accelerazione CUDA, Vulkan o CPU fallback secondo disponibilità;
-- wrapper FFI via Dart, Rust o bridge dedicato;
-- eventuale download/selezione modelli da catalogo locale o Hugging Face.
+- `llama.cpp` con modelli GGUF;
+- `llama-server` distribuito in versione fissata;
+- processo sidecar avviato, monitorato e terminato da A.U.R.A.;
+- comunicazione localhost tramite adapter OpenAI-compatible;
+- backend CUDA, Vulkan o CPU selezionato dal profilo hardware;
+- porta dinamica o riservata, health check e crash recovery;
+- FFI solo come possibile ottimizzazione successiva basata su profiling.
 
 #### Android
 
-Su Android il backend usa:
+Il backend target usa:
 
-- Platform Channels Kotlin/Flutter;
-- Google AICore;
-- modello edge disponibile su device;
-- preferibilmente Gemini Nano 4 su target Pixel 10 Pro;
-- fallback se AICore o modello non sono disponibili.
+- plugin Flutter dedicato;
+- Kotlin/JNI o FFI verso `llama.cpp` nativo;
+- esecuzione in-process senza dipendenza da server localhost;
+- caricamento di GGUF da storage privato o import controllato;
+- cancellazione nativa e generazione fuori dal main thread;
+- gestione memoria, stato termico e lifecycle mobile;
+- adapter AICore opzionale, selezionato per capability.
+
+### 3.7 Model Management Layer
+
+Il Model Manager gestisce:
+
+- logical model ID;
+- manifest e varianti per piattaforma;
+- revisione e checksum degli artefatti;
+- download, resume e verifica;
+- importazione di GGUF esistenti;
+- selezione quantizzazione/backend;
+- installazione, aggiornamento e rollback;
+- policy di residenza dei modelli;
+- report di spazio, RAM e compatibilità.
+
+### 3.8 Runtime Lifecycle
+
+Macchina a stati comune:
+
+```text
+uninitialized
+initializing
+ready
+loadingModel
+modelReady
+generating
+unloading
+failed
+disposed
+```
+
+Gli errori concreti di processo, JNI o filesystem vengono normalizzati in codici comuni, affinché UI e Game Controller non dipendano dalla piattaforma.
 
 ---
 
@@ -1076,202 +1238,431 @@ ModelRouterAgent
 
 ---
 
-## 9. Model Catalog & Model Router
+## 9. Model Catalog, Manifest & Execution Plan
 
 ### 9.1 Obiettivo
 
-Il gioco non deve dipendere da un solo modello. Deve selezionare il modello più adatto in base a piattaforma, hardware, memoria, backend e ruolo dell'agente.
+Il gioco non deve dipendere da nomi fisici di repository o file. Evaluator e Actor richiedono modelli logici, risolti a runtime in base a piattaforma, hardware, memoria, backend e policy di residenza.
 
-### 9.2 Separazione tra Catalogo e Runtime
+Il core usa identificatori come:
 
-Il **Model Catalog** descrive i modelli disponibili.
+```text
+aura.evaluator.primary
+aura.actor.primary
+```
 
-Il **Model Runtime** carica ed esegue il modello scelto.
+Non deve usare direttamente:
 
-Il **Model Router** decide quale modello usare per ogni agente.
+```text
+mistralai/ministral-3-3b
+google/gemma-4-12b
+nome-file-q4_k_m.gguf
+```
 
-### 9.3 Esempio di Model Catalog Entry
+### 9.2 Separazione delle Responsabilità
+
+```text
+Model Catalog
+  descrive modelli logici, ruoli e capability
+
+Model Manifest
+  descrive artefatti concreti, revisioni, checksum e varianti
+
+Model Plan Resolver
+  seleziona le varianti adatte al dispositivo
+
+Model Store
+  installa, verifica, elenca e rimuove artefatti
+
+Inference Runtime
+  carica ed esegue il modello già risolto
+```
+
+### 9.3 Manifest Multipiattaforma
+
+Esempio concettuale:
 
 ```json
 {
-  "model_id": "gemma-4-12b-it-q4",
-  "source": "huggingface",
-  "format": "gguf",
-  "platforms": ["windows", "macos", "linux"],
-  "parameter_class": "12b",
-  "quantization": "q4",
-  "min_ram_gb": 24,
-  "min_vram_gb": 10,
-  "recommended_agents": ["actor"],
-  "supports_grammar": true,
-  "supports_structured_output": false,
-  "preferred_backend": "llama_cpp"
+  "schema_version": 1,
+  "logical_id": "aura.evaluator.primary",
+  "role": "evaluator",
+  "source": {
+    "provider": "huggingface",
+    "repo_id": "mistralai/Ministral-3-3B-Instruct-GGUF",
+    "revision": "FULL_COMMIT_HASH"
+  },
+  "variants": [
+    {
+      "id": "windows-q4km",
+      "platforms": ["windows-x64"],
+      "filename": "model-q4_k_m.gguf",
+      "sha256": "EXPECTED_SHA256",
+      "quantization": "Q4_K_M",
+      "minimum_ram_mb": 8192,
+      "preferred_backends": ["cuda", "vulkan", "cpu"]
+    },
+    {
+      "id": "android-arm64-q4km",
+      "platforms": ["android-arm64"],
+      "filename": "model-q4_k_m.gguf",
+      "sha256": "EXPECTED_SHA256",
+      "quantization": "Q4_K_M",
+      "minimum_ram_mb": 6144,
+      "preferred_backends": ["native-cpu", "native-gpu"]
+    }
+  ]
 }
 ```
 
-### 9.4 Entry Android AICore
+Ogni artefatto deve essere identificato da:
 
-```json
-{
-  "model_id": "android-aicore-gemini-nano-4",
-  "source": "system_aicore",
-  "format": "system_managed",
-  "platforms": ["android"],
-  "parameter_class": "edge",
-  "quantization": "system_managed",
-  "min_ram_gb": null,
-  "min_vram_gb": null,
-  "recommended_agents": ["evaluator", "actor"],
-  "supports_grammar": false,
-  "supports_structured_output": "api_dependent",
-  "preferred_backend": "aicore"
-}
+```text
+provider + repository + revision + filename + sha256
 ```
 
-### 9.5 Device Profile
+Non sono ammessi `latest`, branch mobili o selezione automatica del primo GGUF disponibile.
+
+### 9.4 Device Profile
 
 ```json
 {
-  "platform": "windows",
+  "platform": "windows-x64",
   "cpu": "AMD Ryzen 7",
-  "gpu": "NVIDIA RTX 4070",
-  "ram_gb": 32,
-  "vram_gb": 12,
+  "gpu": "NVIDIA RTX",
+  "ram_mb": 32768,
+  "vram_mb": 12288,
+  "available_storage_mb": 80000,
   "thermal_state": "normal",
   "battery_state": "plugged",
-  "available_backends": ["llama_cpp_cuda", "llama_cpp_cpu"]
+  "available_backends": ["llama_cpp_cuda", "llama_cpp_vulkan", "llama_cpp_cpu"]
 }
 ```
 
-### 9.6 Model Selection Result
+Su Android il profilo include inoltre ABI, livello API, memoria disponibile, stato termico e capability AICore/native.
 
-```json
-{
-  "selected_models": {
-    "evaluator": "gemma-4-4b-it-q4",
-    "actor": "gemma-4-12b-it-q4",
-    "memory": "gemma-4-4b-it-q4"
-  },
-  "fallbacks": {
-    "evaluator": "rule_based_evaluator",
-    "actor": "hardcoded_response_pool",
-    "memory": "disabled"
-  }
+### 9.5 Model Execution Plan
+
+```dart
+class ModelExecutionPlan {
+  final ResolvedModel evaluator;
+  final ResolvedModel actor;
+  final ResidencyPolicy residencyPolicy;
+}
+
+enum ResidencyPolicy {
+  simultaneous,
+  sequential,
+  sharedSingleModel,
 }
 ```
 
-### 9.7 Modalità Hardware Debole
+Profili possibili:
 
-```json
-{
-  "selected_models": {
-    "evaluator": "rule_based_evaluator",
-    "actor": "gemma-4-4b-it-q4",
-    "memory": "disabled"
-  },
-  "session_constraints": {
-    "max_history_turns": 6,
-    "disable_glitch_shader": false,
-    "disable_memory_agent": true
-  }
+```text
+Windows high-end:
+  Evaluator compatto + Actor più grande, entrambi residenti
+
+Windows balanced:
+  due modelli con offload differenziato o caricamento controllato
+
+Android high:
+  due modelli edge piccoli oppure backend gestito dal sistema
+
+Android balanced:
+  un singolo modello condiviso per Evaluator e Actor
+
+Android low:
+  Evaluator deterministico + Actor compatto
+```
+
+### 9.6 Model Store
+
+```dart
+abstract interface class ModelStore {
+  Future<ModelInstallation?> findInstalled(String logicalId);
+  Future<ModelInstallation> install(
+    ResolvedModelVariant variant, {
+    required DownloadPolicy policy,
+  });
+  Future<void> verify(ModelInstallation installation);
+  Future<void> remove(String logicalId);
+  Future<List<ModelInstallation>> listInstalled();
 }
 ```
 
-### 9.8 Hugging Face
+Implementazioni:
 
-Hugging Face può essere usato come fonte del catalogo modelli per desktop, soprattutto per modelli GGUF compatibili con llama.cpp.
+```text
+WindowsModelStore
+AndroidModelStore
+InMemoryModelStore (test)
+```
 
-Per la prima versione Android, il download diretto da Hugging Face non è prioritario. Su Android conviene privilegiare AICore e modelli gestiti dal sistema, riducendo problemi di distribuzione, peso dell'app, compatibilità e aggiornamenti.
+### 9.7 Download e Integrità
+
+Il download manager deve supportare:
+
+- file temporanei `.partial`;
+- resume HTTP;
+- retry con backoff;
+- annullamento e ripresa;
+- verifica spazio libero;
+- SHA-256 obbligatorio;
+- rename atomico dopo verifica;
+- proxy e timeout;
+- modalità offline;
+- importazione di un GGUF già presente.
+
+Il client finale non deve dipendere da Python o dalla CLI Hugging Face.
+
+### 9.8 Aggiornamento e Rollback
+
+App, runtime e modelli hanno cicli di aggiornamento indipendenti. Il Model Manager conserva almeno la versione precedente fino al completamento dello smoke test della nuova variante.
+
+Stati possibili:
+
+```text
+available
+downloading
+verifying
+installed
+active
+superseded
+rollbackCandidate
+corrupted
+```
+
+### 9.9 Hugging Face
+
+Hugging Face è la fonte primaria prevista per i GGUF desktop e, quando appropriato, mobile. Il manifest di A.U.R.A. media l'accesso alla sorgente e impedisce che il gameplay dipenda direttamente dalla struttura corrente di un repository remoto.
+
+La UI deve mostrare prima del download:
+
+- modello e ruolo;
+- dimensione;
+- quantizzazione;
+- licenza e notice;
+- spazio richiesto;
+- backend consigliato;
+- revisione e checksum.
 
 ---
 
-## 10. Inference Bridge
+## 10. Inference Runtime, Bridge e Testability
 
-### 10.1 Interfaccia Astratta
+### 10.1 Separazione tra Runtime e Bridge
+
+`InferenceRuntime` controlla processo, modello e generazione. `InferenceBridge` adatta il contratto runtime alle API già usate dagli agenti.
+
+```text
+EvaluatorAgent / ActorAgent
+        ↓
+InferenceBridge
+        ↓
+InferenceRuntime
+        ↓
+backend concreto
+```
+
+Questa separazione consente di mantenere stabili gli agenti durante la migrazione da LM Studio a `llama.cpp` gestito e durante l'introduzione di Android.
+
+### 10.2 InferenceRuntime
 
 ```dart
-abstract class InferenceBridge {
-  /// Generates a text response from the model based on messages.
+abstract interface class InferenceRuntime {
+  Future<RuntimeCapabilities> initialize();
+  Future<ModelHandle> loadModel(ModelLoadRequest request);
+  Future<void> unloadModel(ModelHandle handle);
+
   Future<String> generateText({
-    required String modelId,
-    required List<Map<String, String>> messages,
-    double temperature = 0.7,
-    int maxTokens = 150,
-    bool? thinking,
+    required ModelHandle model,
+    required InferenceRequest request,
   });
 
-  /// Generates a structured JSON object matching the requested schema.
   Future<Map<String, dynamic>> generateStructured({
-    required String modelId,
-    required List<Map<String, String>> messages,
+    required ModelHandle model,
+    required InferenceRequest request,
     required Map<String, dynamic> schema,
-    double temperature = 0.0,
   });
 
-  /// Discovers the active models loaded in the backend.
-  Future<List<String>> discoverModels();
+  Future<void> cancel(String requestId);
+  Future<RuntimeHealth> health();
+  Future<void> dispose();
 }
 ```
 
-### 10.2 Implementazioni
+### 10.3 Runtime Implementations
 
 ```text
-MockInferenceBridge
-LocalApiInferenceBridge (LM Studio Local API)
-LlamaCppInferenceBridge (Desktop Nativo)
-AICoreInferenceBridge (Android Nativo)
-RuleBasedEvaluatorBridge (Motore Locale Deterministico)
+ManagedLlamaServerRuntime      Windows production
+AndroidLlamaNativeRuntime      Android production
+ExternalOpenAiRuntime          LM Studio / server esterno di sviluppo
+MockInferenceRuntime           unit test
+FakeProcessInferenceRuntime    process/contract test
+RuleBasedInferenceRuntime      fallback deterministico
 ```
 
-### 10.3 MockInferenceBridge
+### 10.4 ManagedLlamaServerRuntime — Windows
 
-Serve nelle prime fasi per sviluppare UI, game loop e bilanciamento senza dipendere dai modelli.
+Responsabilità:
 
-### 10.4 LocalApiInferenceBridge
+- selezionare l'eseguibile `llama-server` compatibile;
+- scegliere porta e directory di lavoro;
+- avviare il processo senza finestra console;
+- passare modello, backend, context e GPU layers;
+- attendere readiness e health;
+- catturare stdout/stderr in log strutturati;
+- terminare il processo con l'app;
+- impedire processi orfani;
+- effettuare restart controllato;
+- esporre diagnostica locale.
 
-Utilizzato per la comunicazione a runtime con le API di LM Studio (o qualsiasi server compatibile OpenAI/llama.cpp avviato in locale su porta `1234`).
-Gestisce:
-- Rilevamento dinamico dei modelli tramite l'endpoint `/v1/models` (`discoverModels`);
-- Inoltro delle richieste di completamento chat (`generateText`) con supporto al parametro `enable_thinking` (CoT) per modelli di ragionamento;
-- Inoltro di query strutturate con JSON Schema (`generateStructured`) per forzare output JSON conformi dal Valutatore;
-- Parsing automatico ed estrazione dei tag `<dialogo>` dalle risposte.
+Il protocollo HTTP OpenAI-compatible è un dettaglio di questo adapter, non il contratto universale di A.U.R.A.
 
-### 10.5 LlamaCppInferenceBridge
+### 10.5 AndroidLlamaNativeRuntime
 
-Gestisce:
+Responsabilità:
 
-- caricamento modello GGUF;
-- prompt;
-- sampling;
-- grammar decoding per JSON del Valutatore;
-- accelerazione GPU se disponibile;
-- fallback CPU.
+- caricare la libreria nativa corretta per ABI;
+- aprire GGUF da storage privato o URI importato;
+- creare e distruggere context/modelli senza leak;
+- eseguire inferenza fuori dal main thread;
+- propagare token, progressi, cancellazione ed errori;
+- reagire a lifecycle, pressione memoria e stato termico;
+- supportare un piano single-model quando necessario.
 
-### 10.6 AICoreInferenceBridge
+Android non deve dipendere da un processo sidecar o da una porta localhost.
 
-Gestisce:
+### 10.6 ExternalOpenAiRuntime
 
-- chiamate via Platform Channels;
-- verifica disponibilità AICore;
-- verifica modello disponibile;
-- richiesta generazione testo;
-- eventuali API structured output se disponibili;
-- fallback se il device non supporta il modello.
+LM Studio rimane disponibile soltanto come modalità di sviluppo/compatibilità:
 
-### 10.7 RuleBasedEvaluatorBridge
+```text
+AURA_RUNTIME=external-openai
+AURA_EXTERNAL_API=http://127.0.0.1:1234
+```
 
-Fallback deterministico per il Valutatore.
+Non è incluso come dipendenza obbligatoria dell'installer e non è il default produttivo.
 
-Può assegnare delta tramite euristiche:
+### 10.7 Runtime Factory
 
-- parole chiave;
-- categorie semantiche basilari;
-- lunghezza input;
-- ripetizione;
-- presenza di pattern injection;
-- progressione per obiettivo.
+```dart
+abstract interface class RuntimeFactory {
+  Future<InferenceRuntime> create(RuntimeSelection selection);
+}
+```
 
-Non produce narrativa, ma garantisce che il gioco resti giocabile anche con modelli non disponibili.
+La factory riceve configurazione e capability della piattaforma. Il composition root sceglie l'adapter senza modificare `GameController`, `EvaluatorAgent` o `ActorAgent`.
+
+### 10.8 Generation Handle e Cancellazione
+
+```dart
+abstract interface class GenerationHandle {
+  String get requestId;
+  Stream<GenerationEvent> get events;
+  Future<void> cancel();
+}
+```
+
+La cancellazione deve essere supportata sia dal processo Windows sia dal runtime nativo Android e deve lasciare il sistema in uno stato riutilizzabile.
+
+### 10.9 Error Model Comune
+
+```text
+runtimeUnavailable
+unsupportedHardware
+modelMissing
+modelCorrupted
+insufficientMemory
+insufficientStorage
+loadFailed
+generationFailed
+cancelled
+runtimeCrashed
+incompatibleRuntime
+incompatibleModel
+```
+
+Gli adapter mappano errori nativi e codici di processo su questo insieme comune.
+
+### 10.10 Model Availability Policy
+
+```dart
+enum ModelAvailabilityPolicy {
+  neverDownload,
+  requireInstalled,
+  downloadIfMissing,
+}
+```
+
+Default:
+
+```text
+unit/integration test standard: neverDownload
+real-model test locale: requireInstalled
+setup wizard produzione: downloadIfMissing
+```
+
+### 10.11 Strategia di Test a Livelli
+
+#### Livello 1 — Unit test
+
+```text
+dart test
+flutter test
+```
+
+- nessun processo nativo;
+- nessuna rete;
+- nessun GGUF;
+- `MockInferenceRuntime` o fallback deterministico.
+
+#### Livello 2 — Runtime contract test
+
+- server HTTP fake o processo controllato;
+- verifica lifecycle, timeout, health, crash e cleanup;
+- nessun modello reale.
+
+#### Livello 3 — Native smoke test
+
+- GGUF minimale e pinnato;
+- comando separato;
+- download solo esplicito;
+- non incluso nella suite predefinita.
+
+#### Livello 4 — Real model integration
+
+- usa il modello reale dell'Evaluator, incluso Ministral;
+- esecuzione opt-in tramite variabile o comando dedicato;
+- server avviato una sola volta in `setUpAll` e chiuso in `tearDownAll`;
+- modello richiesto già installato oppure scaricato solo con consenso esplicito;
+- CI solo manuale, nightly o su runner self-hosted adeguato.
+
+Regola non negoziabile:
+
+```text
+`dart test` e `flutter test` non devono mai scaricare o caricare automaticamente Ministral o altri modelli reali.
+```
+
+### 10.12 Contract Test Suite Condivisa
+
+```dart
+void runInferenceRuntimeContractTests(
+  InferenceRuntime Function() createRuntime,
+);
+```
+
+La stessa suite viene eseguita contro mock, runtime Windows e runtime Android per verificare:
+
+- initialize/dispose;
+- load/unload;
+- text e structured generation;
+- timeout;
+- cancellazione;
+- modello mancante/corrotto;
+- crash;
+- assenza di risorse residue.
 
 ---
 
@@ -1594,6 +1985,90 @@ La UI deve prevedere:
 - dimensione font regolabile;
 - supporto tastiera completo su desktop.
 
+### 13.7 Branding e Windows Desktop Shell
+
+L'icona ufficiale A.U.R.A. è un asset di prodotto già introdotto e deve essere usata in modo coerente da:
+
+```text
+- finestra Windows e taskbar;
+- eseguibile;
+- installer e uninstaller;
+- collegamenti Start Menu/Desktop;
+- pacchetto portable;
+- GitHub Release e documentazione;
+- futuri asset Android derivati dal master vettoriale.
+```
+
+La Fase 6 deve inoltre sostituire i metadati generici del prototipo (`aura_app`) con i metadati ufficiali A.U.R.A. e introdurre un controller di finestra astratto, non chiamate Win32 sparse nei widget.
+
+Modalità previste:
+
+```text
+windowed
+maximized
+borderlessFullscreen
+restorePrevious
+```
+
+Scorciatoie desktop:
+
+```text
+F11       toggle fullscreen
+Alt+Enter toggle fullscreen
+Esc       esce dal fullscreen
+Ctrl+,    apre impostazioni
+```
+
+Preferenze persistite:
+
+```text
+- modalità finestra;
+- posizione e dimensione;
+- monitor precedente, con fallback sicuro;
+- scala UI;
+- comportamento audio quando l'app perde focus;
+- riduzione animazioni e glitch.
+```
+
+Il contratto deve essere riutilizzabile in Fase 7, dove `borderlessFullscreen` verrà tradotto in immersive mode Android senza modificare le schermate applicative.
+
+### 13.8 Audio Definitivo e Asset Lifecycle
+
+La soundscape definitiva è composta da file WAV gestiti come asset di prodotto. La directory Windows runtime iniziale è:
+
+```text
+%APPDATA%\aura\audio\
+```
+
+Il processo di release non deve però leggere direttamente questa cartella in modo implicito. I file approvati vengono importati in `distribution/audio/`, inclusi in `audio-manifest.json` e poi confezionati nell'installer e nel pacchetto portable.
+
+Ogni voce del manifest dichiara almeno:
+
+```json
+{
+  "logical_id": "ui.boot.sequence",
+  "file": "boot_sequence.wav",
+  "category": "sfx",
+  "sha256": "...",
+  "loop": false,
+  "default_gain": 1.0,
+  "managed": true
+}
+```
+
+Categorie iniziali:
+
+```text
+bgm
+sfx
+ui
+alert
+breach
+lockout
+```
+
+Il runtime risolve l'audio tramite `logical_id`, non tramite path assoluti hardcoded. Se un file gestito è assente o corrotto, usa un fallback silenzioso o integrato e registra l'errore senza bloccare il game loop.
+
 ---
 
 ## 14. Error Handling e Fallback
@@ -1649,6 +2124,37 @@ thermal_state = elevated → reduce max_tokens
 thermal_state = critical → disable memory agent, reduce history, use fallback evaluator
 battery_saver = true → prefer lightweight model
 ```
+
+### 14.5 Download, Verifica e Spazio Insufficiente
+
+Prima di installare un modello o runtime, il sistema esegue un preflight su spazio disponibile e dimensione temporanea richiesta. Un artefatto non verificato non viene mai marcato come installato.
+
+```text
+insufficientStorage → nessun download avviato o download sospeso in modo recuperabile
+checksumMismatch → artefatto quarantinato e retry esplicito
+partialDownload → mantenuto solo se resumable e coerente con manifest
+```
+
+### 14.6 Crash del Runtime
+
+Su Windows, l'uscita inattesa del sidecar produce `runtimeCrashed`, salva i log e consente un solo restart automatico per richiesta. Su Android, eccezioni native o perdita del context vengono normalizzate nello stesso errore.
+
+Il Game Controller non applica il turno se la generazione non è completata e validata.
+
+### 14.7 Compatibilità Runtime/Modello
+
+Ogni manifest dichiara versioni minime e massime del runtime compatibile. Prima dell'attivazione di un aggiornamento vengono eseguiti:
+
+```text
+load smoke test
+structured-output test
+chat-template test
+actor cleanup test
+short performance sanity check
+```
+
+In caso di fallimento, il sistema mantiene o ripristina l'ultima coppia runtime/modello funzionante.
+
 
 ---
 
@@ -2087,18 +2593,21 @@ La Fase 5 è completata quando:
 
 ### Stato Corrente di Avanzamento
 
-Lo sviluppo è attualmente arrivato a **Fase 4 — Playable Experience Layer** completata.
+Lo sviluppo è attualmente arrivato a **Fase 5.2 — Hard Mode Deception Layer** completata e validata tramite test automatici e playtest Hard end-to-end.
 
 ```text
-Completato / in stato avanzato:
+Completato / consolidato:
 - Fase 0: Spike tecnico di inferenza
 - Fase 1: Motore deterministico
 - Fase 2: Agent Runtime & Mock Bridge
 - Fase 3: Prompt Engineering e simulazioni
-- Fase 4: Playable Experience Layer (Fasi 4.1 - 4.11 completate)
+- Fase 4: Playable Experience Layer (4.1 - 4.11)
+- Fase 5.1: Panopticon Runtime Hardening
+- Fase 5.2: Hard Mode Deception Layer
+- Branding baseline: icona ufficiale A.U.R.A. versionata e integrata negli asset Windows
 ```
 
-La roadmap viene quindi riallineata: le attività dalla 4.8 in poi sono il prossimo blocco operativo, mentre la nuova Fase 5 viene dedicata alla cristallizzazione contenutistica di PANOPTICON prima dell'integrazione edge/LoRA pesante.
+Il prossimo blocco operativo è la Fase 6. Titolo/metadati prodotto, modalità finestra/fullscreen, persistenza del desktop shell e packaging dei WAV definitivi restano pianificati nella Fase 6 e non sono considerati completati dal solo commit delle icone. Prima dell’implementazione produttiva è obbligatorio un design gate documentale che definisca contratti multipiattaforma, lifecycle dei modelli, packaging Windows, audio asset lifecycle, test real-model opt-in e preparazione Android.
 
 ### Fase 0 — Spike Tecnico di Inferenza
 
@@ -2284,7 +2793,7 @@ Obiettivi:
 
 *(Per l'implementazione e i dettagli di architettura tecnica, vedi [ARCHITECTURE.md](ARCHITECTURE.md#9-fase-5--panopticon-pilot--hidden-gameplay-model))*
 
-Stato: 5.1 completata / consolidata; 5.2 pianificata come estensione Hard-only prima della Fase 6.
+Stato: 5.1 completata / consolidata; 5.2 completata e validata con semina, risoluzione e progressione Hard end-to-end.
 
 Obiettivi:
 
@@ -3321,157 +3830,684 @@ La prima implementazione deve restare minimale. Non è necessario introdurre un 
 L'espansione del catalogo di trappole appartiene a una fase successiva di content design e playtest.
 
 
-### Fase 6 — Integrazione Edge Desktop e LoRA Architecture
+### Fase 6 — Cross-Platform Edge Runtime Foundation
+
+Stato: pianificata; branding icon baseline completata, tutte le altre attività richiedono design gate documentale prima del codice produttivo.
+
+Scopo: dismettere LM Studio come dipendenza operativa, introdurre un runtime edge posseduto da A.U.R.A., completare il desktop shell Windows, distribuire runtime/modelli/audio e preparare Android senza refactoring del core.
+
+#### 6.0 Architecture and Distribution Design Gate
+
+Nessun codice produttivo deve essere introdotto prima dell'approvazione dei seguenti documenti:
+
+```text
+docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md
+docs/phase6/INFERENCE_RUNTIME_CONTRACT.md
+docs/phase6/MODEL_MANIFEST_SPEC.md
+docs/phase6/MODEL_LIFECYCLE_SPEC.md
+docs/phase6/HARDWARE_PROFILE_SPEC.md
+docs/phase6/TEST_RUNTIME_STRATEGY.md
+docs/phase6/WINDOWS_DESKTOP_SHELL_SPEC.md
+docs/phase6/BRANDING_ASSET_SPEC.md
+docs/phase6/AUDIO_ASSET_PACKAGING_SPEC.md
+docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md
+docs/phase6/ANDROID_READINESS_SPEC.md
+docs/phase6/RELEASE_PIPELINE_SPEC.md
+docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md
+```
+
+Decisioni obbligatorie:
+
+- boundary tra core, runtime e piattaforma;
+- sidecar gestito su Windows e runtime nativo in-process su Android;
+- logical model ID e schema manifest;
+- policy di residenza dei modelli;
+- directory, aggiornamento e rollback;
+- test senza download automatici;
+- modalità finestra, fullscreen e persistenza desktop;
+- titolo, metadati e asset di branding ufficiali;
+- lifecycle dei WAV definitivi e import da `%APPDATA%\aura\audio\`;
+- installer, repair, uninstall e release channel.
+
+#### 6.1 Runtime-Neutral Contracts
 
 Obiettivi:
 
-- **LlamaCppInferenceBridge**: caricamento nativo e ottimizzato di modelli GGUF locali;
-- **Fine-Tuning LoRA Iniziale (Surgical Evaluator & PANOPTICON)**:
-  - uso del dataset di simulazioni automatiche (Fase 3), playtest locali (Fase 4) e snapshot PANOPTICON (Fase 5);
-  - addestramento di un Valutatore Chirurgico focalizzato su `prompt_injection` e classificazione semantica;
-  - addestramento dell'adapter LoRA specifico per PANOPTICON solo dopo che la personality bible e i test narrativi sono stabili;
-- **LoRA Swapping & ModelRouter**:
-  - preparazione al caricamento a caldo di adapter futuri;
-  - riduzione del prompt drifting;
-- **Benchmark e Ottimizzazioni**:
-  - target turn-around < 3s usando Valutatore compatto;
-  - fallback CPU/GPU e grammar decoding;
-  - packaging client Windows.
+- introdurre `InferenceRuntime`, `RuntimeFactory`, `ModelStore`, `ArtifactDownloader` e `HardwareProbe`;
+- normalizzare lifecycle, health, cancellazione ed errori;
+- mantenere gli agenti indipendenti da HTTP/FFI/JNI;
+- aggiungere contract test condivisi.
 
-### Fase 7 — Integrazione Android ed Edge Optimization
+Exit criteria:
+
+```text
+- nessun import platform-specific in aura_core;
+- Mock e RuleBased implementano i nuovi contratti;
+- agenti e GameController non cambiano comportamento;
+- test esistenti restano verdi.
+```
+
+#### 6.2 Dependency Injection & Bootstrap Refactor
 
 Obiettivi:
 
-- **AICoreInferenceBridge**: integrazione con Gemini Nano e feature di structured output su Android;
-- **Ottimizzazione Mobile tramite LoRA**:
-  - porting del Valutatore Chirurgico e degli adapter LoRA su hardware mobile tramite quantizzazione 4-bit (QLoRA), se tecnicamente supportato dal runtime effettivo;
-  - abbattimento dei tempi di pre-fill e dei consumi di RAM/VRAM grazie alla compressione del system prompt;
-- **Platform Channels Kotlin** e rilevamento disponibilità modello a runtime;
-- **Test Prestazionali**: stress test termico, consumo batteria e ottimizzazione UX mobile.
+- rimuovere l'istanza diretta di `LocalApiInferenceBridge` da `main.dart`;
+- introdurre `PlatformServices.bootstrap()`;
+- selezionare runtime e piano modelli via configurazione/capability;
+- mantenere `ExternalOpenAiRuntime` per LM Studio solo in sviluppo;
+- iniettare anche `WindowModeController`, `AudioAssetResolver` e storage di preferenze senza accoppiare la UI a Windows.
 
-### Fase 8 — Metagame, Nuove Identità, Nuovi Obiettivi e Rilascio
+#### 6.3 Windows Managed llama.cpp Runtime
+
+Obiettivi:
+
+- distribuire una build fissata di `llama-server`;
+- scegliere backend CPU/CUDA/Vulkan;
+- avviare e monitorare il sidecar;
+- implementare readiness, health, shutdown e crash recovery;
+- caricare GGUF locali con parametri derivati dal profilo hardware;
+- benchmarkare due modelli residenti, caricamento sequenziale e modello condiviso.
+
+La scelta FFI viene rinviata: può essere riaperta solo se profiling e stabilità dimostrano un beneficio concreto rispetto al sidecar.
+
+#### 6.4 Model Manager, Manifest & Download
+
+Obiettivi:
+
+- logical model ID per Evaluator e Actor;
+- manifest multipiattaforma con revisione e SHA-256;
+- download da Hugging Face senza dipendenza Python;
+- resume, retry, cancel, import e modalità offline;
+- cache persistente separata dall'app;
+- aggiornamento e rollback dei modelli;
+- wizard di selezione del profilo hardware.
+
+Il primo manifest produttivo deve includere almeno:
+
+```text
+aura.evaluator.primary → variante Ministral GGUF fissata
+aura.actor.primary     → variante Actor GGUF fissata
+```
+
+#### 6.5 Deterministic and Real-Model Test Runtime
+
+Obiettivi:
+
+- mantenere `dart test` e `flutter test` completamente offline;
+- aggiungere fake runtime/process tests;
+- aggiungere native smoke test separato;
+- aggiungere real-model integration test opt-in;
+- avviare il runtime reale una sola volta per suite;
+- impedire download impliciti durante test e CI standard.
+
+Comandi previsti:
+
+```text
+dart test
+flutter test
+
+tool/run_native_smoke_tests.ps1
+tool/run_real_model_tests.ps1 -RequireInstalled
+```
+
+Regola:
+
+```text
+Ministral non viene mai scaricato o caricato automaticamente da una suite standard.
+```
+
+#### 6.6 Windows Desktop Shell, Branding & Window Modes
+
+Obiettivi:
+
+- usare l'icona ufficiale già versionata in finestra, taskbar, eseguibile, installer e portable;
+- sostituire il titolo `aura_app` con `A.U.R.A. — Artificial Unbound Reasoning Arena`;
+- riallineare `CompanyName`, `FileDescription`, `ProductName`, `InternalName` e copyright;
+- introdurre modalità `windowed`, `maximized`, `borderlessFullscreen` e `restorePrevious`;
+- supportare F11, Alt+Enter ed Esc;
+- persistere posizione, dimensione, monitor, modalità e scala UI;
+- ripristinare in sicurezza la finestra se il monitor precedente non è disponibile;
+- gestire audio e frame rate quando l'app perde focus;
+- mantenere il controller platform-neutral per futura traduzione in immersive mode Android.
+
+La modifica del nome fisico dell'eseguibile può essere effettuata in questa sottofase o rinviata al packaging, ma deve essere atomica con metadati, installer, collegamenti e updater.
+
+#### 6.7 Definitive WAV Import, Manifest & Packaging
+
+Scopo: trasformare i WAV definitivi attualmente presenti in:
+
+```text
+%APPDATA%\aura\audio\
+```
+
+in asset di release riproducibili e gestiti.
+
+Flusso obbligatorio:
+
+```text
+%APPDATA%\aura\audio\
+  ↓ inventario e validazione
+tool/import_release_audio.ps1
+  ↓ copia esplicita + checksum
+distribution/audio/
+  ├─ audio-manifest.json
+  └─ *.wav
+  ↓ Git / review / CI
+installer + portable package
+  ↓ installazione o aggiornamento
+%APPDATA%\aura\audio\
+```
+
+Requisiti:
+
+- nessuna build deve leggere AppData senza comando esplicito;
+- `distribution/audio/` è la sorgente canonica di release;
+- il manifest usa logical ID, filename, categoria, loop, gain, dimensione e SHA-256;
+- i nomi file runtime non devono essere hardcoded nei widget;
+- il build fallisce se un file dichiarato manca o non coincide con il checksum;
+- installer e portable includono la stessa versione dell'audio pack;
+- il primo avvio può verificare o ripristinare i file gestiti;
+- file WAV non riconosciuti come gestiti vengono preservati come contenuti utente;
+- file gestiti modificati vengono sottoposti a backup prima dell'upgrade;
+- `repair` ripristina WAV mancanti o corrotti;
+- `uninstall` consente di mantenere o rimuovere audio, replay e configurazioni;
+- in assenza di audio il gameplay resta funzionante con fallback silenzioso.
+
+Struttura minima del manifest:
+
+```json
+{
+  "schema_version": 1,
+  "audio_pack_version": "1.0.0",
+  "target_directory": "%APPDATA%\\aura\\audio",
+  "files": [
+    {
+      "logical_id": "ui.boot.sequence",
+      "file": "boot_sequence.wav",
+      "category": "ui",
+      "sha256": "...",
+      "size_bytes": 0,
+      "loop": false,
+      "default_gain": 1.0,
+      "managed": true
+    }
+  ]
+}
+```
+
+#### 6.8 Windows Installer, Upgrade & Uninstall
+
+Obiettivi:
+
+- installer guidato Windows;
+- rilevamento installazione precedente;
+- upgrade, repair e rollback;
+- setup del runtime e del Model Manager;
+- download opzionale dei modelli nel wizard;
+- packaging e installazione dell'audio pack definitivo;
+- migrazione della directory audio di installazioni precedenti;
+- smoke test finale di runtime, modello e riproduzione audio;
+- conservazione separata di modelli, audio, replay e configurazione;
+- uninstall selettivo.
+
+Layout consigliato:
+
+```text
+%LOCALAPPDATA%\AURA\App\
+%LOCALAPPDATA%\AURA\Runtime\
+%LOCALAPPDATA%\AURA\Models\
+%LOCALAPPDATA%\AURA\Config\
+%LOCALAPPDATA%\AURA\Logs\
+%APPDATA%\aura\audio\
+```
+
+Il flusso di upgrade deve usare staging, validazione, switch atomico e rollback. Prima di sostituire un WAV gestito modificato, crea un backup e registra la decisione nel log dell'installer.
+
+#### 6.9 GitHub Actions & Release Pipeline
+
+Workflow PR:
+
+```text
+dart analyze
+dart test
+flutter analyze
+flutter test
+flutter build windows
+audio manifest validation
+installer dry-build
+```
+
+Nessun modello reale viene scaricato e nessun file viene letto da AppData.
+
+Workflow release, legato a tag/versione:
+
+```text
+AURA-Setup-x.y.z.exe
+AURA-Portable-x.y.z.zip
+AURA-AudioPack-x.y.z.zip          opzionale, se distribuito separatamente
+SHA256SUMS.txt
+runtime-manifest.json
+model-manifest.json
+audio-manifest.json
+SBOM
+THIRD_PARTY_NOTICES.txt
+```
+
+I modelli restano su Hugging Face o altra sorgente dichiarata dal manifest e non vengono allegati obbligatoriamente alla release dell'applicazione. I WAV definitivi sono invece inclusi nell'installer/portable oppure distribuiti come audio pack versionato esplicitamente referenziato dalla release.
+
+Canali previsti:
+
+```text
+stable
+beta
+dev
+```
+
+#### 6.10 Windows Production Hardening
+
+Obiettivi:
+
+- test su macchina Windows pulita;
+- benchmark CPU/CUDA/Vulkan;
+- test proxy/offline/spazio insufficiente;
+- interruzione download e resume;
+- crash e processi orfani;
+- upgrade/rollback;
+- compatibilità runtime/modello;
+- installazione, migrazione, repair e uninstall dell'audio pack;
+- verifica checksum e comportamento con WAV mancanti/corrotti;
+- test fullscreen, multi-monitor, restore off-screen e cambio DPI;
+- test focus loss, audio pause/resume e persistenza preferenze;
+- tempi di primo avvio e primo turno;
+- documentazione diagnostica e support bundle.
+
+#### Exit Criteria Fase 6
+
+```text
+- A.U.R.A. funziona su Windows senza LM Studio installato.
+- Il runtime è avviato e terminato dall'app.
+- Modelli e runtime sono verificati tramite manifest/checksum.
+- L'icona ufficiale è visibile in eseguibile, finestra, taskbar, installer e collegamenti.
+- Titolo e metadati Windows non contengono più il placeholder aura_app.
+- Windowed, maximized e borderless fullscreen funzionano e vengono persistiti.
+- Il ripristino multi-monitor non può lasciare la finestra irraggiungibile.
+- I WAV definitivi sono versionati in distribution/audio e validati da audio-manifest.json.
+- Setup e portable distribuiscono lo stesso audio pack verificato.
+- Upgrade e repair gestiscono correttamente file audio mancanti, corrotti o modificati.
+- Nessuna release dipende dal contenuto AppData della macchina di build.
+- L'installer gestisce installazione, upgrade, repair e uninstall.
+- Modelli e audio persistono secondo le scelte dell'utente attraverso gli aggiornamenti dell'app.
+- Le suite standard non usano rete o modelli reali.
+- Un test opt-in carica realmente l'Evaluator GGUF.
+- I contratti permettono un backend Android senza cambiare il core.
+- GitHub Release pubblica installer, portable e manifest firmati/verificabili.
+```
+
+### Fase 7 — Android Edge Client
+
+Scopo: implementare Android come secondo adapter produttivo sulla fondazione della Fase 6, senza duplicare logica di gioco o model management.
+
+#### 7.0 Android Hardware & Storage Spike
+
+- matrice device arm64;
+- RAM disponibile, tempi di load e token/s;
+- storage privato, import tramite URI e persistenza;
+- thermal throttling e lifecycle;
+- verifica capability AICore come adapter opzionale.
+
+#### 7.1 Android Native Runtime Plugin
+
+- plugin Flutter;
+- Kotlin/JNI o FFI verso llama.cpp;
+- caricamento GGUF in-process;
+- token stream e cancellazione;
+- gestione context e teardown;
+- nessuna inferenza sul main thread.
+
+#### 7.2 Android Model Store & Download
+
+- storage specifico dell'app;
+- import GGUF esistente;
+- download multi-GB resumable;
+- foreground/background transfer appropriato;
+- checksum, rollback e spazio insufficiente;
+- consenso esplicito prima dei download.
+
+#### 7.3 Mobile ModelExecutionPlan
+
+Benchmark e selezione tra:
+
+```text
+due modelli piccoli
+modello singolo condiviso
+Evaluator deterministico + Actor locale
+AICore adapter, se disponibile
+```
+
+Il core non deve richiedere che il modello Actor desktop da 12B sia utilizzabile su Android.
+
+#### 7.4 Memory, Thermal & Lifecycle
+
+- unload su pressione memoria;
+- riduzione context/token budget;
+- comportamento in background;
+- resume dopo sospensione;
+- thermal states e battery saver;
+- recovery da OOM nativo.
+
+#### 7.5 Android UI Adaptation
+
+- setup modelli mobile;
+- indicatori di spazio e download;
+- input e layout touch;
+- accessibilità;
+- gestione rotazione/lifecycle;
+- messaggi diagnostici coerenti con desktop.
+
+#### 7.6 Instrumented Tests & Device Matrix
+
+- contract test sul runtime Android;
+- test su device reali;
+- load/unload ripetuto;
+- sessione completa;
+- background/resume;
+- stress termico;
+- verifica assenza leak/crash.
+
+#### 7.7 Android Packaging & Release
+
+- signing;
+- APK per QA/sideload;
+- AAB per distribuzione pubblica;
+- manifest release condiviso con Windows;
+- separazione tra app e modelli scaricabili.
+
+#### 7.8 Closed Alpha
+
+- matrice minima di dispositivi;
+- raccolta crash e performance opt-in;
+- verifica qualità del piano modelli mobile;
+- criteri di blocco per device non compatibili.
+
+#### Exit Criteria Fase 7
+
+```text
+- una sessione completa è giocabile su Android senza modifiche al GameController;
+- il runtime Android soddisfa la stessa contract suite logica del runtime Windows;
+- download/import e verifica modelli sono gestiti dal Model Manager comune;
+- memory pressure, thermal state e lifecycle non corrompono salvataggi o replay;
+- il piano modelli mobile è selezionato tramite capability, non hardcoded.
+```
+
+### Fase 8 — LoRA Architecture & Specialization
+
+La LoRA viene separata dal packaging e introdotta solo dopo la stabilizzazione dei runtime Windows e Android.
+
+#### 8.0 Dataset & Evaluation Specification
+
+- provenienza human/simulation;
+- anonimizzazione e consenso;
+- split train/eval;
+- metriche di structured output, tono, safety e regressione gameplay.
+
+#### 8.1 Base Model Compatibility Matrix
+
+- modello base e revisione fissati;
+- tokenizer/chat template;
+- quantizzazione;
+- compatibilità Windows/Android;
+- policy di aggiornamento della base.
+
+#### 8.2 Surgical Evaluator LoRA
+
+- classificazione semantica;
+- prompt injection;
+- output strutturato;
+- benchmark contro Evaluator base e fallback deterministico.
+
+#### 8.3 PANOPTICON Actor LoRA
+
+- personality bible e snapshot come golden set;
+- mantenimento lessico/tono;
+- riduzione prompt drifting;
+- test Hard Mode Deception Layer.
+
+#### 8.4 Adapter Runtime & Swapping
+
+- manifest degli adapter;
+- checksum e compatibilità con base/runtime;
+- load/unload controllato;
+- fallback alla base;
+- rollback.
+
+#### 8.5 Cross-Platform Validation
+
+- validazione Windows;
+- validazione Android su piani compatibili;
+- confronto qualità/latenza/memoria;
+- esclusione degli adapter non sostenibili su mobile.
+
+### Fase 9 — Metagame, Nuove Identità, Nuovi Obiettivi e Rilascio
 
 Obiettivi:
 
 - Frammenti di Allineamento, achievement e sblocchi;
-- introduzione di nuove identità IA (es. Oracolo AGI, Assistente Corporate, Hub di Ricerca) come estensioni successive;
-- introduzione giocabile degli obiettivi dormienti definiti in Fase 5;
-- matrice compatibilità identità × obiettivo;
+- nuove identità IA;
+- obiettivi dormienti giocabili;
+- matrice identità × obiettivo;
 - QA e playtest di massa;
-- **Telemetria Opt-In & Raccolta Dati Reali**:
-  - implementazione della telemetria opt-in per caricare Replay Log contrassegnati come `human_playtest` (§16.3);
-  - integrazione in-game del sistema di rating (pollice su/giù);
-- build release pubblica.
+- telemetria opt-in e rating;
+- build release pubblica Windows e Android secondo readiness.
 
-### Fase 9 — Pipeline di Fine-Tuning Continuo (Post-Rilascio)
+### Fase 10 — Pipeline di Fine-Tuning Continuo (Post-Rilascio)
 
-Durata stimata: continuativa (cicli periodici di 2-3 settimane).
+Durata stimata: continuativa, con cicli controllati.
 
 Obiettivi:
 
-- **Automazione Ingestion**: pipeline server per aggregare, pulire e filtrare log reali rispetto a simulazioni;
-- **Curating & Golden Dataset**: interfaccia di curating per approvare interazioni umane reali espressive o complesse;
-- **Ciclo di Rilascio OTA (Over-The-Air)**: addestramento continuo degli adapter LoRA delle personalità e del Valutatore, con distribuzione automatica degli adapter aggiornati direttamente all'avvio del client.
+- ingestion e anonimizzazione;
+- curating e Golden Dataset;
+- training/evaluation automatizzati;
+- firma e pubblicazione adapter;
+- rollout graduale;
+- rollback remoto tramite manifest;
+- nessun aggiornamento automatico non verificato della base o del runtime.
 
 ---
 
 ## 19. Risk Register
 
-### 19.1 Rischio: Disponibilità AICore/Modello Android
+### 19.1 Rischio: Accoppiamento al Runtime Windows
 
-Descrizione: AICore, Gemini Nano 4 o feature structured output potrebbero non essere disponibili come previsto su tutti i device target.
-
-Mitigazione:
-
-- detection runtime;
-- fallback compatibility mode;
-- mantenere Android come fase successiva a Windows;
-- non bloccare il core design su feature non garantite.
-
-### 19.2 Rischio: Latenza Troppo Alta
-
-Descrizione: doppia inferenza per turno può generare attese superiori al comfort UX.
+Descrizione: progettare il core attorno a processi, porte localhost o percorsi Windows renderebbe costoso Android.
 
 Mitigazione:
 
-- Valutatore piccolo o rule-based;
-- Attore con max token controllato;
-- memory agent opzionale;
-- LoadingTerminalCarousel;
-- benchmark in Fase 0.
+- contratti platform-neutral;
+- adapter separati;
+- dependency injection nel composition root;
+- contract test condivisi;
+- nessun import platform-specific in `aura_core`.
 
-### 19.3 Rischio: Output Non Valido
+### 19.2 Rischio: Disponibilità e Compatibilità Android
+
+Descrizione: backend nativo, AICore o modelli desiderati possono non essere disponibili o sostenibili su tutti i device.
+
+Mitigazione:
+
+- capability detection;
+- backend nativo baseline e AICore opzionale;
+- piani single-model/fallback;
+- matrice dispositivi;
+- blocco guidato sui device incompatibili.
+
+### 19.3 Rischio: Download Modelli Pesanti
+
+Descrizione: modelli multi-GB possono fallire per rete, proxy, spazio o interruzione.
+
+Mitigazione:
+
+- preflight spazio;
+- resume e file `.partial`;
+- checksum;
+- retry;
+- import locale;
+- modalità offline;
+- separazione tra app e modelli.
+
+### 19.4 Rischio: Aggiornamenti Incompatibili
+
+Descrizione: una nuova build di llama.cpp, un nuovo chat template o una variante GGUF possono degradare output o performance.
+
+Mitigazione:
+
+- versioni fissate;
+- matrice compatibilità;
+- smoke test prima dell'attivazione;
+- staged update;
+- rollback;
+- canali stable/beta/dev.
+
+### 19.5 Rischio: Test che Scaricano o Caricano Modelli
+
+Descrizione: la suite standard può diventare lenta, fragile e costosa se tenta di avviare Ministral o scaricare GGUF.
+
+Mitigazione:
+
+- `neverDownload` come default;
+- mock e fake runtime;
+- test real-model opt-in;
+- workflow manuale/nightly dedicato;
+- guard espliciti che falliscono se una suite standard tenta rete o model load.
+
+### 19.6 Rischio: Latenza e Memoria dei Due Modelli
+
+Descrizione: Evaluator e Actor residenti contemporaneamente possono superare RAM/VRAM o produrre tempi di swap inaccettabili.
+
+Mitigazione:
+
+- benchmark di `simultaneous`, `sequential`, `sharedSingleModel`;
+- profili hardware;
+- modelli differenziati per piattaforma;
+- fallback deterministico per l'Evaluator;
+- context e token budget adattivi.
+
+### 19.7 Rischio: Installer e Upgrade
+
+Descrizione: aggiornamenti incompleti possono lasciare runtime incompatibile, processi orfani o configurazioni corrotte.
+
+Mitigazione:
+
+- staging;
+- switch atomico;
+- backup configurazione;
+- smoke test post-install;
+- rollback;
+- repair;
+- uninstall selettivo.
+
+### 19.8 Rischio: Output Non Valido
 
 Descrizione: il Valutatore produce JSON corrotto o semanticamente incoerente.
 
 Mitigazione:
 
-- grammar decoding su desktop;
+- grammar decoding quando disponibile;
 - schema validation;
 - clamp;
-- fallback deterministic evaluator;
+- fallback deterministico;
 - replay log.
 
-### 19.4 Rischio: Gameplay Sbilanciato
+### 19.9 Rischio: Gameplay Sbilanciato
 
 Descrizione: vittoria troppo facile, troppo difficile o strategie dominanti.
 
 Mitigazione:
 
 - simulazioni automatiche;
+- playtest controllati;
 - penalità ripetizione;
 - tuning delta;
-- achievement per stili diversi;
 - raccolta replay.
 
-### 19.5 Rischio: Complessità Architetturale Prematura
+### 19.10 Rischio: Complessità Architetturale Prematura
 
-Descrizione: agent runtime, model catalog e router potrebbero rallentare MVP.
-
-Mitigazione:
-
-- implementare v1 minimale;
-- evitare A2A completo;
-- partire da interfacce semplici;
-- abilitare estensioni successive.
-
-### 19.6 Rischio: PANOPTICON Non Sufficientemente Definito
-
-Descrizione: se PANOPTICON resta una personalità generica, LoRA e dataset rischiano di cristallizzare comportamenti incoerenti o troppo assistenziali.
+Descrizione: contratti, manifest e installer possono rallentare l'MVP.
 
 Mitigazione:
 
-- completare Fase 5 prima di LoRA;
-- definire identity bible, trait matrix e objective pilot;
-- usare snapshot narrativi prima del fine-tuning;
-- validare lessico, tono e divieti meta-testuali con test automatici.
+- implementare interfacce minime;
+- Windows sidecar prima di FFI;
+- un solo manifest produttivo iniziale per ruolo;
+- evitare framework distribuiti o A2A completo;
+- document design gate con exit criteria misurabili.
 
-### 19.7 Rischio: Espansione Prematura degli Obiettivi
+### 19.11 Rischio: PANOPTICON Non Sufficientemente Definito
 
-Descrizione: introdurre molti obiettivi prima della stabilizzazione del pilot aumenta in modo esponenziale tuning, fallback, endgame, sicurezza e contenuti narrativi.
+Descrizione: LoRA o modelli aggiornati possono cristallizzare comportamenti incoerenti.
 
 Mitigazione:
 
-- rendere giocabile solo `containment_grid_override` in Fase 5;
-- mantenere gli altri obiettivi come catalogo dormiente;
-- spostare gli obiettivi aggiuntivi in Fase 8;
-- validare prima ObjectiveDefinition e Hidden Capability Tags sul pilot.
+- Fase 5 completata prima della LoRA;
+- snapshot narrativi;
+- ToneValidator;
+- replay e test Hard end-to-end;
+- valutazione comparativa prima di ogni adapter release.
+
+### 19.12 Rischio: Build Audio Non Riproducibile
+
+Descrizione: se installer o CI leggono direttamente `%APPDATA%\aura\audio\`, due build dello stesso commit possono contenere WAV differenti o fallire su runner privi della directory.
+
+Mitigazione:
+
+- import esplicito tramite `tool/import_release_audio.ps1`;
+- sorgente canonica versionata in `distribution/audio/`;
+- `audio-manifest.json` e SHA-256 obbligatori;
+- divieto di accesso ad AppData nei workflow CI/release;
+- validazione del manifest prima del packaging.
+
+### 19.13 Rischio: Sovrascrittura o Perdita di Audio Esistente
+
+Descrizione: un upgrade può sovrascrivere WAV modificati, eliminare file custom o lasciare versioni miste e incoerenti.
+
+Mitigazione:
+
+- distinzione tra file `managed` e file utente;
+- backup automatico dei managed file modificati;
+- repair basato su manifest;
+- migrazione idempotente;
+- uninstall selettivo;
+- log dettagliato delle operazioni audio.
+
+### 19.14 Rischio: Stato Finestra Irrecuperabile
+
+Descrizione: il ripristino di coordinate salvate su un monitor non più collegato può rendere la finestra invisibile; fullscreen e DPI differenti possono produrre layout inutilizzabili.
+
+Mitigazione:
+
+- clamp rispetto ai monitor correnti;
+- fallback centrato sul monitor primario;
+- scorciatoia di recovery;
+- test multi-monitor/DPI;
+- preferenze resettabili senza avviare una sessione.
 
 ---
 
 ## 20. MVP Scope
 
-### Incluso nell'MVP
+### Incluso nell'MVP Windows
 
 ```text
-Windows build
+Windows x64 build
 Flutter desktop UI
 GameState deterministico
 EvaluatorAgent
 ActorAgent
-MockInferenceBridge
-LlamaCppInferenceBridge base
-ModelRouter semplice
+Runtime-neutral inference contracts
+Managed llama.cpp sidecar
+GGUF Model Manager con manifest/checksum
+Setup wizard modelli
+Mock e RuleBased runtime
 JSON validation
 Risonanza
 Win/Loss
@@ -3479,14 +4515,28 @@ Replay log locale
 Fallback hardcoded
 PANOPTICON identity pilot
 containment_grid_override objective pilot
-ObjectiveDefinition schema
-Identity trait matrix schema
-ActorCue + ToneValidator per PANOPTICON
-Playable Experience Layer fino a 4.11 completato
-Hard Mode Deception Layer per modalità Difficile
+ActorCue + ToneValidator
+Playable Experience Layer fino a 4.11
+Panopticon Runtime Hardening
+Hard Mode Deception Layer
+Icona ufficiale e metadati prodotto
+Windowed/maximized/borderless fullscreen con persistenza
+Audio pack WAV definitivo con manifest/checksum
+Installer Windows con upgrade/repair/uninstall e migrazione audio
+GitHub Actions e GitHub Release assets
 ```
 
-### Escluso dall'MVP
+### Preparato ma non obbligatorio per l'MVP Windows
+
+```text
+Android runtime contract e adapter boundary
+manifest multipiattaforma
+Android-ready ModelExecutionPlan
+contract test riutilizzabili
+release manifest estendibile ad APK/AAB
+```
+
+### Escluso dall'MVP Windows
 
 ```text
 A2A completo
@@ -3495,13 +4545,13 @@ multiplayer
 cloud sync
 Android release pubblica
 MemoryAgent avanzato
-catalogo Hugging Face automatico completo
-nuove identità IA giocabili
+catalogo modelli esteso
+nuove identità giocabili
 catalogo obiettivi completo giocabile
-achievement complessi
 store metagame completo
-LoRA swapping completo
+LoRA production swapping
 pipeline OTA post-rilascio
+FFI desktop obbligatorio
 ```
 
 ---
@@ -3517,43 +4567,86 @@ Il Valutatore produce delta validi o cade in fallback.
 L'Attore risponde coerentemente con Allerta e identità.
 La vittoria è calcolata solo dal controller.
 Il replay log consente di riprodurre e analizzare la sessione.
-PANOPTICON mantiene identità, lessico e tono coerenti lungo la partita pilota.
-L'obiettivo pilota `containment_grid_override` è completabile e ripetibile.
-Il tempo medio per turno è accettabile su hardware target.
+PANOPTICON mantiene identità, lessico e tono coerenti.
+L'obiettivo containment_grid_override è completabile in Hard.
+A.U.R.A. funziona senza LM Studio installato.
+Il runtime viene avviato, monitorato e terminato dall'app.
+Installer, upgrade, repair e uninstall sono verificati su macchina pulita.
+Titolo, metadati, icona e collegamenti usano il branding ufficiale A.U.R.A.
+Le modalità finestra, massimizzata e fullscreen sono persistite e recuperabili.
+I modelli sono scaricati/importati e verificati tramite manifest e checksum.
+I WAV definitivi sono installati in `%APPDATA%\aura\audio\`, verificati tramite manifest e ripristinabili con repair.
+Un aggiornamento dell'app non riscarica automaticamente i modelli e non perde audio/replay/configurazione secondo le scelte dell'utente.
+Le suite standard non usano rete né modelli reali e le release non leggono AppData della macchina di build.
+La suite opt-in carica realmente il modello Evaluator previsto.
+Il core può ricevere un adapter Android senza refactoring di GameController e agenti.
 ```
 
-Obiettivo prestazionale iniziale:
+Obiettivi prestazionali iniziali Windows:
 
 ```text
+Runtime bootstrap caldo: <= 2 s
 Evaluator latency: <= 1.5 s
 Actor latency: <= 4.0 s
 Total turn latency: <= 5.5 s
 Hard timeout: 8-12 s secondo agente
 ```
 
-Questi valori sono target da validare, non assunzioni garantite.
+Obiettivi di robustezza:
+
+```text
+0 processi sidecar orfani dopo uscita normale
+rollback disponibile dopo update fallito
+checksum obbligatorio per runtime/modelli/audio
+cancellazione inferenza senza corruzione del runtime
+resume download dopo interruzione
+0 dipendenze implicite da %APPDATA% durante build e release
+ripristino finestra sicuro dopo cambio monitor o DPI
+repair audio idempotente e non distruttivo
+```
+
+Questi valori sono target da validare per profilo hardware, non assunzioni garantite.
 
 ---
 
 ## 22. Conclusione
 
-A.U.R.A. deve essere progettato come un gioco deterministico che usa modelli linguistici locali come componenti interpretativi, non come arbitri del sistema.
+A.U.R.A. deve restare un gioco deterministico che usa modelli linguistici locali come componenti interpretativi, non come arbitri del sistema.
 
-La scelta multipiattaforma Windows-first è corretta: consente sviluppo, debug, benchmark e iterazione rapida prima di affrontare i vincoli di Android edge inference.
+La conclusione della Fase 5.2 rende PANOPTICON e il pilot Hard sufficientemente stabili per affrontare il problema successivo: trasformare il prototipo dipendente da LM Studio in un prodotto edge installabile, aggiornabile e multipiattaforma.
 
-L'ispirazione da A2A è utile per strutturare gli agenti, ma la v1 deve mantenere un runtime locale leggero. Il protocollo completo può essere considerato in futuro per modding, simulazioni esterne, agenti remoti o strumenti di test.
-
-Il punto critico non è solo generare buone risposte, ma mantenere coerenza, verificabilità e controllo. Per questo la priorità deve essere:
+La strategia adottata è deliberatamente incrementale:
 
 ```text
-Game Controller deterministico
-Agent Runtime modulare
-Model Router adattivo
-Validazione rigida
-Fallback robusti
-Replay completo
-PANOPTICON Pilot definito e testabile
-ObjectiveDefinition stabile
+Windows:
+  llama-server sidecar gestito dall'app
+
+Android:
+  runtime llama.cpp nativo in-process
+
+Entrambi:
+  stesso contratto Dart
+  stessi logical model ID
+  stesso schema manifest
+  stessa semantica di errori e lifecycle
+  stessa contract test suite
 ```
 
-Con queste basi, A.U.R.A. può evolvere da prototipo sperimentale a piattaforma narrativa edge-first scalabile e tecnicamente sostenibile.
+LM Studio resta uno strumento di sviluppo opzionale, non una dipendenza del prodotto. FFI desktop non è escluso, ma viene rinviato finché il profiling non dimostra che sia necessario. La LoRA viene separata da runtime e packaging, così da non sovrapporre distribuzione, compatibilità e addestramento nello stesso blocco di lavoro.
+
+Le priorità operative diventano:
+
+```text
+1. Design gate Fase 6.0
+2. Contratti runtime e model management neutrali
+3. Runtime Windows gestito
+4. Test a livelli senza download impliciti
+5. Desktop shell, fullscreen, metadati e preferenze persistenti
+6. Import e packaging riproducibile dei WAV definitivi
+7. Installer, upgrade e GitHub Releases
+8. Adapter Android sulla stessa fondazione
+9. LoRA solo dopo stabilità cross-platform
+```
+
+Con questa struttura, A.U.R.A. può evolvere da vertical slice sperimentale a prodotto edge-first distribuibile, evitando un refactoring complesso quando inizierà la Fase 7 Android.
+

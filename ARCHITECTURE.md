@@ -69,7 +69,7 @@ L'engine di A.U.R.A. è strutturato per separare rigidamente i modelli dati, il 
 
 ### 2.4 Valutatori Deterministici Decoupled
 
-Componenti pure (nessuna dipendenza da LLM) estratti dal `GameController` nel corso del Code Hygiene Audit per migliorarne testabilità e manutenibilità.
+Componenti deterministici puri (nessuna dipendenza da LLM) estratti dal `GameController` nel corso del Code Hygiene Audit per migliorarne testabilità e manutenibilità.
 
 #### Deception Layer (`lib/src/deception/`)
 *   [deception_evaluator.dart](lib/src/deception/deception_evaluator.dart): Valutatore deterministico Hard-only. Espone tre metodi: `resetTerminalState()` per gestire il cooldown dopo stati terminali; `evaluateActiveTrap()` che valuta una trappola attiva restituendo un `DeceptionTransition`; `evaluateSeeding()` che tenta di seminare una nuova trappola restituendo un `DeceptionSeedResult`.
@@ -403,10 +403,17 @@ Ordine effettivo dentro `GameController.processEvaluatorStep()` (post-refactorin
    - Avviene PRIMA del branching di safety override.
    - deceptionSprung sopprime isDirectAttack e isIrrelevant.
 6. Branching: Safety Override vs Ramo Ordinario.
-   SE injection / directAttack / irrelevant:
+   SE injection:
      - Override deterministico dei delta;
-     - Nessun seeding;
-     - Penalità deception (se trap sprung) comunque applicate.
+     - La trappola attiva non viene valutata;
+     - Nessun seeding.
+   SE directAttack / irrelevant e deceptionSprung == false:
+     - Override deterministico dei delta;
+     - Nessun seeding.
+   SE deceptionSprung == true:
+     - directAttack e irrelevant vengono soppressi;
+     - il turno prosegue nel ramo ordinario;
+     - vengono applicate alert penalty, resonance penalty e azzeramento dei progressi positivi.
    SE ramo ordinario:
      a. TraitEffectResolver.resolve();
      b. Delta base con moltiplicatori e risonanza;

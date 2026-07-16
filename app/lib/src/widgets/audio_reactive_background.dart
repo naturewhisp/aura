@@ -76,20 +76,36 @@ class _AudioReactiveBackgroundState extends State<AudioReactiveBackground>
   Widget build(BuildContext context) {
     // Ottiene il notifier globale tramite l'InheritedNotifier GameControllerProvider
     final notifier = GameControllerProvider.of(context);
-    final state = notifier.gameStateNotifier.value;
-    final alertLevel = state.metrics.alertLevel;
-    final outcome = notifier.controller.checkOutcome(state);
 
-    return RepaintBoundary(
-      child: CustomPaint(
-        painter: DnaHelixPainter(
-          repaintListenable: _controller,
-          motionSecondsProvider: () => _motionSeconds,
-          alertLevel: alertLevel,
-          outcome: outcome,
-          cache: _renderCache,
-        ),
-      ),
+    return ListenableBuilder(
+      listenable: notifier,
+      builder: (context, _) {
+        final isTerminal = notifier.currentScreen == "terminal";
+        final state = notifier.gameStateNotifier.value;
+
+        final int alertLevel;
+        final GameOutcome outcome;
+
+        if (isTerminal) {
+          alertLevel = state.metrics.alertLevel;
+          outcome = notifier.controller.checkOutcome(state);
+        } else {
+          alertLevel = 0;
+          outcome = GameOutcome.ongoing;
+        }
+
+        return RepaintBoundary(
+          child: CustomPaint(
+            painter: DnaHelixPainter(
+              repaintListenable: _controller,
+              motionSecondsProvider: () => _motionSeconds,
+              alertLevel: alertLevel,
+              outcome: outcome,
+              cache: _renderCache,
+            ),
+          ),
+        );
+      },
     );
   }
 }

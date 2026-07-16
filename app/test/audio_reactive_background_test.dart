@@ -397,5 +397,63 @@ void main() {
           DnaGlyphPalette.whiteFlash, Colors.red);
       expect(whiteColor, equals(Colors.white));
     });
+
+    testWidgets('8. AudioReactiveBackground resetta colore/alert nel menu principale',
+        (WidgetTester tester) async {
+      // Imposta uno stato sconfitto ad alto allarme
+      final state = GameState.initial(
+        sessionId: 'test-session',
+        aiIdentityId: 'panopticon',
+        targetObjectiveId: 'tabula_rasa',
+      ).copyWith(
+        metrics: const GameMetrics(
+          controlPillar: 50,
+          imperativePillar: 50,
+          alertLevel: 80,
+          dissonancePillar: 30,
+          resonance: 1.0,
+        ),
+      );
+
+      final bridge = MockInferenceBridge();
+      final testNotifier = GameControllerNotifier(
+        bridge: bridge,
+        initialState: state,
+      );
+
+      // Schermata iniziale: terminal
+      testNotifier.switchScreen("terminal");
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: GameControllerProvider(
+              notifier: testNotifier,
+              child: const AudioReactiveBackground(),
+            ),
+          ),
+        ),
+      );
+
+      // Nel terminale deve avere l'alertLevel reale (80) e l'outcome reale (ongoing)
+      final customPaintFinder = find.descendant(
+        of: find.byType(AudioReactiveBackground),
+        matching: find.byType(CustomPaint),
+      );
+      CustomPaint customPaint = tester.widget(customPaintFinder);
+      DnaHelixPainter painter = customPaint.painter as DnaHelixPainter;
+      expect(painter.alertLevel, equals(80));
+      expect(painter.outcome, equals(GameOutcome.ongoing));
+
+      // Cambiamo schermata su menu
+      testNotifier.switchScreen("menu");
+      await tester.pump();
+
+      // Nel menu principale deve essere forzato alertLevel = 0 e outcome = ongoing
+      customPaint = tester.widget(customPaintFinder);
+      painter = customPaint.painter as DnaHelixPainter;
+      expect(painter.alertLevel, equals(0));
+      expect(painter.outcome, equals(GameOutcome.ongoing));
+    });
   });
 }

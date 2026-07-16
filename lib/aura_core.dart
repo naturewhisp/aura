@@ -50,3 +50,8 @@ export 'src/agent_runtime/agents/actor_agent.dart';
 export 'src/agent_runtime/bridges/mock_inference_bridge.dart';
 export 'src/agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 export 'src/agent_runtime/bridges/local_api_inference_bridge.dart';
+
+// Deception Layer
+export 'src/deception/deception_evaluator.dart';
+export 'src/deception/deception_evaluation.dart';
+

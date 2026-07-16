@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024"
+     fill="none" xmlns="http://www.w3.org/2000/svg">
+  <title>A.U.R.A. Application Icon</title>
+  <desc>Segmented containment ring surrounding a geometric A monogram and central reasoning core.</desc>
+
+  <defs>
+    <linearGradient id="bg" x1="96" y1="64" x2="928" y2="960" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07110C"/>
+      <stop offset="1" stop-color="#010302"/>
+    </linearGradient>
+
+    <linearGradient id="neon" x1="244" y1="208" x2="790" y2="824" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#66FF9A"/>
+      <stop offset="0.45" stop-color="#00FF66"/>
+      <stop offset="1" stop-color="#00C94F"/>
+    </linearGradient>
+
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="coreGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Opaque base: remains legible on light and dark desktop themes. -->
+  <rect x="36" y="36" width="952" height="952" rx="216" fill="url(#bg)"/>
+  <rect x="54" y="54" width="916" height="916" rx="198"
+        stroke="#123923" stroke-width="12"/>
+
+  <!-- Subtle internal containment grid. -->
+  <g opacity="0.14" stroke="#00FF66" stroke-width="4">
+    <path d="M214 512H810"/>
+    <path d="M512 214V810"/>
+    <circle cx="512" cy="512" r="188"/>
+  </g>
+
+  <!-- Segmented outer containment ring. -->
+  <g stroke="url(#neon)" stroke-width="62" stroke-linecap="round" filter="url(#softGlow)">
+    <path d="M253 295C324 220 415 180 512 180C566 180 619 192 668 215"/>
+    <path d="M757 292C817 359 844 443 840 528C836 616 795 700 727 761"/>
+    <path d="M654 824C608 842 560 850 512 850C394 850 284 797 211 706"/>
+    <path d="M172 591C157 525 164 455 192 393"/>
+  </g>
+
+  <!-- Three radial containment locks. -->
+  <g fill="#00FF66" filter="url(#softGlow)">
+    <path d="M197 306L248 319L215 359Z"/>
+    <path d="M824 609L776 594L807 554Z"/>
+    <path d="M427 846L447 798L480 837Z"/>
+  </g>
+
+  <!-- Geometric A monogram. -->
+  <g stroke="url(#neon)" stroke-width="72" stroke-linecap="square"
+     stroke-linejoin="miter" filter="url(#softGlow)">
+    <path d="M322 746L512 270L702 746"/>
+    <path d="M405 574H619"/>
+  </g>
+
+  <!-- Remove visual congestion around the reasoning core. -->
+  <circle cx="512" cy="574" r="74" fill="#030805"/>
+
+  <!-- Central reasoning core / eye. -->
+  <g filter="url(#coreGlow)">
+    <path d="M512 506L580 574L512 642L444 574L512 506Z"
+          fill="#00FF66"/>
+    <path d="M512 530L556 574L512 618L468 574L512 530Z"
+          fill="#06150D"/>
+    <circle cx="512" cy="574" r="16" fill="#B7FFD0"/>
+  </g>
+
+  <!-- Small diagnostic cuts to reinforce the cybernetic language. -->
+  <g stroke="#8AFFB3" stroke-width="12" stroke-linecap="square" opacity="0.8">
+    <path d="M512 180V216"/>
+    <path d="M840 512H804"/>
+    <path d="M184 512H220"/>
+  </g>
+</svg>

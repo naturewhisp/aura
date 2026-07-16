@@ -1,6 +1,5 @@
 import 'package:test/test.dart';
 import 'package:aura_core/aura_core.dart';
-import 'package:aura_core/src/deception/deception_bait_definition.dart';
 
 void main() {
   group('DeceptionEvaluator Tests -', () {

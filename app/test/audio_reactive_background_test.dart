@@ -398,7 +398,8 @@ void main() {
       expect(whiteColor, equals(Colors.white));
     });
 
-    testWidgets('8. AudioReactiveBackground resetta colore/alert nel menu principale',
+    testWidgets(
+        '8. AudioReactiveBackground resetta colore/alert nel menu principale',
         (WidgetTester tester) async {
       // Imposta uno stato sconfitto ad alto allarme
       final state = GameState.initial(

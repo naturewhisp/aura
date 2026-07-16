@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_offline.dart';
 import 'package:http/http.dart' as http;
 
 /// Helper per la formattazione dei colori ANSI nel terminale.

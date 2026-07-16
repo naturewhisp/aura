@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_testing.dart';
 import 'package:aura_app/src/screens/boot_menu_screen.dart';
 import 'package:aura_app/src/audio/boot_audio_service.dart';
 import 'package:aura_app/src/state_management/game_controller_notifier.dart';

@@ -1,5 +1,6 @@
 import 'package:test/test.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_offline.dart';
+import 'package:aura_core/aura_testing.dart';
 
 void main() {
   group('AURA Agent Runtime Tests -', () {

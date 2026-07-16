@@ -1,5 +1,5 @@
 import 'package:test/test.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_testing.dart';
 
 void main() {
   group('AURA End-to-End Smoke Tests (Non-Regression) -', () {

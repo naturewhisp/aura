@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_testing.dart';
 import 'package:aura_app/src/session/active_session.dart';
 import 'package:aura_app/src/session/file_session_repository.dart';
 import 'package:aura_app/src/session/session_repository.dart';

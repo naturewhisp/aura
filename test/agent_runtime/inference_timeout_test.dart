@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:test/test.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_testing.dart';
 
 /// Un bridge controllato per i test di timeout dell'inferenza.
 final class ControlledInferenceBridge implements InferenceBridge {

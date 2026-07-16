@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_offline.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 import 'package:aura_app/src/audio/audio_scene.dart';
 import 'package:aura_app/src/session/active_session.dart';

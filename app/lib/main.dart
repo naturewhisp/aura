@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_offline.dart';
 import 'src/state_management/game_controller_notifier.dart';
 import 'src/screens/terminal_screen.dart';
 import 'src/screens/boot_menu_screen.dart';

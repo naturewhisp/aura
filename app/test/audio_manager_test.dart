@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_testing.dart';
 import 'package:aura_app/src/audio/audio_scene.dart';
 import 'package:aura_app/src/audio/bgm_player.dart';
 import 'package:aura_app/src/audio/audio_scene_machine.dart';

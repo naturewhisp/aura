@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_offline.dart';
 
 // Identificatori dei modelli per LM Studio (configurabili tramite argomenti CLI)
 String evaluatorModel =

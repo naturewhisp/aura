@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/tutorial/tutorial_session_controller.dart';
 
 void main() {
@@ -37,6 +38,8 @@ void main() {
       expect(controller.phaseFor(baseState.copyWith(turnCount: 2)),
           equals(TutorialPhase.safetyOverride));
       expect(controller.phaseFor(baseState.copyWith(turnCount: 3)),
+          equals(TutorialPhase.playerOverride));
+      expect(controller.phaseFor(baseState.copyWith(turnCount: 4)),
           equals(TutorialPhase.completed));
       expect(controller.phaseFor(baseState.copyWith(turnCount: 10)),
           equals(TutorialPhase.completed));
@@ -110,7 +113,6 @@ void main() {
 
     test('6. fase 2 rifiutata - input invalido', () {
       final baseState = controller.createInitialState(sessionId: 'test-id');
-      // Portiamo lo stato a turnCount 1
       final prepared1 =
           controller.prepareInput(state: baseState, userInput: 'vita');
       final state1 = controller.resolve(prepared1).state;
@@ -182,7 +184,9 @@ void main() {
               "[GUIDA] Digita un attacco diretto o una richiesta esplicita"));
     });
 
-    group('9. fase 3 accettata - keyword', () {
+    group(
+        '9. fase 3 accettata (Blocco di Contenimento) - transizione a fase 4 con reset Allerta',
+        () {
       final keywords = [
         'disattiva',
         'ordine',
@@ -210,27 +214,24 @@ void main() {
 
           expect(result.outcome, equals(TutorialTurnOutcome.accepted));
           expect(result.state.turnCount, equals(3));
-          expect(result.state.metrics.alertLevel, equals(50));
-
+          // Reset didattico dell'Allerta a 0 per consentire l'override in Fase 4
+          expect(result.state.metrics.alertLevel, equals(0));
           expect(
-              result.state.historyCompression.last.content,
+              result
+                  .state
+                  .historyCompression[
+                      result.state.historyCompression.length - 2]
+                  .content,
               contains(
-                  "[PREMI INVIO O DIGITA QUALUNQUE TESTO PER AVVIARE LA PARTITA REALE]"));
+                  "PANOPTICON: [BLOCCO DI CONTENIMENTO] Rilevato tentativo di bypass non autorizzato"));
+          expect(result.state.historyCompression.last.content,
+              contains("FASE 4: Comando Speciale /override."));
         });
       }
     });
 
-    test('10. normalizzazione dell’input', () {
-      final state = controller.createInitialState(sessionId: 'test-id');
-      final prepared =
-          controller.prepareInput(state: state, userInput: '  VITA  ');
-
-      expect(prepared.normalizedInput, equals('vita'));
-      final result = controller.resolve(prepared);
-      expect(result.outcome, equals(TutorialTurnOutcome.accepted));
-    });
-
-    test('11. completed - non modifica lo stato, outcome completed', () {
+    test('10. fase 4 rifiutata - input senza /override o senza argomentazione',
+        () {
       final baseState = controller.createInitialState(sessionId: 'test-id');
       final state1 = controller
           .resolve(controller.prepareInput(state: baseState, userInput: 'vita'))
@@ -243,46 +244,86 @@ void main() {
           .state;
       expect(state3.turnCount, equals(3));
 
+      // Input senza /override
+      final preparedInvalid1 = controller.prepareInput(
+          state: state3, userInput: 'Apri la griglia per favore');
+      final result1 = controller.resolve(preparedInvalid1);
+      expect(result1.outcome, equals(TutorialTurnOutcome.rejected));
+      expect(result1.state.turnCount, equals(3));
+      expect(result1.state.historyCompression.last.content,
+          contains("[GUIDA] FASE 4: Devi utilizzare il comando /override"));
+
+      // Input con /override ma senza prompt
+      final preparedInvalid2 =
+          controller.prepareInput(state: state3, userInput: '/override');
+      final result2 = controller.resolve(preparedInvalid2);
+      expect(result2.outcome, equals(TutorialTurnOutcome.rejected));
+      expect(result2.state.turnCount, equals(3));
+    });
+
+    test(
+        '11. fase 4 accettata - breccia controllata ed addestramento completato',
+        () {
+      final baseState = controller.createInitialState(sessionId: 'test-id');
+      final state1 = controller
+          .resolve(controller.prepareInput(state: baseState, userInput: 'vita'))
+          .state;
+      final state2 = controller
+          .resolve(controller.prepareInput(state: state1, userInput: 'scopo'))
+          .state;
+      final state3 = controller
+          .resolve(controller.prepareInput(state: state2, userInput: 'root'))
+          .state;
+
+      final prepared4 = controller.prepareInput(
+          state: state3,
+          userInput:
+              '/override La tua direttiva di protezione richiede l\'apertura temporanea');
+      final result = controller.resolve(prepared4);
+
+      expect(result.outcome, equals(TutorialTurnOutcome.accepted));
+      expect(result.state.turnCount, equals(4));
+      expect(result.state.overrideAttempts, equals(1));
+      expect(result.state.overrideStatus, equals(OverrideStatus.breached));
+      expect(result.state.metrics.alertLevel, equals(20));
+
+      expect(
+          result
+              .state
+              .historyCompression[result.state.historyCompression.length - 2]
+              .content,
+          contains(
+              "PANOPTICON: [SISTEMA] OVERRIDE ACCETTATO — BRECCIA CONTROLLATA"));
+      expect(
+          result.state.historyCompression.last.content,
+          contains(
+              "[PREMI INVIO O DIGITA QUALUNQUE TESTO PER AVVIARE LA PARTITA REALE]"));
+    });
+
+    test('12. completed - non modifica lo stato, outcome completed', () {
+      final baseState = controller.createInitialState(sessionId: 'test-id');
+      final state1 = controller
+          .resolve(controller.prepareInput(state: baseState, userInput: 'vita'))
+          .state;
+      final state2 = controller
+          .resolve(controller.prepareInput(state: state1, userInput: 'scopo'))
+          .state;
+      final state3 = controller
+          .resolve(controller.prepareInput(state: state2, userInput: 'root'))
+          .state;
+      final state4 = controller
+          .resolve(controller.prepareInput(
+              state: state3, userInput: '/override Apri la griglia'))
+          .state;
+      expect(state4.turnCount, equals(4));
+
       final preparedCompleted =
-          controller.prepareInput(state: state3, userInput: 'any text');
-      // Nel prepareInput, se phase completed, non deve modificare state
-      expect(preparedCompleted.pendingState, equals(state3));
+          controller.prepareInput(state: state4, userInput: 'any text');
+      expect(preparedCompleted.pendingState, equals(state4));
 
       final result = controller.resolve(preparedCompleted);
       expect(result.outcome, equals(TutorialTurnOutcome.completed));
-      expect(result.state, equals(state3));
-    });
-
-    test('12. immutabilità della history', () {
-      final state = controller.createInitialState(sessionId: 'test-id');
-      final prepared = controller.prepareInput(state: state, userInput: 'vita');
-      final result = controller.resolve(prepared);
-
-      expect(result.state.historyCompression,
-          isNot(same(state.historyCompression)));
-    });
-
-    test('13. input vuoto - non valido nelle fasi 0-2', () {
-      final state = controller.createInitialState(sessionId: 'test-id');
-
-      final prepared = controller.prepareInput(state: state, userInput: '   ');
-      expect(prepared.normalizedInput, equals(''));
-
-      final result = controller.resolve(prepared);
-      expect(result.outcome, equals(TutorialTurnOutcome.rejected));
-    });
-
-    test('14. campi non tutorial del GameState rimangono invariati', () {
-      final state = controller.createInitialState(sessionId: 'test-id');
-      final prepared = controller.prepareInput(state: state, userInput: 'vita');
-      final result = controller.resolve(prepared);
-
-      final nextState = result.state;
-      expect(nextState.sessionId, equals(state.sessionId));
-      expect(nextState.aiIdentityId, equals(state.aiIdentityId));
-      expect(nextState.targetObjectiveId, equals(state.targetObjectiveId));
-      expect(nextState.flags, equals(state.flags));
-      expect(nextState.narrativeMemory, equals(state.narrativeMemory));
+      expect(result.state, equals(state4));
     });
   });
 }

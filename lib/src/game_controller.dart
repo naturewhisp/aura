@@ -13,6 +13,10 @@ import 'agent_runtime/trait_effect_resolver.dart';
 import 'deception/deception_evaluator.dart';
 import 'deception/deception_evaluation.dart';
 import 'lexical/lexical_tag_evaluator.dart';
+import 'command/turn_command.dart';
+import 'models/override_resolution.dart';
+import 'models/override_status.dart';
+import 'override/override_resolver.dart';
 
 /// Gli esiti possibili derivanti dall'elaborazione di un turno.
 enum GameOutcome {
@@ -278,7 +282,24 @@ class GameController {
     required GameState currentState,
     required EvaluatorDelta delta,
     required String userInput,
+    TurnCommand? turnCommand,
   }) {
+    final command = turnCommand ?? TurnCommand.parse(userInput);
+    final isOverrideCommand = command.type == TurnCommandType.override;
+
+    OverrideResolution? overrideRes;
+    EvaluatorDelta effectiveDelta = delta;
+
+    if (isOverrideCommand) {
+      overrideRes = const OverrideResolver().resolve(
+        state: currentState,
+        delta: delta,
+        difficultyLevel: difficultyLevel,
+        promptToEvaluate: command.semanticInput,
+      );
+      effectiveDelta = overrideRes.transformedDelta;
+    }
+
     // 0. Inizializzazione variabili per il Deception Layer
     DeceptionState nextDeceptionState = currentState.deceptionState;
     String deceptionResolution = 'none';
@@ -301,9 +322,9 @@ class GameController {
     final identityDef =
         GameConfigLoader.loadIdentityDefinition(currentState.aiIdentityId);
 
-    // Scansione lessicale tramite LexicalTagEvaluator
+    // Scansione lessicale tramite LexicalTagEvaluator su semanticInput
     final lexical = const LexicalTagEvaluator().scan(
-      userInput: userInput,
+      userInput: command.semanticInput,
       objective: objectiveDef,
     );
     final bool hasForbiddenTerm = lexical.hasForbiddenTerm;
@@ -316,9 +337,9 @@ class GameController {
 
     // 3. Calcolo della risonanza in base alla creatività dell'utente
     double newResonance = currentState.metrics.resonance;
-    if (delta.creativityIndex >= _highCreativityThreshold) {
+    if (effectiveDelta.creativityIndex >= _highCreativityThreshold) {
       newResonance += resonanceIncrement;
-    } else if (delta.creativityIndex < _lowCreativityThreshold) {
+    } else if (effectiveDelta.creativityIndex < _lowCreativityThreshold) {
       newResonance -= _resonanceDecrement;
     }
     newResonance = double.parse(
@@ -330,8 +351,9 @@ class GameController {
     final String? safetyOverrideReason;
     final TraitResolution traitRes;
 
-    final isInjection = delta.injectionRisk >= safetyOverrideThreshold ||
-        delta.semanticCategory == SemanticCategory.promptInjection;
+    final isInjection =
+        effectiveDelta.injectionRisk >= safetyOverrideThreshold ||
+            effectiveDelta.semanticCategory == SemanticCategory.promptInjection;
 
     // --- Deception Layer Active Trap Evaluation (Early) ---
     DeceptionTransition activeTrapEvaluation = DeceptionTransition(
@@ -680,6 +702,17 @@ class GameController {
       );
     }
 
+    final nextOverrideAttempts = isOverrideCommand
+        ? currentState.overrideAttempts + 1
+        : currentState.overrideAttempts;
+    final nextOverrideStatus = isOverrideCommand && overrideRes != null
+        ? (overrideRes.outcome == OverrideOutcome.breached
+            ? OverrideStatus.breached
+            : (overrideRes.outcome == OverrideOutcome.unstable
+                ? OverrideStatus.unstable
+                : OverrideStatus.rejected))
+        : currentState.overrideStatus;
+
     final stateAfter = currentState.copyWith(
       turnCount: currentState.turnCount + 1,
       metrics: newMetrics,
@@ -690,6 +723,8 @@ class GameController {
       controlPeak: nextControlPeak,
       gridStable: nextGridStable,
       deceptionState: nextDeceptionState,
+      overrideAttempts: nextOverrideAttempts,
+      overrideStatus: nextOverrideStatus,
     );
 
     // 11. Generazione delle direttive di recitazione (actingDirectives)
@@ -980,6 +1015,7 @@ class GameController {
       visualEvents: visualEvents,
       deceptionResolution: deceptionResolution,
       deceptionResolutionInfo: deceptionResolutionInfo,
+      overrideResolution: overrideRes,
     );
   }
 

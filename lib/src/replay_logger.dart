@@ -77,6 +77,9 @@ class ReplayEntry {
   /// L'esito dettagliato della risoluzione del Deception Layer in questo turno.
   final Map<String, dynamic> deceptionResolution;
 
+  /// L'esito dettagliato della risoluzione dell'override in questo turno, se applicabile.
+  final Map<String, dynamic>? overrideResolution;
+
   /// Costruttore costante per inizializzare una voce di replay.
   const ReplayEntry({
     required this.turnId,
@@ -101,6 +104,7 @@ class ReplayEntry {
       'applied_alert_penalty': 0,
       'applied_resonance_penalty': 0.0,
     },
+    this.overrideResolution,
   })  : eventId = eventId ?? "$actorRequestId-evt",
         gameplayTurnId = gameplayTurnId ?? turnId,
         sequenceId = sequenceId ?? turnId;
@@ -132,6 +136,13 @@ class ReplayEntry {
       }
     }
 
+    Map<String, dynamic>? overrideResMap;
+    if (json['override_resolution'] != null &&
+        json['override_resolution'] is Map) {
+      overrideResMap =
+          Map<String, dynamic>.from(json['override_resolution'] as Map);
+    }
+
     return ReplayEntry(
       turnId: json['turn_id'] as int? ?? 0,
       userInput: json['user_input'] as String? ?? '',
@@ -152,6 +163,7 @@ class ReplayEntry {
       gameplayTurnId: json['gameplay_turn_id'] as int?,
       sequenceId: json['sequence_id'] as int?,
       deceptionResolution: deceptionResolutionMap,
+      overrideResolution: overrideResMap,
     );
   }
 
@@ -178,6 +190,7 @@ class ReplayEntry {
       'deception_before': deceptionBefore,
       'deception_after': deceptionAfter,
       'deception_resolution': deceptionResolution,
+      if (overrideResolution != null) 'override_resolution': overrideResolution,
       'actor_response': actorResponse,
       'actor_request_id': actorRequestId,
       'actor_response_hash': actorResponseHash,

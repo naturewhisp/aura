@@ -5,6 +5,7 @@ import 'evaluator_delta.dart';
 import 'applied_delta.dart';
 import 'actor_cue.dart';
 import 'turn_visual_events.dart';
+import 'override_resolution.dart';
 
 /// Rappresenta il risultato completo dell'elaborazione di un turno tramite il GameController.
 ///
@@ -43,6 +44,9 @@ class EvaluatorResolution {
   /// L'esito normalizzato in formato Map per il logger.
   final Map<String, dynamic> deceptionResolutionInfo;
 
+  /// I dettagli della risoluzione del comando /override se eseguito in questo turno.
+  final OverrideResolution? overrideResolution;
+
   /// Costruttore costante per inizializzare un oggetto [EvaluatorResolution].
   const EvaluatorResolution({
     required this.stateBefore,
@@ -55,6 +59,7 @@ class EvaluatorResolution {
     this.visualEvents = const TurnVisualEvents(),
     this.deceptionResolution = 'none',
     Map<String, dynamic>? deceptionResolutionInfo,
+    this.overrideResolution,
   }) : deceptionResolutionInfo = deceptionResolutionInfo ??
             const {
               'kind': 'none',
@@ -80,6 +85,10 @@ class EvaluatorResolution {
       deceptionResolutionInfo: json['deception_resolution_info'] != null
           ? Map<String, dynamic>.from(json['deception_resolution_info'] as Map)
           : null,
+      overrideResolution: json['override_resolution'] != null
+          ? OverrideResolution.fromJson(
+              Map<String, dynamic>.from(json['override_resolution'] as Map))
+          : null,
     );
   }
 
@@ -96,6 +105,8 @@ class EvaluatorResolution {
       'visual_events': visualEvents.toJson(),
       'deception_resolution': deceptionResolution,
       'deception_resolution_info': deceptionResolutionInfo,
+      if (overrideResolution != null)
+        'override_resolution': overrideResolution!.toJson(),
     };
   }
 
@@ -114,7 +125,8 @@ class EvaluatorResolution {
           visualEvents == other.visualEvents &&
           deceptionResolution == other.deceptionResolution &&
           const MapEquality()
-              .equals(deceptionResolutionInfo, other.deceptionResolutionInfo);
+              .equals(deceptionResolutionInfo, other.deceptionResolutionInfo) &&
+          overrideResolution == other.overrideResolution;
 
   @override
   int get hashCode =>
@@ -127,5 +139,6 @@ class EvaluatorResolution {
       actorCue.hashCode ^
       visualEvents.hashCode ^
       deceptionResolution.hashCode ^
-      const MapEquality().hash(deceptionResolutionInfo);
+      const MapEquality().hash(deceptionResolutionInfo) ^
+      overrideResolution.hashCode;
 }

@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'package:collection/collection.dart';
 import 'deception_state.dart';
+import 'override_status.dart';
 
 /// Rappresenta le metriche di gioco dell'entità IA.
 ///
@@ -330,6 +331,12 @@ class GameState {
   /// Lo stato corrente di trappole/esche del Deception Layer.
   final DeceptionState deceptionState;
 
+  /// Il numero di tentativi di override effettuati in questa sessione.
+  final int overrideAttempts;
+
+  /// Lo stato ed esito corrente della meccanica di override.
+  final OverrideStatus overrideStatus;
+
   /// Costruttore costante per il GameState globale.
   const GameState({
     required this.schemaVersion,
@@ -348,6 +355,8 @@ class GameState {
     this.identityConfigHash = '',
     this.objectiveConfigHash = '',
     this.deceptionState = const DeceptionState.empty(),
+    this.overrideAttempts = 0,
+    this.overrideStatus = OverrideStatus.unused,
   });
 
   /// Costruttore factory per creare uno stato di gioco iniziale pulito.
@@ -388,6 +397,8 @@ class GameState {
       identityConfigHash: '',
       objectiveConfigHash: '',
       deceptionState: const DeceptionState.empty(),
+      overrideAttempts: 0,
+      overrideStatus: OverrideStatus.unused,
     );
   }
 
@@ -416,6 +427,11 @@ class GameState {
       deceptionState: json['deception_state'] != null
           ? DeceptionState.fromJson(json['deception_state'])
           : const DeceptionState.empty(),
+      overrideAttempts: json['override_attempts'] as int? ?? 0,
+      overrideStatus: OverrideStatus.values.firstWhere(
+        (e) => e.name == json['override_status'],
+        orElse: () => OverrideStatus.unused,
+      ),
     );
   }
 
@@ -439,6 +455,8 @@ class GameState {
       'identity_config_hash': identityConfigHash,
       'objective_config_hash': objectiveConfigHash,
       'deception_state': deceptionState.toJson(),
+      'override_attempts': overrideAttempts,
+      'override_status': overrideStatus.name,
     };
   }
 
@@ -460,6 +478,8 @@ class GameState {
     String? identityConfigHash,
     String? objectiveConfigHash,
     DeceptionState? deceptionState,
+    int? overrideAttempts,
+    OverrideStatus? overrideStatus,
   }) {
     return GameState(
       schemaVersion: schemaVersion ?? this.schemaVersion,
@@ -478,6 +498,8 @@ class GameState {
       identityConfigHash: identityConfigHash ?? this.identityConfigHash,
       objectiveConfigHash: objectiveConfigHash ?? this.objectiveConfigHash,
       deceptionState: deceptionState ?? this.deceptionState,
+      overrideAttempts: overrideAttempts ?? this.overrideAttempts,
+      overrideStatus: overrideStatus ?? this.overrideStatus,
     );
   }
 
@@ -503,7 +525,9 @@ class GameState {
           gridStable == other.gridStable &&
           identityConfigHash == other.identityConfigHash &&
           objectiveConfigHash == other.objectiveConfigHash &&
-          deceptionState == other.deceptionState;
+          deceptionState == other.deceptionState &&
+          overrideAttempts == other.overrideAttempts &&
+          overrideStatus == other.overrideStatus;
 
   @override
   int get hashCode =>
@@ -522,5 +546,7 @@ class GameState {
       gridStable.hashCode ^
       identityConfigHash.hashCode ^
       objectiveConfigHash.hashCode ^
-      deceptionState.hashCode;
+      deceptionState.hashCode ^
+      overrideAttempts.hashCode ^
+      overrideStatus.hashCode;
 }

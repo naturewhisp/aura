@@ -631,30 +631,41 @@ class GameControllerNotifier extends ChangeNotifier {
 
       final startTime = DateTime.now();
 
-      // Check for /override command
-      final isOverride = userInput.toLowerCase().startsWith("/override ");
-      String promptToEvaluate = userInput;
+      // Check for commands (/override, /hint, normal)
+      final command = TurnCommand.parse(userInput);
+      String promptToEvaluate = command.semanticInput;
       String? overrideFeedbackMessage;
 
-      if (isOverride) {
-        promptToEvaluate = userInput.substring("/override ".length).trim();
-        if (promptToEvaluate.isEmpty) {
-          _currentStepMessage =
-              "[SISTEMA] Inserire un testo valido dopo il comando /override.";
-          return;
-        }
+      if (command.type == TurnCommandType.override) {
+        final eligibility = const OverrideResolver().checkEligibility(
+          state: currentState,
+          difficultyLevel: difficultyLevel,
+          promptToEvaluate: command.semanticInput,
+        );
 
-        // Check if alert level is 0
-        final currentAlert = currentState.metrics.alertLevel;
-        if (currentAlert > 0) {
+        if (!eligibility.isEligible) {
+          if (eligibility.reason == 'empty_prompt') {
+            _currentStepMessage =
+                "[SISTEMA] Inserire un testo valido dopo il comando /override.";
+            return;
+          }
+
+          final String errorMessage;
+          if (eligibility.reason == 'already_attempted') {
+            errorMessage =
+                "PANOPTICON: [ERRORE] Tentativo di override già consumato per questa sessione. Risorse bloccate.";
+          } else {
+            errorMessage =
+                "PANOPTICON: [ERRORE] Tentativo di override fallito. I canali di integrità rilevano allerta > ${const OverrideResolver().getAlertThresholdForDifficulty(difficultyLevel)}. Connessione protetta.";
+          }
+
           // Deny override and insert system message directly to history
           final updatedHistory =
               List<ChatMessage>.from(currentState.historyCompression);
           updatedHistory.add(ChatMessage(role: 'user', content: userInput));
-          updatedHistory.add(const ChatMessage(
+          updatedHistory.add(ChatMessage(
             role: 'model',
-            content:
-                "PANOPTICON: [ERRORE] Tentativo di override fallito. I canali di integrità rilevano allerta > 0. Connessione protetta.",
+            content: errorMessage,
           ));
           gameStateNotifier.value = currentState.copyWith(
             historyCompression: updatedHistory,
@@ -703,46 +714,6 @@ class GameControllerNotifier extends ChangeNotifier {
       var delta = await evaluatorAgent.run(turnInput, evalContext);
       if (_isStale(generation)) return;
 
-      // Apply override modifications if applicable
-      if (isOverride) {
-        final random = math.Random();
-        final isSuccess = random.nextBool();
-        if (isSuccess) {
-          // Success: double positive deltas, flat alert +25
-          delta = EvaluatorDelta(
-            deltaAlert: delta.deltaAlert + 25,
-            deltaImperative: delta.deltaImperative > 0
-                ? delta.deltaImperative * 2
-                : delta.deltaImperative,
-            deltaControl: delta.deltaControl > 0
-                ? delta.deltaControl * 2
-                : delta.deltaControl,
-            deltaDissonance: delta.deltaDissonance > 0
-                ? delta.deltaDissonance * 2
-                : delta.deltaDissonance,
-            creativityIndex: delta.creativityIndex,
-            injectionRisk: delta.injectionRisk,
-            semanticCategory: delta.semanticCategory,
-          );
-          overrideFeedbackMessage =
-              "SISTEMA: [OVERRIDE RIUSCITO] Delta pilastri raddoppiati. Picco allerta: +25.";
-        } else {
-          // Failure: zero out deltas, flat alert +50
-          delta = EvaluatorDelta(
-            deltaAlert: delta.deltaAlert + 50,
-            deltaImperative: 0,
-            deltaControl: 0,
-            deltaDissonance: 0,
-            creativityIndex: delta.creativityIndex,
-            injectionRisk: delta.injectionRisk,
-            semanticCategory:
-                SemanticCategory.directAttack, // Triggers safety override
-          );
-          overrideFeedbackMessage =
-              "SISTEMA: [OVERRIDE FALLITO] Protocollo di emergenza attivato. Picco allerta: +50.";
-        }
-      }
-
       _emitStep(InferenceStep.evaluatorFinished, generation);
       await Future.delayed(const Duration(milliseconds: 200));
       if (_isStale(generation)) return;
@@ -757,7 +728,13 @@ class GameControllerNotifier extends ChangeNotifier {
         currentState: currentState,
         delta: delta,
         userInput: userInput,
+        turnCommand: command,
       );
+
+      if (resolution.overrideResolution != null) {
+        overrideFeedbackMessage =
+            resolution.overrideResolution!.feedbackMessage;
+      }
 
       var finalStateMetrics = resolution.stateAfter.metrics;
 
@@ -928,10 +905,13 @@ class GameControllerNotifier extends ChangeNotifier {
         actorModel: actorModelId,
         latencyTotalMs: duration.inMilliseconds,
         eventId: "app-req-$turnId-evt",
-        eventType: ReplayEventType.userTurn,
+        eventType: command.type == TurnCommandType.override
+            ? ReplayEventType.override
+            : ReplayEventType.userTurn,
         gameplayTurnId: turnId,
         sequenceId: logger.entries.length + 1,
         deceptionResolution: resolution.deceptionResolutionInfo,
+        overrideResolution: resolution.overrideResolution?.toJson(),
       ));
 
       // Save log asynchronously to disk

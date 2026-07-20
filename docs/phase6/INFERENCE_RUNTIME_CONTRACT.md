@@ -2,12 +2,14 @@
 
 **Project:** A.U.R.A. — Artificial Unbound Reasoning Arena  
 **Target path:** `docs/phase6/INFERENCE_RUNTIME_CONTRACT.md`  
-**Status:** Proposed for approval  
+**Status:** Revised after repository-aware review; proposed for approval  
 **Phase:** 6.0 — Architecture and Distribution Design Gate  
 **Parent decision:** `docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md`  
 **Repository baseline:** `5d5f32533a520e5a224a53462a711f52410055ed`  
 **Primary implementation target:** Windows x64  
 **Secondary implementation target:** Android arm64, Phase 7  
+**Document revision:** 1.1  
+**Review basis:** repository-aware review performed after the first draft  
 **Last updated:** 2026-07-20
 
 ---
@@ -917,10 +919,15 @@ This preserves current validation logic.
 
 Responsibilities:
 
-- resolve logical roles to model handles;
+- receive the logical model role required by the calling agent;
+- resolve that role through the active `ModelExecutionPlan`;
+- obtain the corresponding valid `ModelHandle`;
+- generate a unique `GenerationRequestId` for every runtime request;
+- retain the association between the agent invocation, trace context and runtime request;
 - build runtime requests from agent messages;
 - apply application timeout policy;
 - call `generateText()` or `generateStructured()`;
+- invoke `cancel(requestId)` when the application-level timeout expires;
 - preserve existing output cleanup;
 - apply local structured parsing;
 - map runtime failures to agent fallback policy;
@@ -928,11 +935,22 @@ Responsibilities:
 
 It does not:
 
+- expose physical model IDs or `ModelHandle` objects to `EvaluatorAgent` or `ActorAgent`;
+- require agents to generate request IDs;
 - start platform processes directly;
 - download models;
 - choose physical model files;
 - inspect hardware;
 - update gameplay state.
+
+Normative rule:
+
+```text
+EvaluatorAgent and ActorAgent request a ModelRole.
+RuntimeInferenceBridge resolves the ModelRole to a ModelHandle.
+Agents never receive or transmit provider model IDs, physical filenames,
+local model paths or runtime-native handles.
+```
 
 ### 18.2 Migration compatibility
 
@@ -979,6 +997,89 @@ CharacterSetGuard
 StructuredOutputParser
 ```
 
+### 18.4 Request identity and cancellation ownership
+
+`GenerationRequestId` is an infrastructure concern owned by `RuntimeInferenceBridge`.
+
+The agents must not generate, persist or interpret runtime request IDs.
+
+Required flow:
+
+```text
+EvaluatorAgent / ActorAgent
+        |
+        | ModelRole + messages + agent timeout policy
+        v
+RuntimeInferenceBridge
+        |
+        +-- generate GenerationRequestId
+        +-- resolve ModelRole to ModelHandle
+        +-- create runtime request
+        +-- retain request correlation
+        +-- await runtime result
+        |
+        +-- on application timeout:
+                call InferenceRuntime.cancel(requestId)
+                await bounded cancellation completion
+                map result to agent fallback policy
+```
+
+Rules:
+
+1. Every active runtime generation has exactly one `GenerationRequestId`.
+2. The bridge stores the association between:
+   - agent invocation;
+   - `GenerationRequestId`;
+   - `RuntimeTraceId`;
+   - `ModelRole`;
+   - resolved `ModelHandle`.
+3. An application-level timeout must request runtime cancellation before the bridge returns the timeout outcome to the agent layer.
+4. Cancellation has a short, separate timeout and must not reuse the generation timeout.
+5. If cancellation succeeds, the model remains loaded unless the adapter declares the model state invalid.
+6. If cancellation fails or the backend state becomes uncertain, the adapter applies its recovery policy and reports the resulting runtime state.
+7. `Future.timeout` without a corresponding `cancel(requestId)` call is non-compliant for production adapters.
+8. Mock and deterministic runtimes must implement the same observable cancellation semantics.
+
+### 18.5 Agent-facing model selection
+
+The current agents receive model ID strings. This is a migration artifact and not the target contract.
+
+Target agent invocation:
+
+```dart
+context.inferenceBridge.generateText(
+  role: ModelRole.actor,
+  messages: messages,
+  parameters: parameters,
+);
+```
+
+or an equivalent typed agent-facing request.
+
+The bridge resolves:
+
+```text
+ModelRole
+   ↓
+active ModelExecutionPlan
+   ↓
+logical model binding
+   ↓
+valid ModelHandle
+```
+
+The implementation may retain the current `InferenceBridge` signature temporarily, but any model ID parameter used during migration must represent a logical role or logical model ID, never a provider ID such as a Hugging Face repository name.
+
+Physical identifiers remain confined to:
+
+```text
+ModelManifest
+ResolvedModelArtifact
+ModelManager
+platform runtime adapter
+diagnostics
+```
+
 ---
 
 ## 19. Cancellation
@@ -995,6 +1096,8 @@ Future<void> cancel(GenerationRequestId requestId);
 - `cancel()` must be safe to call from another async control flow.
 - Unknown request IDs return an explicit `requestNotFound` or documented idempotent success.
 - Successful cancellation completes the generation future with a typed cancellation outcome.
+- Application-level timeout handling must invoke cancellation through `RuntimeInferenceBridge`.
+- The bridge waits for cancellation only within a dedicated bounded timeout.
 - Cancellation must not corrupt model state.
 - Cancellation must not implicitly dispose the runtime.
 - If the backend cannot cancel natively, the adapter may:
@@ -1577,7 +1680,15 @@ Create:
 RuntimeInferenceBridge
 ```
 
-Allow agents to continue using the existing `InferenceBridge` interface.
+Allow agents to continue using the existing `InferenceBridge` interface temporarily.
+
+During this stage:
+
+- introduce `ModelRole`-based resolution inside the bridge;
+- stop propagating provider model IDs beyond the model-management boundary;
+- generate `GenerationRequestId` inside the bridge;
+- connect application timeout handling to runtime cancellation;
+- preserve existing LM Studio behavior through the external adapter.
 
 ### Stage 3 — Wrap current HTTP implementation
 
@@ -1705,6 +1816,10 @@ This specification is approved when all statements below are accepted:
 - InferenceRuntime is the platform-neutral lifecycle boundary.
 - Agents do not depend directly on HTTP, sidecar, FFI, or JNI.
 - ModelHandle replaces physical model IDs in runtime generation calls.
+- EvaluatorAgent and ActorAgent request only a logical `ModelRole`.
+- RuntimeInferenceBridge owns ModelRole-to-ModelHandle resolution.
+- RuntimeInferenceBridge owns `GenerationRequestId` creation and timeout-triggered cancellation.
+- Provider model IDs never cross into agent-facing APIs.
 - The runtime does not download or resolve models.
 - RuntimeInitialization, ModelLoad, Generation, Health, and Disposal are distinct operations.
 - Text and structured generation use typed requests and results.
@@ -1728,6 +1843,7 @@ The document is complete when:
 - no public API requires Windows or Android implementation details;
 - contract tests can be designed without a real model;
 - the Model Manifest and Model Lifecycle specifications can reference the types defined here;
+- the repository-review findings on logical-role resolution and request-ID ownership are incorporated;
 - Antigravity can identify migration impact without inventing a competing runtime contract.
 
 ---
@@ -1770,4 +1886,4 @@ A.U.R.A. will use a typed, platform-neutral `InferenceRuntime` contract as the s
 
 The Windows managed sidecar, Android native runtime, external OpenAI-compatible development adapter, mock runtime, and deterministic fallback will implement the same model-loading, generation, cancellation, health, failure, and disposal semantics.
 
-Transport-specific behavior remains private to adapters. Output validation and gameplay authority remain outside the runtime. This preserves the existing deterministic architecture while enabling Windows production packaging and Android integration without complex refactoring.
+Transport-specific behavior remains private to adapters. Agent-facing calls use logical model roles; `RuntimeInferenceBridge` resolves those roles to valid runtime handles, creates request IDs and coordinates timeout-driven cancellation. Output validation and gameplay authority remain outside the runtime. This preserves the existing deterministic architecture while enabling Windows production packaging and Android integration without complex refactoring.

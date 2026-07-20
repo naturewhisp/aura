@@ -3840,14 +3840,21 @@ Scopo: dismettere LM Studio come dipendenza operativa, introdurre un runtime edg
 
 L'avvio delle sottofasi della Fase 6 è regolato da **design gate progressivi** per consentire l'inizio immediato dell'implementazione del core runtime senza attendere le specifiche di packaging e distribuzione:
 
-- **Gate 1 (Abilitante per Fase 6.1a – 6.2b)**: Richiede l'approvazione del blocco di specifiche architetturali del runtime:
+- **Gate 1 (Abilitante per Fase 6.1a – 6.4)**: Richiede l'approvazione del blocco di specifiche architetturali del runtime (già approvate nel gate della Fase 6.0):
   - `docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md`
   - `docs/phase6/INFERENCE_RUNTIME_CONTRACT.md`
   - `docs/phase6/MODEL_MANIFEST_SPEC.md`
   - `docs/phase6/MODEL_LIFECYCLE_SPEC.md`
   - `docs/phase6/HARDWARE_PROFILE_SPEC.md`
   - `docs/phase6/TEST_RUNTIME_STRATEGY.md`
-- **Gate 2 (Abilitante per Fase 6.4 – 6.9)**: Le specifiche relative a desktop shell, branding, audio packaging, installer, release pipeline ed Android (`WINDOWS_DESKTOP_SHELL_SPEC.md`, `AUDIO_ASSET_PACKAGING_SPEC.md`, `WINDOWS_INSTALLER_AND_UPDATE_SPEC.md`, `RELEASE_PIPELINE_SPEC.md`, `ANDROID_READINESS_SPEC.md`) devono essere approvate prima dell'avvio delle rispettive sottofasi.
+- **Gate 2 (Abilitante progressivamente per Fase 6.5 – 6.9)**: Le specifiche relative a desktop shell, branding, audio packaging, installer, release pipeline, Android ed hardware matrix devono essere approvate prima dell'avvio delle rispettive sottofasi:
+  - `docs/phase6/WINDOWS_DESKTOP_SHELL_SPEC.md`
+  - `docs/phase6/BRANDING_ASSET_SPEC.md`
+  - `docs/phase6/AUDIO_ASSET_PACKAGING_SPEC.md`
+  - `docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md`
+  - `docs/phase6/RELEASE_PIPELINE_SPEC.md`
+  - `docs/phase6/ANDROID_READINESS_SPEC.md`
+  - `docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md`
 
 #### 6.1 Runtime-Neutral Contracts & Code Hygiene Refactoring
 
@@ -3873,7 +3880,8 @@ L'avvio delle sottofasi della Fase 6 è regolato da **design gate progressivi** 
 ##### 6.2a Spostamento del Composition Root
 - Rimuovere la creazione diretta di `LocalApiInferenceBridge` da `main.dart`, `bin/aura_cli.dart` e `bin/run_simulation.dart`.
 - Introdurre `PlatformServices.bootstrap()` e `RuntimeFactory`.
-- Iniettare il runtime bridge e i servizi applicativi nei componenti di Presentation/App appropriati (`GameControllerNotifier`, `BootMenuScreen`).
+- Iniettare il runtime bridge nei servizi e controller applicativi appropriati (`GameControllerNotifier`, `PlatformServices`).
+- `BootMenuScreen` consuma esclusivamente lo stato ed i comandi esposti dal controller di bootstrap/setup, senza dipendere direttamente da `InferenceRuntime` o dall'interfaccia del bridge.
 - `WindowModeController` e `AudioAssetResolver` rimangono nell'app layer (`app/lib/src/`).
 - **Regola di isolamento**: `GameController` e `aura_core` restano puri, deterministici e totalmente platform-neutral, privi di dipendenze da finestre, filesystem, audio o librerie platform.
 

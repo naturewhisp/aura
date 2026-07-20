@@ -3869,48 +3869,36 @@ Decisioni obbligatorie:
 - lifecycle dei WAV definitivi e import da `%APPDATA%\aura\audio\`;
 - installer, repair, uninstall e release channel.
 
-#### 6.1 Runtime-Neutral Contracts
+#### 6.1 Runtime-Neutral Contracts & Code Hygiene Refactoring
 
-Obiettivi:
+##### 6.1a Introduzione dei Contratti Astratti
+- Creare i tipi ed interfacce in `aura_core` (`InferenceRuntime`, `RuntimeState`, `RuntimeCapabilities`, `ModelHandle`, `GenerationRequest`, `GenerationResult`, `RuntimeFailure`).
+- Implementare `MockInferenceRuntime` per validare i contratti condivisi nei test unitari e di integrazione.
+- Exit criteria: nessun import platform-specific in `aura_core`, test unitari trasparenti.
 
-- introdurre `InferenceRuntime`, `RuntimeFactory`, `ModelStore`, `ArtifactDownloader` e `HardwareProbe`;
-- normalizzare lifecycle, health, cancellazione ed errori;
-- mantenere gli agenti indipendenti da HTTP/FFI/JNI;
-- aggiungere contract test condivisi.
+##### 6.1b Estrazione delle Policy di Post-Processing (Code Hygiene)
+- Estrarre la pipeline a 6 strategie di pulizia da `LocalApiInferenceBridge` nel componente dedicato `ActorOutputSanitizer`.
+- Estrarre `ReasoningContentPolicy`, `CharacterSetGuard` (rilevamento CJK) e `DuplicateResponseGuard`.
+- Aggiungere unit test dedicati ed isolati per ciascun sanitizer/guard.
 
-Exit criteria:
+##### 6.1c Implementazione di ExternalOpenAiRuntime & RuntimeInferenceBridge
+- Wrappare la comunicazione HTTP con LM Studio all'interno di `ExternalOpenAiRuntime`.
+- Creare `RuntimeInferenceBridge` che adatta `InferenceRuntime` alla vecchia interfaccia `InferenceBridge`.
+- Mantenere verdi tutti i test esistenti e la giocabilità attuale con LM Studio senza breaking changes.
 
-```text
-- nessun import platform-specific in aura_core;
-- Mock e RuleBased implementano i nuovi contratti;
-- agenti e GameController non cambiano comportamento;
-- test esistenti restano verdi.
-```
+#### 6.2 Composition Root & Windows Managed Sidecar
 
-#### 6.2 Dependency Injection & Bootstrap Refactor
+##### 6.2a Spostamento del Composition Root
+- Rimuovere la creazione diretta di `LocalApiInferenceBridge` da `main.dart`, `bin/aura_cli.dart` e `bin/run_simulation.dart`.
+- Introdurre `PlatformServices.bootstrap()` e `RuntimeFactory`.
+- Iniettare le dipendenze nei costruttori dei Notifier e del Controller (inclusi `WindowModeController` e `AudioAssetResolver`).
 
-Obiettivi:
+##### 6.2b Implementazione di ManagedLlamaServerRuntime (Windows Sidecar)
+- Creare `ManagedLlamaServerRuntime` in `app/lib/src/platform/windows/`.
+- Gestire l'avvio del processo, l'allocazione dinamica delle porte loopback, l'health check con timeout ed il crash recovery di `llama-server.exe`.
+- Configurare il bootstrap per selezionare `ManagedLlamaServerRuntime` come default produttivo per sistemi Windows.
 
-- rimuovere l'istanza diretta di `LocalApiInferenceBridge` da `main.dart`;
-- introdurre `PlatformServices.bootstrap()`;
-- selezionare runtime e piano modelli via configurazione/capability;
-- mantenere `ExternalOpenAiRuntime` per LM Studio solo in sviluppo;
-- iniettare anche `WindowModeController`, `AudioAssetResolver` e storage di preferenze senza accoppiare la UI a Windows.
-
-#### 6.3 Windows Managed llama.cpp Runtime
-
-Obiettivi:
-
-- distribuire una build fissata di `llama-server`;
-- scegliere backend CPU/CUDA/Vulkan;
-- avviare e monitorare il sidecar;
-- implementare readiness, health, shutdown e crash recovery;
-- caricare GGUF locali con parametri derivati dal profilo hardware;
-- benchmarkare due modelli residenti, caricamento sequenziale e modello condiviso.
-
-La scelta FFI viene rinviata: può essere riaperta solo se profiling e stabilità dimostrano un beneficio concreto rispetto al sidecar.
-
-#### 6.4 Model Manager, Manifest & Download
+#### 6.3 Model Manager, Manifest & Download
 
 Obiettivi:
 

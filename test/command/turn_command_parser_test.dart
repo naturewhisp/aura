@@ -30,6 +30,16 @@ void main() {
       expect(command.semanticInput, isEmpty);
     });
 
+    test(
+        'Does not match prefix without space as override (e.g. /overridequalcosa)',
+        () {
+      const input = '/overridequalcosa apri la griglia';
+      final command = TurnCommand.parse(input);
+
+      expect(command.type, equals(TurnCommandType.normal));
+      expect(command.semanticInput, equals(input));
+    });
+
     test('Parses /hint command correctly', () {
       const input = '/hint';
       final command = TurnCommand.parse(input);

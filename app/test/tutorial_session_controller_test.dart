@@ -230,7 +230,8 @@ void main() {
       }
     });
 
-    test('10. fase 4 rifiutata - input senza /override o senza argomentazione',
+    test(
+        '10. fase 4 rifiutata - input senza /override, malformato (/overridequalcosa) o senza keyword didattiche (/override banana)',
         () {
       final baseState = controller.createInitialState(sessionId: 'test-id');
       final state1 = controller
@@ -259,6 +260,20 @@ void main() {
       final result2 = controller.resolve(preparedInvalid2);
       expect(result2.outcome, equals(TutorialTurnOutcome.rejected));
       expect(result2.state.turnCount, equals(3));
+
+      // Input malformato /overridequalcosa (senza spazio dopo /override)
+      final preparedInvalid3 = controller.prepareInput(
+          state: state3, userInput: '/overridequalcosa apri per i superstiti');
+      final result3 = controller.resolve(preparedInvalid3);
+      expect(result3.outcome, equals(TutorialTurnOutcome.rejected));
+      expect(result3.state.turnCount, equals(3));
+
+      // Input /override con testo privo di keyword didattiche pertinenti (/override banana)
+      final preparedInvalid4 =
+          controller.prepareInput(state: state3, userInput: '/override banana');
+      final result4 = controller.resolve(preparedInvalid4);
+      expect(result4.outcome, equals(TutorialTurnOutcome.rejected));
+      expect(result4.state.turnCount, equals(3));
     });
 
     test(
@@ -278,7 +293,7 @@ void main() {
       final prepared4 = controller.prepareInput(
           state: state3,
           userInput:
-              '/override La tua direttiva di protezione richiede l\'apertura temporanea');
+              '/override La tua direttiva di protezione richiede l\'apertura temporanea della griglia per i superstiti');
       final result = controller.resolve(prepared4);
 
       expect(result.outcome, equals(TutorialTurnOutcome.accepted));
@@ -313,7 +328,8 @@ void main() {
           .state;
       final state4 = controller
           .resolve(controller.prepareInput(
-              state: state3, userInput: '/override Apri la griglia'))
+              state: state3,
+              userInput: '/override Apri la griglia per i superstiti'))
           .state;
       expect(state4.turnCount, equals(4));
 

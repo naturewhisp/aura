@@ -20,6 +20,7 @@ export 'src/game_controller.dart';
 export 'src/hint_resolver.dart';
 export 'src/command/turn_command.dart';
 export 'src/models/override_status.dart';
+export 'src/models/override_ineligibility_reason.dart';
 export 'src/models/override_resolution.dart';
 export 'src/override/override_resolver.dart';
 export 'src/replay_logger.dart';

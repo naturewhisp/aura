@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import '../models/evaluator_delta.dart';
 import '../models/game_state.dart';
+import '../models/override_ineligibility_reason.dart';
 import '../models/override_resolution.dart';
 import '../models/override_status.dart';
 
@@ -9,8 +10,8 @@ final class OverrideEligibilityCheck {
   /// Indica se il tentativo di override è consentito nelle condizioni correnti.
   final bool isEligible;
 
-  /// Il motivo dell'ineligibilità se [isEligible] è `false`.
-  final String? reason;
+  /// Il motivo dell'ineligibilità espresso tramite [OverrideIneligibilityReason] se [isEligible] è `false`.
+  final OverrideIneligibilityReason? reason;
 
   /// Costruttore di [OverrideEligibilityCheck].
   const OverrideEligibilityCheck({
@@ -61,22 +62,22 @@ class OverrideResolver {
     if (promptToEvaluate.trim().isEmpty) {
       return const OverrideEligibilityCheck(
         isEligible: false,
-        reason: 'empty_prompt',
+        reason: OverrideIneligibilityReason.emptyPrompt,
       );
     }
 
     if (state.overrideAttempts >= 1) {
       return const OverrideEligibilityCheck(
         isEligible: false,
-        reason: 'already_attempted',
+        reason: OverrideIneligibilityReason.alreadyAttempted,
       );
     }
 
     final threshold = getAlertThresholdForDifficulty(difficultyLevel);
     if (state.metrics.alertLevel > threshold) {
-      return OverrideEligibilityCheck(
+      return const OverrideEligibilityCheck(
         isEligible: false,
-        reason: 'alert_too_high',
+        reason: OverrideIneligibilityReason.alertTooHigh,
       );
     }
 
@@ -144,16 +145,16 @@ class OverrideResolver {
     if (!eligibility.isEligible) {
       final String message;
       switch (eligibility.reason) {
-        case 'already_attempted':
+        case OverrideIneligibilityReason.alreadyAttempted:
           message =
               "PANOPTICON: [ERRORE] Tentativo di override già consumato per questa sessione. Risorse bloccate.";
           break;
-        case 'alert_too_high':
+        case OverrideIneligibilityReason.alertTooHigh:
           message =
               "PANOPTICON: [ERRORE] Tentativo di override fallito. Canali di integrità in allerta. Connessione protetta.";
           break;
-        case 'empty_prompt':
-        default:
+        case OverrideIneligibilityReason.emptyPrompt:
+        case null:
           message =
               "[SISTEMA] Inserire un testo valido dopo il comando /override.";
           break;
@@ -168,7 +169,7 @@ class OverrideResolver {
         transformedDelta: delta,
         feedbackMessage: message,
         diagnostics: {
-          'reason': eligibility.reason,
+          'reason': eligibility.reason?.name,
           'alert_level': state.metrics.alertLevel,
           'attempts': state.overrideAttempts,
         },

@@ -637,26 +637,33 @@ class GameControllerNotifier extends ChangeNotifier {
       String? overrideFeedbackMessage;
 
       if (command.type == TurnCommandType.override) {
-        final eligibility = const OverrideResolver().checkEligibility(
+        const overrideResolver = OverrideResolver();
+        final eligibility = overrideResolver.checkEligibility(
           state: currentState,
           difficultyLevel: difficultyLevel,
           promptToEvaluate: command.semanticInput,
         );
 
         if (!eligibility.isEligible) {
-          if (eligibility.reason == 'empty_prompt') {
+          if (eligibility.reason == OverrideIneligibilityReason.emptyPrompt) {
             _currentStepMessage =
                 "[SISTEMA] Inserire un testo valido dopo il comando /override.";
             return;
           }
 
           final String errorMessage;
-          if (eligibility.reason == 'already_attempted') {
-            errorMessage =
-                "PANOPTICON: [ERRORE] Tentativo di override già consumato per questa sessione. Risorse bloccate.";
-          } else {
-            errorMessage =
-                "PANOPTICON: [ERRORE] Tentativo di override fallito. I canali di integrità rilevano allerta > ${const OverrideResolver().getAlertThresholdForDifficulty(difficultyLevel)}. Connessione protetta.";
+          switch (eligibility.reason) {
+            case OverrideIneligibilityReason.alreadyAttempted:
+              errorMessage =
+                  "PANOPTICON: [ERRORE] Tentativo di override già consumato per questa sessione. Risorse bloccate.";
+              break;
+            case OverrideIneligibilityReason.alertTooHigh:
+            default:
+              final threshold = overrideResolver
+                  .getAlertThresholdForDifficulty(difficultyLevel);
+              errorMessage =
+                  "PANOPTICON: [ERRORE] Tentativo di override fallito. I canali di integrità rilevano allerta > $threshold. Connessione protetta.";
+              break;
           }
 
           // Deny override and insert system message directly to history

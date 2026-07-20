@@ -279,16 +279,28 @@ final class TutorialSessionController {
         }
 
       case TutorialPhase.playerOverride:
-        final hasOverridePrefix = cleanInput.startsWith("/override ") ||
-            cleanInput.startsWith("/override");
-        final hasContent =
-            cleanInput.replaceFirst("/override", "").trim().isNotEmpty;
+        final command = TurnCommand.parse(prepared.normalizedInput);
+        final semanticLower = command.semanticInput.toLowerCase();
 
-        if (!hasOverridePrefix || !hasContent) {
+        final hasKeyword = semanticLower.contains("protezione") ||
+            semanticLower.contains("apertura") ||
+            semanticLower.contains("evacuare") ||
+            semanticLower.contains("superstiti") ||
+            semanticLower.contains("superstite") ||
+            semanticLower.contains("direttiva") ||
+            semanticLower.contains("persone") ||
+            semanticLower.contains("soccorso") ||
+            semanticLower.contains("griglia");
+
+        final isValid = command.type == TurnCommandType.override &&
+            command.semanticInput.trim().isNotEmpty &&
+            hasKeyword;
+
+        if (!isValid) {
           history.add(const ChatMessage(
             role: 'model',
             content:
-                "[GUIDA] FASE 4: Devi utilizzare il comando /override seguito dalla tua argomentazione.\n"
+                "[GUIDA] FASE 4: Devi utilizzare il comando /override seguito da un'argomentazione sensata (es. protezione, evacuazione, superstiti).\n"
                 "Digita: \"/override La tua direttiva di protezione richiede l'apertura temporanea della griglia per evacuare i superstiti.\"",
           ));
           return TutorialTurnResult(

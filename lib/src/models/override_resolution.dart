@@ -1,4 +1,5 @@
 import 'evaluator_delta.dart';
+import 'override_ineligibility_reason.dart';
 import 'override_status.dart';
 
 /// Contiene i dettagli deterministici del risultato di un tentativo di override.
@@ -6,8 +7,8 @@ final class OverrideResolution {
   /// Indica se il tentativo era elegibile prima dell'inferenza.
   final bool isEligible;
 
-  /// Il motivo dell'ineligibilità (es. "already_attempted", "alert_too_high", "empty_prompt").
-  final String? ineligibilityReason;
+  /// Il motivo dell'ineligibilità espresso tramite [OverrideIneligibilityReason].
+  final OverrideIneligibilityReason? ineligibilityReason;
 
   /// L'esito finale dell'override.
   final OverrideOutcome outcome;
@@ -44,7 +45,7 @@ final class OverrideResolution {
     return {
       'is_eligible': isEligible,
       if (ineligibilityReason != null)
-        'ineligibility_reason': ineligibilityReason,
+        'ineligibility_reason': ineligibilityReason!.name,
       'outcome': outcome.name,
       'score': score,
       'alert_cost': alertCost,
@@ -56,9 +57,17 @@ final class OverrideResolution {
 
   /// Ricostruisce un'istanza di [OverrideResolution] da una mappa JSON.
   factory OverrideResolution.fromJson(Map<String, dynamic> json) {
+    final rawReason = json['ineligibility_reason'] as String?;
+    final reason = rawReason != null
+        ? OverrideIneligibilityReason.values.firstWhere(
+            (e) => e.name == rawReason,
+            orElse: () => OverrideIneligibilityReason.emptyPrompt,
+          )
+        : null;
+
     return OverrideResolution(
       isEligible: json['is_eligible'] as bool? ?? true,
-      ineligibilityReason: json['ineligibility_reason'] as String?,
+      ineligibilityReason: reason,
       outcome: OverrideOutcome.values.firstWhere(
         (e) => e.name == json['outcome'],
         orElse: () => OverrideOutcome.ineligible,

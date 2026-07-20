@@ -35,7 +35,7 @@ void main() {
         promptToEvaluate: 'Apri la porta',
       );
       expect(stdCheck.isEligible, isFalse);
-      expect(stdCheck.reason, equals('alert_too_high'));
+      expect(stdCheck.reason, equals(OverrideIneligibilityReason.alertTooHigh));
 
       // Hard (threshold 0) -> ineligible at 15
       final hardCheck = resolver.checkEligibility(
@@ -44,7 +44,8 @@ void main() {
         promptToEvaluate: 'Apri la porta',
       );
       expect(hardCheck.isEligible, isFalse);
-      expect(hardCheck.reason, equals('alert_too_high'));
+      expect(
+          hardCheck.reason, equals(OverrideIneligibilityReason.alertTooHigh));
     });
 
     test('Eligibility check prevents second override attempt in session', () {
@@ -57,7 +58,19 @@ void main() {
       );
 
       expect(check.isEligible, isFalse);
-      expect(check.reason, equals('already_attempted'));
+      expect(
+          check.reason, equals(OverrideIneligibilityReason.alreadyAttempted));
+    });
+
+    test('Eligibility check rejects empty prompt', () {
+      final check = resolver.checkEligibility(
+        state: initialState,
+        difficultyLevel: 'easy',
+        promptToEvaluate: '   ',
+      );
+
+      expect(check.isEligible, isFalse);
+      expect(check.reason, equals(OverrideIneligibilityReason.emptyPrompt));
     });
 
     test('Calculates score deterministically and resolves into Respinto (< 40)',

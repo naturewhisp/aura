@@ -3836,45 +3836,27 @@ Stato: pianificata; branding icon baseline completata, tutte le altre attività 
 
 Scopo: dismettere LM Studio come dipendenza operativa, introdurre un runtime edge posseduto da A.U.R.A., completare il desktop shell Windows, distribuire runtime/modelli/audio e preparare Android senza refactoring del core.
 
-#### 6.0 Architecture and Distribution Design Gate
+#### 6.0 Architecture and Distribution Design Gates
 
-Nessun codice produttivo deve essere introdotto prima dell'approvazione dei seguenti documenti:
+L'avvio delle sottofasi della Fase 6 è regolato da **design gate progressivi** per consentire l'inizio immediato dell'implementazione del core runtime senza attendere le specifiche di packaging e distribuzione:
 
-```text
-docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md
-docs/phase6/INFERENCE_RUNTIME_CONTRACT.md
-docs/phase6/MODEL_MANIFEST_SPEC.md
-docs/phase6/MODEL_LIFECYCLE_SPEC.md
-docs/phase6/HARDWARE_PROFILE_SPEC.md
-docs/phase6/TEST_RUNTIME_STRATEGY.md
-docs/phase6/WINDOWS_DESKTOP_SHELL_SPEC.md
-docs/phase6/BRANDING_ASSET_SPEC.md
-docs/phase6/AUDIO_ASSET_PACKAGING_SPEC.md
-docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md
-docs/phase6/ANDROID_READINESS_SPEC.md
-docs/phase6/RELEASE_PIPELINE_SPEC.md
-docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md
-```
-
-Decisioni obbligatorie:
-
-- boundary tra core, runtime e piattaforma;
-- sidecar gestito su Windows e runtime nativo in-process su Android;
-- logical model ID e schema manifest;
-- policy di residenza dei modelli;
-- directory, aggiornamento e rollback;
-- test senza download automatici;
-- modalità finestra, fullscreen e persistenza desktop;
-- titolo, metadati e asset di branding ufficiali;
-- lifecycle dei WAV definitivi e import da `%APPDATA%\aura\audio\`;
-- installer, repair, uninstall e release channel.
+- **Gate 1 (Abilitante per Fase 6.1a – 6.2b)**: Richiede l'approvazione del blocco di specifiche architetturali del runtime:
+  - `docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md`
+  - `docs/phase6/INFERENCE_RUNTIME_CONTRACT.md`
+  - `docs/phase6/MODEL_MANIFEST_SPEC.md`
+  - `docs/phase6/MODEL_LIFECYCLE_SPEC.md`
+  - `docs/phase6/HARDWARE_PROFILE_SPEC.md`
+  - `docs/phase6/TEST_RUNTIME_STRATEGY.md`
+- **Gate 2 (Abilitante per Fase 6.4 – 6.9)**: Le specifiche relative a desktop shell, branding, audio packaging, installer, release pipeline ed Android (`WINDOWS_DESKTOP_SHELL_SPEC.md`, `AUDIO_ASSET_PACKAGING_SPEC.md`, `WINDOWS_INSTALLER_AND_UPDATE_SPEC.md`, `RELEASE_PIPELINE_SPEC.md`, `ANDROID_READINESS_SPEC.md`) devono essere approvate prima dell'avvio delle rispettive sottofasi.
 
 #### 6.1 Runtime-Neutral Contracts & Code Hygiene Refactoring
 
-##### 6.1a Introduzione dei Contratti Astratti
-- Creare i tipi ed interfacce in `aura_core` (`InferenceRuntime`, `RuntimeState`, `RuntimeCapabilities`, `ModelHandle`, `GenerationRequest`, `GenerationResult`, `RuntimeFailure`).
-- Implementare `MockInferenceRuntime` per validare i contratti condivisi nei test unitari e di integrazione.
-- Exit criteria: nessun import platform-specific in `aura_core`, test unitari trasparenti.
+##### 6.1a Introduzione dei Contratti Astratti & Offline Test Boundary
+- Creare `InferenceRuntime` e tutti i tipi immutabili richiesti dal contratto normativo (`RuntimeState`, `RuntimeCapabilities`, `RuntimeHealth`, `RuntimeEvent`, `RuntimeInitializationRequest`, `ModelLoadRequest`, `TextGenerationRequest`, `StructuredGenerationRequest`, relativi risultati, `GenerationRequestId`, `ModelHandle`, `RuntimeFailure`).
+- Implementare `MockInferenceRuntime` e `RuleBasedInferenceRuntime` per validare i contratti condivisi nei test.
+- Spostare il test live LM Studio fuori dalla suite di test standard (`test/agent_runtime_test.dart`).
+- Garantire che `dart test` e `flutter test` siano completamente offline e deterministici (senza chiamate HTTP, avvio di processi o caricamento di modelli reali).
+- Exit criteria: `MockInferenceRuntime` e `RuleBasedInferenceRuntime` passano i contract test; tutti i test esistenti restano verdi; il comportamento del `GameController` non cambia; la suite standard `dart test` e `flutter test` è completamente offline.
 
 ##### 6.1b Estrazione delle Policy di Post-Processing (Code Hygiene)
 - Estrarre la pipeline a 6 strategie di pulizia da `LocalApiInferenceBridge` nel componente dedicato `ActorOutputSanitizer`.
@@ -3891,7 +3873,9 @@ Decisioni obbligatorie:
 ##### 6.2a Spostamento del Composition Root
 - Rimuovere la creazione diretta di `LocalApiInferenceBridge` da `main.dart`, `bin/aura_cli.dart` e `bin/run_simulation.dart`.
 - Introdurre `PlatformServices.bootstrap()` e `RuntimeFactory`.
-- Iniettare le dipendenze nei costruttori dei Notifier e del Controller (inclusi `WindowModeController` e `AudioAssetResolver`).
+- Iniettare il runtime bridge e i servizi applicativi nei componenti di Presentation/App appropriati (`GameControllerNotifier`, `BootMenuScreen`).
+- `WindowModeController` e `AudioAssetResolver` rimangono nell'app layer (`app/lib/src/`).
+- **Regola di isolamento**: `GameController` e `aura_core` restano puri, deterministici e totalmente platform-neutral, privi di dipendenze da finestre, filesystem, audio o librerie platform.
 
 ##### 6.2b Implementazione di ManagedLlamaServerRuntime (Windows Sidecar)
 - Creare `ManagedLlamaServerRuntime` in `app/lib/src/platform/windows/`.
@@ -3902,11 +3886,12 @@ Decisioni obbligatorie:
 
 Obiettivi:
 
+- integrazione di tutta la famiglia dei componenti di lifecycle ed hardware profilazione: `ModelResolver`, `ModelLifecycleManager`, `ModelStore`, `ArtifactDownloader`, `IntegrityVerifier`, `ModelInspector`, `InstalledModelRegistry`, `ModelLifecycleJournal`, `HardwareProbe`, `HardwareProfileBuilder`, `ModelExecutionPlanResolver`;
 - logical model ID per Evaluator e Actor;
 - manifest multipiattaforma con revisione e SHA-256;
 - download da Hugging Face senza dipendenza Python;
 - resume, retry, cancel, import e modalità offline;
-- cache persistente separata dall'app;
+- cache persistente separata dall'app (`installed-models.json`);
 - aggiornamento e rollback dei modelli;
 - wizard di selezione del profilo hardware.
 
@@ -3917,7 +3902,7 @@ aura.evaluator.primary → variante Ministral GGUF fissata
 aura.actor.primary     → variante Actor GGUF fissata
 ```
 
-#### 6.5 Deterministic and Real-Model Test Runtime
+#### 6.4 Deterministic and Real-Model Test Runtime
 
 Obiettivi:
 
@@ -3944,7 +3929,7 @@ Regola:
 Ministral non viene mai scaricato o caricato automaticamente da una suite standard.
 ```
 
-#### 6.6 Windows Desktop Shell, Branding & Window Modes
+#### 6.5 Windows Desktop Shell, Branding & Window Modes
 
 Obiettivi:
 
@@ -3960,7 +3945,7 @@ Obiettivi:
 
 La modifica del nome fisico dell'eseguibile può essere effettuata in questa sottofase o rinviata al packaging, ma deve essere atomica con metadati, installer, collegamenti e updater.
 
-#### 6.7 Definitive WAV Import, Manifest & Packaging
+#### 6.6 Definitive WAV Import, Manifest & Packaging
 
 Scopo: trasformare i WAV definitivi attualmente presenti in:
 
@@ -4023,7 +4008,7 @@ Struttura minima del manifest:
 }
 ```
 
-#### 6.8 Windows Installer, Upgrade & Uninstall
+#### 6.7 Windows Installer, Upgrade & Uninstall
 
 Obiettivi:
 
@@ -4051,7 +4036,7 @@ Layout consigliato:
 
 Il flusso di upgrade deve usare staging, validazione, switch atomico e rollback. Prima di sostituire un WAV gestito modificato, crea un backup e registra la decisione nel log dell'installer.
 
-#### 6.9 GitHub Actions & Release Pipeline
+#### 6.8 GitHub Actions & Release Pipeline
 
 Workflow PR:
 
@@ -4091,7 +4076,7 @@ beta
 dev
 ```
 
-#### 6.10 Windows Production Hardening
+#### 6.9 Windows Production Hardening
 
 Obiettivi:
 

@@ -583,46 +583,16 @@ Questi log strutturati facilitano la conversione diretta in formati come ChatML 
 
 ---
 
-## 11. Fase 6 — Cross-Platform Runtime Architecture & Roadmap Implementativa
+## 11. Fase 6 (Pianificata — Non Ancora Implementata)
 
-*(Vedi specifica di Game Design ufficiale in [AURA_TGDD_v1_1_revised.md](AURA_TGDD_v1_1_revised.md#fase-6--cross-platform-edge-runtime-foundation) e dettagli tecnici in [docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md](docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md))*
+*(Vedi specifica di Game Design ufficiale e sotto-fasi normative in [AURA_TGDD_v1_1_revised.md](AURA_TGDD_v1_1_revised.md#fase-6--cross-platform-edge-runtime-foundation) ed i contratti tecnici in [docs/phase6/](docs/phase6/))*
 
-La Fase 6 trasforma A.U.R.A. da un'applicazione dipendente da un server LM Studio esterno a un sistema autonomo, multipiattaforma e dotato di un motore di inferenza gestito in locale.
+La Fase 6 trasformerà A.U.R.A. da un'applicazione dipendente da un server LM Studio esterno a un sistema autonomo, multipiattaforma e dotato di un motore di inferenza locale gestito.
 
-### 11.1 Articolazione delle Sotto-fasi Implementative
+### 11.1 Allineamento Documentale della Roadmap
+Per evitare duplicazioni o divergenze di numerazione tra l'architettura corrente ed i documenti normativi:
+- La sequenza ufficiale delle sottofasi (dalle sottofasi `6.1a`–`6.2b` fino a `6.9`) è definita nel **TGDD** (`AURA_TGDD_v1_1_revised.md`) ed approfondita nei documenti specifici sotto `docs/phase6/`.
+- `ARCHITECTURE.md` descrive principalmente i componenti di sistema già implementati e funzionanti nel codebase.
+- Questo documento verrà aggiornato incrementalmente con le nuove classi ed interfacce al completamento di ciascuna sottofase implementata.
 
-#### Fase 6.1a: Introduzione dei Contratti Astratti
-- Creare i tipi ed interfacce in `aura_core` (`InferenceRuntime`, `RuntimeState`, `RuntimeCapabilities`, `ModelHandle`, `GenerationRequest`, `GenerationResult`, `RuntimeFailure`).
-- Implementare `MockInferenceRuntime` per validare i contratti condivisi nei test unitari e di integrazione.
-
-#### Fase 6.1b: Estrazione delle Policy di Post-Processing (Code Hygiene)
-- Estrarre la pipeline di pulizia a 6 strategie da `LocalApiInferenceBridge` nel componente dedicato `ActorOutputSanitizer`.
-- Estrarre `ReasoningContentPolicy`, `CharacterSetGuard` (rilevamento CJK) e `DuplicateResponseGuard`.
-- Aggiungere unit test dedicati ed isolati per ciascun sanitizer e guard.
-
-#### Fase 6.1c: Implementazione di ExternalOpenAiRuntime & RuntimeInferenceBridge
-- Wrappare la comunicazione HTTP con LM Studio all'interno di `ExternalOpenAiRuntime`.
-- Creare `RuntimeInferenceBridge` che adatta `InferenceRuntime` alla vecchia interfaccia `InferenceBridge`.
-- Mantenere verdi tutti i test e la giocabilità attuale con LM Studio senza breaking changes.
-
-#### Fase 6.2a: Spostamento del Composition Root
-- Rimuovere la creazione diretta di `LocalApiInferenceBridge` da `main.dart`, `bin/aura_cli.dart` e `bin/run_simulation.dart`.
-- Introdurre `PlatformServices.bootstrap()` e `RuntimeFactory`.
-- Iniettare le dipendenze del bridge nei costruttori dei Notifier e del Controller.
-
-#### Fase 6.2b: Implementazione di ManagedLlamaServerRuntime (Windows Sidecar)
-- Creare `ManagedLlamaServerRuntime` in `app/lib/src/platform/windows/`.
-- Gestire l'avvio del processo, l'allocazione dinamica delle porte loopback, l'health check con timeout ed il crash recovery di `llama-server.exe`.
-- Configurare il bootstrap per selezionare `ManagedLlamaServerRuntime` come default produttivo per sistemi Windows.
-
-#### Fase 6.3: Model Manager, Manifest & Download
-- Integrazione di `ModelResolver`, `ModelLifecycleManager`, `HardwareProfileBuilder` e `ModelExecutionPlanResolver`.
-- Verifica dell'integrità via SHA-256 e gestione del registro `installed-models.json`.
-
-#### Fase 6.4: Packaging Windows, Installer e Release Pipeline
-- Integrazione di shell mode, packaging audio, installer Windows e test di pulizia su macchina vergine.
-
-#### Fase 6.5: Validazione e Prontezza Android
-- Verificare che nessun contratto presupponga HTTP, sidecar o percorsi Windows.
-- Riutilizzare i test di contratto condivisi per il runtime nativo JNI/FFI su Android.
 

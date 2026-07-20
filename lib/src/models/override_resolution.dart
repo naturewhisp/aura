@@ -61,7 +61,7 @@ final class OverrideResolution {
     final reason = rawReason != null
         ? OverrideIneligibilityReason.values.firstWhere(
             (e) => e.name == rawReason,
-            orElse: () => OverrideIneligibilityReason.emptyPrompt,
+            orElse: () => OverrideIneligibilityReason.unknown,
           )
         : null;
 

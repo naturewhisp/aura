@@ -154,6 +154,7 @@ class OverrideResolver {
               "PANOPTICON: [ERRORE] Tentativo di override fallito. Canali di integrità in allerta. Connessione protetta.";
           break;
         case OverrideIneligibilityReason.emptyPrompt:
+        case OverrideIneligibilityReason.unknown:
         case null:
           message =
               "[SISTEMA] Inserire un testo valido dopo il comando /override.";

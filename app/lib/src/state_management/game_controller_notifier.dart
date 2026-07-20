@@ -658,11 +658,16 @@ class GameControllerNotifier extends ChangeNotifier {
                   "PANOPTICON: [ERRORE] Tentativo di override già consumato per questa sessione. Risorse bloccate.";
               break;
             case OverrideIneligibilityReason.alertTooHigh:
-            default:
               final threshold = overrideResolver
                   .getAlertThresholdForDifficulty(difficultyLevel);
               errorMessage =
                   "PANOPTICON: [ERRORE] Tentativo di override fallito. I canali di integrità rilevano allerta > $threshold. Connessione protetta.";
+              break;
+            case OverrideIneligibilityReason.emptyPrompt:
+            case OverrideIneligibilityReason.unknown:
+            case null:
+              errorMessage =
+                  "[SISTEMA] Inserire un testo valido dopo il comando /override.";
               break;
           }
 

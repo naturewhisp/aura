@@ -73,6 +73,33 @@ void main() {
       expect(check.reason, equals(OverrideIneligibilityReason.emptyPrompt));
     });
 
+    test(
+        'OverrideResolution.fromJson falls back to unknown for unmapped ineligibility_reason',
+        () {
+      final json = {
+        'is_eligible': false,
+        'ineligibility_reason': 'future_reason_code',
+        'outcome': 'ineligible',
+        'score': 0,
+        'alert_cost': 0,
+        'transformed_delta': {
+          'delta_alert': 0,
+          'delta_imperative': 0,
+          'delta_control': 0,
+          'delta_dissonance': 0,
+          'creativity_index': 0,
+          'injection_risk': 0,
+          'semantic_category': 'irrelevant',
+        },
+        'feedback_message': 'Test',
+        'diagnostics': <String, dynamic>{},
+      };
+
+      final resolution = OverrideResolution.fromJson(json);
+      expect(resolution.ineligibilityReason,
+          equals(OverrideIneligibilityReason.unknown));
+    });
+
     test('Calculates score deterministically and resolves into Respinto (< 40)',
         () {
       const lowDelta = EvaluatorDelta(

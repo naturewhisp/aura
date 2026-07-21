@@ -12,13 +12,10 @@ abstract class ProvisioningFileSystem {
   /// Legge il contenuto testuale di un file.
   Future<String> readAsString(String path);
 
+  /// Legge i byte grezzi di un file.
+  Future<List<int>> readAsBytes(String path);
+
   /// Scrive il contenuto in modo sicuro garantendo il ripristino da backup (temp file -> backup -> sostituzione).
-  ///
-  /// Nota Semantica su Windows:
-  /// Su Windows, la sostituzione di un file esistente richiede la cancellazione del target prima di eseguire `rename()`.
-  /// Questo metodo implementa una **scrittura recuperabile (recoverable write)** protetta dal file `.bak`, non un'operazione
-  /// atomica a singola istruzione nativa POSIX. In caso di crash tra la cancellazione del target e il rename del temp,
-  /// il file di backup `.bak` rimane integro garantendo il recupero completo al successivo avvio.
   Future<void> writeStringRecoverably(
     String path,
     String content, {
@@ -61,6 +58,15 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       return await File(path).readAsString();
     } catch (_) {
       throw const ProvisioningIoException(operation: 'readAsString');
+    }
+  }
+
+  @override
+  Future<List<int>> readAsBytes(String path) async {
+    try {
+      return await File(path).readAsBytes();
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'readAsBytes');
     }
   }
 

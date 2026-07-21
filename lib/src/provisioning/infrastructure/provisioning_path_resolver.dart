@@ -163,6 +163,22 @@ final class ProvisioningPathResolver {
     return _join(appManagedRoot, relative.replaceAll('/', '\\'));
   }
 
+  /// Calcola il path assoluto di installazione finale per un [CatalogArtifact].
+  String resolveInstalledArtifactPath(CatalogArtifact artifact) {
+    return resolveAbsoluteInstallPath(
+      artifactType: artifact.artifactType,
+      artifactId: artifact.artifactId,
+      buildOrVersionId: artifact.version,
+    );
+  }
+
+  /// Calcola il path assoluto dell'artefatto bundled sotto [bundledRoot].
+  String resolveBundledArtifactPath(CatalogArtifact artifact) {
+    final assetId = artifact.bundledAssetId ?? artifact.fileName;
+    final cleanAssetId = sanitizeSegment(assetId);
+    return _join(bundledRoot, cleanAssetId);
+  }
+
   /// Calcola il path assoluto della directory di staging per un'operazione.
   String resolveStagingDirectory(String operationId) {
     final cleanOpId = sanitizeSegment(operationId);

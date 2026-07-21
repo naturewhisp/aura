@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:aura_core/aura_core.dart';
 import 'package:test/test.dart';
 
@@ -19,6 +20,14 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
       throw const ProvisioningIoException(operation: 'readAsString');
     }
     return files[path]!;
+  }
+
+  @override
+  Future<List<int>> readAsBytes(String path) async {
+    if (!files.containsKey(path)) {
+      throw const ProvisioningIoException(operation: 'readAsBytes');
+    }
+    return utf8.encode(files[path]!);
   }
 
   @override

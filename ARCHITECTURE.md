@@ -654,8 +654,32 @@ Componenti implementati:
    - Suite di test di equivalenza comportamentale (`legacy_runtime_equivalence_test.dart`) che dimostra perfetta corrispondenza di output e policy tra il vecchio ed il nuovo percorso di runtime.
    - Preservazione al 100% dell'invarianza del composition root legacy (`LocalApiInferenceBridge`, `main.dart`, `bin/aura_cli.dart`, `bin/run_simulation.dart`).
 
+### 11.4 Planned Model Provisioning Boundary (Design Specification)
+
+Stato: **Pianificato / Specificato Normativamente** *(Nessuna implementazione codice presente nella Fase 6.1c)*.
+
+Specifiche e Principi Architetturali:
+
+1. **Service Boundary Condiviso (`ModelProvisioningService`)**:
+   - `ModelProvisioningService` è il boundary dell'application layer che orchestrerà il provisioning hardware-aware, la migrazione del model store, la scansione/classificazione dei GGUF locali e la gestione del consenso.
+   - Sarà consumato in modo identico sia dal **Windows Installer Wizard** sia dalla schermata **Runtime & Models Settings** dell'applicazione Flutter. L'installer non possederà una seconda implementazione indipendente del lifecycle dei modelli.
+
+2. **Proprietà Permanente dell'Applicazione**:
+   - L'installer eseguirà soltanto il provisioning hardware-aware iniziale; l'applicazione manterrà il controllo permanente su model store, profili di performance, modelli installati, import compatibili, aggiornamenti, repair e rollback.
+
+3. **Directory Custom del Managed Model Store**:
+   - Il managed model store utilizzerà un default per piattaforma (`%LOCALAPPDATA%\AURA\models` su Windows), ma consentirà all'utente di selezionare una directory custom durante il setup o nelle impostazioni.
+   - Il percorso fisico del model store non viene mai codificato all'interno dei logical model ID o nei file del manifest.
+
+4. **Classificazione e Binding di Modelli GGUF Locali**:
+   - I modelli GGUF locali scoperti tramite scansione vengono classificati su 6 livelli normativi (`exactVerifiedMatch`, `compatibleKnownVariant`, `compatibleUnverifiedImport`, `externallyOwnedBinding`, `incompatible`, `unknownReviewRequired`).
+   - Si applica una distinzione netta tra modelli gestiti ed importati (`importedManaged`, copiati e gestiti dallo store) e modelli locali ad associazione esterna (`externalLocal`, mantenuti nella cartella utente originaria senza alcuna modifica). La sola coincidenza del nome file non costituisce mai prova di compatibilità.
+
+5. **Consenso ed Assenza di Download Impliciti**:
+   - Tutti i download da repository di terze parti (es. Hugging Face) richiedono il consenso esplicito dell'utente previa presentazione di un riepilogo dettagliato (spazio richiesto, dimensione download, licenze, percorso). La policy predefinita è `neverDownload`.
+
 > [!NOTE]
-> Le sottofasi successive (`ManagedLlamaServerRuntime`, `ModelLifecycleManager`, hardware probe, installer e Android JNI/FFI) restano pianificate per le sottofasi da 6.2a in poi.
+> L'implementazione di `ModelProvisioningService`, `ArtifactDownloader`, `ModelStore` e delle relative UI appartiene alle sottofasi da **6.3** in avanti. La Fase 6.1c resta focalizzata sui contratti di runtime e sul bridge di inferenza.
 
 
 

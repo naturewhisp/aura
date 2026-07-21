@@ -3890,18 +3890,17 @@ L'avvio delle sottofasi della Fase 6 è regolato da **design gate progressivi** 
 - Gestire l'avvio del processo, l'allocazione dinamica delle porte loopback, l'health check con timeout ed il crash recovery di `llama-server.exe`.
 - Configurare il bootstrap per selezionare `ManagedLlamaServerRuntime` come default produttivo per sistemi Windows.
 
-#### 6.3 Model Manager, Manifest & Download
+#### 6.3 Model Provisioning, Lifecycle Manager & Store Management
 
-Obiettivi:
+Obiettivi e Principi Normativi:
 
-- integrazione di tutta la famiglia dei componenti di lifecycle ed hardware profilazione: `ModelResolver`, `ModelLifecycleManager`, `ModelStore`, `ArtifactDownloader`, `IntegrityVerifier`, `ModelInspector`, `InstalledModelRegistry`, `ModelLifecycleJournal`, `HardwareProbe`, `HardwareProfileBuilder`, `ModelExecutionPlanResolver`;
-- logical model ID per Evaluator e Actor;
-- manifest multipiattaforma con revisione e SHA-256;
-- download da Hugging Face senza dipendenza Python;
-- resume, retry, cancel, import e modalità offline;
-- cache persistente separata dall'app (`installed-models.json`);
-- aggiornamento e rollback dei modelli;
-- wizard di selezione del profilo hardware.
+- **Provisioning Hardware-Aware Iniziale:** L'installer ed il primo setup dell'applicazione eseguono il rilevamento hardware con `HardwareProbe` e propongono un piano di provisioning raccomandato e spiegabile (backend, modelli, varianti, quantizzazione, context size, stima RAM/VRAM/disco).
+- **Proposta Modificabile:** L'utente può confermare, personalizzare o modificare la raccomandazione proposta (profili `automatic`, `memorySaver`, `quality`, `manual`).
+- **Scelta e Migrazione del Model Store:** L'utente può scegliere la directory del managed model store sia durante il provisioning sia successivamente dalle impostazioni dell'app. La migrazione della directory avviene con preflight dello spazio, copia tramite staging, verifica SHA-256 e switch atomico con rollback automatico in caso di errore.
+- **Adozione ed Importazione di Modelli GGUF Locali:** Scansione opzionale di cartelle locali. Distinzione rigorosa tra importazione nel managed store (`importedManaged`, previa verifica SHA-256/header GGUF) ed associazione esterna non modificabile (`externalLocal`). La verifica non si basa mai solo sul nome file.
+- **Consenso Esplicito ed Assenza di Download Impliciti:** Nessun download avviene mai implicitamente. I download da Hugging Face richiedono consenso esplicito previa presentazione di dimensioni, spazio richiesto, licenze e percorso di destinazione. `ModelAvailabilityPolicy` ha default `neverDownload`.
+- **Application Service Condiviso (`ModelProvisioningService`):** Installer e schermata delle impostazioni dell'app condividono lo stesso strato applicativo (`ModelProvisioningService`) e lo stesso `ModelLifecycleManager`, senza duplicare logica di lifecycle, download o registry.
+- **Integrazione della famiglia dei componenti:** `ModelResolver`, `ModelLifecycleManager`, `ModelStore`, `ArtifactDownloader`, `IntegrityVerifier`, `ModelInspector`, `InstalledModelRegistry`, `ModelLifecycleJournal`, `HardwareProbe`, `HardwareProfileBuilder`, `ModelExecutionPlanResolver`.
 
 Il primo manifest produttivo deve includere almeno:
 
@@ -3909,6 +3908,8 @@ Il primo manifest produttivo deve includere almeno:
 aura.evaluator.primary → variante Ministral GGUF fissata
 aura.actor.primary     → variante Actor GGUF fissata
 ```
+
+*(Vedi specifiche dettagliate in [docs/phase6/MODEL_LIFECYCLE_SPEC.md](docs/phase6/MODEL_LIFECYCLE_SPEC.md), [docs/phase6/HARDWARE_PROFILE_SPEC.md](docs/phase6/HARDWARE_PROFILE_SPEC.md), [docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md](docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md) e [docs/phase6/WINDOWS_DESKTOP_SHELL_SPEC.md](docs/phase6/WINDOWS_DESKTOP_SHELL_SPEC.md))*
 
 #### 6.4 Deterministic and Real-Model Test Runtime
 

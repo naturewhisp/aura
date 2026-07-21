@@ -42,6 +42,19 @@ export 'src/agent_runtime/validators/panopticon_tone_validator.dart';
 export 'src/agent_runtime/inference_timeouts.dart';
 export 'src/agent_runtime/inference_timeout_exception.dart';
 
+// Inference Runtime Contracts (Phase 6)
+export 'src/agent_runtime/runtime/inference_runtime.dart';
+export 'src/agent_runtime/runtime/runtime_state.dart';
+export 'src/agent_runtime/runtime/runtime_capabilities.dart';
+export 'src/agent_runtime/runtime/runtime_health.dart';
+export 'src/agent_runtime/runtime/runtime_backend.dart';
+export 'src/agent_runtime/runtime/runtime_failure.dart';
+export 'src/agent_runtime/runtime/model_handle.dart';
+export 'src/agent_runtime/runtime/runtime_ids.dart';
+export 'src/agent_runtime/runtime/runtime_requests.dart';
+export 'src/agent_runtime/runtime/runtime_results.dart';
+export 'src/agent_runtime/runtime/runtime_events.dart';
+
 // Concrete Agents Base
 export 'src/agent_runtime/agents/aura_agent.dart';
 

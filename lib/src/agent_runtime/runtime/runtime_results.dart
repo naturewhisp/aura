@@ -55,6 +55,7 @@ class TextGenerationResult {
   final GenerationRequestId requestId;
   final ModelHandle model;
   final String content;
+  final String? reasoningContent;
   final GenerationFinishReason finishReason;
   final GenerationUsage usage;
   final Duration latency;
@@ -66,6 +67,7 @@ class TextGenerationResult {
     required this.model,
     required this.content,
     required this.finishReason,
+    this.reasoningContent,
     this.usage = const GenerationUsage(),
     this.latency = Duration.zero,
     this.warnings = const [],
@@ -80,10 +82,12 @@ class TextGenerationResult {
           requestId == other.requestId &&
           model == other.model &&
           content == other.content &&
+          reasoningContent == other.reasoningContent &&
           finishReason == other.finishReason;
 
   @override
-  int get hashCode => Object.hash(requestId, model, content, finishReason);
+  int get hashCode =>
+      Object.hash(requestId, model, content, reasoningContent, finishReason);
 }
 
 /// Result returned by `generateStructured()`.

@@ -42,6 +42,7 @@ class MockInferenceRuntime implements InferenceRuntime {
   // Configurable parameters
   bool autoCompleteRequests;
   String textResponse;
+  String? textReasoningResponse;
   Map<String, Object?> structuredResponse;
   RuntimeFailure? failureToThrowOnInitialize;
   RuntimeFailure? failureToThrowOnLoadModel;
@@ -383,7 +384,7 @@ class MockInferenceRuntime implements InferenceRuntime {
     return completer.future;
   }
 
-  void completeNextTextGeneration([String? content]) {
+  void completeNextTextGeneration([String? content, String? reasoning]) {
     if (_pendingTextGenerations.isEmpty) return;
     final pending = _pendingTextGenerations.removeAt(0);
 
@@ -391,6 +392,7 @@ class MockInferenceRuntime implements InferenceRuntime {
       requestId: pending.request.requestId,
       model: pending.request.model,
       content: content ?? textResponse,
+      reasoningContent: reasoning ?? textReasoningResponse,
       finishReason: GenerationFinishReason.completed,
     );
 

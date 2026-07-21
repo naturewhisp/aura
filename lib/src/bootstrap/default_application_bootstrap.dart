@@ -50,9 +50,9 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         );
       } on FormatException catch (e) {
         throw ApplicationBootstrapException(
-          ApplicationBootstrapFailure(
+          const ApplicationBootstrapFailure(
             code: ApplicationBootstrapFailureCode.incompleteConfiguration,
-            message: e.message,
+            message: 'Configurazione di runtime non valida o incompleta.',
           ),
           e,
         );
@@ -69,10 +69,10 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         rethrow;
       }
       throw ApplicationBootstrapException(
-        ApplicationBootstrapFailure(
+        const ApplicationBootstrapFailure(
           code: ApplicationBootstrapFailureCode.runtimeInitializationFailed,
           message:
-              'Errore imprevisto durante l\'inizializzazione del bootstrap: $e',
+              'Errore durante l\'inizializzazione del bootstrap applicativo.',
         ),
         e,
       );
@@ -89,7 +89,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       case ApplicationRuntimeMode.externalOpenAiRuntime:
         return await _bootstrapExternalOpenAi(request, config);
       case ApplicationRuntimeMode.ruleBased:
-        return await _bootstrapRuleBased();
+        return await _bootstrapRuleBased(config);
     }
   }
 
@@ -118,7 +118,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
 
       if (!isHealthy &&
           config.fallbackPolicy == BootstrapFallbackPolicy.ruleBased) {
-        return await _bootstrapRuleBased();
+        return await _bootstrapRuleBased(config);
       }
     }
 
@@ -146,14 +146,19 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     ApplicationBootstrapRequest request,
     ApplicationRuntimeConfiguration config,
   ) async {
+    final sessionId =
+        (config.sessionId != null && config.sessionId!.trim().isNotEmpty)
+            ? config.sessionId!.trim()
+            : 'bootstrap-session';
+
     final baseUri = config.baseUri ?? Uri.parse('http://127.0.0.1:1234');
     if (!baseUri.hasScheme ||
         (baseUri.scheme != 'http' && baseUri.scheme != 'https')) {
-      throw ApplicationBootstrapException(
+      throw const ApplicationBootstrapException(
         ApplicationBootstrapFailure(
           code: ApplicationBootstrapFailureCode.invalidUri,
           message:
-              'URI base non valida per ExternalOpenAiRuntime: "$baseUri". Occorre uno schema http o https.',
+              'URI base non valido per ExternalOpenAiRuntime. Occorre uno schema http o https.',
         ),
       );
     }
@@ -186,16 +191,32 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         HttpExternalOpenAiClient(configuration: externalConfig);
     _activeClient = client;
 
-    final actorBinding = ExternalOpenAiModelBinding(
-      logicalModelId: 'aura.actor.primary',
-      serverModelId: config.actorModelId,
-      roles: const {ModelRole.actor},
-    );
-    final evalBinding = ExternalOpenAiModelBinding(
-      logicalModelId: 'aura.evaluator.primary',
-      serverModelId: config.evaluatorModelId,
-      roles: const {ModelRole.evaluator},
-    );
+    final ExternalOpenAiModelBinding actorBinding;
+    final ExternalOpenAiModelBinding evalBinding;
+
+    if (config.useSharedModel) {
+      actorBinding = ExternalOpenAiModelBinding(
+        logicalModelId: 'aura.actor.primary',
+        serverModelId: config.actorModelId,
+        roles: const {ModelRole.actor, ModelRole.evaluator},
+      );
+      evalBinding = ExternalOpenAiModelBinding(
+        logicalModelId: 'aura.evaluator.primary',
+        serverModelId: config.actorModelId,
+        roles: const {ModelRole.actor, ModelRole.evaluator},
+      );
+    } else {
+      actorBinding = ExternalOpenAiModelBinding(
+        logicalModelId: 'aura.actor.primary',
+        serverModelId: config.actorModelId,
+        roles: const {ModelRole.actor},
+      );
+      evalBinding = ExternalOpenAiModelBinding(
+        logicalModelId: 'aura.evaluator.primary',
+        serverModelId: config.evaluatorModelId,
+        roles: const {ModelRole.evaluator},
+      );
+    }
 
     final runtime = request.customRuntime ??
         ExternalOpenAiRuntime(
@@ -207,24 +228,23 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
 
     try {
       await runtime.initialize(
-        const RuntimeInitializationRequest(
-          instanceId: RuntimeInstanceId('bootstrap-external-instance'),
+        RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('instance-$sessionId'),
         ),
       );
     } on RuntimeException catch (e) {
       throw ApplicationBootstrapException(
-        ApplicationBootstrapFailure(
+        const ApplicationBootstrapFailure(
           code: ApplicationBootstrapFailureCode.runtimeInitializationFailed,
-          message:
-              'Inizializzazione di ExternalOpenAiRuntime fallita: ${e.failure.message}',
+          message: 'Inizializzazione di ExternalOpenAiRuntime fallita.',
         ),
         e,
       );
     } catch (e) {
       throw ApplicationBootstrapException(
-        ApplicationBootstrapFailure(
+        const ApplicationBootstrapFailure(
           code: ApplicationBootstrapFailureCode.runtimeInitializationFailed,
-          message: 'Inizializzazione di ExternalOpenAiRuntime fallita: $e',
+          message: 'Inizializzazione di ExternalOpenAiRuntime fallita.',
         ),
         e,
       );
@@ -233,15 +253,10 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     RuntimeModelExecutionPlan actorPlan;
     RuntimeModelExecutionPlan evalPlan;
 
-    if (config.useSharedModel) {
-      final sharedBinding = ExternalOpenAiModelBinding(
-        logicalModelId: 'aura.shared.primary',
-        serverModelId: config.actorModelId,
-        roles: const {ModelRole.actor, ModelRole.evaluator},
-      );
-      try {
+    try {
+      if (config.useSharedModel) {
         final sharedLoadReq = ModelLoadRequest(
-          requestId: const ModelLoadRequestId('bootstrap-shared-load'),
+          requestId: ModelLoadRequestId('load-shared-$sessionId'),
           artifact: const ResolvedModelArtifact(
             modelVariantId: 'variant-shared',
             sha256: 'placeholder-sha',
@@ -250,8 +265,8 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
             architecture: 'shared',
             compatibility: ModelRuntimeCompatibility(compatible: true),
           ),
-          logicalModelId: sharedBinding.logicalModelId,
-          roles: sharedBinding.roles,
+          logicalModelId: actorBinding.logicalModelId,
+          roles: actorBinding.roles,
         );
         final sharedHandle = await runtime.loadModel(sharedLoadReq);
         actorPlan = RuntimeModelExecutionPlan(
@@ -261,22 +276,12 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         );
         evalPlan = RuntimeModelExecutionPlan(
           role: ModelRole.evaluator,
-          logicalModelId: 'aura.evaluator.primary',
+          logicalModelId: 'aura.actor.primary',
           handle: sharedHandle,
         );
-      } catch (e) {
-        throw ApplicationBootstrapException(
-          ApplicationBootstrapFailure(
-            code: ApplicationBootstrapFailureCode.modelLoadFailed,
-            message: 'Caricamento del modello condiviso fallito: $e',
-          ),
-          e,
-        );
-      }
-    } else {
-      try {
+      } else {
         final actorLoadReq = ModelLoadRequest(
-          requestId: const ModelLoadRequestId('bootstrap-actor-load'),
+          requestId: ModelLoadRequestId('load-actor-$sessionId'),
           artifact: const ResolvedModelArtifact(
             modelVariantId: 'variant-actor',
             sha256: 'placeholder-sha',
@@ -289,7 +294,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
           roles: actorBinding.roles,
         );
         final evalLoadReq = ModelLoadRequest(
-          requestId: const ModelLoadRequestId('bootstrap-eval-load'),
+          requestId: ModelLoadRequestId('load-eval-$sessionId'),
           artifact: const ResolvedModelArtifact(
             modelVariantId: 'variant-eval',
             sha256: 'placeholder-sha',
@@ -315,15 +320,15 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
           logicalModelId: 'aura.evaluator.primary',
           handle: evalHandle,
         );
-      } catch (e) {
-        throw ApplicationBootstrapException(
-          ApplicationBootstrapFailure(
-            code: ApplicationBootstrapFailureCode.modelLoadFailed,
-            message: 'Caricamento dei binding Attore/Valutatore fallito: $e',
-          ),
-          e,
-        );
       }
+    } catch (e) {
+      throw ApplicationBootstrapException(
+        const ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.modelLoadFailed,
+          message: 'Caricamento dei modelli di inferenza fallito.',
+        ),
+        e,
+      );
     }
 
     const routeResolver = LegacyInferenceRouteResolver();
@@ -341,16 +346,16 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         isHealthy = health.responsive;
         if (!isHealthy) {
           statusMsg =
-              'ExternalOpenAiRuntime non risponde al controlli di integrità.';
+              'ExternalOpenAiRuntime non risponde ai controlli di integrità.';
         }
       } catch (e) {
         isHealthy = false;
-        statusMsg = 'Health check di ExternalOpenAiRuntime fallito: $e';
+        statusMsg = 'Health check di ExternalOpenAiRuntime fallito.';
       }
 
       if (!isHealthy &&
           config.fallbackPolicy == BootstrapFallbackPolicy.ruleBased) {
-        return await _bootstrapRuleBased();
+        return await _bootstrapRuleBased(config);
       }
     }
 
@@ -362,31 +367,38 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       diagnostics: {
         'baseUrl': baseUri.toString(),
         'useSharedModel': config.useSharedModel,
+        'sessionId': sessionId,
       },
     );
 
     return ApplicationBootstrapResult(
       controller: controller,
       activeBridge: bridge,
-      runtime: runtime,
       runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
       status: status,
       onDispose: dispose,
     );
   }
 
-  Future<ApplicationBootstrapResult> _bootstrapRuleBased() async {
+  Future<ApplicationBootstrapResult> _bootstrapRuleBased(
+    ApplicationRuntimeConfiguration config,
+  ) async {
+    final sessionId =
+        (config.sessionId != null && config.sessionId!.trim().isNotEmpty)
+            ? config.sessionId!.trim()
+            : 'bootstrap-session';
+
     final runtime = RuleBasedInferenceRuntime();
     _activeRuntime = runtime;
     await runtime.initialize(
-      const RuntimeInitializationRequest(
-        instanceId: RuntimeInstanceId('bootstrap-rule-instance'),
+      RuntimeInitializationRequest(
+        instanceId: RuntimeInstanceId('instance-$sessionId'),
       ),
     );
 
-    final actorLoadReq = const ModelLoadRequest(
-      requestId: ModelLoadRequestId('bootstrap-rule-actor-load'),
-      artifact: ResolvedModelArtifact(
+    final actorLoadReq = ModelLoadRequest(
+      requestId: ModelLoadRequestId('load-rule-actor-$sessionId'),
+      artifact: const ResolvedModelArtifact(
         modelVariantId: 'variant-rule-actor',
         sha256: 'placeholder-sha',
         format: 'rule',
@@ -395,11 +407,11 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         compatibility: ModelRuntimeCompatibility(compatible: true),
       ),
       logicalModelId: 'aura.actor.primary',
-      roles: {ModelRole.actor},
+      roles: const {ModelRole.actor},
     );
-    final evalLoadReq = const ModelLoadRequest(
-      requestId: ModelLoadRequestId('bootstrap-rule-eval-load'),
-      artifact: ResolvedModelArtifact(
+    final evalLoadReq = ModelLoadRequest(
+      requestId: ModelLoadRequestId('load-rule-eval-$sessionId'),
+      artifact: const ResolvedModelArtifact(
         modelVariantId: 'variant-rule-eval',
         sha256: 'placeholder-sha',
         format: 'rule',
@@ -408,7 +420,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         compatibility: ModelRuntimeCompatibility(compatible: true),
       ),
       logicalModelId: 'aura.evaluator.primary',
-      roles: {ModelRole.evaluator},
+      roles: const {ModelRole.evaluator},
     );
 
     final actorHandle = await runtime.loadModel(actorLoadReq);
@@ -433,16 +445,18 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     );
 
     const controller = GameController();
-    final status = const ApplicationRuntimeStatus(
+    final status = ApplicationRuntimeStatus(
       runtimeMode: ApplicationRuntimeMode.ruleBased,
       isHealthy: true,
       statusDescription: 'Motore offline deterministico (rule-based) attivo.',
+      diagnostics: {
+        'sessionId': sessionId,
+      },
     );
 
     return ApplicationBootstrapResult(
       controller: controller,
       activeBridge: bridge,
-      runtime: runtime,
       runtimeMode: ApplicationRuntimeMode.ruleBased,
       status: status,
       onDispose: dispose,
@@ -454,22 +468,36 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     if (_disposed) return;
     _disposed = true;
 
-    try {
-      if (_activeRuntime != null) {
+    final errors = <Object>[];
+
+    if (_activeRuntime != null) {
+      try {
         await _activeRuntime!.dispose();
+      } catch (e) {
+        errors.add(e);
+      } finally {
         _activeRuntime = null;
       }
-      if (_activeClient != null) {
-        _activeClient!.close();
+    }
+
+    if (_activeClient != null) {
+      try {
+        await _activeClient!.close();
+      } catch (e) {
+        errors.add(e);
+      } finally {
         _activeClient = null;
       }
-    } catch (e) {
+    }
+
+    if (errors.isNotEmpty) {
       throw ApplicationBootstrapException(
-        ApplicationBootstrapFailure(
+        const ApplicationBootstrapFailure(
           code: ApplicationBootstrapFailureCode.disposeFailed,
-          message: 'Errore durante la dismissione delle risorse: $e',
+          message:
+              'Errore durante la dismissione delle risorse del composition root.',
         ),
-        e,
+        errors.length == 1 ? errors.first : errors,
       );
     }
   }

@@ -1,6 +1,5 @@
 import 'package:meta/meta.dart';
 import '../agent_runtime/inference_bridge.dart';
-import '../agent_runtime/runtime/inference_runtime.dart';
 import '../game_controller.dart';
 import 'application_runtime_mode.dart';
 
@@ -40,9 +39,6 @@ class ApplicationBootstrapResult {
   /// Bridge di inferenza attivo per le comunicazioni con gli agenti.
   final InferenceBridge activeBridge;
 
-  /// Istanza opzionale di [InferenceRuntime] se la modalità attiva lo supporta.
-  final InferenceRuntime? runtime;
-
   /// Modalità runtime effettivamente inizializzata.
   final ApplicationRuntimeMode runtimeMode;
 
@@ -56,7 +52,6 @@ class ApplicationBootstrapResult {
   const ApplicationBootstrapResult({
     required this.controller,
     required this.activeBridge,
-    this.runtime,
     required this.runtimeMode,
     required this.status,
     required this.onDispose,

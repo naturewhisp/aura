@@ -27,7 +27,6 @@ void main() {
       expect(result.controller, isA<GameController>());
       expect(result.activeBridge, isA<InferenceBridge>());
       expect(result.status.isHealthy, isTrue);
-      expect(result.runtime, isA<InferenceRuntime>());
 
       await result.dispose();
     });

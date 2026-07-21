@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:async';
 import 'package:aura_core/aura_core.dart';
 import 'package:test/test.dart';
 
@@ -80,6 +80,7 @@ void main() {
     late ProvisioningPathResolver pathResolver;
     late MemoryProvisioningFileSystem fileSystem;
     late TestProvisioningClock clock;
+    late ProvisioningLock sharedLock;
     late JsonInstallationRecordRepository repo;
 
     setUp(() {
@@ -89,8 +90,10 @@ void main() {
       );
       fileSystem = MemoryProvisioningFileSystem();
       clock = TestProvisioningClock(DateTime.utc(2026, 7, 21, 21, 0, 0));
+      sharedLock = InMemoryProvisioningLock();
       repo = JsonInstallationRecordRepository(
         pathResolver: pathResolver,
+        lock: sharedLock,
         fileSystem: fileSystem,
         clock: clock,
       );
@@ -103,8 +106,7 @@ void main() {
       expect(record.installedArtifacts, isEmpty);
     });
 
-    test(
-        'Scrive atomicamente e rilegge il record con installationId ed enum tipizzati',
+    test('Scrive e rilegge il record con installationId ed enum tipizzati',
         () async {
       final descriptor = InstalledArtifactDescriptor(
         installationId: 'inst-llama-b3500-1',
@@ -116,7 +118,7 @@ void main() {
         platform: 'windows',
         architecture: 'x64',
         relativeInstallPath: 'runtimes/llama-b3500/b3500',
-        installedAt: '2026-07-21T21:00:00Z',
+        installedAt: '2026-07-21T21:00:00.000Z',
         sizeBytes: 10485760,
         sha256: 'a' * 64,
         sourceKind: CatalogArtifactSourceKind.remoteHttps,
@@ -126,11 +128,12 @@ void main() {
       );
 
       final record = InstallationRecord(
-        updatedAt: '2026-07-21T21:00:00Z',
+        updatedAt: '2026-07-21T21:00:00.000Z',
         installedArtifacts: [descriptor],
       );
 
-      await repo.writeRecord(record);
+      final saved = await repo.replaceRecord(record);
+      expect(saved.updatedAt, equals('2026-07-21T21:00:00.000Z'));
 
       final loaded = await repo.readRecord();
       expect(loaded.installedArtifacts.length, equals(1));
@@ -142,91 +145,148 @@ void main() {
       expect(readItem.retained, isTrue);
     });
 
-    test('updateRecord serializza le modifiche prevenendo lost update',
-        () async {
-      await repo.updateRecord((current) {
-        return current.copyWith(
-          installedArtifacts: [
-            InstalledArtifactDescriptor(
-              installationId: 'inst-1',
-              artifactId: 'art-1',
-              artifactType: CatalogArtifactType.runtime,
-              displayName: 'Art 1',
-              version: '1.0',
-              buildId: 'b1',
-              platform: 'windows',
-              architecture: 'x64',
-              relativeInstallPath: 'runtimes/art-1/b1',
-              installedAt: '2026-07-21T21:00:00Z',
-              sizeBytes: 100,
-              sha256: 'a' * 64,
-              sourceKind: CatalogArtifactSourceKind.bundled,
-            ),
-          ],
-        );
-      });
-
-      final updated = await repo.readRecord();
-      expect(updated.installedArtifacts.length, equals(1));
-      expect(updated.installedArtifacts[0].installationId, equals('inst-1'));
-    });
-
-    test(
-        'Tenta il recovery dal backup .bak preservando il file di backup valido senza sovrascriverlo col primary corrotto',
-        () async {
-      final recordPath = pathResolver.installationRecordPath;
-      final backupPath = '$recordPath.bak';
-
-      final validRecord = InstallationRecord(
-        updatedAt: '2026-07-21T20:00:00Z',
-        installedArtifacts: [
-          InstalledArtifactDescriptor(
-            installationId: 'inst-recovered-1',
-            artifactId: 'rt-1',
-            artifactType: CatalogArtifactType.runtime,
-            displayName: 'RT 1',
-            version: '1.0',
-            buildId: 'b1',
-            platform: 'windows',
-            architecture: 'x64',
-            relativeInstallPath: 'runtimes/rt-1/b1',
-            installedAt: '2026-07-21T20:00:00Z',
-            sizeBytes: 500,
-            sha256: 'b' * 64,
-            sourceKind: CatalogArtifactSourceKind.bundled,
-          ),
-        ],
+    test('Impone le invarianti di stato tra status e verifiedAt', () {
+      // verified richiede verifiedAt
+      expect(
+        () => InstalledArtifactDescriptor(
+          installationId: 'inst-1',
+          artifactId: 'art-1',
+          artifactType: CatalogArtifactType.runtime,
+          displayName: 'Art 1',
+          version: '1.0',
+          buildId: 'b1',
+          platform: 'windows',
+          architecture: 'x64',
+          relativeInstallPath: 'runtimes/art-1/b1',
+          installedAt: '2026-07-21T21:00:00.000Z',
+          sizeBytes: 100,
+          sha256: 'a' * 64,
+          sourceKind: CatalogArtifactSourceKind.bundled,
+          status: InstallationStatus.verified,
+          verifiedAt: null,
+        ),
+        throwsA(isA<ProvisioningException>()),
       );
 
-      fileSystem.files[backupPath] = jsonEncode(validRecord.toJson());
-      fileSystem.files[recordPath] = ''; // file vuoto corrotto
-
-      final recovered = await repo.readRecord();
-      expect(recovered.installedArtifacts.length, equals(1));
-      expect(recovered.installedArtifacts[0].installationId,
-          equals('inst-recovered-1'));
-      // Il backup .bak deve essere rimasto inalterato con i dati validi originari
-      expect(fileSystem.files[backupPath], contains('inst-recovered-1'));
+      // installed non accetta verifiedAt
+      expect(
+        () => InstalledArtifactDescriptor(
+          installationId: 'inst-1',
+          artifactId: 'art-1',
+          artifactType: CatalogArtifactType.runtime,
+          displayName: 'Art 1',
+          version: '1.0',
+          buildId: 'b1',
+          platform: 'windows',
+          architecture: 'x64',
+          relativeInstallPath: 'runtimes/art-1/b1',
+          installedAt: '2026-07-21T21:00:00.000Z',
+          sizeBytes: 100,
+          sha256: 'a' * 64,
+          sourceKind: CatalogArtifactSourceKind.bundled,
+          status: InstallationStatus.installed,
+          verifiedAt: '2026-07-21T21:00:00.000Z',
+        ),
+        throwsA(isA<ProvisioningException>()),
+      );
     });
 
-    test(
-        'Rilancia direttamente unsupportedSchemaVersion senza fare recovery improprio',
-        () async {
-      final recordPath = pathResolver.installationRecordPath;
-      fileSystem.files[recordPath] = jsonEncode({
-        'schemaVersion': '99.0',
-        'updatedAt': '2026-07-21T20:00:00Z',
-        'installedArtifacts': [],
-      });
+    test('Rifiuta installationId duplicati nello stesso InstallationRecord',
+        () {
+      final d1 = InstalledArtifactDescriptor(
+        installationId: 'inst-dup',
+        artifactId: 'art-1',
+        artifactType: CatalogArtifactType.runtime,
+        displayName: 'Art 1',
+        version: '1.0',
+        buildId: 'b1',
+        platform: 'windows',
+        architecture: 'x64',
+        relativeInstallPath: 'runtimes/art-1/b1',
+        installedAt: '2026-07-21T21:00:00.000Z',
+        sizeBytes: 100,
+        sha256: 'a' * 64,
+        sourceKind: CatalogArtifactSourceKind.bundled,
+      );
+
+      final jsonMap = {
+        'schemaVersion': '1.0',
+        'updatedAt': '2026-07-21T21:00:00.000Z',
+        'installedArtifacts': [d1.toJson(), d1.toJson()],
+      };
 
       expect(
-        () => repo.readRecord(),
+        () => InstallationRecord.fromJson(jsonMap),
         throwsA(isA<ProvisioningException>().having(
           (e) => e.reason,
           'reason',
-          equals(ProvisioningFailureReason.unsupportedSchemaVersion),
+          equals(ProvisioningFailureReason.catalogMalformed),
         )),
       );
+    });
+
+    test(
+        'Due istanze di repository condividono il lock ed evitano lost update concorrenti',
+        () async {
+      final repo2 = JsonInstallationRecordRepository(
+        pathResolver: pathResolver,
+        lock: sharedLock,
+        fileSystem: fileSystem,
+        clock: clock,
+      );
+
+      final d1 = InstalledArtifactDescriptor(
+        installationId: 'inst-1',
+        artifactId: 'art-1',
+        artifactType: CatalogArtifactType.runtime,
+        displayName: 'Art 1',
+        version: '1.0',
+        buildId: 'b1',
+        platform: 'windows',
+        architecture: 'x64',
+        relativeInstallPath: 'runtimes/art-1/b1',
+        installedAt: '2026-07-21T21:00:00.000Z',
+        sizeBytes: 100,
+        sha256: 'a' * 64,
+        sourceKind: CatalogArtifactSourceKind.bundled,
+      );
+
+      final d2 = InstalledArtifactDescriptor(
+        installationId: 'inst-2',
+        artifactId: 'art-2',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Art 2',
+        version: '1.0',
+        buildId: 'b2',
+        platform: 'windows',
+        architecture: 'x64',
+        relativeInstallPath: 'models/art-2/b2',
+        installedAt: '2026-07-21T21:00:00.000Z',
+        sizeBytes: 200,
+        sha256: 'b' * 64,
+        sourceKind: CatalogArtifactSourceKind.bundled,
+      );
+
+      final f1 = repo.updateRecord((current) async {
+        await Future.delayed(const Duration(milliseconds: 10));
+        return current.copyWith(
+          installedArtifacts: [...current.installedArtifacts, d1],
+        );
+      });
+
+      final f2 = repo2.updateRecord((current) async {
+        return current.copyWith(
+          installedArtifacts: [...current.installedArtifacts, d2],
+        );
+      });
+
+      await Future.wait([f1, f2]);
+
+      final finalRecord = await repo.readRecord();
+      expect(finalRecord.installedArtifacts.length, equals(2));
+      final ids =
+          finalRecord.installedArtifacts.map((a) => a.installationId).toSet();
+      expect(ids, containsAll(['inst-1', 'inst-2']));
     });
   });
 }

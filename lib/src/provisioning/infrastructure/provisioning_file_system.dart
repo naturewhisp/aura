@@ -12,14 +12,20 @@ abstract class ProvisioningFileSystem {
   /// Legge il contenuto testuale di un file.
   Future<String> readAsString(String path);
 
-  /// Scrive il contenuto in modo sicuro con supporto al backup .bak (temp file -> backup -> sostituzione).
+  /// Scrive il contenuto in modo sicuro garantendo il ripristino da backup (temp file -> backup -> sostituzione).
+  ///
+  /// Nota Semantica su Windows:
+  /// Su Windows, la sostituzione di un file esistente richiede la cancellazione del target prima di eseguire `rename()`.
+  /// Questo metodo implementa una **scrittura recuperabile (recoverable write)** protetta dal file `.bak`, non un'operazione
+  /// atomica a singola istruzione nativa POSIX. In caso di crash tra la cancellazione del target e il rename del temp,
+  /// il file di backup `.bak` rimane integro garantendo il recupero completo al successivo avvio.
   Future<void> writeStringRecoverably(
     String path,
     String content, {
     bool preserveExistingBackup = false,
   });
 
-  /// Ripristina il file di destinazione dal backup senza distruggere il file di backup stesso.
+  /// Ripristina il file di destinazione dal backup senza distruggere il file di backup stesso e ne verifica l'integrità.
   Future<void> restoreFromBackup(String targetPath, String backupPath);
 
   /// Elimina rigorosamente un file. Lancia [ProvisioningIoException] in caso di errore I/O.
@@ -118,11 +124,23 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       }
 
       final content = await backup.readAsString();
+      if (content.trim().isEmpty) {
+        throw const ProvisioningIoException(
+            operation: 'restoreFromBackup_empty');
+      }
+
       await writeStringRecoverably(
         targetPath,
         content,
         preserveExistingBackup: true,
       );
+
+      // Verifica di integrità post-ripristino
+      final verifiedContent = await File(targetPath).readAsString();
+      if (verifiedContent.trim().isEmpty) {
+        throw const ProvisioningIoException(
+            operation: 'restoreFromBackup_verificationFailed');
+      }
     } on ProvisioningIoException {
       rethrow;
     } catch (_) {

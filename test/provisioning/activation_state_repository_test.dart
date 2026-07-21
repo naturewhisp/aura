@@ -8,6 +8,7 @@ void main() {
     late ProvisioningPathResolver pathResolver;
     late MemoryProvisioningFileSystem fileSystem;
     late TestProvisioningClock clock;
+    late ProvisioningLock sharedLock;
     late JsonActivationStateRepository repo;
 
     setUp(() {
@@ -17,8 +18,10 @@ void main() {
       );
       fileSystem = MemoryProvisioningFileSystem();
       clock = TestProvisioningClock(DateTime.utc(2026, 7, 21, 21, 0, 0));
+      sharedLock = InMemoryProvisioningLock();
       repo = JsonActivationStateRepository(
         pathResolver: pathResolver,
+        lock: sharedLock,
         fileSystem: fileSystem,
         clock: clock,
       );
@@ -35,7 +38,7 @@ void main() {
         'Scrive e legge l ActivationState basato su installationId stabili ed enum tipizzati',
         () async {
       final stateToSave = ActivationState(
-        updatedAt: '2026-07-21T21:00:00Z',
+        updatedAt: '2026-07-21T21:00:00.000Z',
         activeRuntimeInstallationId: 'inst-llama-b3500-1',
         activeModelInstallationId: 'inst-ministral-3b-1',
         lastKnownGoodRuntimeInstallationId: 'inst-llama-b3500-1',
@@ -46,7 +49,8 @@ void main() {
         explicitUserSelection: true,
       );
 
-      await repo.writeState(stateToSave);
+      final saved = await repo.replaceState(stateToSave);
+      expect(saved.updatedAt, equals('2026-07-21T21:00:00.000Z'));
 
       final loaded = await repo.readState();
       expect(loaded.activeRuntimeInstallationId, equals('inst-llama-b3500-1'));
@@ -60,12 +64,17 @@ void main() {
       expect(loaded.explicitUserSelection, isTrue);
     });
 
-    test('updateState serializza transazionalmente le modifiche', () async {
-      await repo.updateState((current) {
+    test(
+        'updateState serializza transazionalmente le modifiche restituendo l istanza persistita',
+        () async {
+      final result = await repo.updateState((current) {
         return current.copyWith(
           activeRuntimeInstallationId: 'inst-runtime-2',
         );
       });
+
+      expect(result.activeRuntimeInstallationId, equals('inst-runtime-2'));
+      expect(result.updatedAt, equals('2026-07-21T21:00:00.000Z'));
 
       final updated = await repo.readState();
       expect(updated.activeRuntimeInstallationId, equals('inst-runtime-2'));
@@ -78,7 +87,7 @@ void main() {
       final backupPath = '$statePath.bak';
 
       final validState = ActivationState(
-        updatedAt: '2026-07-21T20:00:00Z',
+        updatedAt: '2026-07-21T20:00:00.000Z',
         activeRuntimeInstallationId: 'inst-recovered-rt',
         activeModelInstallationId: 'inst-recovered-model',
       );

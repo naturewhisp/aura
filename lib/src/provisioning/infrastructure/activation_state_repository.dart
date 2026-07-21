@@ -14,10 +14,15 @@ abstract class ActivationStateRepository {
   /// Se il file non esiste ancora, restituisce un [ActivationState.empty].
   Future<ActivationState> readState();
 
-  /// Scrive l'ActivationState sul filesystem.
-  Future<void> writeState(ActivationState state);
+  /// Sostituisce completamente l'ActivationState memorizzato (es. seeding iniziale o reset).
+  /// Restituisce l'istanza di [ActivationState] effettivamente persistita sul disco (con timestamp aggiornato).
+  Future<ActivationState> replaceState(ActivationState state);
+
+  /// Deprecated alias per [replaceState].
+  Future<ActivationState> writeState(ActivationState state);
 
   /// Esegue un'operazione atomica serializzata read-modify-write per evitare lost update.
+  /// Restituisce l'istanza di [ActivationState] effettivamente persistita sul disco.
   Future<ActivationState> updateState(
     FutureOr<ActivationState> Function(ActivationState current) transform,
   );
@@ -34,13 +39,13 @@ final class JsonActivationStateRepository implements ActivationStateRepository {
 
   JsonActivationStateRepository({
     required ProvisioningPathResolver pathResolver,
+    required ProvisioningLock lock,
     ProvisioningFileSystem fileSystem = const LocalProvisioningFileSystem(),
     ProvisioningClock clock = const SystemProvisioningClock(),
-    ProvisioningLock? lock,
   })  : _pathResolver = pathResolver,
         _fileSystem = fileSystem,
         _clock = clock,
-        _lock = lock ?? InMemoryProvisioningLock();
+        _lock = lock;
 
   @override
   Future<ActivationState> readState() async {
@@ -75,11 +80,13 @@ final class JsonActivationStateRepository implements ActivationStateRepository {
       }
       return ActivationState.fromJson(jsonMap);
     } on ProvisioningException catch (e) {
-      if (e.reason == ProvisioningFailureReason.unsupportedSchemaVersion) {
-        // Schema non supportato: NON sovrascrivere o fare recovery da .bak
-        rethrow;
+      // Recovery ammesso unicamente per corruzione/parsing JSON o sintassi del documento
+      if (e.reason == ProvisioningFailureReason.catalogMalformed ||
+          e.reason == ProvisioningFailureReason.activationStateReadFailed) {
+        return _tryRecoverFromBackup(backupPath);
       }
-      return _tryRecoverFromBackup(backupPath);
+      // Schema version non supportata o altri errori di dominio: rilancia senza recovery
+      rethrow;
     } on FormatException {
       return _tryRecoverFromBackup(backupPath);
     } on ProvisioningIoException {
@@ -87,8 +94,6 @@ final class JsonActivationStateRepository implements ActivationStateRepository {
         reason: ProvisioningFailureReason.activationStateReadFailed,
         message: 'Impossibile accedere al file active_state sul filesystem.',
       );
-    } catch (_) {
-      return _tryRecoverFromBackup(backupPath);
     }
   }
 
@@ -136,13 +141,18 @@ final class JsonActivationStateRepository implements ActivationStateRepository {
   }
 
   @override
-  Future<void> writeState(ActivationState state) async {
-    await _lock.synchronized(_lockKey, () async {
-      await _internalWriteState(state);
+  Future<ActivationState> writeState(ActivationState state) async {
+    return replaceState(state);
+  }
+
+  @override
+  Future<ActivationState> replaceState(ActivationState state) async {
+    return _lock.synchronized(_lockKey, () async {
+      return _internalWriteState(state);
     });
   }
 
-  Future<void> _internalWriteState(ActivationState state) async {
+  Future<ActivationState> _internalWriteState(ActivationState state) async {
     try {
       final updatedState = state.copyWith(
         updatedAt: _clock.nowUtc().toIso8601String(),
@@ -153,6 +163,7 @@ final class JsonActivationStateRepository implements ActivationStateRepository {
         _pathResolver.activeStatePath,
         jsonStr,
       );
+      return updatedState;
     } on ProvisioningException {
       rethrow;
     } on ProvisioningIoException {
@@ -175,8 +186,7 @@ final class JsonActivationStateRepository implements ActivationStateRepository {
     return _lock.synchronized(_lockKey, () async {
       final current = await _internalReadState();
       final updated = await transform(current);
-      await _internalWriteState(updated);
-      return updated;
+      return _internalWriteState(updated);
     });
   }
 }

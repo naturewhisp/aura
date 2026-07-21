@@ -14,10 +14,15 @@ abstract class InstallationRecordRepository {
   /// Se il file non esiste ancora, restituisce un [InstallationRecord.empty].
   Future<InstallationRecord> readRecord();
 
-  /// Scrive l'InstallationRecord sul filesystem.
-  Future<void> writeRecord(InstallationRecord record);
+  /// Sostituisce completamente l'InstallationRecord memorizzato (es. seeding iniziale o ripristino).
+  /// Restituisce l'istanza di [InstallationRecord] effettivamente persistita sul disco (con timestamp aggiornato).
+  Future<InstallationRecord> replaceRecord(InstallationRecord record);
+
+  /// Deprecated alias per [replaceRecord].
+  Future<InstallationRecord> writeRecord(InstallationRecord record);
 
   /// Esegue un'operazione atomica serializzata read-modify-write per evitare lost update.
+  /// Restituisce l'istanza di [InstallationRecord] effettivamente persistita sul disco.
   Future<InstallationRecord> updateRecord(
     FutureOr<InstallationRecord> Function(InstallationRecord current) transform,
   );
@@ -35,13 +40,13 @@ final class JsonInstallationRecordRepository
 
   JsonInstallationRecordRepository({
     required ProvisioningPathResolver pathResolver,
+    required ProvisioningLock lock,
     ProvisioningFileSystem fileSystem = const LocalProvisioningFileSystem(),
     ProvisioningClock clock = const SystemProvisioningClock(),
-    ProvisioningLock? lock,
   })  : _pathResolver = pathResolver,
         _fileSystem = fileSystem,
         _clock = clock,
-        _lock = lock ?? InMemoryProvisioningLock();
+        _lock = lock;
 
   @override
   Future<InstallationRecord> readRecord() async {
@@ -76,11 +81,13 @@ final class JsonInstallationRecordRepository
       }
       return InstallationRecord.fromJson(jsonMap);
     } on ProvisioningException catch (e) {
-      if (e.reason == ProvisioningFailureReason.unsupportedSchemaVersion) {
-        // Schema non supportato: NON sovrascrivere o fare recovery da .bak
-        rethrow;
+      // Recovery ammesso unicamente per corruzione/parsing JSON o sintassi del documento
+      if (e.reason == ProvisioningFailureReason.catalogMalformed ||
+          e.reason == ProvisioningFailureReason.installationRecordReadFailed) {
+        return _tryRecoverFromBackup(backupPath);
       }
-      return _tryRecoverFromBackup(backupPath);
+      // Schema version non supportata o altri errori di dominio: rilancia senza recovery
+      rethrow;
     } on FormatException {
       return _tryRecoverFromBackup(backupPath);
     } on ProvisioningIoException {
@@ -89,8 +96,6 @@ final class JsonInstallationRecordRepository
         message:
             'Impossibile accedere al file installation_record sul filesystem.',
       );
-    } catch (_) {
-      return _tryRecoverFromBackup(backupPath);
     }
   }
 
@@ -139,13 +144,19 @@ final class JsonInstallationRecordRepository
   }
 
   @override
-  Future<void> writeRecord(InstallationRecord record) async {
-    await _lock.synchronized(_lockKey, () async {
-      await _internalWriteRecord(record);
+  Future<InstallationRecord> writeRecord(InstallationRecord record) async {
+    return replaceRecord(record);
+  }
+
+  @override
+  Future<InstallationRecord> replaceRecord(InstallationRecord record) async {
+    return _lock.synchronized(_lockKey, () async {
+      return _internalWriteRecord(record);
     });
   }
 
-  Future<void> _internalWriteRecord(InstallationRecord record) async {
+  Future<InstallationRecord> _internalWriteRecord(
+      InstallationRecord record) async {
     try {
       final updatedRecord = record.copyWith(
         updatedAt: _clock.nowUtc().toIso8601String(),
@@ -156,6 +167,7 @@ final class JsonInstallationRecordRepository
         _pathResolver.installationRecordPath,
         jsonStr,
       );
+      return updatedRecord;
     } on ProvisioningException {
       rethrow;
     } on ProvisioningIoException {
@@ -178,8 +190,7 @@ final class JsonInstallationRecordRepository
     return _lock.synchronized(_lockKey, () async {
       final current = await _internalReadRecord();
       final updated = await transform(current);
-      await _internalWriteRecord(updated);
-      return updated;
+      return _internalWriteRecord(updated);
     });
   }
 }

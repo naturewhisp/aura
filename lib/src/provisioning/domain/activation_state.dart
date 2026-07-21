@@ -69,7 +69,14 @@ final class ActivationState {
     this.explicitUserSelection = false,
     this.selectedModelAlias,
     Map<String, dynamic> metadata = const {},
-  }) : metadata = JsonSafeValue.ensureJsonSafeMap(metadata);
+  }) : metadata = JsonSafeValue.ensureJsonSafeMap(metadata) {
+    if (DateTime.tryParse(updatedAt) == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.catalogMalformed,
+        message: 'Timestamp updatedAt ISO-8601 non valido: "$updatedAt".',
+      );
+    }
+  }
 
   factory ActivationState.empty({required String updatedAt}) {
     return ActivationState(

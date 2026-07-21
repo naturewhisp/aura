@@ -44,6 +44,12 @@ enum ArtifactOwnership {
 }
 
 /// Descrive una singola installazione fisica registrata nell'InstallationRecord.
+///
+/// Invarianti di Dominio:
+/// - `status == InstallationStatus.verified` richiede tassativamente `verifiedAt != null`.
+/// - `status != InstallationStatus.verified` vieta `verifiedAt != null`.
+/// - Gli artefatti con status `removed` vengono conservati nel registro a fini storici/audit,
+///   ma sono tassativamente inattivabili ed esclusi dalla selezione del runtime.
 @immutable
 final class InstalledArtifactDescriptor {
   final String installationId;
@@ -88,7 +94,49 @@ final class InstalledArtifactDescriptor {
     this.failureDiscriminator,
     this.retained = true,
     Map<String, dynamic> metadata = const {},
-  }) : metadata = JsonSafeValue.ensureJsonSafeMap(metadata);
+  }) : metadata = JsonSafeValue.ensureJsonSafeMap(metadata) {
+    // Validazione ISO-8601 timestamp
+    if (DateTime.tryParse(installedAt) == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.catalogMalformed,
+        message: 'Timestamp installedAt ISO-8601 non valido: "$installedAt".',
+      );
+    }
+
+    if (verifiedAt != null && DateTime.tryParse(verifiedAt!) == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.catalogMalformed,
+        message: 'Timestamp verifiedAt ISO-8601 non valido: "$verifiedAt".',
+      );
+    }
+
+    if (lastValidationAt != null &&
+        DateTime.tryParse(lastValidationAt!) == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.catalogMalformed,
+        message:
+            'Timestamp lastValidationAt ISO-8601 non valido: "$lastValidationAt".',
+      );
+    }
+
+    // Invarianti di stato e verifica
+    if (status == InstallationStatus.verified &&
+        (verifiedAt == null || verifiedAt!.trim().isEmpty)) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.catalogMalformed,
+        message:
+            'Un artefatto in stato "verified" richiede obbligatoriamente un timestamp verifiedAt.',
+      );
+    }
+
+    if (status != InstallationStatus.verified && verifiedAt != null) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.catalogMalformed,
+        message:
+            'Un artefatto non in stato "verified" non può contenere un timestamp verifiedAt.',
+      );
+    }
+  }
 
   factory InstalledArtifactDescriptor.fromJson(Map<String, dynamic> json) {
     try {
@@ -301,7 +349,14 @@ final class InstallationRecord {
     Map<String, dynamic> metadata = const {},
   })  : installedArtifacts = List.unmodifiable(
             List<InstalledArtifactDescriptor>.from(installedArtifacts)),
-        metadata = JsonSafeValue.ensureJsonSafeMap(metadata);
+        metadata = JsonSafeValue.ensureJsonSafeMap(metadata) {
+    if (DateTime.tryParse(updatedAt) == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.catalogMalformed,
+        message: 'Timestamp updatedAt ISO-8601 non valido: "$updatedAt".',
+      );
+    }
+  }
 
   factory InstallationRecord.empty({required String updatedAt}) {
     return InstallationRecord(
@@ -346,6 +401,8 @@ final class InstallationRecord {
       }
 
       final parsedArtifacts = <InstalledArtifactDescriptor>[];
+      final seenInstallationIds = <String>{};
+
       for (final item in rawArtifacts) {
         if (item is! Map) {
           throw const ProvisioningException(
@@ -354,8 +411,18 @@ final class InstallationRecord {
                 'Elemento non mappa presente nella lista installedArtifacts.',
           );
         }
-        parsedArtifacts.add(InstalledArtifactDescriptor.fromJson(
-            Map<String, dynamic>.from(item)));
+        final descriptor = InstalledArtifactDescriptor.fromJson(
+            Map<String, dynamic>.from(item));
+
+        if (!seenInstallationIds.add(descriptor.installationId)) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.catalogMalformed,
+            message:
+                'installationId duplicato nell\'InstallationRecord: "${descriptor.installationId}".',
+          );
+        }
+
+        parsedArtifacts.add(descriptor);
       }
 
       return InstallationRecord(

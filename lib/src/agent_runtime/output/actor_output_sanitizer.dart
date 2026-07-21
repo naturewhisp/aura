@@ -29,7 +29,7 @@ class ActorOutputSanitizer {
     var content = request.content;
     final reasoning = request.reasoningContent;
     final hasNativeReasoning = reasoning.trim().isNotEmpty;
-    bool usedReasoningFallback = false;
+    _ExtractionResult? reasoningFallbackExtraction;
 
     // 1. Fallback: if content is empty but native reasoning is present, attempt extraction from reasoning
     if (content.trim().isEmpty && reasoning.isNotEmpty) {
@@ -40,7 +40,7 @@ class ActorOutputSanitizer {
         );
         if (fallbackExtraction.text.isNotEmpty) {
           content = fallbackExtraction.text;
-          usedReasoningFallback = true;
+          reasoningFallbackExtraction = fallbackExtraction;
         }
       } on OutputPolicyFailure {
         // Reasoning extraction did not yield dialogue
@@ -74,11 +74,8 @@ class ActorOutputSanitizer {
     }
 
     // 3. Extract text using the 6 strategies pipeline
-    final extraction = usedReasoningFallback
-        ? _ExtractionResult(
-            content, ActorOutputExtractionStrategy.fullCleanedText)
-        : _extractFromText(content,
-            isNativeReasoningPresent: hasNativeReasoning);
+    final extraction = reasoningFallbackExtraction ??
+        _extractFromText(content, isNativeReasoningPresent: hasNativeReasoning);
 
     if (extraction.text.isEmpty) {
       throw const OutputPolicyFailure(
@@ -111,7 +108,7 @@ class ActorOutputSanitizer {
     return ActorOutputSanitizationResult(
       content: cleanResponse,
       extractionStrategy: extraction.strategy,
-      usedReasoningFallback: usedReasoningFallback,
+      usedReasoningFallback: reasoningFallbackExtraction != null,
     );
   }
 

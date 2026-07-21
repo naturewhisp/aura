@@ -1,10 +1,8 @@
 import 'dart:convert';
-import 'package:meta/meta.dart';
 import 'package:http/http.dart' as http;
 import '../inference_bridge.dart';
 import '../output/actor_output_sanitizer.dart';
 import '../output/actor_output_sanitization_request.dart';
-import '../output/output_policy_failure.dart';
 
 /// Bridge d'inferenza attivo via HTTP che comunica con il server API locale di LM Studio.
 ///
@@ -78,31 +76,13 @@ class LocalApiInferenceBridge implements InferenceBridge {
     final conversationHistory =
         messages.map((m) => m['content']?.trim() ?? '').toList();
 
-    try {
-      final result = sanitizer.sanitize(
-        ActorOutputSanitizationRequest(
-          content: content,
-          reasoningContent: reasoning,
-          finishReason: finishReason,
-          requestedMaxTokens: maxTokens,
-          conversationHistory: conversationHistory,
-        ),
-      );
-      return result.content;
-    } on OutputPolicyFailure {
-      rethrow;
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  @visibleForTesting
-  String cleanLLMResponseForTesting(String response,
-      {bool isNativeReasoningPresent = false}) {
     final result = sanitizer.sanitize(
       ActorOutputSanitizationRequest(
-        content: response,
-        reasoningContent: isNativeReasoningPresent ? 'native' : '',
+        content: content,
+        reasoningContent: reasoning,
+        finishReason: finishReason,
+        requestedMaxTokens: maxTokens,
+        conversationHistory: conversationHistory,
       ),
     );
     return result.content;

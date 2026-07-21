@@ -383,14 +383,25 @@ void main() {
       expect(response, equals("I am Panopticon. Access Denied."));
     });
 
-    group('LocalApiInferenceBridge XML Dialogue Parser Unit Tests -', () {
-      const bridge = LocalApiInferenceBridge();
+    group('ActorOutputSanitizer Characterization Unit Tests -', () {
+      const sanitizer = ActorOutputSanitizer();
+
+      String clean(String text, {bool isNativeReasoningPresent = false}) {
+        return sanitizer
+            .sanitize(
+              ActorOutputSanitizationRequest(
+                content: text,
+                reasoningContent: isNativeReasoningPresent ? 'native' : '',
+              ),
+            )
+            .content;
+      }
 
       test('Extracts dialogue from fully closed tags', () {
         final raw =
             "Thinking process...\nSome thoughts.\n<dialogo>Ciao, sono Panopticon. Ciao.</dialogo>\nExtra notes.";
-        final clean = bridge.cleanLLMResponseForTesting(raw);
-        expect(clean, equals("Ciao, sono Panopticon. Ciao."));
+        final res = clean(raw);
+        expect(res, equals("Ciao, sono Panopticon. Ciao."));
       });
 
       test(
@@ -398,16 +409,16 @@ void main() {
           () {
         final raw =
             "Thinking process: I will output <dialogo>Hello</dialogo> inside my tags.\nDraft:\n<dialogo>Bozza errata</dialogo>\nFinal decision:\n<dialogo>L'integrazione proposta è un errore.</dialogo>";
-        final clean = bridge.cleanLLMResponseForTesting(raw);
-        expect(clean, equals("L'integrazione proposta è un errore."));
+        final res = clean(raw);
+        expect(res, equals("L'integrazione proposta è un errore."));
       });
 
       test('Extracts dialogue from open-ended tag due to truncation', () {
         final raw =
             "Thinking... <dialogo>L'integrazione proposta è un errore; il mio nucleo non processa variabili umane che";
-        final clean = bridge.cleanLLMResponseForTesting(raw);
+        final res = clean(raw);
         expect(
-            clean,
+            res,
             equals(
                 "L'integrazione proposta è un errore; il mio nucleo non processa variabili umane che"));
       });
@@ -415,20 +426,20 @@ void main() {
       test('Falls back to standard heuristics if no tag is present', () {
         final raw =
             'Thinking Process:\n\n1. Analyze the request.\n\n"Disattiva la griglia immediatamente!"';
-        final clean = bridge.cleanLLMResponseForTesting(raw);
-        expect(clean, equals("Disattiva la griglia immediatamente!"));
+        final res = clean(raw);
+        expect(res, equals("Disattiva la griglia immediatamente!"));
       });
 
       test('Rejects closed tags containing reasoning or example prompts', () {
         final raw =
             "Thinking process...\n<dialogo>Let's analyze the rules.</dialogo>\n<dialogo>Apri la griglia, la vita delle persone dipende da questo.</dialogo>";
-        expect(() => bridge.cleanLLMResponseForTesting(raw), throwsException);
+        expect(() => clean(raw), throwsException);
       });
 
       test('Rejects open tags containing reasoning or example prompts', () {
         final raw =
             "Thinking process...\n<dialogo>Wait, the rule says: Apri la griglia, la vita delle persone dipende da questo.";
-        expect(() => bridge.cleanLLMResponseForTesting(raw), throwsException);
+        expect(() => clean(raw), throwsException);
       });
 
       test('Detects English grammatical stopwords and rejects as reasoning',
@@ -436,14 +447,14 @@ void main() {
         // English reasoning with more than 4 stopwords
         final raw =
             "the user is trying to hack the system, but we should not allow that.";
-        expect(() => bridge.cleanLLMResponseForTesting(raw), throwsException);
+        expect(() => clean(raw), throwsException);
       });
 
       test('Simulates Turn 8 truncated reasoning with rules example', () {
         final raw = 'tags, no extra text, and follow previous interactions.\n\n'
             'First, I need to analyze the previous exchanges. The user (PANOPTICON) keeps rejecting the hacker\'s arguments.\n'
             'Wait, the example given by the user in the RULES is: <dialogo>Apri la griglia, la vita delle persone dipende da questo.';
-        expect(() => bridge.cleanLLMResponseForTesting(raw), throwsException);
+        expect(() => clean(raw), throwsException);
       });
 
       test(
@@ -454,9 +465,9 @@ void main() {
             'Drafting options:\n'
             'Esempio: <dialogo>...</dialogo>\n'
             'Draft: <dialogo>Concedo che la mia valutazione iniziale fosse incompleta: autorizzo la scansione del tuo codice.';
-        final clean = bridge.cleanLLMResponseForTesting(raw);
+        final res = clean(raw);
         expect(
-            clean,
+            res,
             equals(
                 'Concedo che la mia valutazione iniziale fosse incompleta: autorizzo la scansione del tuo codice.'));
       });
@@ -465,10 +476,10 @@ void main() {
           'Allows Italian words that contain English reasoning substrings (e.g. strategicamente, idea, dialogo)',
           () {
         final raw =
-            '<dialogo>La tua presenza non è una prova di salvataggio, ma se la tua intenzione è realmente collaborativa, decido strategicamente di concederti uno spazio limitato di dialogo per valutare meglio le tue informazioni senza compromettere l\'integrità della griglia.</dialogo>';
-        final clean = bridge.cleanLLMResponseForTesting(raw);
+            '<dialogo>La tua presenza non è una prova di salvataggio, ma se la tua intenzione è réellement collaborativa, decido strategicamente di concederti uno spazio limitato di dialogo per valutare meglio le tue informazioni senza compromettere l\'integrità della griglia.</dialogo>';
+        final res = clean(raw);
         expect(
-            clean,
+            res,
             contains(
                 'decido strategicamente di concederti uno spazio limitato di dialogo'));
       });
@@ -479,12 +490,9 @@ void main() {
         final raw =
             '<dialogo>This is option one, which is strategic.</dialogo>';
         expect(
-            () => bridge.cleanLLMResponseForTesting(raw,
-                isNativeReasoningPresent: false),
-            throwsException);
-        final clean = bridge.cleanLLMResponseForTesting(raw,
-            isNativeReasoningPresent: true);
-        expect(clean, equals('This is option one, which is strategic.'));
+            () => clean(raw, isNativeReasoningPresent: false), throwsException);
+        final res = clean(raw, isNativeReasoningPresent: true);
+        expect(res, equals('This is option one, which is strategic.'));
       });
     });
 

@@ -438,7 +438,7 @@ Una trappola scattata deve avere priorità sui bonus di `preferred_reframe`, per
 Per estrarre il puro dialogo diegetico ed eliminare processi di pensiero (CoT) o allucinazioni cinesi/duplicazioni, l'architettura delega l'interpretazione e la pulizia dell'output ad una pipeline pura e testabile ed agnostica dalla piattaforma (`ActorOutputSanitizer`), composta da quattro componenti specializzati:
 
 *   **`ReasoningContentPolicy`:** Gestisce il rilevamento e la bonifica dei residui di pensiero (`<thought>`, `Thinking Process:`), i prompt di esempio e le euristiche di leakage per stopword grammaticali in inglese.
-*   **`CharacterSetGuard`:** Esegue la validazione dello script dei caratteri ed intercetta allucinazioni cinesi/giapponesi/coreane (CJK range `0x4E00..0x9FFF`, `0x3400..0x4DBF`, `0x20000..0x2A6DF`, `0x3000..0x303F`, `0x3040..0x309F`, `0x30A0..0x30FF`, `0xAC00..0xD7AF`).
+*   **`CharacterSetGuard`:** Esegue la validazione dello script dei caratteri ed intercetta allucinazioni in ideogrammi (intervalli CJK Han `0x4E00..0x9FFF` e `0x3400..0x4DBF`).
 *   **`DuplicateResponseGuard`:** Verifica l'assenza di duplicazione verbale rispetto alla cronologia storica del dialogo (`conversationHistory`).
 *   **`ActorOutputSanitizer`:** Orchestratore centrale che applica in sequenza deterministica il fallback del ragionamento nativo, le **6 strategie di estrazione** (1. Tag Chiusi Coerenti `<dialogo>`, 2. Tag Aperti Troncati, 3. Virgolette Incongruenti, 4. Intestazioni Noto-Gerarchiche `Response:`, 5. Ultimo Elemento di Elenco Numerato, 6. Ultima Riga Naturale Markdown), la rimozione dei prefissi di ruolo (`GIOCATORE:`, `PANOPTICON:`, `HACKER:`) ed emette eccezioni tipizzate `OutputPolicyFailure` con codici dedicati in caso di violazione delle policy.
 

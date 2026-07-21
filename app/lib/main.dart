@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aura_core/aura_offline.dart';
 import 'src/state_management/game_controller_notifier.dart';
@@ -6,9 +7,8 @@ import 'src/screens/boot_menu_screen.dart';
 
 /// Punto di ingresso principale dell'applicazione Flutter per A.U.R.A.
 ///
-/// Inizializza lo stato iniziale del gioco, imposta il bridge per le chiamate API
-/// (default su LM Studio locale), crea il notifier di gestione dello stato globale,
-/// rileva i modelli disponibili e infine avvia l'interfaccia grafica.
+/// Inizializza lo stato di gioco e delega la selezione ed assemblaggio delle dipendenze
+/// al composition root esplicito [ApplicationBootstrap].
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -19,14 +19,37 @@ void main() async {
     targetObjectiveId: "containment_grid_override",
   );
 
-  // Inizializza il bridge di inferenza (default porta 1234 di LM Studio locale)
-  const apiBridge = LocalApiInferenceBridge(
-    baseUrl: "http://127.0.0.1:1234",
-  );
+  const bootstrapFactory = ApplicationBootstrapFactory();
+  final bootstrap = bootstrapFactory.create();
 
-  // Inizializza il wrapper di gestione dello stato
+  late final ApplicationBootstrapResult result;
+  try {
+    result = await bootstrap.bootstrap(
+      ApplicationBootstrapRequest(
+        configuration: ApplicationRuntimeConfiguration(
+          runtimeMode: ApplicationRuntimeMode.legacyExternalOpenAi,
+          sessionId: initialState.sessionId,
+        ),
+        environmentOverride: Platform.environment,
+      ),
+    );
+  } catch (e) {
+    // Fallback di emergenza in caso di errori critici durante il bootstrap
+    final fallbackBootstrap = bootstrapFactory.create();
+    result = await fallbackBootstrap.bootstrap(
+      ApplicationBootstrapRequest(
+        configuration: ApplicationRuntimeConfiguration(
+          runtimeMode: ApplicationRuntimeMode.ruleBased,
+          sessionId: initialState.sessionId,
+        ),
+      ),
+    );
+  }
+
+  // Inizializza il notifier della gestione dello stato con le dipendenze fornite dal bootstrap
   final controllerNotifier = GameControllerNotifier(
-    bridge: apiBridge,
+    controller: result.controller,
+    bridge: result.activeBridge,
     initialState: initialState,
   );
 

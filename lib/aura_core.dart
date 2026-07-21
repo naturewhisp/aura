@@ -55,6 +55,14 @@ export 'src/agent_runtime/runtime/runtime_requests.dart';
 export 'src/agent_runtime/runtime/runtime_results.dart';
 export 'src/agent_runtime/runtime/runtime_events.dart';
 
+// Managed llama-server Contracts & DTOs (Phase 6.2b)
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_failure.dart';
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_configuration.dart';
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/process_launcher.dart';
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/port_allocator.dart';
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/llama_server_health_probe.dart';
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/llama_server_process_supervisor.dart';
+
 // Concrete Agents Base
 export 'src/agent_runtime/agents/aura_agent.dart';
 

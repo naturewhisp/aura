@@ -25,6 +25,17 @@ void main() {
       // MockInferenceBridge from aura_testing.dart
       final mockBridge = MockInferenceBridge();
       expect(mockBridge, isA<InferenceBridge>());
+
+      // ManagedLlamaServerConfiguration from aura_core.dart
+      const config = ManagedLlamaServerConfiguration(
+        executablePath: 'llama-server.exe',
+        modelPath: 'model.gguf',
+      );
+      expect(config.executablePath, equals('llama-server.exe'));
+
+      // FakeProcessLauncher from aura_testing.dart
+      final fakeLauncher = FakeProcessLauncher();
+      expect(fakeLauncher, isA<ProcessLauncher>());
     });
 
     test('Verify NO consumer files import deep package:aura_core/src/...', () {
@@ -83,6 +94,9 @@ void main() {
         'message_envelope.dart',
         'application_bootstrap_factory.dart',
         'default_application_bootstrap.dart',
+        'managed_llama_server_runtime.dart',
+        'dart_io_process_launcher.dart',
+        'llama_server_command_builder.dart',
       ];
 
       for (final export in forbiddenExports) {
@@ -105,6 +119,8 @@ void main() {
       expect(content.contains('local_api_inference_bridge.dart'), isTrue);
       expect(content.contains('runtime_inference_bridge.dart'), isTrue);
       expect(content.contains('external_openai_runtime.dart'), isTrue);
+      expect(content.contains('managed_llama_server_runtime.dart'), isTrue);
+      expect(content.contains('dart_io_process_launcher.dart'), isTrue);
       expect(content.contains('rule_based_inference_runtime.dart'), isTrue);
       expect(content.contains('evaluator_agent.dart'), isTrue);
       expect(content.contains('actor_agent.dart'), isTrue);
@@ -119,6 +135,7 @@ void main() {
       expect(content.contains('mock_inference_bridge.dart'), isFalse);
       expect(content.contains('mock_inference_runtime.dart'), isFalse);
       expect(content.contains('runtime_contract_test_harness.dart'), isFalse);
+      expect(content.contains('fake_llama_server_environment.dart'), isFalse);
     });
 
     test(
@@ -132,6 +149,7 @@ void main() {
       expect(content.contains("export 'aura_core.dart';"), isTrue);
       expect(content.contains('mock_inference_bridge.dart'), isTrue);
       expect(content.contains('mock_inference_runtime.dart'), isTrue);
+      expect(content.contains('fake_llama_server_environment.dart'), isTrue);
       expect(content.contains('evaluator_agent.dart'), isTrue);
       expect(content.contains('actor_agent.dart'), isTrue);
       expect(content.contains('rule_based_evaluator_bridge.dart'), isTrue);
@@ -142,6 +160,7 @@ void main() {
       expect(content.contains('model_router.dart'), isFalse);
       expect(content.contains('agent_registry.dart'), isFalse);
       expect(content.contains('message_envelope.dart'), isFalse);
+      expect(content.contains('managed_llama_server_runtime.dart'), isFalse);
     });
   });
 }

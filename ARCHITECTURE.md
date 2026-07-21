@@ -685,9 +685,49 @@ Componenti implementati:
    - *Debito Tecnico Residuo:* I model ID fisici di fallback figurano ancora all'interno delle rotte di `LegacyInferenceRouteResolver`; verranno migrati del tutto nelle fasi successive.
    - *Confine con Fase 6.2b:* Non sono stati implementati `ManagedLlamaServerRuntime`, l'avvio di `llama-server.exe`, la supervisione di processi, i download di modelli/runtime, il `ModelLifecycleManager` o le schermate di impostazioni.
 
-### 11.5 Planned Model Provisioning Boundary (Design Specification)
+### 11.5 Fase 6.2b — Managed llama-server Runtime e Process Supervision
 
-Stato: **Pianificato / Specificato Normativamente** *(Nessuna implementazione codice presente nella Fase 6.1c e 6.2a)*.
+Stato: **completata**.
+
+Componenti implementati:
+
+1. **Adattatore Runtime Gestito (`ManagedLlamaServerRuntime`)**:
+   - Adattatore orchestration platform-neutral (`lib/src/agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_runtime.dart`) per Windows.
+   - Gestisce l'avvio, l'health check ed il cleanup del processo locale `llama-server.exe` tramite `LlamaServerProcessSupervisor`.
+   - Delega interamente il trasporto HTTP, il parsing dei payload OpenAI, lo structured output e la sanificazione dell'Actor ad un'istanza interna di `ExternalOpenAiRuntime`.
+   - Dichiara capabilities reali: `backendName: 'llama-server-managed'`, `maxLoadedModels: 1`, `maxConcurrentGenerations: parallelSlots`.
+   - `loadModel()` convalida `logicalModelId` ed `artifactPath` rispetto al `modelAlias` configurato e rifiuta caricamenti di un secondo modello fisico nello stesso processo.
+
+2. **Astrazioni di Processo & Command Builder Pure**:
+   - Astrazioni platform-neutral `ProcessLauncher`, `ManagedProcess` e `ProcessLaunchRequest` (`process_launcher.dart`).
+   - Implementazione concreta Windows `DartIoProcessLauncher` (`dart_io_process_launcher.dart`) basata su `dart:io Process.start(runInShell: false)`. Nessun passaggio attraverso `cmd.exe` o `PowerShell`.
+   - `LlamaServerCommandBuilder` (`llama_server_command_builder.dart`): builder puro e testabile per la generazione deterministica della lista di argomenti CLI (`--model`, `--host`, `--port`, `--alias`, `--ctx-size`, `--n-gpu-layers`, `--threads`, `--batch-size`, `--parallel`, `--seed`). Rigetto automatico di flag riservati duplicati in `extraArguments`.
+
+3. **Allocazione Porta & Health Probe**:
+   - `PortAllocator` e `LoopbackPortAllocator` (`port_allocator.dart`): allocazione controllata della porta TCP di loopback tramite bind temporaneo su porta `0` di `ServerSocket`.
+   - `HealthProbe` e `HttpLlamaServerHealthProbe` (`llama_server_health_probe.dart`): probe HTTP non bloccante per la verifica di prontezza su `/health` e `/v1/models`.
+
+4. **Supervisor & State Machine del Processo (`LlamaServerProcessSupervisor`)**:
+   - State machine esplicita con 8 stati: `idle` -> `starting` -> `probing` -> `ready` -> `stopping` -> `stopped` / `failed` / `disposed`.
+   - Bounded log buffer circolare (massimo 100 righe) con decodifica UTF-8 robusta e sostituzione dei caratteri malformati. Nessun secret, API key o path sensibile esposto.
+   - Avvio deterministico con monitoraggio di `processExitedEarly` e timeout di avvio (`startupTimeout`).
+   - Shutdown graceful tramite `SIGTERM` con fallback deterministico a `SIGKILL` in caso di timeout (`shutdownTimeout`). Dispose single-flight ed idempotente.
+   - Ownership rigorosa del processo: il supervisor interagisce esclusivamente ed unicamente con il processo da esso direttamente avviato.
+
+5. **Integrazione Composition Root & CLI**:
+   - Estensione di `ApplicationRuntimeMode` con il valore `managedLlamaServer`.
+   - Parsing centralizzato delle variabili d'ambiente (`AURA_LLAMA_SERVER_EXECUTABLE`, `AURA_LLAMA_MODEL_PATH`, `AURA_LLAMA_HOST`, `AURA_LLAMA_PORT`, `AURA_LLAMA_CONTEXT_SIZE`, `AURA_LLAMA_GPU_LAYERS`, `AURA_LLAMA_THREADS`, `AURA_LLAMA_BATCH_SIZE`, `AURA_LLAMA_PARALLEL`, `AURA_LLAMA_STARTUP_TIMEOUT_MS`, `AURA_LLAMA_SHUTDOWN_TIMEOUT_MS`) in `ApplicationRuntimeConfiguration.fromEnvironment`.
+   - Integrazione della modalità `managedLlamaServer` in `DefaultApplicationBootstrap` con supporto a `BootstrapFallbackPolicy.ruleBased`.
+   - Supporto CLI completo in `bin/aura_cli.dart` per la modalità `managed-llama-server` e relative opzioni.
+
+6. **Ambiente di Test Offline & Fakes (`lib/src/testing/fake_llama_server_environment.dart`)**:
+   - Astrazioni fake per il testing offline e privo di I/O reale: `FakeProcessLauncher`, `FakeManagedProcess`, `FakePortAllocator`, `FakeLlamaServerHealthProbe`.
+   - Nessun test unitario o di contratto della suite CI avvia processi reali, contatta socket di rete reali o scarica modelli.
+   - Test di integrazione opzionale skipped by default in `test/integration/managed_llama_server_real_process_test.dart` (taggato `@Tags(['network', 'real-model'])`).
+
+### 11.6 Planned Model Provisioning Boundary (Design Specification)
+
+Stato: **Pianificato / Specificato Normativamente** *(Nessuna implementazione codice presente nelle Fasi 6.1c, 6.2a, 6.2b)*.
 
 
 Specifiche e Principi Architetturali:
@@ -711,7 +751,7 @@ Specifiche e Principi Architetturali:
    - Tutti i download da repository di terze parti (es. Hugging Face) richiedono il consenso esplicito dell'utente previa presentazione di un riepilogo dettagliato (spazio richiesto, dimensione download, licenze, percorso). La policy predefinita è `neverDownload`.
 
 > [!NOTE]
-> L'implementazione di `ModelProvisioningService`, `ArtifactDownloader`, `ModelStore` e delle relative UI appartiene alle sottofasi da **6.3** in avanti. La Fase 6.1c resta focalizzata sui contratti di runtime e sul bridge di inferenza.
+> L'implementazione di `ModelProvisioningService`, `ArtifactDownloader`, `ModelStore` e delle relative UI appartiene alle sottofasi da **6.3** in avanti. Le Fasi 6.1c, 6.2a e 6.2b restano focalizzate sui contratti di runtime, sul composition root e sulla supervisione del processo locale.
 
 
 

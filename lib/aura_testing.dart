@@ -11,3 +11,6 @@ export 'src/agent_runtime/bridges/mock_inference_bridge.dart';
 export 'src/agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 export 'src/agent_runtime/runtime/testing/mock_inference_runtime.dart';
 export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_client.dart';
+
+// Managed llama-server Testing Fakes (Phase 6.2b)
+export 'src/testing/fake_llama_server_environment.dart';

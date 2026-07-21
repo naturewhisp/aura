@@ -21,6 +21,11 @@ export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_confi
 export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_model_binding.dart';
 export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_client.dart';
 
+// Managed llama-server Implementations (Phase 6.2b)
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/llama_server_command_builder.dart';
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/dart_io_process_launcher.dart';
+export 'src/agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_runtime.dart';
+
 // Output Policy Components
 export 'src/agent_runtime/output/actor_output_extraction_strategy.dart';
 export 'src/agent_runtime/output/actor_output_sanitizer.dart';

@@ -89,7 +89,7 @@ final class AtomicArtifactInstaller {
           reason: ProvisioningFailureReason.atomicMoveFailed,
           message:
               'Sorgente di staging non trovata per l\'installazione finale.',
-          rollbackPerformed: true,
+          rollbackPerformed: false,
         );
       }
 
@@ -106,25 +106,34 @@ final class AtomicArtifactInstaller {
         rollbackPerformed: false,
       );
     } catch (e) {
-      // Pulizia incondizionata della SOLA directory intermedia di nostra proprietà
-      final intermediateCleaned = await _fileSystem
-              .deleteDirectoryBestEffort(intermediateInstallPath) &&
-          await _fileSystem.deleteFileBestEffort(intermediateInstallPath);
+      // Pulizia incondizionata indipendentemente dal tipo di eccezione (senza short-circuit &&)
+      await _fileSystem.deleteDirectoryBestEffort(intermediateInstallPath);
+      await _fileSystem.deleteFileBestEffort(intermediateInstallPath);
+
+      final intermediateAbsent =
+          !await _fileSystem.directoryExists(intermediateInstallPath) &&
+              !await _fileSystem.fileExists(intermediateInstallPath);
+
+      final rollbackSucceeded = physicalCopyStarted && intermediateAbsent;
 
       if (e is ArtifactInstallationException) {
-        rethrow;
+        throw ArtifactInstallationException(
+          reason: e.reason,
+          message: e.message,
+          rollbackPerformed: rollbackSucceeded,
+        );
       }
       if (e is ProvisioningException) {
         throw ArtifactInstallationException(
           reason: e.reason,
           message: e.message,
-          rollbackPerformed: physicalCopyStarted && intermediateCleaned,
+          rollbackPerformed: rollbackSucceeded,
         );
       }
       throw ArtifactInstallationException(
         reason: ProvisioningFailureReason.atomicMoveFailed,
         message: 'Spostamento o installazione finale dell\'artefatto fallita.',
-        rollbackPerformed: physicalCopyStarted && intermediateCleaned,
+        rollbackPerformed: rollbackSucceeded,
       );
     }
   }

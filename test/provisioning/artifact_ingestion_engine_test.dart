@@ -222,10 +222,19 @@ void main() {
         artifacts: [artifact],
       );
 
+      final consent = DownloadConsent.grantedFor(
+        artifactId: 'llama-b3500',
+        sourceUri: 'https://downloads.aura.local/llama.zip',
+        expectedSizeBytes: 100,
+        operationId: 'op-cancel-1',
+      );
+
       final request = ProvisioningRequest(
         operationId: 'op-cancel-1',
         catalogId: 'cat-test-1',
         artifactId: 'llama-b3500',
+        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
+        consent: consent,
         expectedPlatform: 'windows',
         expectedArchitecture: 'x64',
       );

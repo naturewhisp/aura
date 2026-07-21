@@ -83,9 +83,16 @@ export 'src/bootstrap/application_bootstrap_result.dart';
 export 'src/bootstrap/application_bootstrap.dart';
 export 'src/bootstrap/application_bootstrap_failure.dart';
 
-// Provisioning Domain & Manifest Contracts (Phase 6.3a)
+// Provisioning Domain & Infrastructure Contracts (Phase 6.3a & 6.3b)
 export 'src/provisioning/domain/catalog_manifest.dart';
 export 'src/provisioning/domain/provisioning_options.dart';
+export 'src/provisioning/domain/json_safe_value.dart';
+export 'src/provisioning/domain/installation_record.dart';
+export 'src/provisioning/domain/activation_state.dart';
 export 'src/provisioning/validation/catalog_manifest_parser.dart';
 export 'src/provisioning/validation/catalog_manifest_validator.dart';
 export 'src/provisioning/infrastructure/provisioning_path_resolver.dart';
+export 'src/provisioning/infrastructure/installation_record_repository.dart';
+export 'src/provisioning/infrastructure/activation_state_repository.dart';
+export 'src/provisioning/infrastructure/atomic_artifact_installer.dart';
+export 'src/provisioning/infrastructure/file_system_lock.dart';

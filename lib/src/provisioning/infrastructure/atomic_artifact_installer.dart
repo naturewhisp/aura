@@ -76,12 +76,12 @@ final class AtomicArtifactInstaller {
       await _fileSystem.deleteDirectoryBestEffort(intermediateInstallPath);
       await _fileSystem.deleteFileBestEffort(intermediateInstallPath);
 
-      physicalCopyStarted = true;
-
       if (await _fileSystem.directoryExists(stagingSourcePath)) {
+        physicalCopyStarted = true;
         await _fileSystem.copyDirectory(
             stagingSourcePath, intermediateInstallPath);
       } else if (await _fileSystem.fileExists(stagingSourcePath)) {
+        physicalCopyStarted = true;
         final targetFilePath = '$intermediateInstallPath\\${artifact.fileName}';
         await _fileSystem.copyFile(stagingSourcePath, targetFilePath);
       } else {

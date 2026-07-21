@@ -77,95 +77,107 @@ final class ArtifactIngestionEngine {
     }
 
     // Validazioni preventive delle policy e delle sorgenti PRIMA di creare lo staging
-    if (artifact.sourceKind == CatalogArtifactSourceKind.remoteHttps) {
-      if (request.downloadPolicy == ProvisioningDownloadPolicy.neverDownload) {
-        return ProvisioningResult.failure(
-          operationId: request.operationId,
-          artifactId: artifact.artifactId,
-          sourceKind: sourceKind,
-          failureReason: ProvisioningFailureReason.downloadNotAllowed,
-          sanitizedMessage:
-              'Download remoto non consentito dalla policy applicativa.',
-        );
-      }
+    try {
+      if (artifact.sourceKind == CatalogArtifactSourceKind.remoteHttps) {
+        if (request.downloadPolicy ==
+            ProvisioningDownloadPolicy.neverDownload) {
+          return ProvisioningResult.failure(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.downloadNotAllowed,
+            sanitizedMessage:
+                'Download remoto non consentito dalla policy applicativa.',
+          );
+        }
 
-      final downloadUri = artifact.downloadUri;
-      if (downloadUri == null || downloadUri.trim().isEmpty) {
-        return ProvisioningResult.failure(
-          operationId: request.operationId,
-          artifactId: artifact.artifactId,
-          sourceKind: sourceKind,
-          failureReason: ProvisioningFailureReason.invalidSourceUri,
-          sanitizedMessage:
-              'URI remota di download vuota o mancante nel catalogo.',
-        );
-      }
+        final downloadUri = artifact.downloadUri;
+        if (downloadUri == null || downloadUri.trim().isEmpty) {
+          return ProvisioningResult.failure(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.invalidSourceUri,
+            sanitizedMessage:
+                'URI remota di download vuota o mancante nel catalogo.',
+          );
+        }
 
-      if (request.consent == null ||
-          !request.consent!.isValidFor(
-            targetArtifactId: artifact.artifactId,
-            targetSourceUri: downloadUri,
-            targetSizeBytes: artifact.sizeBytes,
-            targetOperationId: request.operationId,
-          )) {
-        return ProvisioningResult.failure(
-          operationId: request.operationId,
-          artifactId: artifact.artifactId,
-          sourceKind: sourceKind,
-          failureReason: ProvisioningFailureReason.consentMissing,
-          sanitizedMessage:
-              'Consenso esplicito al download mancante o non valido.',
-        );
+        if (request.consent == null ||
+            !request.consent!.isValidFor(
+              targetArtifactId: artifact.artifactId,
+              targetSourceUri: downloadUri,
+              targetSizeBytes: artifact.sizeBytes,
+              targetOperationId: request.operationId,
+            )) {
+          return ProvisioningResult.failure(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.consentMissing,
+            sanitizedMessage:
+                'Consenso esplicito al download mancante o non valido.',
+          );
+        }
+      } else if (artifact.sourceKind == CatalogArtifactSourceKind.bundled) {
+        final bundledFilePath =
+            _pathResolver.resolveBundledArtifactPath(artifact);
+        if (!await _fileSystem.fileExists(bundledFilePath)) {
+          return ProvisioningResult.failure(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.invalidSourceUri,
+            sanitizedMessage:
+                'Artefatto bundled non trovato nel percorso pre-impacchettato.',
+          );
+        }
+        final size = await _fileSystem.getFileSize(bundledFilePath);
+        if (size != artifact.sizeBytes) {
+          return ProvisioningResult.failure(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.sizeMismatch,
+            sanitizedMessage:
+                'Dimensione dell\'artefatto bundled non corrispondente al catalogo.',
+          );
+        }
+      } else if (artifact.sourceKind == CatalogArtifactSourceKind.localImport) {
+        final localPath = request.customSourcePath;
+        if (localPath == null ||
+            localPath.trim().isEmpty ||
+            !await _fileSystem.fileExists(localPath)) {
+          return ProvisioningResult.failure(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.invalidSourceUri,
+            sanitizedMessage:
+                'File di sorgente locale per l\'importazione non trovato o non valido.',
+          );
+        }
+        final size = await _fileSystem.getFileSize(localPath);
+        if (size != artifact.sizeBytes) {
+          return ProvisioningResult.failure(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.sizeMismatch,
+            sanitizedMessage:
+                'Dimensione del file locale non corrispondente al catalogo.',
+          );
+        }
       }
-    } else if (artifact.sourceKind == CatalogArtifactSourceKind.bundled) {
-      final bundledFilePath =
-          _pathResolver.resolveBundledArtifactPath(artifact);
-      if (!await _fileSystem.fileExists(bundledFilePath)) {
-        return ProvisioningResult.failure(
-          operationId: request.operationId,
-          artifactId: artifact.artifactId,
-          sourceKind: sourceKind,
-          failureReason: ProvisioningFailureReason.invalidSourceUri,
-          sanitizedMessage:
-              'Artefatto bundled non trovato nel percorso pre-impacchettato.',
-        );
-      }
-      final size = await _fileSystem.getFileSize(bundledFilePath);
-      if (size != artifact.sizeBytes) {
-        return ProvisioningResult.failure(
-          operationId: request.operationId,
-          artifactId: artifact.artifactId,
-          sourceKind: sourceKind,
-          failureReason: ProvisioningFailureReason.sizeMismatch,
-          sanitizedMessage:
-              'Dimensione dell\'artefatto bundled non corrispondente al catalogo.',
-        );
-      }
-    } else if (artifact.sourceKind == CatalogArtifactSourceKind.localImport) {
-      final localPath = request.customSourcePath;
-      if (localPath == null ||
-          localPath.trim().isEmpty ||
-          !await _fileSystem.fileExists(localPath)) {
-        return ProvisioningResult.failure(
-          operationId: request.operationId,
-          artifactId: artifact.artifactId,
-          sourceKind: sourceKind,
-          failureReason: ProvisioningFailureReason.invalidSourceUri,
-          sanitizedMessage:
-              'File di sorgente locale per l\'importazione non trovato o non valido.',
-        );
-      }
-      final size = await _fileSystem.getFileSize(localPath);
-      if (size != artifact.sizeBytes) {
-        return ProvisioningResult.failure(
-          operationId: request.operationId,
-          artifactId: artifact.artifactId,
-          sourceKind: sourceKind,
-          failureReason: ProvisioningFailureReason.sizeMismatch,
-          sanitizedMessage:
-              'Dimensione del file locale non corrispondente al catalogo.',
-        );
-      }
+    } catch (_) {
+      return ProvisioningResult.failure(
+        operationId: request.operationId,
+        artifactId: artifact.artifactId,
+        sourceKind: sourceKind,
+        failureReason: ProvisioningFailureReason.invalidSourceUri,
+        sanitizedMessage:
+            'Errore di I/O durante la verifica della sorgente dell\'artefatto.',
+      );
     }
 
     final targetInstallPath =

@@ -9,7 +9,7 @@ void main() {
     );
 
     test(
-        'Risolve correttamente le directory ed i file di configurazione predefiniti',
+        'Risolve correttamente le directory ed i file di configurazione con root obbligatorie',
         () {
       expect(
         resolver.installationRecordPath,
@@ -45,18 +45,17 @@ void main() {
       );
     });
 
-    test(
-        'Risolve path relativi e assoluti di installazione per runtime e modello',
+    test('Risolve path utilizzando CatalogArtifactType fortemente tipizzato',
         () {
       final relRt = resolver.resolveRelativeInstallPath(
-        artifactType: 'runtime',
+        artifactType: CatalogArtifactType.runtime,
         artifactId: 'llama-b3500',
         buildOrVersionId: 'b3500',
       );
       expect(relRt, equals('runtimes/llama-b3500/b3500'));
 
       final absRt = resolver.resolveAbsoluteInstallPath(
-        artifactType: 'runtime',
+        artifactType: CatalogArtifactType.runtime,
         artifactId: 'llama-b3500',
         buildOrVersionId: 'b3500',
       );
@@ -64,14 +63,14 @@ void main() {
           absRt, equals(r'C:\CustomApp\Local\AURA\runtimes\llama-b3500\b3500'));
 
       final relModel = resolver.resolveRelativeInstallPath(
-        artifactType: 'model',
+        artifactType: CatalogArtifactType.model,
         artifactId: 'ministral-3b',
         buildOrVersionId: 'q4_k_m',
       );
       expect(relModel, equals('models/ministral-3b/q4_k_m'));
 
       final absModel = resolver.resolveAbsoluteInstallPath(
-        artifactType: 'model',
+        artifactType: CatalogArtifactType.model,
         artifactId: 'ministral-3b',
         buildOrVersionId: 'q4_k_m',
       );
@@ -79,12 +78,27 @@ void main() {
           equals(r'C:\CustomApp\Local\AURA\models\ministral-3b\q4_k_m'));
     });
 
-    test('Risolve il path di staging per una specifica operazione', () {
-      final staging = resolver.resolveStagingDirectory('op-uuid-1234');
-      expect(staging, equals(r'C:\CustomApp\Local\AURA\staging\op-uuid-1234'));
-    });
+    test(
+        'Rifiuta severamente separatori (/ e \\), traversal e nomi riservati senza alcuna mutazione silenziosa',
+        () {
+      expect(
+        () => ProvisioningPathResolver.sanitizeSegment(r'subfolder\segment'),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.invalidCatalog),
+        )),
+      );
 
-    test('Sanitizza ed impedisce traversal o nomi riservati Windows', () {
+      expect(
+        () => ProvisioningPathResolver.sanitizeSegment('subfolder/segment'),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.invalidCatalog),
+        )),
+      );
+
       expect(
         () => ProvisioningPathResolver.sanitizeSegment('../traversal'),
         throwsA(isA<ProvisioningException>().having(
@@ -104,7 +118,7 @@ void main() {
       );
 
       expect(
-        () => ProvisioningPathResolver.sanitizeSegment('NUL.txt'),
+        () => ProvisioningPathResolver.sanitizeSegment('segment_with_space '),
         throwsA(isA<ProvisioningException>().having(
           (e) => e.reason,
           'reason',

@@ -4,6 +4,7 @@ import '../domain/provisioning_options.dart';
 /// Validatore semantico per documenti [CatalogManifest].
 abstract final class CatalogManifestValidator {
   static final RegExp _sha256Regex = RegExp(r'^[a-f0-9]{64}$');
+  static final RegExp _invalidWindowsCharsRegex = RegExp(r'[<>:"|?*\x00-\x1F]');
   static final RegExp _reservedWindowsNamesRegex = RegExp(
     r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$',
     caseSensitive: false,
@@ -69,16 +70,7 @@ abstract final class CatalogManifestValidator {
     }
 
     _validateFileName(id, artifact.fileName);
-
-    if (artifact.downloadUri != null && artifact.downloadUri!.isNotEmpty) {
-      final uri = Uri.tryParse(artifact.downloadUri!);
-      if (uri == null || uri.scheme.toLowerCase() != 'https') {
-        throw ProvisioningException(
-          reason: ProvisioningFailureReason.invalidSourceUri,
-          message: 'Artefatto "$id" ha un downloadUri non HTTPS sicuro.',
-        );
-      }
-    }
+    _validateSourceKind(artifact);
 
     if (artifact.artifactType == CatalogArtifactType.model) {
       if (artifact.modelArchitecture == null ||
@@ -108,22 +100,103 @@ abstract final class CatalogManifestValidator {
     }
   }
 
+  static void _validateSourceKind(CatalogArtifact artifact) {
+    final id = artifact.artifactId;
+    switch (artifact.sourceKind) {
+      case CatalogArtifactSourceKind.remoteHttps:
+        if (artifact.downloadUri == null ||
+            artifact.downloadUri!.trim().isEmpty) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.invalidSourceUri,
+            message:
+                'Artefatto remoto "$id" richiede un downloadUri non vuoto.',
+          );
+        }
+        final uri = Uri.tryParse(artifact.downloadUri!.trim());
+        if (uri == null || uri.scheme.toLowerCase() != 'https') {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.invalidSourceUri,
+            message:
+                'Artefatto remoto "$id" ha un downloadUri non HTTPS sicuro.',
+          );
+        }
+        if (artifact.bundledAssetId != null) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.invalidCatalog,
+            message:
+                'Artefatto remoto "$id" non può specificare bundledAssetId.',
+          );
+        }
+        break;
+      case CatalogArtifactSourceKind.bundled:
+        if (artifact.downloadUri != null &&
+            artifact.downloadUri!.trim().isNotEmpty) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.invalidCatalog,
+            message:
+                'Artefatto bundled "$id" non può dichiarare un downloadUri remoto.',
+          );
+        }
+        break;
+      case CatalogArtifactSourceKind.localImport:
+        if (artifact.downloadUri != null &&
+            artifact.downloadUri!.trim().isNotEmpty) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.invalidCatalog,
+            message:
+                'Artefatto localImport "$id" non può dichiarare un downloadUri predefinito.',
+          );
+        }
+        break;
+    }
+  }
+
   static void _validateFileName(String artifactId, String fileName) {
-    final trimmed = fileName.trim();
-    if (trimmed.isEmpty) {
+    if (fileName.isEmpty) {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message: 'Artefatto "$artifactId" ha un fileName vuoto.',
       );
     }
 
-    if (trimmed.contains('/') ||
-        trimmed.contains('\\') ||
-        trimmed.contains('..')) {
+    if (fileName.contains('/') || fileName.contains('\\')) {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message:
-            'Artefatto "$artifactId" contiene path traversal o separatori nel fileName.',
+            'Artefatto "$artifactId" contiene separatori di percorso nel fileName.',
+      );
+    }
+
+    if (fileName.contains('..')) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Artefatto "$artifactId" contiene path traversal ("..") nel fileName.',
+      );
+    }
+
+    if (_invalidWindowsCharsRegex.hasMatch(fileName)) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Artefatto "$artifactId" contiene caratteri non validi Windows nel fileName.',
+      );
+    }
+
+    final trimmed = fileName.trim();
+    if (trimmed != fileName) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Artefatto "$artifactId" ha spazi iniziali o finali nel fileName.',
+      );
+    }
+
+    if (trimmed.startsWith('.') || trimmed.endsWith('.')) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Artefatto "$artifactId" ha un fileName che inizia o termina con un punto.',
       );
     }
 
@@ -135,11 +208,11 @@ abstract final class CatalogManifestValidator {
       );
     }
 
-    if (trimmed.startsWith('.') || trimmed.endsWith('.')) {
+    if (trimmed.length > 255) {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message:
-            'Artefatto "$artifactId" ha un fileName che inizia o termina con punto.',
+            'Artefatto "$artifactId" supera la lunghezza massima consentita di 255 caratteri per il fileName.',
       );
     }
   }

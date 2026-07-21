@@ -6,11 +6,22 @@ enum ProvisioningDownloadPolicy {
   explicitConsent;
 
   static ProvisioningDownloadPolicy parse(String value) {
-    return ProvisioningDownloadPolicy.values.firstWhere(
-      (e) => e.name == value,
-      orElse: () => ProvisioningDownloadPolicy.neverDownload,
+    for (final policy in ProvisioningDownloadPolicy.values) {
+      if (policy.name == value.trim()) {
+        return policy;
+      }
+    }
+    throw ProvisioningException(
+      reason: ProvisioningFailureReason.catalogMalformed,
+      message: 'ProvisioningDownloadPolicy non valida: "$value".',
     );
   }
+}
+
+/// Policy applicativa per la gestione dei conflitti di installazione.
+enum ProvisioningConflictPolicy {
+  fail,
+  returnAlreadyInstalled;
 }
 
 /// Consenso esplicito per l'esecuzione di un singolo download remoto.
@@ -35,11 +46,16 @@ final class DownloadConsent {
     required String operationId,
   }) {
     if (artifactId.isEmpty || sourceUri.isEmpty || operationId.isEmpty) {
-      throw ArgumentError(
-          'I campi del consenso al download non possono essere vuoti');
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.consentMissing,
+        message: 'I campi del consenso al download non possono essere vuoti.',
+      );
     }
     if (expectedSizeBytes <= 0) {
-      throw ArgumentError('expectedSizeBytes deve essere maggiore di zero');
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.consentMissing,
+        message: 'expectedSizeBytes deve essere maggiore di zero.',
+      );
     }
     return DownloadConsent._(
       artifactId: artifactId,
@@ -125,7 +141,7 @@ final class ProvisioningRequest {
   final String expectedPlatform;
   final String expectedArchitecture;
   final String? customSourcePath;
-  final bool overwritePolicy;
+  final ProvisioningConflictPolicy conflictPolicy;
   final bool diagnosticMode;
 
   const ProvisioningRequest({
@@ -134,11 +150,11 @@ final class ProvisioningRequest {
     required this.artifactId,
     this.downloadPolicy = ProvisioningDownloadPolicy.neverDownload,
     this.consent,
-    this.activateAfterInstall = true,
+    this.activateAfterInstall = false,
     this.expectedPlatform = 'windows',
     this.expectedArchitecture = 'x64',
     this.customSourcePath,
-    this.overwritePolicy = false,
+    this.conflictPolicy = ProvisioningConflictPolicy.fail,
     this.diagnosticMode = false,
   });
 }
@@ -161,7 +177,7 @@ final class ProvisioningResult {
   final ProvisioningFailureReason? failureReason;
   final Map<String, dynamic> sanitizedDiagnostics;
 
-  const ProvisioningResult({
+  ProvisioningResult({
     required this.operationId,
     required this.artifactId,
     required this.status,
@@ -175,8 +191,9 @@ final class ProvisioningResult {
     this.rollbackPerformed = false,
     this.cleanupSucceeded = true,
     this.failureReason,
-    this.sanitizedDiagnostics = const {},
-  });
+    Map<String, dynamic> sanitizedDiagnostics = const {},
+  }) : sanitizedDiagnostics =
+            Map.unmodifiable(Map<String, dynamic>.from(sanitizedDiagnostics));
 
   factory ProvisioningResult.success({
     required String operationId,
@@ -184,7 +201,7 @@ final class ProvisioningResult {
     required String installationId,
     required ProvisioningSourceKind sourceKind,
     required int bytesProcessed,
-    bool activated = true,
+    bool activated = false,
     bool alreadyInstalled = false,
   }) {
     return ProvisioningResult(
@@ -194,7 +211,7 @@ final class ProvisioningResult {
           ? ProvisioningStatus.alreadyInstalled
           : ProvisioningStatus.success,
       installationId: installationId,
-      installed: true,
+      installed: !alreadyInstalled,
       alreadyInstalled: alreadyInstalled,
       activated: activated,
       verified: true,

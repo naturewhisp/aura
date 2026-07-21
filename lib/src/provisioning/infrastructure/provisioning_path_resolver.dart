@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import '../domain/catalog_manifest.dart';
 import '../domain/provisioning_options.dart';
 
 /// Centralizza il calcolo e la sanitizzazione dei path applicativi Windows per il provisioning.
@@ -14,8 +15,8 @@ final class ProvisioningPathResolver {
   );
 
   const ProvisioningPathResolver({
-    this.appManagedRoot = r'C:\Users\Default\AppData\Local\AURA',
-    this.bundledRoot = r'C:\Program Files\AURA',
+    required this.appManagedRoot,
+    required this.bundledRoot,
   });
 
   /// Path del file `installation_record.json`.
@@ -40,26 +41,28 @@ final class ProvisioningPathResolver {
   /// Path della directory dei log.
   String get logsDirectory => _join(appManagedRoot, 'logs');
 
-  /// Path della directory del runtime bundled under Program Files.
+  /// Path della directory del runtime bundled.
   String get bundledRuntimeDirectory => _join(bundledRoot, 'bundled_runtime');
 
   /// Calcola il path di installazione relativo per un artefatto.
   String resolveRelativeInstallPath({
-    required String artifactType,
+    required CatalogArtifactType artifactType,
     required String artifactId,
     required String buildOrVersionId,
   }) {
-    final cleanType = sanitizeSegment(artifactType);
     final cleanId = sanitizeSegment(artifactId);
     final cleanVersion = sanitizeSegment(buildOrVersionId);
 
-    final folder = cleanType == 'runtime' ? 'runtimes' : 'models';
+    final folder = switch (artifactType) {
+      CatalogArtifactType.runtime => 'runtimes',
+      CatalogArtifactType.model => 'models',
+    };
     return '$folder/$cleanId/$cleanVersion';
   }
 
   /// Calcola il path assoluto di installazione finale sotto la root app-managed.
   String resolveAbsoluteInstallPath({
-    required String artifactType,
+    required CatalogArtifactType artifactType,
     required String artifactId,
     required String buildOrVersionId,
   }) {
@@ -77,21 +80,57 @@ final class ProvisioningPathResolver {
     return _join(stagingDirectory, cleanOpId);
   }
 
-  /// Sanitizza un singolo segmento di path (id, nome directory o file).
+  /// Sanitizza e valida rigorosamente un singolo segmento di path.
+  /// Rifiuta separatori, traversal, caratteri invalidi e nomi riservati senza alcuna mutazione silenziosa.
   static String sanitizeSegment(String segment) {
-    var clean = segment.trim().replaceAll('\\', '/');
-
-    if (clean.contains('..') || clean.startsWith('/') || clean.contains(':')) {
-      throw ProvisioningException(
+    if (segment.isEmpty) {
+      throw const ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
-        message:
-            'Tentativo di path traversal o segmento non valido: "$segment".',
+        message: 'Il segmento di path non può essere vuoto.',
       );
     }
 
-    clean = clean.replaceAll(_invalidCharsRegex, '_');
+    if (segment.contains('/') || segment.contains('\\')) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Il segmento di path "$segment" contiene separatori di percorso.',
+      );
+    }
 
-    if (_reservedWindowsNamesRegex.hasMatch(clean)) {
+    if (segment.contains('..')) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Il segmento di path "$segment" contiene path traversal ("..").',
+      );
+    }
+
+    if (_invalidCharsRegex.hasMatch(segment)) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Il segmento di path "$segment" contiene caratteri non validi Windows.',
+      );
+    }
+
+    final trimmed = segment.trim();
+    if (trimmed != segment) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Il segmento di path "$segment" ha spazi iniziali o finali.',
+      );
+    }
+
+    if (trimmed.startsWith('.') || trimmed.endsWith('.')) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Il segmento di path "$segment" inizia o termina con un punto.',
+      );
+    }
+
+    if (_reservedWindowsNamesRegex.hasMatch(trimmed)) {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message:
@@ -99,14 +138,7 @@ final class ProvisioningPathResolver {
       );
     }
 
-    if (clean.isEmpty) {
-      throw const ProvisioningException(
-        reason: ProvisioningFailureReason.invalidCatalog,
-        message: 'Segmento di path vuoto dopo la sanitizzazione.',
-      );
-    }
-
-    return clean;
+    return trimmed;
   }
 
   /// Helper interno per unire due componenti di path in stile Windows.

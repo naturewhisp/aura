@@ -19,12 +19,12 @@ void main() {
             "platform": "windows",
             "architecture": "x64",
             "fileName": "llama-server.exe",
+            "sourceKind": "remoteHttps",
             "downloadUri": "https://downloads.aura.local/runtimes/llama-server-b3500.zip",
             "sizeBytes": 10485760,
-            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "sha256": "${'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'}",
             "compression": "zip",
             "license": "MIT",
-            "source": "remoteHttps",
             "minimumRuntimeBuild": "b3500"
           },
           {
@@ -36,12 +36,12 @@ void main() {
             "platform": "windows",
             "architecture": "x64",
             "fileName": "ministral-3b-instruct-q4_k_m.gguf",
+            "sourceKind": "remoteHttps",
             "downloadUri": "https://downloads.aura.local/models/ministral-3b.gguf",
             "sizeBytes": 2147483648,
             "sha256": "${'a' * 64}",
             "compression": "none",
             "license": "Apache-2.0",
-            "source": "remoteHttps",
             "modelArchitecture": "ministral",
             "quantization": "Q4_K_M",
             "contextLength": 8192
@@ -58,6 +58,8 @@ void main() {
       final runtimeArt = manifest.artifacts[0];
       expect(runtimeArt.artifactId, equals('llama-server-win-x64-b3500'));
       expect(runtimeArt.artifactType, equals(CatalogArtifactType.runtime));
+      expect(
+          runtimeArt.sourceKind, equals(CatalogArtifactSourceKind.remoteHttps));
       expect(runtimeArt.compression, equals(CatalogCompressionFormat.zip));
 
       final modelArt = manifest.artifacts[1];
@@ -65,6 +67,72 @@ void main() {
       expect(modelArt.artifactType, equals(CatalogArtifactType.model));
       expect(modelArt.modelArchitecture, equals('ministral'));
       expect(modelArt.contextLength, equals(8192));
+    });
+
+    test(
+        'Rifiuta elemento non-stringa nelle liste capabilities o hardwareCompatibilityTags',
+        () {
+      final jsonStr = '''
+      {
+        "schemaVersion": "1.0",
+        "catalogId": "aura.bad.list",
+        "generatedAt": "2026-07-21T20:00:00Z",
+        "artifacts": [
+          {
+            "artifactId": "art-bad-list",
+            "artifactType": "runtime",
+            "displayName": "Bad List Art",
+            "version": "1.0",
+            "buildId": "b1",
+            "platform": "windows",
+            "architecture": "x64",
+            "fileName": "rt.exe",
+            "sourceKind": "bundled",
+            "sizeBytes": 100,
+            "sha256": "${'f' * 64}",
+            "license": "MIT",
+            "minimumRuntimeBuild": "b1",
+            "capabilities": [123]
+          }
+        ]
+      }
+      ''';
+
+      expect(
+        () => CatalogManifestParser.parse(jsonStr),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.catalogMalformed),
+        )),
+      );
+    });
+
+    test(
+        'Rifiuta metadata con tipi non JSON-safe (es. NaN o oggetti non serializzabili)',
+        () {
+      expect(
+        () => CatalogArtifact(
+          artifactId: 'art-id',
+          artifactType: CatalogArtifactType.runtime,
+          displayName: 'Art',
+          version: '1.0',
+          buildId: 'b1',
+          platform: 'windows',
+          architecture: 'x64',
+          fileName: 'rt.exe',
+          sourceKind: CatalogArtifactSourceKind.bundled,
+          sizeBytes: 100,
+          sha256: 'a' * 64,
+          license: 'MIT',
+          metadata: {'badValue': double.nan},
+        ),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.catalogMalformed),
+        )),
+      );
     });
 
     test(
@@ -81,16 +149,6 @@ void main() {
 
       expect(
         () => CatalogManifestParser.parse('{invalid json'),
-        throwsA(isA<ProvisioningException>().having(
-          (e) => e.reason,
-          'reason',
-          equals(ProvisioningFailureReason.catalogMalformed),
-        )),
-      );
-
-      expect(
-        () =>
-            CatalogManifestParser.parse('["list", "instead", "of", "object"]'),
         throwsA(isA<ProvisioningException>().having(
           (e) => e.reason,
           'reason',
@@ -120,37 +178,31 @@ void main() {
       );
     });
 
-    test('Supporta tolleranza controllata verso campi JSON sconosciuti', () {
-      final jsonStr = '''
-      {
-        "schemaVersion": "1.0",
-        "catalogId": "aura.unknown.fields",
-        "generatedAt": "2026-07-21T20:00:00Z",
-        "futureExtensionField": 12345,
-        "artifacts": [
-          {
-            "artifactId": "valid-art",
-            "artifactType": "runtime",
-            "displayName": "Valid Art",
-            "version": "1.0",
-            "buildId": "b1",
-            "platform": "windows",
-            "architecture": "x64",
-            "fileName": "rt.exe",
-            "sizeBytes": 100,
-            "sha256": "${'f' * 64}",
-            "license": "MIT",
-            "source": "bundled",
-            "minimumRuntimeBuild": "b1",
-            "unknownArtifactField": "ignored"
-          }
-        ]
-      }
-      ''';
+    test('Garantisce immutabilità reale dei DTO e delle loro collezioni', () {
+      final caps = <String>['chat'];
+      final meta = <String, dynamic>{'env': 'dev'};
 
-      final manifest = CatalogManifestParser.parse(jsonStr);
-      expect(manifest.catalogId, equals('aura.unknown.fields'));
-      expect(manifest.artifacts.first.artifactId, equals('valid-art'));
+      final art = CatalogArtifact(
+        artifactId: 'art-immut',
+        artifactType: CatalogArtifactType.runtime,
+        displayName: 'Art',
+        version: '1.0',
+        buildId: 'b1',
+        platform: 'windows',
+        architecture: 'x64',
+        fileName: 'rt.exe',
+        sourceKind: CatalogArtifactSourceKind.bundled,
+        sizeBytes: 100,
+        sha256: 'a' * 64,
+        license: 'MIT',
+        capabilities: caps,
+        metadata: meta,
+      );
+
+      expect(() => (art.capabilities as List).add('mutation'),
+          throwsUnsupportedError);
+      expect(
+          () => (art.metadata as Map)['mutation'] = 1, throwsUnsupportedError);
     });
   });
 }

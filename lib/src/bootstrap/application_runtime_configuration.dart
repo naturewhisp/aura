@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import '../agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_configuration.dart';
 import 'application_runtime_mode.dart';
 
 /// Policy di fallback in caso di errore di inizializzazione o connettività.
@@ -46,6 +47,9 @@ class ApplicationRuntimeConfiguration {
   /// Policy di fallback per la gestione dei fallimenti di avvio.
   final BootstrapFallbackPolicy fallbackPolicy;
 
+  /// Configurazione specifica per il runtime gestito `llama-server` (opzionale).
+  final ManagedLlamaServerConfiguration? managedLlamaConfig;
+
   /// Costruisce un'istanza immutabile di [ApplicationRuntimeConfiguration].
   const ApplicationRuntimeConfiguration({
     this.runtimeMode = ApplicationRuntimeMode.legacyExternalOpenAi,
@@ -59,6 +63,7 @@ class ApplicationRuntimeConfiguration {
     this.sessionId,
     this.diagnosticMode = false,
     this.fallbackPolicy = BootstrapFallbackPolicy.none,
+    this.managedLlamaConfig,
   });
 
   /// Crea un'istanza di [ApplicationRuntimeConfiguration] a partire da una mappa di variabili d'ambiente.
@@ -69,6 +74,8 @@ class ApplicationRuntimeConfiguration {
   /// - `AURA_ACTOR_MODEL_ID`
   /// - `AURA_EVALUATOR_MODEL_ID`
   /// - `AURA_INFERENCE_API_KEY`
+  /// - `AURA_LLAMA_SERVER_EXECUTABLE`
+  /// - `AURA_LLAMA_MODEL_PATH`
   factory ApplicationRuntimeConfiguration.fromEnvironment(
     Map<String, String> env, {
     ApplicationRuntimeConfiguration defaults =
@@ -86,13 +93,18 @@ class ApplicationRuntimeConfiguration {
         'externalopenairuntime' ||
         'external_openai_runtime' =>
           ApplicationRuntimeMode.externalOpenAiRuntime,
+        'managed' ||
+        'managedllamaserver' ||
+        'managed_llama_server' ||
+        'managed-llama-server' =>
+          ApplicationRuntimeMode.managedLlamaServer,
         'rulebased' ||
         'rule_based' ||
         'rule-based' ||
         'offline' =>
           ApplicationRuntimeMode.ruleBased,
         _ => throw FormatException(
-            'Modalità runtime non valida da ambiente: "$envModeStr". Modalità valide: legacy, external, ruleBased.',
+            'Modalità runtime non valida da ambiente: "$envModeStr". Modalità valide: legacy, external, managed-llama-server, ruleBased.',
           ),
       };
     }
@@ -129,6 +141,56 @@ class ApplicationRuntimeConfiguration {
           'L\'ID del modello Valutatore non può essere vuoto.');
     }
 
+    ManagedLlamaServerConfiguration? managedConfig =
+        defaults.managedLlamaConfig;
+    final llamaExec = env['AURA_LLAMA_SERVER_EXECUTABLE']?.trim();
+    final llamaModel = env['AURA_LLAMA_MODEL_PATH']?.trim();
+
+    if (llamaExec != null ||
+        llamaModel != null ||
+        mode == ApplicationRuntimeMode.managedLlamaServer) {
+      final host = env['AURA_LLAMA_HOST']?.trim() ?? '127.0.0.1';
+      final portStr = env['AURA_LLAMA_PORT']?.trim();
+      final port = portStr != null ? int.tryParse(portStr) : null;
+      final ctxStr = env['AURA_LLAMA_CONTEXT_SIZE']?.trim();
+      final ctx = ctxStr != null ? int.tryParse(ctxStr) : null;
+      final gpuStr = env['AURA_LLAMA_GPU_LAYERS']?.trim();
+      final gpu = gpuStr != null ? int.tryParse(gpuStr) : null;
+      final threadsStr = env['AURA_LLAMA_THREADS']?.trim();
+      final threads = threadsStr != null ? int.tryParse(threadsStr) : null;
+      final batchStr = env['AURA_LLAMA_BATCH_SIZE']?.trim();
+      final batch = batchStr != null ? int.tryParse(batchStr) : null;
+      final parallelStr = env['AURA_LLAMA_PARALLEL']?.trim();
+      final parallel = parallelStr != null ? int.tryParse(parallelStr) : null;
+      final startupMsStr = env['AURA_LLAMA_STARTUP_TIMEOUT_MS']?.trim();
+      final startupTimeout =
+          startupMsStr != null && int.tryParse(startupMsStr) != null
+              ? Duration(milliseconds: int.parse(startupMsStr))
+              : const Duration(seconds: 30);
+      final shutdownMsStr = env['AURA_LLAMA_SHUTDOWN_TIMEOUT_MS']?.trim();
+      final shutdownTimeout =
+          shutdownMsStr != null && int.tryParse(shutdownMsStr) != null
+              ? Duration(milliseconds: int.parse(shutdownMsStr))
+              : const Duration(seconds: 10);
+
+      managedConfig = ManagedLlamaServerConfiguration(
+        executablePath:
+            llamaExec ?? defaults.managedLlamaConfig?.executablePath ?? '',
+        modelPath: llamaModel ?? defaults.managedLlamaConfig?.modelPath ?? '',
+        host: host,
+        preferredPort: port ?? defaults.managedLlamaConfig?.preferredPort,
+        contextSize: ctx ?? defaults.managedLlamaConfig?.contextSize,
+        gpuLayers: gpu ?? defaults.managedLlamaConfig?.gpuLayers,
+        threads: threads ?? defaults.managedLlamaConfig?.threads,
+        batchSize: batch ?? defaults.managedLlamaConfig?.batchSize,
+        parallelSlots: parallel ?? defaults.managedLlamaConfig?.parallelSlots,
+        startupTimeout: startupTimeout,
+        shutdownTimeout: shutdownTimeout,
+        apiKey: apiKey,
+        diagnosticMode: defaults.diagnosticMode,
+      );
+    }
+
     return ApplicationRuntimeConfiguration(
       runtimeMode: mode,
       baseUri: baseUri,
@@ -141,6 +203,7 @@ class ApplicationRuntimeConfiguration {
       sessionId: defaults.sessionId,
       diagnosticMode: defaults.diagnosticMode,
       fallbackPolicy: defaults.fallbackPolicy,
+      managedLlamaConfig: managedConfig,
     );
   }
 
@@ -157,6 +220,7 @@ class ApplicationRuntimeConfiguration {
     String? sessionId,
     bool? diagnosticMode,
     BootstrapFallbackPolicy? fallbackPolicy,
+    ManagedLlamaServerConfiguration? managedLlamaConfig,
   }) {
     return ApplicationRuntimeConfiguration(
       runtimeMode: runtimeMode ?? this.runtimeMode,
@@ -170,6 +234,7 @@ class ApplicationRuntimeConfiguration {
       sessionId: sessionId ?? this.sessionId,
       diagnosticMode: diagnosticMode ?? this.diagnosticMode,
       fallbackPolicy: fallbackPolicy ?? this.fallbackPolicy,
+      managedLlamaConfig: managedLlamaConfig ?? this.managedLlamaConfig,
     );
   }
 }

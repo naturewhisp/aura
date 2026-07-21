@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'package:aura_core/aura_core.dart';
 import '../agent_runtime/bridges/local_api_inference_bridge.dart';
+import '../agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 import '../agent_runtime/bridges/runtime_inference_bridge.dart';
 import '../agent_runtime/runtime/adapters/external_openai/external_openai_client.dart';
 import '../agent_runtime/runtime/adapters/external_openai/external_openai_configuration.dart';
 import '../agent_runtime/runtime/adapters/external_openai/external_openai_model_binding.dart';
 import '../agent_runtime/runtime/adapters/external_openai/external_openai_runtime.dart';
+import '../agent_runtime/runtime/adapters/managed_llama_server/dart_io_process_launcher.dart';
+import '../agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_runtime.dart';
 import '../agent_runtime/runtime/adapters/rule_based_inference_runtime.dart';
 
 /// Implementazione predefinita del composition root applicativo [ApplicationBootstrap].
@@ -88,6 +91,8 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         return await _bootstrapLegacy(config);
       case ApplicationRuntimeMode.externalOpenAiRuntime:
         return await _bootstrapExternalOpenAi(request, config);
+      case ApplicationRuntimeMode.managedLlamaServer:
+        return await _bootstrapManagedLlamaServer(request, config);
       case ApplicationRuntimeMode.ruleBased:
         return await _bootstrapRuleBased(config);
     }
@@ -165,6 +170,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       diagnostics: {
         'baseUrl': baseUri.toString(),
         'skipHealthCheck': config.skipHealthCheck,
+        if (config.sessionId != null) 'sessionId': config.sessionId,
       },
     );
 
@@ -299,22 +305,25 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
             modelVariantId: 'variant-shared',
             sha256: 'placeholder-sha',
             format: 'gguf',
-            quantization: 'q4_0',
-            architecture: 'shared',
+            quantization: 'q4_k_m',
+            architecture: 'llama',
             compatibility: ModelRuntimeCompatibility(compatible: true),
+            localArtifactUri: null,
           ),
-          logicalModelId: actorBinding.logicalModelId,
-          roles: actorBinding.roles,
+          logicalModelId: 'aura.actor.primary',
+          roles: const {ModelRole.actor, ModelRole.evaluator},
         );
         final sharedHandle = await runtime.loadModel(sharedLoadReq);
+
         actorPlan = RuntimeModelExecutionPlan(
           role: ModelRole.actor,
           logicalModelId: 'aura.actor.primary',
           handle: sharedHandle,
         );
+
         evalPlan = RuntimeModelExecutionPlan(
           role: ModelRole.evaluator,
-          logicalModelId: 'aura.actor.primary',
+          logicalModelId: 'aura.evaluator.primary',
           handle: sharedHandle,
         );
       } else {
@@ -324,28 +333,30 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
             modelVariantId: 'variant-actor',
             sha256: 'placeholder-sha',
             format: 'gguf',
-            quantization: 'q4_0',
-            architecture: 'qwen',
+            quantization: 'q4_k_m',
+            architecture: 'llama',
             compatibility: ModelRuntimeCompatibility(compatible: true),
+            localArtifactUri: null,
           ),
-          logicalModelId: actorBinding.logicalModelId,
-          roles: actorBinding.roles,
+          logicalModelId: 'aura.actor.primary',
+          roles: const {ModelRole.actor},
         );
+        final actorHandle = await runtime.loadModel(actorLoadReq);
+
         final evalLoadReq = ModelLoadRequest(
           requestId: ModelLoadRequestId('load-eval-$sessionId'),
           artifact: const ResolvedModelArtifact(
             modelVariantId: 'variant-eval',
             sha256: 'placeholder-sha',
             format: 'gguf',
-            quantization: 'q4_0',
-            architecture: 'mistral',
+            quantization: 'q4_k_m',
+            architecture: 'llama',
             compatibility: ModelRuntimeCompatibility(compatible: true),
+            localArtifactUri: null,
           ),
-          logicalModelId: evalBinding.logicalModelId,
-          roles: evalBinding.roles,
+          logicalModelId: 'aura.evaluator.primary',
+          roles: const {ModelRole.evaluator},
         );
-
-        final actorHandle = await runtime.loadModel(actorLoadReq);
         final evalHandle = await runtime.loadModel(evalLoadReq);
 
         actorPlan = RuntimeModelExecutionPlan(
@@ -353,50 +364,78 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
           logicalModelId: 'aura.actor.primary',
           handle: actorHandle,
         );
+
         evalPlan = RuntimeModelExecutionPlan(
           role: ModelRole.evaluator,
           logicalModelId: 'aura.evaluator.primary',
           handle: evalHandle,
         );
       }
+    } on RuntimeException catch (e) {
+      throw ApplicationBootstrapException(
+        const ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.modelLoadFailed,
+          message: 'Caricamento dei modelli per ExternalOpenAiRuntime fallito.',
+        ),
+        e,
+      );
     } catch (e) {
       throw ApplicationBootstrapException(
         const ApplicationBootstrapFailure(
           code: ApplicationBootstrapFailureCode.modelLoadFailed,
-          message: 'Caricamento dei modelli di inferenza fallito.',
+          message: 'Caricamento dei modelli per ExternalOpenAiRuntime fallito.',
         ),
         e,
       );
     }
 
-    const routeResolver = LegacyInferenceRouteResolver();
     final bridge = RuntimeInferenceBridge(
       runtime: runtime,
       planResolver: (role) => role == ModelRole.actor ? actorPlan : evalPlan,
-      routeResolver: routeResolver,
     );
 
     bool isHealthy = true;
-    String statusMsg = 'ExternalOpenAiRuntime attivo ed interfacciato.';
+    String statusMsg =
+        'ExternalOpenAiRuntime attivo ed interfacciato su $baseUri.';
+
     if (!config.skipHealthCheck) {
       try {
         final health = await runtime.health();
-        isHealthy = health.responsive;
-        if (!isHealthy) {
-          statusMsg =
-              'ExternalOpenAiRuntime non risponde ai controlli di integrità.';
+        if (!health.responsive) {
+          isHealthy = false;
+          statusMsg = 'Health check di ExternalOpenAiRuntime fallito.';
         }
       } catch (e) {
         isHealthy = false;
-        statusMsg = 'Health check di ExternalOpenAiRuntime fallito.';
+        statusMsg =
+            'Impossibile verificare l\'health di ExternalOpenAiRuntime.';
       }
 
       if (!isHealthy &&
           config.fallbackPolicy == BootstrapFallbackPolicy.ruleBased) {
         final cleanupDiagnostics =
             await _cleanUpActiveResourcesBeforeFallback();
-        return await _bootstrapRuleBased(config,
-            fallbackDiagnostics: cleanupDiagnostics);
+        final ruleBasedResult = await _bootstrapRuleBased(config);
+        return ApplicationBootstrapResult(
+          controller: ruleBasedResult.controller,
+          activeBridge: ruleBasedResult.activeBridge,
+          runtimeMode: ruleBasedResult.runtimeMode,
+          status: ApplicationRuntimeStatus(
+            runtimeMode: ApplicationRuntimeMode.ruleBased,
+            isHealthy: ruleBasedResult.status.isHealthy,
+            statusDescription:
+                'Fallback automatico su RuleBasedInferenceRuntime eseguito a causa del fallimento health check di ExternalOpenAiRuntime.',
+            diagnostics: {
+              ...ruleBasedResult.status.diagnostics,
+              ...cleanupDiagnostics,
+              'originalRuntimeMode':
+                  ApplicationRuntimeMode.externalOpenAiRuntime.name,
+              'fallbackReason': statusMsg,
+              if (config.sessionId != null) 'sessionId': config.sessionId,
+            },
+          ),
+          onDispose: dispose,
+        );
       }
     }
 
@@ -408,7 +447,10 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       diagnostics: {
         'baseUrl': baseUri.toString(),
         'useSharedModel': config.useSharedModel,
-        'sessionId': sessionId,
+        'actorModelId': config.actorModelId,
+        'evaluatorModelId': config.evaluatorModelId,
+        'skipHealthCheck': config.skipHealthCheck,
+        if (config.sessionId != null) 'sessionId': config.sessionId,
       },
     );
 
@@ -421,79 +463,185 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     );
   }
 
-  Future<ApplicationBootstrapResult> _bootstrapRuleBased(
-    ApplicationRuntimeConfiguration config, {
-    Map<String, dynamic>? fallbackDiagnostics,
-  }) async {
+  Future<ApplicationBootstrapResult> _bootstrapManagedLlamaServer(
+    ApplicationBootstrapRequest request,
+    ApplicationRuntimeConfiguration config,
+  ) async {
     final sessionId =
         (config.sessionId != null && config.sessionId!.trim().isNotEmpty)
             ? config.sessionId!.trim()
             : 'bootstrap-session';
 
-    final runtime = RuleBasedInferenceRuntime();
+    final managedConfig = config.managedLlamaConfig;
+    if (managedConfig == null) {
+      throw const ApplicationBootstrapException(
+        ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.incompleteConfiguration,
+          message:
+              'Configurazione managedLlamaConfig mancante per la modalità managedLlamaServer.',
+        ),
+      );
+    }
+
+    try {
+      managedConfig.validate();
+    } on RuntimeException catch (e) {
+      if (config.fallbackPolicy == BootstrapFallbackPolicy.ruleBased) {
+        final cleanupDiag = await _cleanUpActiveResourcesBeforeFallback();
+        final result = await _bootstrapRuleBased(config);
+        return ApplicationBootstrapResult(
+          controller: result.controller,
+          activeBridge: result.activeBridge,
+          runtimeMode: result.runtimeMode,
+          status: ApplicationRuntimeStatus(
+            runtimeMode: ApplicationRuntimeMode.ruleBased,
+            isHealthy: result.status.isHealthy,
+            statusDescription:
+                'Fallback rule-based eseguito a causa di configurazione managedLlamaServer non valida.',
+            diagnostics: {
+              ...result.status.diagnostics,
+              ...cleanupDiag,
+              'fallbackReason': e.failure.message,
+              if (config.sessionId != null) 'sessionId': config.sessionId,
+            },
+          ),
+          onDispose: dispose,
+        );
+      }
+      throw ApplicationBootstrapException(
+        ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.incompleteConfiguration,
+          message: e.failure.message,
+        ),
+        e,
+      );
+    }
+
+    final processLauncher =
+        request.customProcessLauncher ?? const DartIoProcessLauncher();
+    final portAllocator =
+        request.customPortAllocator ?? const LoopbackPortAllocator();
+    final healthProbe =
+        request.customHealthProbe ?? HttpLlamaServerHealthProbe();
+
+    final supervisor = LlamaServerProcessSupervisor(
+      configuration: managedConfig,
+      processLauncher: processLauncher,
+      portAllocator: portAllocator,
+      healthProbe: healthProbe,
+    );
+
+    final runtime = request.customRuntime ??
+        ManagedLlamaServerRuntime(
+          configuration: managedConfig,
+          supervisor: supervisor,
+          delegateFactory: request.customDelegateFactory != null
+              ? (clientConfig, bindings) =>
+                  request.customDelegateFactory!(clientConfig)
+              : null,
+        );
+
     _activeRuntime = runtime;
-    await runtime.initialize(
-      RuntimeInitializationRequest(
-        instanceId: RuntimeInstanceId('instance-$sessionId'),
-      ),
-    );
 
-    final actorLoadReq = ModelLoadRequest(
-      requestId: ModelLoadRequestId('load-rule-actor-$sessionId'),
-      artifact: const ResolvedModelArtifact(
-        modelVariantId: 'variant-rule-actor',
+    try {
+      await runtime.initialize(
+        RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('instance-$sessionId'),
+        ),
+      );
+    } catch (e) {
+      if (config.fallbackPolicy == BootstrapFallbackPolicy.ruleBased) {
+        final cleanupDiag = await _cleanUpActiveResourcesBeforeFallback();
+        final result = await _bootstrapRuleBased(config);
+        return ApplicationBootstrapResult(
+          controller: result.controller,
+          activeBridge: result.activeBridge,
+          runtimeMode: result.runtimeMode,
+          status: ApplicationRuntimeStatus(
+            runtimeMode: ApplicationRuntimeMode.ruleBased,
+            isHealthy: result.status.isHealthy,
+            statusDescription:
+                'Fallback rule-based eseguito a causa del fallimento di avvio di ManagedLlamaServerRuntime.',
+            diagnostics: {
+              ...result.status.diagnostics,
+              ...cleanupDiag,
+              'fallbackReason': 'Avvio managed-llama-server fallito.',
+              if (config.sessionId != null) 'sessionId': config.sessionId,
+            },
+          ),
+          onDispose: dispose,
+        );
+      }
+      throw ApplicationBootstrapException(
+        const ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.runtimeInitializationFailed,
+          message: 'Inizializzazione di ManagedLlamaServerRuntime fallita.',
+        ),
+        e,
+      );
+    }
+
+    final loadReq = ModelLoadRequest(
+      requestId: ModelLoadRequestId('load-managed-$sessionId'),
+      artifact: ResolvedModelArtifact(
+        modelVariantId: managedConfig.modelAlias,
         sha256: 'placeholder-sha',
-        format: 'rule',
-        quantization: 'none',
-        architecture: 'rule',
-        compatibility: ModelRuntimeCompatibility(compatible: true),
+        format: 'gguf',
+        quantization: 'q4_k_m',
+        architecture: 'llama',
+        compatibility: const ModelRuntimeCompatibility(compatible: true),
+        localArtifactUri: Uri.file(managedConfig.modelPath),
       ),
       logicalModelId: 'aura.actor.primary',
-      roles: const {ModelRole.actor},
-    );
-    final evalLoadReq = ModelLoadRequest(
-      requestId: ModelLoadRequestId('load-rule-eval-$sessionId'),
-      artifact: const ResolvedModelArtifact(
-        modelVariantId: 'variant-rule-eval',
-        sha256: 'placeholder-sha',
-        format: 'rule',
-        quantization: 'none',
-        architecture: 'rule',
-        compatibility: ModelRuntimeCompatibility(compatible: true),
-      ),
-      logicalModelId: 'aura.evaluator.primary',
-      roles: const {ModelRole.evaluator},
+      roles: const {ModelRole.actor, ModelRole.evaluator},
     );
 
-    final actorHandle = await runtime.loadModel(actorLoadReq);
-    final evalHandle = await runtime.loadModel(evalLoadReq);
+    final handle = await runtime.loadModel(loadReq);
 
-    final actorPlan = RuntimeModelExecutionPlan(
-      role: ModelRole.actor,
-      logicalModelId: 'aura.actor.primary',
-      handle: actorHandle,
-    );
-    final evalPlan = RuntimeModelExecutionPlan(
-      role: ModelRole.evaluator,
-      logicalModelId: 'aura.evaluator.primary',
-      handle: evalHandle,
-    );
-
-    const routeResolver = LegacyInferenceRouteResolver();
-    final bridge = RuntimeInferenceBridge(
+    final bridge = RuntimeInferenceBridge.fromHandleResolver(
       runtime: runtime,
-      planResolver: (role) => role == ModelRole.actor ? actorPlan : evalPlan,
-      routeResolver: routeResolver,
+      handleResolver: (_) => handle,
     );
 
     const controller = GameController();
     final status = ApplicationRuntimeStatus(
+      runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+      isHealthy: true,
+      statusDescription:
+          'ManagedLlamaServerRuntime attivo e pronto su porta ${supervisor.allocatedPort}.',
+      diagnostics: {
+        'managed': true,
+        'allocatedPort': supervisor.allocatedPort,
+        'modelAlias': managedConfig.modelAlias,
+        'pid': supervisor.pid,
+        if (config.sessionId != null) 'sessionId': config.sessionId,
+      },
+    );
+
+    return ApplicationBootstrapResult(
+      controller: controller,
+      activeBridge: bridge,
+      runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+      status: status,
+      onDispose: dispose,
+    );
+  }
+
+  Future<ApplicationBootstrapResult> _bootstrapRuleBased(
+    ApplicationRuntimeConfiguration config,
+  ) async {
+    const controller = GameController();
+    const bridge = RuleBasedEvaluatorBridge();
+    _activeRuntime = RuleBasedInferenceRuntime();
+
+    final status = ApplicationRuntimeStatus(
       runtimeMode: ApplicationRuntimeMode.ruleBased,
       isHealthy: true,
-      statusDescription: 'Motore offline deterministico (rule-based) attivo.',
+      statusDescription:
+          'Motore offline deterministico attivo (nessuna chiamata LLM esterna).',
       diagnostics: {
-        'sessionId': sessionId,
-        if (fallbackDiagnostics != null) ...fallbackDiagnostics,
+        'offlineMode': true,
+        if (config.sessionId != null) 'sessionId': config.sessionId,
       },
     );
 
@@ -511,13 +659,16 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     if (_disposed) return;
     _disposed = true;
 
-    final errors = <Object>[];
+    bool runtimeSuccess = true;
+    bool clientSuccess = true;
+    Object? firstError;
 
     if (_activeRuntime != null) {
       try {
         await _activeRuntime!.dispose();
       } catch (e) {
-        errors.add(e);
+        runtimeSuccess = false;
+        firstError ??= e;
       } finally {
         _activeRuntime = null;
       }
@@ -527,20 +678,23 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       try {
         await _activeClient!.close();
       } catch (e) {
-        errors.add(e);
+        clientSuccess = false;
+        firstError ??= e;
       } finally {
         _activeClient = null;
       }
     }
 
-    if (errors.isNotEmpty) {
+    _bootstrapped = false;
+
+    if (!runtimeSuccess || !clientSuccess) {
       throw ApplicationBootstrapException(
         const ApplicationBootstrapFailure(
           code: ApplicationBootstrapFailureCode.disposeFailed,
           message:
-              'Errore durante la dismissione delle risorse del composition root.',
+              'Fallimento durante la dismissione delle risorse attive del composition root.',
         ),
-        errors.length == 1 ? errors.first : errors,
+        firstError,
       );
     }
   }

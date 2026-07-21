@@ -1,5 +1,10 @@
 import 'package:meta/meta.dart';
 import '../agent_runtime/runtime/adapters/external_openai/external_openai_client.dart';
+import '../agent_runtime/runtime/adapters/external_openai/external_openai_configuration.dart';
+import '../agent_runtime/runtime/adapters/external_openai/external_openai_runtime.dart';
+import '../agent_runtime/runtime/adapters/managed_llama_server/llama_server_health_probe.dart';
+import '../agent_runtime/runtime/adapters/managed_llama_server/port_allocator.dart';
+import '../agent_runtime/runtime/adapters/managed_llama_server/process_launcher.dart';
 import '../agent_runtime/runtime/inference_runtime.dart';
 import 'application_runtime_configuration.dart';
 
@@ -15,6 +20,19 @@ class ApplicationBootstrapRequest {
   /// Custom [ExternalOpenAiClient] per iniezione nei test.
   final ExternalOpenAiClient? customHttpClient;
 
+  /// Custom [ProcessLauncher] per iniezione nei test managed llama-server.
+  final ProcessLauncher? customProcessLauncher;
+
+  /// Custom [PortAllocator] per iniezione nei test managed llama-server.
+  final PortAllocator? customPortAllocator;
+
+  /// Custom [HealthProbe] per iniezione nei test managed llama-server.
+  final HealthProbe? customHealthProbe;
+
+  /// Custom delegate factory per `ExternalOpenAiRuntime` nei test.
+  final ExternalOpenAiRuntime Function(ExternalOpenAiConfiguration config)?
+      customDelegateFactory;
+
   /// Mappa di variabili d'ambiente sovrascritte.
   final Map<String, String>? environmentOverride;
 
@@ -23,6 +41,10 @@ class ApplicationBootstrapRequest {
     required this.configuration,
     this.customRuntime,
     this.customHttpClient,
+    this.customProcessLauncher,
+    this.customPortAllocator,
+    this.customHealthProbe,
+    this.customDelegateFactory,
     this.environmentOverride,
   });
 }

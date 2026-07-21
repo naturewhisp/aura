@@ -6,6 +6,9 @@ enum ApplicationRuntimeMode {
   /// Nuovo percorso di inferenza basato su ExternalOpenAiRuntime e RuntimeInferenceBridge.
   externalOpenAiRuntime,
 
+  /// Percorso locale gestito basato su processo llama-server sidecar.
+  managedLlamaServer,
+
   /// Percorso offline deterministico basato su regole locali senza chiamate di rete.
   ruleBased,
 }

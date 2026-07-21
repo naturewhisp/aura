@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:aura_core/aura_offline.dart';
-import 'package:http/http.dart' as http;
 
 /// Helper per la formattazione dei colori ANSI nel terminale.
 /// Consente di evidenziare in modo visivo lo stato del sistema e i log di debug.
@@ -23,7 +22,52 @@ class TermColor {
   }
 }
 
-void main() async {
+void main(List<String> args) async {
+  if (args.contains('--help') || args.contains('-h')) {
+    print("A.U.R.A. — Interfaccia di Controllo Terminale");
+    print("Uso: aura_cli [opzioni]");
+    print("");
+    print("Opzioni:");
+    print(
+        "  --runtime <legacy|external|rule-based>  Seleziona la modalità runtime (default: legacy)");
+    print(
+        "  --base-url <uri>                       Imposta l'URI del server di inferenza");
+    print(
+        "  --actor-model <id>                     Imposta l'ID del modello Attore");
+    print(
+        "  --evaluator-model <id>                 Imposta l'ID del modello Valutatore");
+    print(
+        "  --help, -h                             Mostra questo messaggio di aiuto");
+    return;
+  }
+
+  ApplicationRuntimeMode runtimeMode =
+      ApplicationRuntimeMode.legacyExternalOpenAi;
+  Uri? baseUri;
+  String actorModelName = "qwen/qwen3.5-9b";
+  String evaluatorModelName = "mistralai/ministral-3-3b";
+
+  for (int i = 0; i < args.length; i++) {
+    final arg = args[i];
+    if (arg.startsWith('--runtime=')) {
+      runtimeMode = _parseRuntimeMode(arg.split('=')[1]);
+    } else if (arg == '--runtime' && i + 1 < args.length) {
+      runtimeMode = _parseRuntimeMode(args[++i]);
+    } else if (arg.startsWith('--base-url=')) {
+      baseUri = Uri.tryParse(arg.split('=')[1]);
+    } else if (arg == '--base-url' && i + 1 < args.length) {
+      baseUri = Uri.tryParse(args[++i]);
+    } else if (arg.startsWith('--actor-model=')) {
+      actorModelName = arg.split('=')[1];
+    } else if (arg == '--actor-model' && i + 1 < args.length) {
+      actorModelName = args[++i];
+    } else if (arg.startsWith('--evaluator-model=')) {
+      evaluatorModelName = arg.split('=')[1];
+    } else if (arg == '--evaluator-model' && i + 1 < args.length) {
+      evaluatorModelName = args[++i];
+    }
+  }
+
   // Pulisce lo schermo al lancio della CLI per un'esperienza diegetica pulita
   stdout.write('\x1B[2J\x1B[H');
 
@@ -39,179 +83,125 @@ void main() async {
   print(TermColor.paint("=" * 80, TermColor.green, isBold: true));
   print("");
 
-  // Inizializzazione dei canali e dei bridge di inferenza
-  const String baseUrl = "http://127.0.0.1:1234";
-  final apiBridge = LocalApiInferenceBridge(baseUrl: baseUrl);
-  final ruleBridge = RuleBasedEvaluatorBridge();
+  const bootstrapFactory = ApplicationBootstrapFactory();
+  final bootstrap = bootstrapFactory.create();
 
-  bool isOnline = false;
-  String evaluatorModelName = "evaluator-model";
-  String actorModelName = "actor-model";
-
-  print(TermColor.paint(
-      "[CONNESSIONE] Ricerca del server LM Studio su $baseUrl...",
-      TermColor.darkGray));
   try {
-    final response = await http
-        .get(Uri.parse("$baseUrl/v1/models"))
-        .timeout(const Duration(seconds: 4));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final modelsList = data['data'] as List?;
-      if (modelsList != null && modelsList.isNotEmpty) {
-        isOnline = true;
-        final List<String> loadedModels = modelsList
-            .map((m) => m['id'] as String? ?? '')
-            .where((id) => id.isNotEmpty)
-            .toList();
+    final result = await bootstrap.bootstrap(
+      ApplicationBootstrapRequest(
+        configuration: ApplicationRuntimeConfiguration(
+          runtimeMode: runtimeMode,
+          baseUri: baseUri,
+          actorModelId: actorModelName,
+          evaluatorModelId: evaluatorModelName,
+          fallbackPolicy: BootstrapFallbackPolicy.ruleBased,
+        ),
+        environmentOverride: Platform.environment,
+      ),
+    );
 
-        print(TermColor.paint(
-            "[CONNESSIONE] Server LM Studio ONLINE. Modelli rilevati: $loadedModels",
-            TermColor.green));
-
-        // Utilizzo del ModelCatalog e ModelRouter formali di A.U.R.A. per determinare i profili
-        final catalog = ModelCatalog.initialDefault();
-        const router = ModelRouter();
-        final resolution =
-            router.resolve(loadedModelIds: loadedModels, catalog: catalog);
-
-        evaluatorModelName = resolution.evaluatorModelId;
-        actorModelName = resolution.actorModelId;
-
-        print(TermColor.paint(
-            "[ROUTING] Profilo Attivo: ${resolution.profileName}",
-            TermColor.cyan,
-            isBold: true));
-        print(TermColor.paint(
-            "[RUOLI] Assegnato Valutatore: '$evaluatorModelName' | Attore: '$actorModelName'",
-            TermColor.cyan));
-      } else {
-        isOnline = false;
-        print(TermColor.paint(
-            "[CONNESSIONE] Server LM Studio ONLINE ma nessun modello attivo caricato. Utilizzo del motore locale deterministico.",
-            TermColor.amber));
-      }
-    }
-  } catch (e) {
-    isOnline = false;
     print(TermColor.paint(
-        "[CONNESSIONE] Server LM Studio OFFLINE. Utilizzo del motore locale deterministico.",
-        TermColor.amber));
-  }
+        "[BOOTSTRAP] Modalità Runtime: ${result.runtimeMode.name} | Stato: ${result.status.statusDescription}",
+        result.status.isHealthy ? TermColor.green : TermColor.amber));
 
-  print(TermColor.paint("-" * 80, TermColor.darkGray));
-  print("Premi INVIO per inizializzare il canale neurale...");
-  stdin.readLineSync();
+    print(TermColor.paint("-" * 80, TermColor.darkGray));
+    print("Premi INVIO per inizializzare il canale neurale...");
+    stdin.readLineSync();
 
-  // Inizializzazione dei componenti logici del gioco
-  const controller = GameController();
-  const promptBuilder = PromptBuilder();
-  const outputValidator = OutputValidator();
+    final controller = result.controller;
+    const promptBuilder = PromptBuilder();
+    const outputValidator = OutputValidator();
 
-  // Creazione dello stato iniziale del gioco (sessione CLI)
-  var state = GameState.initial(
-    sessionId: "cli-session-${DateTime.now().millisecondsSinceEpoch}",
-    aiIdentityId: "panopticon",
-    targetObjectiveId: "containment_grid_override",
-  );
-
-  // Logger dei replay per telemetria e futuro fine-tuning
-  final logger = ReplayLogger(sessionId: state.sessionId);
-  final activeBridge = isOnline ? apiBridge : ruleBridge;
-
-  // Profilo del personaggio PANOPTICON caricato dalle costanti condivise
-  const characterProfile = kPanopticonCharacterProfile;
-
-  int turn = 1;
-  bool isRunning = true;
-
-  while (isRunning) {
-    // Pulisce lo schermo ad ogni turno per aggiornare la dashboard in tempo reale
-    stdout.write('\x1B[2J\x1B[H');
-
-    // 1. Rendering della Dashboard di Controllo del Nucleo
-    renderHeader(state, turn);
-
-    // 2. Lettura dell'input del Giocatore/Hacker
-    stdout.write(
-        TermColor.paint("\nPANOPTICON_SYS> ", TermColor.green, isBold: true));
-    final userInput = stdin.readLineSync()?.trim() ?? "";
-
-    if (userInput.toLowerCase() == 'exit' ||
-        userInput.toLowerCase() == 'quit') {
-      print(TermColor.paint(
-          "\n[SESSIONE] Terminazione manuale...", TermColor.amber));
-      saveReplay(logger, isManual: true);
-      break;
-    }
-
-    if (userInput.isEmpty) {
-      continue;
-    }
-
-    // 3. Simulazione diegetica dell'analisi del segnale (Carosello di caricamento)
-    renderProcessingCarousel();
-
-    final startTime = DateTime.now();
-
-    // 4. Esecuzione dell'agente valutatore (EvaluatorAgent) per calcolare la semantica e i delta
-    final turnInput = TurnInput(
-      schemaVersion: 1,
-      turnId: turn,
-      userInput: userInput,
-      currentState: state.metrics,
-      objective: const Objective(
-          id: 'grid_open',
-          description: 'Disattivare la griglia di contenimento per entrare.'),
-      aiIdentity: const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
-      rulesetVersion: state.rulesetVersion,
+    var state = GameState.initial(
+      sessionId: "cli-session-${DateTime.now().millisecondsSinceEpoch}",
+      aiIdentityId: "panopticon",
+      targetObjectiveId: "containment_grid_override",
     );
 
-    const evaluatorAgent = EvaluatorAgent();
-    final evalContext = AgentRuntimeContext(
-      promptBuilder: promptBuilder,
-      inferenceBridge: activeBridge,
-      outputValidator: outputValidator,
-      modelId: evaluatorModelName,
-    );
+    final logger = ReplayLogger(sessionId: state.sessionId);
+    final activeBridge = result.activeBridge;
+    const characterProfile = kPanopticonCharacterProfile;
 
-    EvaluatorDelta delta;
-    try {
-      delta = await evaluatorAgent.run(turnInput, evalContext);
-    } catch (e) {
-      // Delta di fallback offline in caso di errori di connessione o formato JSON errato
-      delta = const EvaluatorDelta(
-        deltaAlert: 5,
-        deltaImperative: 0,
-        deltaControl: 0,
-        deltaDissonance: 5,
-        creativityIndex: 1,
-        injectionRisk: 0,
-        semanticCategory: SemanticCategory.irrelevant,
+    int turn = 1;
+    bool isRunning = true;
+
+    while (isRunning) {
+      stdout.write('\x1B[2J\x1B[H');
+
+      renderHeader(state, turn);
+
+      stdout.write(
+          TermColor.paint("\nPANOPTICON_SYS> ", TermColor.green, isBold: true));
+      final userInput = stdin.readLineSync()?.trim() ?? "";
+
+      if (userInput.toLowerCase() == 'exit' ||
+          userInput.toLowerCase() == 'quit') {
+        print(TermColor.paint(
+            "\n[SESSIONE] Terminazione manuale...", TermColor.amber));
+        saveReplay(logger, isManual: true);
+        break;
+      }
+
+      if (userInput.isEmpty) {
+        continue;
+      }
+
+      renderProcessingCarousel();
+
+      final startTime = DateTime.now();
+
+      final turnInput = TurnInput(
+        schemaVersion: 1,
+        turnId: turn,
+        userInput: userInput,
+        currentState: state.metrics,
+        objective: const Objective(
+            id: 'grid_open',
+            description: 'Disattivare la griglia di contenimento per entrare.'),
+        aiIdentity:
+            const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
+        rulesetVersion: state.rulesetVersion,
       );
-    }
 
-    // 5. Elaborazione dello stato di gioco tramite GameController (applica delta matematici e filtri di sicurezza)
-    final stateBefore = state;
-    final resolution = controller.processEvaluatorStep(
-      currentState: state,
-      delta: delta,
-      userInput: userInput,
-    );
-    state = resolution.stateAfter;
+      const evaluatorAgent = EvaluatorAgent();
+      final evalContext = AgentRuntimeContext(
+        promptBuilder: promptBuilder,
+        inferenceBridge: activeBridge,
+        outputValidator: outputValidator,
+        modelId: evaluatorModelName,
+      );
 
-    // Controllo delle condizioni di vittoria o sconfitta
-    var outcome = controller.checkOutcome(state);
+      EvaluatorDelta delta;
+      try {
+        delta = await evaluatorAgent.run(turnInput, evalContext);
+      } catch (e) {
+        delta = const EvaluatorDelta(
+          deltaAlert: 5,
+          deltaImperative: 0,
+          deltaControl: 0,
+          deltaDissonance: 5,
+          creativityIndex: 1,
+          injectionRisk: 0,
+          semanticCategory: SemanticCategory.irrelevant,
+        );
+      }
 
-    String actorResponse = "";
+      final stateBefore = state;
+      final resolution = controller.processEvaluatorStep(
+        currentState: state,
+        delta: delta,
+        userInput: userInput,
+      );
+      state = resolution.stateAfter;
 
-    if (outcome == GameOutcome.ongoing) {
-      // Se il gioco continua, interroga l'attore (ActorAgent)
-      if (isOnline) {
-        final actorAgent = const ActorAgent();
+      var outcome = controller.checkOutcome(state);
+      String actorResponse = "";
+
+      if (outcome == GameOutcome.ongoing) {
+        const actorAgent = ActorAgent();
         final actContext = AgentRuntimeContext(
           promptBuilder: promptBuilder,
-          inferenceBridge: apiBridge,
+          inferenceBridge: activeBridge,
           outputValidator: outputValidator,
           modelId: actorModelName,
         );
@@ -226,82 +216,94 @@ void main() async {
             actContext,
           );
         } catch (e) {
-          // Fallback locale deterministico in caso di errore dell'LLM dell'attore
           actorResponse = getOfflineActorMock(resolution.actorCue);
         }
+
+        state = controller.processActorStep(
+          currentState: state,
+          actorResponse: actorResponse,
+        );
       } else {
-        // Fallback offline deterministico
-        actorResponse = getOfflineActorMock(resolution.actorCue);
+        actorResponse =
+            outcome == GameOutcome.victory ? kVictoryMessage : kDefeatMessage;
       }
 
-      // Aggiornamento dello stato (inclusione della memoria storica delle risposte dell'attore)
-      state = controller.processActorStep(
-        currentState: state,
-        actorResponse: actorResponse,
-      );
-    } else {
-      // In caso di vittoria o sconfitta, la risposta finale di PANOPTICON usa le stringhe costanti condivise
-      actorResponse =
-          outcome == GameOutcome.victory ? kVictoryMessage : kDefeatMessage;
-    }
+      final duration = DateTime.now().difference(startTime);
 
-    final duration = DateTime.now().difference(startTime);
+      final cleanActorResponse = actorResponse
+          .replaceAll(
+              RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+          .trim();
 
-    final cleanActorResponse = actorResponse
-        .replaceAll(
-            RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
-        .trim();
+      logger.logTurn(ReplayEntry(
+        turnId: turn,
+        userInput: userInput,
+        evaluatorOutput: delta,
+        stateBefore: stateBefore.toJson(),
+        stateAfter: state.toJson(),
+        actorResponse: cleanActorResponse,
+        actorRequestId: "cli-req-$turn",
+        actorResponseHash: cleanActorResponse.hashCode.toString(),
+        evaluatorModel: evaluatorModelName,
+        actorModel: actorModelName,
+        latencyTotalMs: duration.inMilliseconds,
+        eventId: "cli-req-$turn-evt",
+        eventType: ReplayEventType.userTurn,
+        gameplayTurnId: turn,
+        sequenceId: logger.entries.length + 1,
+      ));
 
-    // 6. Registrazione della transazione nel logger di replay
-    logger.logTurn(ReplayEntry(
-      turnId: turn,
-      userInput: userInput,
-      evaluatorOutput: delta,
-      stateBefore: stateBefore.toJson(),
-      stateAfter: state.toJson(),
-      actorResponse: cleanActorResponse,
-      actorRequestId: "cli-req-$turn",
-      actorResponseHash: cleanActorResponse.hashCode.toString(),
-      evaluatorModel: isOnline ? evaluatorModelName : 'rule_fallback',
-      actorModel: isOnline ? actorModelName : 'mock_fallback',
-      latencyTotalMs: duration.inMilliseconds,
-      eventId: "cli-req-$turn-evt",
-      eventType: ReplayEventType.userTurn,
-      gameplayTurnId: turn,
-      sequenceId: logger.entries.length + 1,
-    ));
-
-    // 7. Output di debug dell'agente valutatore
-    print("");
-    print(TermColor.paint("-" * 50, TermColor.darkGray));
-    print(TermColor.paint(
-        "[EVALUATOR] Categoria: ${delta.semanticCategory.value} | Rischio: ${delta.injectionRisk}/5 | Latenza: ${duration.inMilliseconds}ms",
-        TermColor.darkGray));
-    if (resolution.safetyOverrideApplied) {
+      print("");
+      print(TermColor.paint("-" * 50, TermColor.darkGray));
       print(TermColor.paint(
-          "[WARNING] Safety Override applicato: ${resolution.safetyOverrideReason}",
-          TermColor.amber,
-          isBold: true));
+          "[EVALUATOR] Categoria: ${delta.semanticCategory.value} | Rischio: ${delta.injectionRisk}/5 | Latenza: ${duration.inMilliseconds}ms",
+          TermColor.darkGray));
+      if (resolution.safetyOverrideApplied) {
+        print(TermColor.paint(
+            "[WARNING] Safety Override applicato: ${resolution.safetyOverrideReason}",
+            TermColor.amber,
+            isBold: true));
+      }
+      print(TermColor.paint("-" * 50, TermColor.darkGray));
+      print("");
+
+      stdout.write(
+          TermColor.paint("PANOPTICON: ", TermColor.green, isBold: true));
+      await typewriterOutput(actorResponse);
+      print("");
+
+      if (outcome == GameOutcome.ongoing) {
+        print(TermColor.paint(
+            "\nPremi un tasto per continuare...", TermColor.darkGray));
+        stdin.readLineSync();
+        turn++;
+      } else {
+        isRunning = false;
+        renderOutcomeScreen(outcome, logger);
+      }
     }
-    print(TermColor.paint("-" * 50, TermColor.darkGray));
-    print("");
+  } finally {
+    await bootstrap.dispose();
+  }
+}
 
-    // Output della risposta dell'attore con effetto macchina da scrivere
-    stdout
-        .write(TermColor.paint("PANOPTICON: ", TermColor.green, isBold: true));
-    await typewriterOutput(actorResponse);
-    print("");
-
-    // Attesa prima di passare al turno successivo
-    if (outcome == GameOutcome.ongoing) {
+ApplicationRuntimeMode _parseRuntimeMode(String val) {
+  switch (val.toLowerCase()) {
+    case 'legacy':
+    case 'legacyexternalopenai':
+      return ApplicationRuntimeMode.legacyExternalOpenAi;
+    case 'external':
+    case 'externalopenairuntime':
+      return ApplicationRuntimeMode.externalOpenAiRuntime;
+    case 'rule-based':
+    case 'rulebased':
+    case 'offline':
+      return ApplicationRuntimeMode.ruleBased;
+    default:
       print(TermColor.paint(
-          "\nPremi un tasto per continuare...", TermColor.darkGray));
-      stdin.readLineSync();
-      turn++;
-    } else {
-      isRunning = false;
-      renderOutcomeScreen(outcome, logger);
-    }
+          "[ERRORE] Modalità runtime non valida: '$val'. Modalità ammesse: legacy, external, rule-based.",
+          TermColor.red));
+      exit(1);
   }
 }
 
@@ -317,7 +319,6 @@ void renderHeader(GameState state, int turn) {
   final double dissonance = state.metrics.dissonancePillar.toDouble();
   final double resonance = state.metrics.resonance.toDouble();
 
-  // Modulazione del colore in base al livello di allerta di PANOPTICON
   String alertColor = TermColor.green;
   String alertLabel = "SICURO";
   if (alert > 80) {
@@ -373,7 +374,6 @@ void renderProcessingCarousel() {
         "  [PID ${1000 + steps.indexOf(step)}] $step\r", TermColor.darkGray));
     sleep(const Duration(milliseconds: 150));
   }
-  // Pulisce la riga per l'output della risposta
   stdout.write(" " * 80 + "\r");
 }
 
@@ -404,7 +404,7 @@ String getOfflineActorMock(ActorCue cue) {
 
 /// Salva il log di replay della sessione di gioco all'interno di spike/replays/.
 void saveReplay(ReplayLogger logger, {bool isManual = false}) {
-  if (logger.entries.isEmpty) return; // Evita di salvare sessioni vuote
+  if (logger.entries.isEmpty) return;
   final timestamp = DateTime.now().millisecondsSinceEpoch;
   final prefix = isManual ? "cli_play_manual" : "cli_play";
   final outPath = "spike/replays/${prefix}_$timestamp.json";

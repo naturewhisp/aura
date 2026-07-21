@@ -1,0 +1,122 @@
+import 'package:meta/meta.dart';
+import '../domain/provisioning_options.dart';
+
+/// Centralizza il calcolo e la sanitizzazione dei path applicativi Windows per il provisioning.
+@immutable
+final class ProvisioningPathResolver {
+  final String appManagedRoot;
+  final String bundledRoot;
+
+  static final RegExp _invalidCharsRegex = RegExp(r'[<>:"|?*\x00-\x1F]');
+  static final RegExp _reservedWindowsNamesRegex = RegExp(
+    r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$',
+    caseSensitive: false,
+  );
+
+  const ProvisioningPathResolver({
+    this.appManagedRoot = r'C:\Users\Default\AppData\Local\AURA',
+    this.bundledRoot = r'C:\Program Files\AURA',
+  });
+
+  /// Path del file `installation_record.json`.
+  String get installationRecordPath =>
+      _join(appManagedRoot, 'installation_record.json');
+
+  /// Path del file `active_state.json`.
+  String get activeStatePath => _join(appManagedRoot, 'active_state.json');
+
+  /// Path della directory dei runtime app-managed.
+  String get runtimesDirectory => _join(appManagedRoot, 'runtimes');
+
+  /// Path della directory dei modelli app-managed.
+  String get modelsDirectory => _join(appManagedRoot, 'models');
+
+  /// Path della directory di staging temporaneo.
+  String get stagingDirectory => _join(appManagedRoot, 'staging');
+
+  /// Path della directory di cache HTTP/download.
+  String get cacheDirectory => _join(appManagedRoot, 'cache');
+
+  /// Path della directory dei log.
+  String get logsDirectory => _join(appManagedRoot, 'logs');
+
+  /// Path della directory del runtime bundled under Program Files.
+  String get bundledRuntimeDirectory => _join(bundledRoot, 'bundled_runtime');
+
+  /// Calcola il path di installazione relativo per un artefatto.
+  String resolveRelativeInstallPath({
+    required String artifactType,
+    required String artifactId,
+    required String buildOrVersionId,
+  }) {
+    final cleanType = sanitizeSegment(artifactType);
+    final cleanId = sanitizeSegment(artifactId);
+    final cleanVersion = sanitizeSegment(buildOrVersionId);
+
+    final folder = cleanType == 'runtime' ? 'runtimes' : 'models';
+    return '$folder/$cleanId/$cleanVersion';
+  }
+
+  /// Calcola il path assoluto di installazione finale sotto la root app-managed.
+  String resolveAbsoluteInstallPath({
+    required String artifactType,
+    required String artifactId,
+    required String buildOrVersionId,
+  }) {
+    final relative = resolveRelativeInstallPath(
+      artifactType: artifactType,
+      artifactId: artifactId,
+      buildOrVersionId: buildOrVersionId,
+    );
+    return _join(appManagedRoot, relative.replaceAll('/', '\\'));
+  }
+
+  /// Calcola il path assoluto della directory di staging per un'operazione.
+  String resolveStagingDirectory(String operationId) {
+    final cleanOpId = sanitizeSegment(operationId);
+    return _join(stagingDirectory, cleanOpId);
+  }
+
+  /// Sanitizza un singolo segmento di path (id, nome directory o file).
+  static String sanitizeSegment(String segment) {
+    var clean = segment.trim().replaceAll('\\', '/');
+
+    if (clean.contains('..') || clean.startsWith('/') || clean.contains(':')) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Tentativo di path traversal o segmento non valido: "$segment".',
+      );
+    }
+
+    clean = clean.replaceAll(_invalidCharsRegex, '_');
+
+    if (_reservedWindowsNamesRegex.hasMatch(clean)) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Utilizzo di un nome dispositivo riservato Windows: "$segment".',
+      );
+    }
+
+    if (clean.isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Segmento di path vuoto dopo la sanitizzazione.',
+      );
+    }
+
+    return clean;
+  }
+
+  /// Helper interno per unire due componenti di path in stile Windows.
+  static String _join(String part1, String part2) {
+    final p1 = part1.endsWith(r'\') || part1.endsWith('/')
+        ? part1.substring(0, part1.length - 1)
+        : part1;
+    final p2 = part2.startsWith(r'\') || part2.startsWith('/')
+        ? part2.substring(1)
+        : part2;
+    return '$p1\\$p2';
+  }
+}

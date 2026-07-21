@@ -82,3 +82,10 @@ export 'src/bootstrap/application_bootstrap_request.dart';
 export 'src/bootstrap/application_bootstrap_result.dart';
 export 'src/bootstrap/application_bootstrap.dart';
 export 'src/bootstrap/application_bootstrap_failure.dart';
+
+// Provisioning Domain & Manifest Contracts (Phase 6.3a)
+export 'src/provisioning/domain/catalog_manifest.dart';
+export 'src/provisioning/domain/provisioning_options.dart';
+export 'src/provisioning/validation/catalog_manifest_parser.dart';
+export 'src/provisioning/validation/catalog_manifest_validator.dart';
+export 'src/provisioning/infrastructure/provisioning_path_resolver.dart';

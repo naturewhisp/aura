@@ -612,8 +612,50 @@ Componenti e contratti implementati:
 4. **Automation & CI**
    - Script `tool/run_ci_tests.ps1` per l'esecuzione sequenziale e deterministica delle verifiche di formattazione (`dart format`), analisi statica (`dart analyze`, `flutter analyze`) e test unitari/contratto (`dart test`, `flutter test`) per i moduli `aura` ed `app`.
 
+### 11.2 Fase 6.1b — Estrazione delle Policy di Post-Processing (Code Hygiene)
+
+Stato: **completata**.
+
+Componenti implementati:
+
+1. **Policy di Output Pure (`lib/src/agent_runtime/output/`)**
+   - `ActorOutputSanitizer`: orchestratore puro Dart per la pulizia, estrazione e sanificazione delle battute dell'Actor. Preserva la strategia di estrazione reale (es. `closedXmlTag`) anche in modalità fallback da `reasoningContent`.
+   - `ReasoningContentPolicy`: estrazione di tag `<thought>`/ragionamento interno ed intestazioni di ruolo.
+   - `CharacterSetGuard`: filtro CJK su intervalli Han (`0x4E00..0x9FFF` e `0x3400..0x4DBF`).
+   - `DuplicateResponseGuard`: prevenzione della duplicazione esatta o parziale delle battute storiche.
+   - `OutputPolicyFailure` & `OutputPolicyFailureCode`: eccezione tipizzata per fallimenti di policy narrative.
+
+2. **Refactoring di `LocalApiInferenceBridge`**
+   - Disaccoppiamento del trasporto HTTP dalle policy di post-processing narrative tramite delega ad `ActorOutputSanitizer`.
+
+### 11.3 Fase 6.1c — ExternalOpenAiRuntime & RuntimeInferenceBridge
+
+Stato: **completata**.
+
+Componenti implementati:
+
+1. **External OpenAI Adapter (`lib/src/agent_runtime/runtime/adapters/external_openai/`)**
+   - `ExternalOpenAiRuntime`: adattatore platform-neutral per backend OpenAI-compatible (LM Studio, llama-server, server dev). Implementa il ciclo di vita completo di `InferenceRuntime` (`initialize`, `loadModel`, `unloadModel`, `generateText`, `generateStructured`, `cancel`, `health`, `dispose`).
+   - `ExternalOpenAiConfiguration`: configurazione tipizzata ed immutabile (`baseUri`, `transportTimeout`, `staticHeaders`, `apiKey`, ecc.) senza dipendenze da AppData o Flutter.
+   - `ExternalOpenAiModelBinding`: associazione tra `logicalModelId` applicativo (es. `'aura.actor.primary'`) e `serverModelId` fisico del backend (es. `'qwen/qwen3.5-9b'`).
+   - `ExternalOpenAiClient`: interfaccia di trasporto astratta iniettabile (`HttpExternalOpenAiClient` con `package:http`, `FakeExternalOpenAiClient` per test offline deterministici).
+   - `ExternalOpenAiResponseParser`: parser puro per estrarre `content`, `reasoning_content`, `finish_reason` e token usage convertendo status HTTP ed errori JSON in `RuntimeException` tipizzate.
+
+2. **Runtime Inference Compatibility Bridge (`lib/src/agent_runtime/bridges/runtime_inference_bridge.dart`)**
+   - `RuntimeInferenceBridge`: bridge di compatibilità che adatta l'interfaccia legacy `InferenceBridge` al nuovo `InferenceRuntime`.
+   - Risoluzione da `modelId` legacy a `ModelRole` (`evaluator`, `actor`).
+   - Risoluzione di `ModelRole` verso `ModelHandle` caricati.
+   - Creazione ed ownership di `GenerationRequestId` e `RuntimeTraceId` tramite factory iniettabili.
+   - Gestione applicativa del timeout e coordinamento della cancellazione cooperativa (`runtime.cancel`).
+   - Applicazione di `ActorOutputSanitizer` **esclusivamente** alle generazioni di testo dell'Actor, lasciando inalterato l'output strutturato dell'Evaluator.
+
+3. **Integrazione API & Test Equivalenza**
+   - Passaggio completo della contract suite `runInferenceRuntimeContractTests` per `ExternalOpenAiRuntime`.
+   - Suite di test di equivalenza comportamentale (`legacy_runtime_equivalence_test.dart`) che dimostra perfetta corrispondenza di output e policy tra il vecchio ed il nuovo percorso di runtime.
+   - Preservazione al 100% dell'invarianza del composition root legacy (`LocalApiInferenceBridge`, `main.dart`, `bin/aura_cli.dart`, `bin/run_simulation.dart`).
+
 > [!NOTE]
-> Le sottofasi successive (`ExternalOpenAiRuntime` in 6.1b, `ManagedLlamaServerRuntime`, `ModelLifecycleManager`, hardware probe, installer e Android JNI/FFI) restano pianificate per le sottofasi da 6.1b in poi.
+> Le sottofasi successive (`ManagedLlamaServerRuntime`, `ModelLifecycleManager`, hardware probe, installer e Android JNI/FFI) restano pianificate per le sottofasi da 6.2a in poi.
 
 
 

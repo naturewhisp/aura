@@ -81,6 +81,8 @@ void main() {
         'model_router.dart',
         'agent_registry.dart',
         'message_envelope.dart',
+        'application_bootstrap_factory.dart',
+        'default_application_bootstrap.dart',
       ];
 
       for (final export in forbiddenExports) {
@@ -110,6 +112,8 @@ void main() {
       expect(content.contains('model_router.dart'), isTrue);
       expect(content.contains('actor_output_sanitizer.dart'), isTrue);
       expect(content.contains('output_policy_failure.dart'), isTrue);
+      expect(content.contains('application_bootstrap_factory.dart'), isTrue);
+      expect(content.contains('default_application_bootstrap.dart'), isTrue);
 
       // Should not export MockInferenceBridge or MockInferenceRuntime
       expect(content.contains('mock_inference_bridge.dart'), isFalse);

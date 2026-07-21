@@ -30,3 +30,7 @@ export 'src/agent_runtime/output/character_set_guard.dart';
 export 'src/agent_runtime/output/duplicate_response_guard.dart';
 export 'src/agent_runtime/output/output_policy_failure.dart';
 export 'src/agent_runtime/output/reasoning_content_policy.dart';
+
+// Application Composition Root Factory & Implementations (Phase 6.2a)
+export 'src/bootstrap/application_bootstrap_factory.dart';
+export 'src/bootstrap/default_application_bootstrap.dart';

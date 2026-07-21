@@ -583,16 +583,39 @@ Questi log strutturati facilitano la conversione diretta in formati come ChatML 
 
 ---
 
-## 11. Fase 6 (Pianificata — Non Ancora Implementata)
+## 11. Fase 6 — Cross-Platform Edge Runtime Foundation
 
 *(Vedi specifica di Game Design ufficiale e sotto-fasi normative in [AURA_TGDD_v1_1_revised.md](AURA_TGDD_v1_1_revised.md#fase-6--cross-platform-edge-runtime-foundation) ed i contratti tecnici in [docs/phase6/](docs/phase6/))*
 
-La Fase 6 trasformerà A.U.R.A. da un'applicazione dipendente da un server LM Studio esterno a un sistema autonomo, multipiattaforma e dotato di un motore di inferenza locale gestito.
+La Fase 6 trasforma A.U.R.A. da un'applicazione dipendente da un server LM Studio esterno a un sistema autonomo, multipiattaforma e dotato di un motore di inferenza locale gestito.
 
-### 11.1 Allineamento Documentale della Roadmap
-Per evitare duplicazioni o divergenze di numerazione tra l'architettura corrente ed i documenti normativi:
-- La sequenza ufficiale delle sottofasi (dalle sottofasi `6.1a`–`6.2b` fino a `6.9`) è definita nel **TGDD** (`AURA_TGDD_v1_1_revised.md`) ed approfondita nei documenti specifici sotto `docs/phase6/`.
-- `ARCHITECTURE.md` descrive principalmente i componenti di sistema già implementati e funzionanti nel codebase.
-- Questo documento verrà aggiornato incrementalmente con le nuove classi ed interfacce al completamento di ciascuna sottofase implementata.
+### 11.1 Fase 6.1a — Runtime Contracts & Offline Test Boundary
+
+Stato: **completata**.
+
+Componenti e contratti implementati:
+
+1. **Inference Runtime Core Contracts (`lib/src/agent_runtime/runtime/`)**
+   - Interfaccia platform-neutral `InferenceRuntime` (`inference_runtime.dart`).
+   - Tipi dati fortemente tipizzati ed immutabili: `RuntimeState`, `RuntimeCapabilities`, `RuntimeHealth`, `RuntimeBackend`, `RuntimeBackendPreference`, `ModelRole`, `ModelHandle`, `RuntimeFailure`, `RuntimeFailureCode`, `RuntimeRecoveryAction`, `RuntimeException`, `RuntimeWarning`.
+   - Modelli di richiesta e risultato: `RuntimeInitializationRequest`, `ModelLoadRequest`, `TextGenerationRequest`, `StructuredGenerationRequest`, `TextGenerationResult`, `StructuredGenerationResult`.
+   - Identificatori tipizzati: `GenerationRequestId`, `RuntimeTraceId`, `RuntimeInstanceId`, `ModelHandleId`, `ModelLoadRequestId`, `RuntimeAdapterId`.
+   - Gerarchia di eventi sigillati: `sealed class RuntimeEvent`.
+
+2. **Mock & Rule-Based Runtime Adapters**
+   - `MockInferenceRuntime` (`testing/mock_inference_runtime.dart`): mock completo per test unitari e di contratto. Supporta simulazione di latenza, risposte e fallimenti configurabili, invalidazione degli handle e tracciamento delle chiamate. Esportato unicamente via `aura_testing.dart`.
+   - `RuleBasedInferenceRuntime` (`adapters/rule_based_inference_runtime.dart`): adattatore offline deterministico per l'integrazione di `RuleBasedEvaluatorBridge` nel nuovo contratto di inferenza.
+
+3. **Contract Test Harness & Integration Isolation**
+   - Harness di test condiviso `runInferenceRuntimeContractTests(...)` (`testing/runtime_contract_test_harness.dart`).
+   - Spostamento del test live verso LM Studio in `integration_test/runtime/live_lm_studio_test.dart` (taggato `@Tags(['network', 'real-model'])`).
+   - Protocol test offline con server HTTP loopback controllato dal ciclo di vita del test (`test/agent_runtime/fake_http_bridge_test.dart`).
+
+4. **Automation & CI**
+   - Script `tool/run_ci_tests.ps1` per l'esecuzione sequenziale e deterministica delle verifiche di formattazione, analisi statica e test per i moduli `aura` ed `app`.
+
+> [!NOTE]
+> Le sottofasi successive (`ManagedLlamaServerRuntime`, `ModelLifecycleManager`, hardware probe, installer e Android JNI/FFI) restano pianificate per le sottofasi da 6.1b in poi.
+
 
 

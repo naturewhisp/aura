@@ -86,6 +86,7 @@ export 'src/bootstrap/application_bootstrap_failure.dart';
 // Provisioning Domain & Infrastructure Contracts (Phase 6.3a & 6.3b)
 export 'src/provisioning/domain/catalog_manifest.dart';
 export 'src/provisioning/domain/provisioning_options.dart';
+export 'src/provisioning/domain/provisioning_cancellation_token.dart';
 export 'src/provisioning/domain/json_safe_value.dart';
 export 'src/provisioning/domain/provisioning_clock.dart';
 export 'src/provisioning/domain/installation_record.dart';

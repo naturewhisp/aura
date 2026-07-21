@@ -14,7 +14,8 @@ void main() {
       verifier = const DefaultSha256Verifier();
     });
 
-    test('Calcola correttamente l hash SHA-256 di un file testuale', () async {
+    test('Calcola correttamente l hash SHA-256 di un file in streaming',
+        () async {
       const content = 'hello aura provisioning engine';
       const path = r'C:\AppManaged\Aura\test.txt';
       fileSystem.files[path] = content;
@@ -27,7 +28,7 @@ void main() {
     });
 
     test(
-        'verifySha256 lancia ProvisioningException con hashMismatch se l hash non corrisponde',
+        'verifySha256 lancia ProvisioningException sanitizzata se l hash non corrisponde',
         () async {
       const path = r'C:\AppManaged\Aura\test.txt';
       fileSystem.files[path] = 'hello world';
@@ -38,11 +39,17 @@ void main() {
           expectedSha256: '0' * 64,
           fileSystem: fileSystem,
         ),
-        throwsA(isA<ProvisioningException>().having(
-          (e) => e.reason,
-          'reason',
-          equals(ProvisioningFailureReason.hashMismatch),
-        )),
+        throwsA(isA<ProvisioningException>()
+            .having(
+              (e) => e.reason,
+              'reason',
+              equals(ProvisioningFailureReason.hashMismatch),
+            )
+            .having(
+              (e) => e.message,
+              'message',
+              equals('Checksum SHA-256 dell\'artefatto non corrispondente.'),
+            )),
       );
     });
   });

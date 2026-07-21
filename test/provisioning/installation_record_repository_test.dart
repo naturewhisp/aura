@@ -79,6 +79,80 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
   }
 
   @override
+  Stream<List<int>> openRead(String path) {
+    if (!files.containsKey(path)) {
+      throw const ProvisioningIoException(operation: 'openRead');
+    }
+    return Stream.value(utf8.encode(files[path]!));
+  }
+
+  @override
+  Future<int> getFileSize(String path) async {
+    if (!files.containsKey(path)) {
+      throw const ProvisioningIoException(operation: 'getFileSize');
+    }
+    return utf8.encode(files[path]!).length;
+  }
+
+  @override
+  Future<List<String>> listDirectory(String path) async {
+    final prefix = path.endsWith(r'\') ? path : '$path\\';
+    final result = <String>[];
+    for (final key in files.keys) {
+      if (key.startsWith(prefix)) {
+        final sub = key.substring(prefix.length);
+        final firstSeg = sub.split(r'\').first;
+        if (!result.contains(firstSeg)) result.add(firstSeg);
+      }
+    }
+    for (final dir in directories) {
+      if (dir.startsWith(prefix)) {
+        final sub = dir.substring(prefix.length);
+        final firstSeg = sub.split(r'\').first;
+        if (!result.contains(firstSeg)) result.add(firstSeg);
+      }
+    }
+    return result;
+  }
+
+  @override
+  Future<void> deleteDirectory(String path) async {
+    directories.remove(path);
+    final prefix = path.endsWith(r'\') ? path : '$path\\';
+    files.removeWhere((k, v) => k.startsWith(prefix));
+    directories.removeWhere((d) => d.startsWith(prefix));
+  }
+
+  @override
+  Future<bool> deleteDirectoryBestEffort(String path) async {
+    await deleteDirectory(path);
+    return true;
+  }
+
+  @override
+  Future<void> copyDirectory(String sourcePath, String targetPath) async {
+    final prefix = sourcePath.endsWith(r'\') ? sourcePath : '$sourcePath\\';
+    final targetPrefix =
+        targetPath.endsWith(r'\') ? targetPath : '$targetPath\\';
+    directories.add(targetPath);
+
+    final toAddFiles = <String, String>{};
+    files.forEach((k, v) {
+      if (k.startsWith(prefix)) {
+        final rel = k.substring(prefix.length);
+        toAddFiles['$targetPrefix$rel'] = v;
+      }
+    });
+    files.addAll(toAddFiles);
+  }
+
+  @override
+  Future<void> moveDirectory(String sourcePath, String targetPath) async {
+    await copyDirectory(sourcePath, targetPath);
+    await deleteDirectoryBestEffort(sourcePath);
+  }
+
+  @override
   Future<void> createDirectory(String path) async {
     directories.add(path);
   }

@@ -10,7 +10,9 @@ void main() {
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('aura_installer_test_');
-      installer = const AtomicArtifactInstaller();
+      installer = const AtomicArtifactInstaller(
+        fileSystem: LocalProvisioningFileSystem(),
+      );
 
       sampleArtifact = CatalogArtifact(
         artifactId: 'llama-server-b3500',
@@ -20,7 +22,7 @@ void main() {
         buildId: 'b3500',
         platform: 'windows',
         architecture: 'x64',
-        fileName: 'llama-server-b3500.zip',
+        fileName: 'llama-server.exe',
         license: 'MIT',
         sizeBytes: 1024,
         sha256: 'a' * 64,
@@ -35,7 +37,8 @@ void main() {
       }
     });
 
-    test('Installa correttamente l artefatto da staging a target final',
+    test(
+        'Installa correttamente l artefatto da staging a target final usando una directory intermedia isolata',
         () async {
       final stagingDir = Directory('${tempDir.path}\\staging\\extracted');
       await stagingDir.create(recursive: true);
@@ -49,6 +52,7 @@ void main() {
         stagingSourcePath: stagingDir.path,
         targetInstallPath: targetDir,
         conflictPolicy: ProvisioningConflictPolicy.fail,
+        operationId: 'op-install-1',
       );
 
       expect(res.installed, isTrue);
@@ -58,26 +62,57 @@ void main() {
     });
 
     test(
-        'Gestisce il conflitto con returnAlreadyInstalled se la directory esiste già',
+        'Verifica l installazione esistente ed accetta gia installato se integra',
         () async {
       final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
       await Directory(targetDir).create(recursive: true);
+      await File('$targetDir\\llama-server.exe')
+          .writeAsString('existing content');
 
       final res = await installer.installArtifact(
         artifact: sampleArtifact,
         stagingSourcePath: '${tempDir.path}\\staging\\extracted',
         targetInstallPath: targetDir,
         conflictPolicy: ProvisioningConflictPolicy.returnAlreadyInstalled,
+        operationId: 'op-install-2',
       );
 
       expect(res.installed, isFalse);
       expect(res.alreadyInstalled, isTrue);
     });
 
+    test(
+        'Sostituisce una directory di destinazione vuota o corrotta anche se returnAlreadyInstalled',
+        () async {
+      final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
+      await Directory(targetDir)
+          .create(recursive: true); // directory vuota (corrotta)
+
+      final stagingDir = Directory('${tempDir.path}\\staging\\extracted');
+      await stagingDir.create(recursive: true);
+      await File('${stagingDir.path}\\llama-server.exe')
+          .writeAsString('fresh content');
+
+      final res = await installer.installArtifact(
+        artifact: sampleArtifact,
+        stagingSourcePath: stagingDir.path,
+        targetInstallPath: targetDir,
+        conflictPolicy: ProvisioningConflictPolicy.returnAlreadyInstalled,
+        operationId: 'op-install-3',
+      );
+
+      expect(res.installed, isTrue);
+      expect(res.alreadyInstalled, isFalse);
+      expect(await File('$targetDir\\llama-server.exe').readAsString(),
+          equals('fresh content'));
+    });
+
     test('Lancia ProvisioningException in caso di conflitto con policy fail',
         () async {
       final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
       await Directory(targetDir).create(recursive: true);
+      await File('$targetDir\\llama-server.exe')
+          .writeAsString('existing content');
 
       expect(
         () => installer.installArtifact(
@@ -85,6 +120,7 @@ void main() {
           stagingSourcePath: '${tempDir.path}\\staging\\extracted',
           targetInstallPath: targetDir,
           conflictPolicy: ProvisioningConflictPolicy.fail,
+          operationId: 'op-install-4',
         ),
         throwsA(isA<ProvisioningException>().having(
           (e) => e.reason,

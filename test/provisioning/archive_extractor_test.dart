@@ -33,6 +33,7 @@ void main() {
       final bytesExtracted = await extractor.extractZipArchive(
         archiveFilePath: zipFile.path,
         targetDirectoryPath: targetDir,
+        maxExpectedBytes: 100,
       );
 
       expect(bytesExtracted, equals(24));
@@ -56,6 +57,7 @@ void main() {
         () => extractor.extractZipArchive(
           archiveFilePath: zipFile.path,
           targetDirectoryPath: targetDir,
+          maxExpectedBytes: 100,
         ),
         throwsA(isA<ProvisioningException>().having(
           (e) => e.reason,
@@ -80,11 +82,40 @@ void main() {
         () => extractor.extractZipArchive(
           archiveFilePath: zipFile.path,
           targetDirectoryPath: targetDir,
+          maxExpectedBytes: 100,
         ),
         throwsA(isA<ProvisioningException>().having(
           (e) => e.reason,
           'reason',
           equals(ProvisioningFailureReason.unsafeArchiveEntry),
+        )),
+      );
+    });
+
+    test(
+        'Rileva e blocca Zip Bomb (superamento dimensione estratta consentita)',
+        () async {
+      final zipFile = File('${tempDir.path}\\zip_bomb.zip');
+      final targetDir = '${tempDir.path}\\extracted';
+
+      final hugeContent = List<int>.filled(2 * 1024 * 1024, 65); // 2 MB
+      final archive = Archive()
+        ..addFile(ArchiveFile('bomb.bin', hugeContent.length, hugeContent));
+
+      final zipData = ZipEncoder().encode(archive)!;
+      await zipFile.writeAsBytes(zipData);
+
+      expect(
+        () => extractor.extractZipArchive(
+          archiveFilePath: zipFile.path,
+          targetDirectoryPath: targetDir,
+          maxExpectedBytes:
+              100, // Limite max piccolo -> 500 MB max ma 2 MB supera il rapporto di compressione o limite custom
+        ),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.sizeLimitExceeded),
         )),
       );
     });

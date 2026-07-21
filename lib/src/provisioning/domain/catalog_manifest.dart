@@ -470,6 +470,14 @@ final class CatalogManifest {
     }
   }
 
+  CatalogArtifact? findArtifact(String artifactId) {
+    final cleanId = artifactId.trim();
+    for (final a in artifacts) {
+      if (a.artifactId == cleanId) return a;
+    }
+    return null;
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'schemaVersion': schemaVersion,

@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'provisioning_io_exception.dart';
 
-/// Abilitatore astratto di I/O filesystem per isolamento architetturale e testabilità.
+/// Abilitatore astratto di I/O filesystem per isolamento architetturale completo e testabilità.
 abstract class ProvisioningFileSystem {
   /// Ritorna true se il file esiste al percorso specificato.
   Future<bool> fileExists(String path);
@@ -15,7 +16,22 @@ abstract class ProvisioningFileSystem {
   /// Legge i byte grezzi di un file.
   Future<List<int>> readAsBytes(String path);
 
+  /// Apre uno stream di lettura a chunk per il file specificato (streaming I/O).
+  Stream<List<int>> openRead(String path);
+
+  /// Ritorna la dimensione in byte di un file.
+  Future<int> getFileSize(String path);
+
+  /// Ritorna l'elenco dei nomi di elementi figli in una directory.
+  Future<List<String>> listDirectory(String path);
+
   /// Scrive il contenuto in modo sicuro garantendo il ripristino da backup (temp file -> backup -> sostituzione).
+  ///
+  /// Nota Semantica su Windows:
+  /// Su Windows, la sostituzione di un file esistente richiede la cancellazione del target prima di eseguire `rename()`.
+  /// Questo metodo implementa una **scrittura recuperabile (recoverable write)** protetta dal file `.bak`, non un'operazione
+  /// atomica a singola istruzione nativa POSIX. In caso di crash tra la cancellazione del target e il rename del temp,
+  /// il file di backup `.bak` rimane integro garantendo il recupero completo al successivo avvio.
   Future<void> writeStringRecoverably(
     String path,
     String content, {
@@ -31,8 +47,20 @@ abstract class ProvisioningFileSystem {
   /// Tenta l'eliminazione del file senza lanciare eccezioni. Ritorna true se eliminato.
   Future<bool> deleteFileBestEffort(String path);
 
+  /// Elimina rigorosamente una directory e il suo contenuto.
+  Future<void> deleteDirectory(String path);
+
+  /// Tenta l'eliminazione ricorsiva di una directory senza lanciare eccezioni.
+  Future<bool> deleteDirectoryBestEffort(String path);
+
   /// Copia un file da sorgente a destinazione.
   Future<void> copyFile(String sourcePath, String targetPath);
+
+  /// Copia ricorsivamente una directory da sorgente a destinazione.
+  Future<void> copyDirectory(String sourcePath, String targetPath);
+
+  /// Sposta una directory da sorgente a destinazione con fallback a copia ricorsiva.
+  Future<void> moveDirectory(String sourcePath, String targetPath);
 
   /// Crea una directory e le sue parent.
   Future<void> createDirectory(String path);
@@ -67,6 +95,41 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       return await File(path).readAsBytes();
     } catch (_) {
       throw const ProvisioningIoException(operation: 'readAsBytes');
+    }
+  }
+
+  @override
+  Stream<List<int>> openRead(String path) {
+    try {
+      return File(path).openRead();
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'openRead');
+    }
+  }
+
+  @override
+  Future<int> getFileSize(String path) async {
+    try {
+      final file = File(path);
+      return await file.length();
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'getFileSize');
+    }
+  }
+
+  @override
+  Future<List<String>> listDirectory(String path) async {
+    try {
+      final dir = Directory(path);
+      if (!await dir.exists()) return const [];
+      final result = <String>[];
+      await for (final entity in dir.list(recursive: false)) {
+        final name = entity.path.substring(dir.path.length + 1);
+        result.add(name);
+      }
+      return result;
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'listDirectory');
     }
   }
 
@@ -109,6 +172,32 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
   }
 
   @override
+  Future<void> deleteDirectory(String path) async {
+    try {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+      }
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'deleteDirectory');
+    }
+  }
+
+  @override
+  Future<bool> deleteDirectoryBestEffort(String path) async {
+    try {
+      final dir = Directory(path);
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
   Future<void> copyFile(String sourcePath, String targetPath) async {
     try {
       final source = File(sourcePath);
@@ -117,6 +206,48 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       await source.copy(target.path);
     } catch (_) {
       throw const ProvisioningIoException(operation: 'copyFile');
+    }
+  }
+
+  @override
+  Future<void> copyDirectory(String sourcePath, String targetPath) async {
+    try {
+      final sourceDir = Directory(sourcePath);
+      final targetDir = Directory(targetPath);
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+      }
+      await for (final entity in sourceDir.list(recursive: false)) {
+        final relativeName = entity.path.substring(sourceDir.path.length + 1);
+        final destPath = '${targetDir.path}\\$relativeName';
+
+        if (entity is Directory) {
+          await copyDirectory(entity.path, destPath);
+        } else if (entity is File) {
+          await entity.copy(destPath);
+        }
+      }
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'copyDirectory');
+    }
+  }
+
+  @override
+  Future<void> moveDirectory(String sourcePath, String targetPath) async {
+    try {
+      final sourceDir = Directory(sourcePath);
+      final targetDir = Directory(targetPath);
+
+      await targetDir.parent.create(recursive: true);
+
+      try {
+        await sourceDir.rename(targetDir.path);
+      } catch (_) {
+        await copyDirectory(sourcePath, targetPath);
+        await deleteDirectoryBestEffort(sourcePath);
+      }
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'moveDirectory');
     }
   }
 
@@ -141,7 +272,6 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
         preserveExistingBackup: true,
       );
 
-      // Verifica di integrità post-ripristino
       final verifiedContent = await File(targetPath).readAsString();
       if (verifiedContent.trim().isEmpty) {
         throw const ProvisioningIoException(

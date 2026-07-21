@@ -1,5 +1,5 @@
-import 'dart:io';
 import '../domain/catalog_manifest.dart';
+import '../domain/provisioning_cancellation_token.dart';
 import '../domain/provisioning_options.dart';
 import 'archive_extractor.dart';
 import 'atomic_artifact_installer.dart';
@@ -8,313 +8,247 @@ import 'provisioning_http_client.dart';
 import 'provisioning_path_resolver.dart';
 import 'sha256_verifier.dart';
 
-/// Engine responsabile dell'acquisizione, verifica SHA-256, decompressione ed installazione fisica degli artefatti.
+/// Motore di orchestrazione per l'ingestione, la verifica SHA-256, la decompressione e l'installazione fisica degli artefatti.
 final class ArtifactIngestionEngine {
   final ProvisioningPathResolver _pathResolver;
-  final ProvisioningFileSystem _fileSystem;
   final ProvisioningHttpClient _httpClient;
-  final ArchiveExtractor _archiveExtractor;
   final Sha256Verifier _sha256Verifier;
+  final ArchiveExtractor _archiveExtractor;
   final AtomicArtifactInstaller _installer;
+  final ProvisioningFileSystem _fileSystem;
 
   ArtifactIngestionEngine({
     required ProvisioningPathResolver pathResolver,
-    ProvisioningFileSystem fileSystem = const LocalProvisioningFileSystem(),
-    ProvisioningHttpClient? httpClient,
-    ArchiveExtractor archiveExtractor = const ZipArchiveExtractor(),
+    required ProvisioningHttpClient httpClient,
     Sha256Verifier sha256Verifier = const DefaultSha256Verifier(),
+    ArchiveExtractor archiveExtractor = const ZipArchiveExtractor(),
     AtomicArtifactInstaller? installer,
+    ProvisioningFileSystem fileSystem = const LocalProvisioningFileSystem(),
   })  : _pathResolver = pathResolver,
-        _fileSystem = fileSystem,
-        _httpClient = httpClient ?? HttpProvisioningHttpClient(),
-        _archiveExtractor = archiveExtractor,
+        _httpClient = httpClient,
         _sha256Verifier = sha256Verifier,
+        _archiveExtractor = archiveExtractor,
+        _fileSystem = fileSystem,
         _installer =
             installer ?? AtomicArtifactInstaller(fileSystem: fileSystem);
 
-  /// Esegue l'ingestione fisica completa di un artefatto da qualsiasi sorgente supportata.
+  /// Esegue l'ingestione completa di un artefatto da catalogo.
   Future<ProvisioningResult> ingestArtifact({
     required ProvisioningRequest request,
     required CatalogManifest manifest,
+    ProvisioningCancellationToken? cancellationToken,
   }) async {
-    CatalogArtifact? artifact;
-    for (final item in manifest.artifacts) {
-      if (item.artifactId == request.artifactId) {
-        artifact = item;
-        break;
-      }
-    }
-
-    final mappedSourceKind = _mapSourceKind(
-      artifact?.sourceKind ?? CatalogArtifactSourceKind.bundled,
-    );
-
+    // 1. Risoluzione dell'artefatto nel catalogo
+    final artifact = manifest.findArtifact(request.artifactId);
     if (artifact == null) {
       return ProvisioningResult.failure(
         operationId: request.operationId,
         artifactId: request.artifactId,
-        sourceKind: mappedSourceKind,
+        sourceKind: ProvisioningSourceKind.bundled,
         failureReason: ProvisioningFailureReason.artifactIdNotFound,
-        sanitizedMessage: 'Artefatto non trovato nel manifest di catalogo.',
+        sanitizedMessage: 'Artefatto non trovato nel catalogo.',
       );
     }
 
-    if (artifact.platform.trim().toLowerCase() !=
-        request.expectedPlatform.trim().toLowerCase()) {
-      return ProvisioningResult.failure(
-        operationId: request.operationId,
-        artifactId: request.artifactId,
-        sourceKind: mappedSourceKind,
-        failureReason: ProvisioningFailureReason.unsupportedPlatform,
-        sanitizedMessage: 'Piattaforma dell\'artefatto non supportata.',
-      );
-    }
-
-    if (artifact.architecture.trim().toLowerCase() !=
-        request.expectedArchitecture.trim().toLowerCase()) {
-      return ProvisioningResult.failure(
-        operationId: request.operationId,
-        artifactId: request.artifactId,
-        sourceKind: mappedSourceKind,
-        failureReason: ProvisioningFailureReason.unsupportedArchitecture,
-        sanitizedMessage: 'Architettura dell\'artefatto non supportata.',
-      );
-    }
-
+    final sourceKind = _mapSourceKind(artifact.sourceKind);
+    final targetInstallPath =
+        _pathResolver.resolveInstalledArtifactPath(artifact);
     final stagingPath =
         _pathResolver.resolveStagingDirectory(request.operationId);
-    bool rollbackPerformed = false;
+
+    bool physicalRollbackPerformed = false;
+    int bytesProcessed = 0;
 
     try {
+      cancellationToken?.throwIfCancelled();
+
+      // Isolamento staging: pulizia preventiva
+      await _fileSystem.deleteDirectoryBestEffort(stagingPath);
       await _fileSystem.createDirectory(stagingPath);
 
-      final rawIngestedFilePath = '$stagingPath\\artifact_ingested.tmp';
+      // 2. Acquisizione dell'artefatto in staging
+      final rawIngestedFilePath = '$stagingPath\\${artifact.fileName}';
 
-      // 1. Acquisizione da sorgente
       switch (artifact.sourceKind) {
         case CatalogArtifactSourceKind.remoteHttps:
           if (request.downloadPolicy ==
               ProvisioningDownloadPolicy.neverDownload) {
             return ProvisioningResult.failure(
               operationId: request.operationId,
-              artifactId: request.artifactId,
-              sourceKind: mappedSourceKind,
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
               failureReason: ProvisioningFailureReason.downloadNotAllowed,
               sanitizedMessage:
-                  'Policy di download vieta l\'acquisizione remota.',
+                  'Download remoto non consentito dalla policy applicativa.',
             );
           }
 
-          final consent = request.consent;
-          if (consent == null ||
-              !consent.isValidFor(
+          final downloadUri = artifact.downloadUri;
+          if (downloadUri == null || downloadUri.trim().isEmpty) {
+            return ProvisioningResult.failure(
+              operationId: request.operationId,
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
+              failureReason: ProvisioningFailureReason.invalidSourceUri,
+              sanitizedMessage:
+                  'URI remota di download vuota o mancante nel catalogo.',
+            );
+          }
+
+          if (request.consent == null ||
+              !request.consent!.isValidFor(
                 targetArtifactId: artifact.artifactId,
-                targetSourceUri: artifact.downloadUri ?? '',
+                targetSourceUri: downloadUri,
                 targetSizeBytes: artifact.sizeBytes,
                 targetOperationId: request.operationId,
               )) {
             return ProvisioningResult.failure(
               operationId: request.operationId,
-              artifactId: request.artifactId,
-              sourceKind: mappedSourceKind,
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
               failureReason: ProvisioningFailureReason.consentMissing,
               sanitizedMessage:
-                  'Consenso al download remoto mancante o non valido.',
+                  'Consenso esplicito al download mancante o non valido.',
             );
           }
 
-          await _httpClient.downloadFile(
-            uri: artifact.downloadUri!,
+          bytesProcessed = await _httpClient.downloadFile(
+            uri: downloadUri,
             targetPath: rawIngestedFilePath,
             expectedSizeBytes: artifact.sizeBytes,
+            cancellationToken: cancellationToken,
           );
-          break;
 
         case CatalogArtifactSourceKind.bundled:
-          final bundledPath =
+          final bundledFilePath =
               _pathResolver.resolveBundledArtifactPath(artifact);
-          if (!await _fileSystem.fileExists(bundledPath) &&
-              !await _fileSystem.directoryExists(bundledPath)) {
+          if (!await _fileSystem.fileExists(bundledFilePath)) {
             return ProvisioningResult.failure(
               operationId: request.operationId,
-              artifactId: request.artifactId,
-              sourceKind: mappedSourceKind,
-              failureReason: ProvisioningFailureReason.downloadFailed,
-              sanitizedMessage: 'Artefatto bundled introvabile nel sistema.',
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
+              failureReason: ProvisioningFailureReason.invalidSourceUri,
+              sanitizedMessage:
+                  'Artefatto bundled non trovato nel percorso pre-impacchettato.',
             );
           }
-
-          if (await _fileSystem.fileExists(bundledPath)) {
-            await _fileSystem.copyFile(bundledPath, rawIngestedFilePath);
-          } else {
-            // Se il bundled asset è una directory pre-estratta
-            await _copyDirectory(bundledPath, '$stagingPath\\extracted');
-          }
-          break;
+          await _fileSystem.copyFile(bundledFilePath, rawIngestedFilePath);
+          bytesProcessed = await _fileSystem.getFileSize(rawIngestedFilePath);
 
         case CatalogArtifactSourceKind.localImport:
-          final customPath = request.customSourcePath;
-          if (customPath == null || customPath.trim().isEmpty) {
+          final localPath = request.customSourcePath;
+          if (localPath == null || localPath.trim().isEmpty) {
             return ProvisioningResult.failure(
               operationId: request.operationId,
-              artifactId: request.artifactId,
-              sourceKind: mappedSourceKind,
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
               failureReason: ProvisioningFailureReason.invalidSourceUri,
-              sanitizedMessage: 'Percorso di importazione locale mancante.',
+              sanitizedMessage: 'Percorso sorgente locale custom mancante.',
             );
           }
-
-          if (!await _fileSystem.fileExists(customPath) &&
-              !await _fileSystem.directoryExists(customPath)) {
+          if (!await _fileSystem.fileExists(localPath)) {
             return ProvisioningResult.failure(
               operationId: request.operationId,
-              artifactId: request.artifactId,
-              sourceKind: mappedSourceKind,
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
               failureReason: ProvisioningFailureReason.invalidSourceUri,
-              sanitizedMessage: 'Sorgente di importazione locale introvabile.',
+              sanitizedMessage:
+                  'File di sorgente locale per l\'importazione non trovato.',
             );
           }
-
-          if (await _fileSystem.fileExists(customPath)) {
-            await _fileSystem.copyFile(customPath, rawIngestedFilePath);
-          } else {
-            await _copyDirectory(customPath, '$stagingPath\\extracted');
-          }
-          break;
+          await _fileSystem.copyFile(localPath, rawIngestedFilePath);
+          bytesProcessed = await _fileSystem.getFileSize(rawIngestedFilePath);
       }
 
-      // 2. Verifica di dimensione ed hash SHA-256 (se acquisito da file)
-      if (await _fileSystem.fileExists(rawIngestedFilePath)) {
-        await _sha256Verifier.verifySha256(
-          filePath: rawIngestedFilePath,
-          expectedSha256: artifact.sha256,
-          fileSystem: _fileSystem,
+      cancellationToken?.throwIfCancelled();
+
+      // 3. Verifica perentoria SHA-256 su file acquisito
+      await _sha256Verifier.verifySha256(
+        filePath: rawIngestedFilePath,
+        expectedSha256: artifact.sha256,
+        fileSystem: _fileSystem,
+      );
+
+      // 4. Decompressione o preparazione dello staging estratto
+      final isZip = artifact.compression == CatalogCompressionFormat.zip ||
+          rawIngestedFilePath.toLowerCase().endsWith('.zip');
+
+      final extractedDir = '$stagingPath\\extracted';
+      await _fileSystem.createDirectory(extractedDir);
+
+      String stagingSourceForInstall;
+
+      if (isZip) {
+        final extractedBytes = await _archiveExtractor.extractZipArchive(
+          archiveFilePath: rawIngestedFilePath,
+          targetDirectoryPath: extractedDir,
+          maxExpectedBytes: artifact.sizeBytes,
+          cancellationToken: cancellationToken,
         );
-
-        // 3. Estrazione o preparazione dello staging finale
-        final isZip = artifact.compression == CatalogCompressionFormat.zip ||
-            rawIngestedFilePath.toLowerCase().endsWith('.zip');
-
-        final extractedDir = '$stagingPath\\extracted';
-
-        if (isZip) {
-          await _archiveExtractor.extractZipArchive(
-            archiveFilePath: rawIngestedFilePath,
-            targetDirectoryPath: extractedDir,
-          );
-        } else {
-          // File singolo non compresso
-          final singleFileTargetDir = '$extractedDir\\${artifact.artifactId}';
-          await _fileSystem.copyFile(
-            rawIngestedFilePath,
-            '$singleFileTargetDir\\${_getFileNameFromPath(rawIngestedFilePath)}',
-          );
-        }
+        bytesProcessed = extractedBytes;
+        stagingSourceForInstall = extractedDir;
+      } else {
+        stagingSourceForInstall = rawIngestedFilePath;
       }
 
-      // 4. Spostamento atomico nella destinazione finale
-      final targetInstallPath =
-          _pathResolver.resolveInstalledArtifactPath(artifact);
-      final stagingSource = '$stagingPath\\extracted';
+      cancellationToken?.throwIfCancelled();
 
-      final installRes = await _installer.installArtifact(
+      // 5. Installazione fisica atomica tramite intermediate directory
+      final installResult = await _installer.installArtifact(
         artifact: artifact,
-        stagingSourcePath: stagingSource,
+        stagingSourcePath: stagingSourceForInstall,
         targetInstallPath: targetInstallPath,
         conflictPolicy: request.conflictPolicy,
+        operationId: request.operationId,
+        cancellationToken: cancellationToken,
       );
 
-      // Cleanup dello staging
-      await _cleanupStagingDirectory(stagingPath);
-
-      if (installRes.alreadyInstalled) {
-        return ProvisioningResult.success(
-          operationId: request.operationId,
-          artifactId: request.artifactId,
-          installationId: 'inst-${artifact.artifactId}-${artifact.version}',
-          sourceKind: mappedSourceKind,
-          bytesProcessed: artifact.sizeBytes,
-          alreadyInstalled: true,
-        );
-      }
-
-      return ProvisioningResult.success(
+      return ProvisioningResult(
         operationId: request.operationId,
-        artifactId: request.artifactId,
-        installationId: 'inst-${artifact.artifactId}-${artifact.version}',
-        sourceKind: mappedSourceKind,
-        bytesProcessed: artifact.sizeBytes,
-        alreadyInstalled: false,
+        artifactId: artifact.artifactId,
+        status: installResult.alreadyInstalled
+            ? ProvisioningStatus.alreadyInstalled
+            : ProvisioningStatus.success,
+        installed: installResult.installed,
+        alreadyInstalled: installResult.alreadyInstalled,
+        verified: true,
+        bytesProcessed: bytesProcessed,
+        sourceKind: sourceKind,
+        installationId: null,
       );
     } on ProvisioningException catch (e) {
-      rollbackPerformed = true;
-      await _cleanupStagingDirectory(stagingPath);
       return ProvisioningResult.failure(
         operationId: request.operationId,
-        artifactId: request.artifactId,
-        sourceKind: mappedSourceKind,
+        artifactId: artifact.artifactId,
+        sourceKind: sourceKind,
         failureReason: e.reason,
         sanitizedMessage: e.message,
-        rollbackPerformed: rollbackPerformed,
+        rollbackPerformed: physicalRollbackPerformed,
       );
     } catch (_) {
-      rollbackPerformed = true;
-      await _cleanupStagingDirectory(stagingPath);
       return ProvisioningResult.failure(
         operationId: request.operationId,
-        artifactId: request.artifactId,
-        sourceKind: mappedSourceKind,
-        failureReason: ProvisioningFailureReason.downloadFailed,
+        artifactId: artifact.artifactId,
+        sourceKind: sourceKind,
+        failureReason: ProvisioningFailureReason.unexpectedState,
         sanitizedMessage:
-            'Fallimento imprevisto durante l\'ingestione dell\'artefatto.',
-        rollbackPerformed: rollbackPerformed,
+            'Errore imprevisto durante l\'ingestione dell\'artefatto.',
+        rollbackPerformed: physicalRollbackPerformed,
       );
+    } finally {
+      // Pulizia incondizionata dello staging
+      await _fileSystem.deleteDirectoryBestEffort(stagingPath);
     }
   }
 
-  ProvisioningSourceKind _mapSourceKind(CatalogArtifactSourceKind sourceKind) {
-    switch (sourceKind) {
-      case CatalogArtifactSourceKind.bundled:
-        return ProvisioningSourceKind.bundled;
-      case CatalogArtifactSourceKind.remoteHttps:
-        return ProvisioningSourceKind.remoteHttps;
-      case CatalogArtifactSourceKind.localImport:
-        return ProvisioningSourceKind.localImport;
-    }
-  }
-
-  Future<void> _copyDirectory(String sourcePath, String targetPath) async {
-    final sourceDir = Directory(sourcePath);
-    final targetDir = Directory(targetPath);
-    if (!await targetDir.exists()) {
-      await targetDir.create(recursive: true);
-    }
-    await for (final entity in sourceDir.list(recursive: false)) {
-      final name = entity.path.substring(sourceDir.path.length + 1);
-      final dest = '${targetDir.path}\\$name';
-      if (entity is Directory) {
-        await _copyDirectory(entity.path, dest);
-      } else if (entity is File) {
-        await entity.copy(dest);
-      }
-    }
-  }
-
-  String _getFileNameFromPath(String path) {
-    final normalized = path.replaceAll('/', r'\');
-    final lastSep = normalized.lastIndexOf(r'\');
-    if (lastSep != -1) {
-      return normalized.substring(lastSep + 1);
-    }
-    return normalized;
-  }
-
-  Future<void> _cleanupStagingDirectory(String stagingPath) async {
-    try {
-      final dir = Directory(stagingPath);
-      if (await dir.exists()) {
-        await dir.delete(recursive: true);
-      }
-    } catch (_) {}
+  static ProvisioningSourceKind _mapSourceKind(
+      CatalogArtifactSourceKind sourceKind) {
+    return switch (sourceKind) {
+      CatalogArtifactSourceKind.bundled => ProvisioningSourceKind.bundled,
+      CatalogArtifactSourceKind.remoteHttps =>
+        ProvisioningSourceKind.remoteHttps,
+      CatalogArtifactSourceKind.localImport =>
+        ProvisioningSourceKind.localImport,
+    };
   }
 }

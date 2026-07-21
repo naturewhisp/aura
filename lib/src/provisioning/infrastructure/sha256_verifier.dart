@@ -2,9 +2,9 @@ import 'package:crypto/crypto.dart';
 import '../domain/provisioning_options.dart';
 import 'provisioning_file_system.dart';
 
-/// Helper per la verifica dell'hash SHA-256 di file ed archivi.
+/// Helper per la verifica dell'hash SHA-256 di file ed archivi tramite I/O a chunk (streaming).
 abstract class Sha256Verifier {
-  /// Calcola l'hash SHA-256 in formato stringa esadecimale minuscola per il file indicato.
+  /// Calcola in streaming l'hash SHA-256 in formato stringa esadecimale minuscola per il file indicato.
   Future<String> calculateSha256(
     String filePath,
     ProvisioningFileSystem fileSystem,
@@ -19,7 +19,7 @@ abstract class Sha256Verifier {
   });
 }
 
-/// Implementazione concreta basata su [ProvisioningFileSystem] ed isolata da I/O diretto.
+/// Implementazione concreta basata su `package:crypto` e streaming I/O.
 final class DefaultSha256Verifier implements Sha256Verifier {
   const DefaultSha256Verifier();
 
@@ -36,8 +36,8 @@ final class DefaultSha256Verifier implements Sha256Verifier {
     }
 
     try {
-      final bytes = await fileSystem.readAsBytes(filePath);
-      final digest = sha256.convert(bytes);
+      final stream = fileSystem.openRead(filePath);
+      final digest = await sha256.bind(stream).first;
       return digest.toString().toLowerCase();
     } catch (_) {
       throw const ProvisioningException(
@@ -64,10 +64,9 @@ final class DefaultSha256Verifier implements Sha256Verifier {
 
     final calculated = await calculateSha256(filePath, fileSystem);
     if (calculated != cleanExpected) {
-      throw ProvisioningException(
+      throw const ProvisioningException(
         reason: ProvisioningFailureReason.hashMismatch,
-        message:
-            'Checksum SHA-256 non corrispondente. Atteso: "$cleanExpected", Calcolato: "$calculated".',
+        message: 'Checksum SHA-256 dell\'artefatto non corrispondente.',
       );
     }
   }

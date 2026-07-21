@@ -87,9 +87,11 @@ class _AuraAppState extends State<AuraApp> with WidgetsBindingObserver {
   Future<AppExitResponse> didRequestAppExit() async {
     try {
       await widget.notifier.shutdown();
-    } catch (e) {
+    } on ApplicationBootstrapException catch (e) {
+      debugPrint('[APP] Shutdown delle risorse fallito: ${e.failure.message}');
+    } catch (_) {
       debugPrint(
-          "[APP] Errore durante lo shutdown delle risorse al didRequestAppExit: $e");
+          '[APP] Shutdown delle risorse fallito per un errore inatteso.');
     }
     return AppExitResponse.exit;
   }

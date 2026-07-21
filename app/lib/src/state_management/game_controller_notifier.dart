@@ -1372,7 +1372,11 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
     gameStateNotifier.dispose();
     if (_shutdownFuture == null) {
       _shutdownFuture = Future.value();
-      onDispose?.call();
+      unawaited(
+        Future.sync(() => onDispose?.call()).catchError((Object error) {
+          debugPrint('[NOTIFIER] Shutdown fallback sincrono fallito.');
+        }),
+      );
     }
     super.dispose();
   }

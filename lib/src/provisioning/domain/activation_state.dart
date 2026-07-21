@@ -4,31 +4,39 @@ import 'provisioning_options.dart';
 
 const Object _unset = Object();
 
-/// Rappresenta lo stato di attivazione corrente del runtime e del modello (active_state.json).
+/// Rappresenta lo stato di attivazione corrente del runtime e del modello riferito ad installazioni stabili.
 @immutable
 final class ActivationState {
   final String schemaVersion;
   final String updatedAt;
-  final String? activeRuntimeId;
-  final String? activeRuntimeVersion;
-  final String? activeModelId;
-  final String? activeModelVersion;
+  final String? activeRuntimeInstallationId;
+  final String? activeModelInstallationId;
+  final String? lastKnownGoodRuntimeInstallationId;
+  final String? lastKnownGoodModelInstallationId;
+  final String runtimeSourcePreference;
+  final String fallbackPolicy;
+  final bool explicitUserSelection;
+  final String? selectedModelAlias;
   final Map<String, dynamic> metadata;
 
   ActivationState({
     this.schemaVersion = '1.0',
     required this.updatedAt,
-    this.activeRuntimeId,
-    this.activeRuntimeVersion,
-    this.activeModelId,
-    this.activeModelVersion,
+    this.activeRuntimeInstallationId,
+    this.activeModelInstallationId,
+    this.lastKnownGoodRuntimeInstallationId,
+    this.lastKnownGoodModelInstallationId,
+    this.runtimeSourcePreference = 'appManaged',
+    this.fallbackPolicy = 'managedLlamaServerWithRuleBasedFallback',
+    this.explicitUserSelection = false,
+    this.selectedModelAlias,
     Map<String, dynamic> metadata = const {},
   }) : metadata = JsonSafeValue.ensureJsonSafeMap(metadata);
 
-  factory ActivationState.empty({String? updatedAt}) {
+  factory ActivationState.empty({required String updatedAt}) {
     return ActivationState(
       schemaVersion: '1.0',
-      updatedAt: updatedAt ?? DateTime.now().toUtc().toIso8601String(),
+      updatedAt: updatedAt,
     );
   }
 
@@ -53,10 +61,19 @@ final class ActivationState {
       return ActivationState(
         schemaVersion: rawSchema,
         updatedAt: rawUpdatedAt,
-        activeRuntimeId: json['activeRuntimeId'] as String?,
-        activeRuntimeVersion: json['activeRuntimeVersion'] as String?,
-        activeModelId: json['activeModelId'] as String?,
-        activeModelVersion: json['activeModelVersion'] as String?,
+        activeRuntimeInstallationId:
+            json['activeRuntimeInstallationId'] as String?,
+        activeModelInstallationId: json['activeModelInstallationId'] as String?,
+        lastKnownGoodRuntimeInstallationId:
+            json['lastKnownGoodRuntimeInstallationId'] as String?,
+        lastKnownGoodModelInstallationId:
+            json['lastKnownGoodModelInstallationId'] as String?,
+        runtimeSourcePreference:
+            (json['runtimeSourcePreference'] as String?) ?? 'appManaged',
+        fallbackPolicy: (json['fallbackPolicy'] as String?) ??
+            'managedLlamaServerWithRuleBasedFallback',
+        explicitUserSelection: json['explicitUserSelection'] as bool? ?? false,
+        selectedModelAlias: json['selectedModelAlias'] as String?,
         metadata: json['metadata'] != null
             ? Map<String, dynamic>.from(json['metadata'] as Map)
             : const {},
@@ -75,11 +92,19 @@ final class ActivationState {
     return {
       'schemaVersion': schemaVersion,
       'updatedAt': updatedAt,
-      if (activeRuntimeId != null) 'activeRuntimeId': activeRuntimeId,
-      if (activeRuntimeVersion != null)
-        'activeRuntimeVersion': activeRuntimeVersion,
-      if (activeModelId != null) 'activeModelId': activeModelId,
-      if (activeModelVersion != null) 'activeModelVersion': activeModelVersion,
+      if (activeRuntimeInstallationId != null)
+        'activeRuntimeInstallationId': activeRuntimeInstallationId,
+      if (activeModelInstallationId != null)
+        'activeModelInstallationId': activeModelInstallationId,
+      if (lastKnownGoodRuntimeInstallationId != null)
+        'lastKnownGoodRuntimeInstallationId':
+            lastKnownGoodRuntimeInstallationId,
+      if (lastKnownGoodModelInstallationId != null)
+        'lastKnownGoodModelInstallationId': lastKnownGoodModelInstallationId,
+      'runtimeSourcePreference': runtimeSourcePreference,
+      'fallbackPolicy': fallbackPolicy,
+      'explicitUserSelection': explicitUserSelection,
+      if (selectedModelAlias != null) 'selectedModelAlias': selectedModelAlias,
       if (metadata.isNotEmpty) 'metadata': metadata,
     };
   }
@@ -87,27 +112,42 @@ final class ActivationState {
   ActivationState copyWith({
     String? schemaVersion,
     String? updatedAt,
-    Object? activeRuntimeId = _unset,
-    Object? activeRuntimeVersion = _unset,
-    Object? activeModelId = _unset,
-    Object? activeModelVersion = _unset,
+    Object? activeRuntimeInstallationId = _unset,
+    Object? activeModelInstallationId = _unset,
+    Object? lastKnownGoodRuntimeInstallationId = _unset,
+    Object? lastKnownGoodModelInstallationId = _unset,
+    String? runtimeSourcePreference,
+    String? fallbackPolicy,
+    bool? explicitUserSelection,
+    Object? selectedModelAlias = _unset,
     Map<String, dynamic>? metadata,
   }) {
     return ActivationState(
       schemaVersion: schemaVersion ?? this.schemaVersion,
       updatedAt: updatedAt ?? this.updatedAt,
-      activeRuntimeId: identical(activeRuntimeId, _unset)
-          ? this.activeRuntimeId
-          : activeRuntimeId as String?,
-      activeRuntimeVersion: identical(activeRuntimeVersion, _unset)
-          ? this.activeRuntimeVersion
-          : activeRuntimeVersion as String?,
-      activeModelId: identical(activeModelId, _unset)
-          ? this.activeModelId
-          : activeModelId as String?,
-      activeModelVersion: identical(activeModelVersion, _unset)
-          ? this.activeModelVersion
-          : activeModelVersion as String?,
+      activeRuntimeInstallationId:
+          identical(activeRuntimeInstallationId, _unset)
+              ? this.activeRuntimeInstallationId
+              : activeRuntimeInstallationId as String?,
+      activeModelInstallationId: identical(activeModelInstallationId, _unset)
+          ? this.activeModelInstallationId
+          : activeModelInstallationId as String?,
+      lastKnownGoodRuntimeInstallationId:
+          identical(lastKnownGoodRuntimeInstallationId, _unset)
+              ? this.lastKnownGoodRuntimeInstallationId
+              : lastKnownGoodRuntimeInstallationId as String?,
+      lastKnownGoodModelInstallationId:
+          identical(lastKnownGoodModelInstallationId, _unset)
+              ? this.lastKnownGoodModelInstallationId
+              : lastKnownGoodModelInstallationId as String?,
+      runtimeSourcePreference:
+          runtimeSourcePreference ?? this.runtimeSourcePreference,
+      fallbackPolicy: fallbackPolicy ?? this.fallbackPolicy,
+      explicitUserSelection:
+          explicitUserSelection ?? this.explicitUserSelection,
+      selectedModelAlias: identical(selectedModelAlias, _unset)
+          ? this.selectedModelAlias
+          : selectedModelAlias as String?,
       metadata: metadata ?? this.metadata,
     );
   }

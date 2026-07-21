@@ -1,78 +1,80 @@
-import 'dart:io';
+import 'dart:convert';
 import 'package:aura_core/aura_core.dart';
 import 'package:test/test.dart';
+import 'installation_record_repository_test.dart';
 
 void main() {
   group('ActivationStateRepository Tests -', () {
-    late Directory tempAppRoot;
-    late Directory tempBundledRoot;
     late ProvisioningPathResolver pathResolver;
+    late MemoryProvisioningFileSystem fileSystem;
+    late TestProvisioningClock clock;
     late JsonActivationStateRepository repo;
 
-    setUp(() async {
-      tempAppRoot =
-          await Directory.systemTemp.createTemp('aura_act_state_test_app_');
-      tempBundledRoot =
-          await Directory.systemTemp.createTemp('aura_act_state_test_bundled_');
+    setUp(() {
       pathResolver = ProvisioningPathResolver(
-        appManagedRoot: tempAppRoot.path,
-        bundledRoot: tempBundledRoot.path,
+        appManagedRoot: r'C:\AppManaged\Aura',
+        bundledRoot: r'C:\Program Files\Aura',
       );
-      repo = JsonActivationStateRepository(pathResolver: pathResolver);
-    });
-
-    tearDown(() async {
-      if (await tempAppRoot.exists()) {
-        await tempAppRoot.delete(recursive: true);
-      }
-      if (await tempBundledRoot.exists()) {
-        await tempBundledRoot.delete(recursive: true);
-      }
+      fileSystem = MemoryProvisioningFileSystem();
+      clock = TestProvisioningClock(DateTime.utc(2026, 7, 21, 21, 0, 0));
+      repo = JsonActivationStateRepository(
+        pathResolver: pathResolver,
+        fileSystem: fileSystem,
+        clock: clock,
+      );
     });
 
     test('Restituisce stato vuoto se il file non esiste', () async {
       final state = await repo.readState();
       expect(state.schemaVersion, equals('1.0'));
-      expect(state.activeRuntimeId, isNull);
-      expect(state.activeModelId, isNull);
+      expect(state.activeRuntimeInstallationId, isNull);
+      expect(state.activeModelInstallationId, isNull);
     });
 
-    test('Scrive atomicamente e rilegge correttamente l ActivationState',
+    test('Scrive e legge l ActivationState basato su installationId stabili',
         () async {
       final stateToSave = ActivationState(
-        schemaVersion: '1.0',
         updatedAt: '2026-07-21T21:00:00Z',
-        activeRuntimeId: 'llama-b3500',
-        activeRuntimeVersion: 'b3500',
-        activeModelId: 'ministral-3b',
-        activeModelVersion: 'q4_k_m',
+        activeRuntimeInstallationId: 'inst-llama-b3500-1',
+        activeModelInstallationId: 'inst-ministral-3b-1',
+        lastKnownGoodRuntimeInstallationId: 'inst-llama-b3500-1',
+        lastKnownGoodModelInstallationId: 'inst-ministral-3b-1',
+        runtimeSourcePreference: 'appManaged',
+        fallbackPolicy: 'managedLlamaServerWithRuleBasedFallback',
+        explicitUserSelection: true,
       );
 
       await repo.writeState(stateToSave);
 
       final loaded = await repo.readState();
-      expect(loaded.schemaVersion, equals('1.0'));
-      expect(loaded.activeRuntimeId, equals('llama-b3500'));
-      expect(loaded.activeRuntimeVersion, equals('b3500'));
-      expect(loaded.activeModelId, equals('ministral-3b'));
-      expect(loaded.activeModelVersion, equals('q4_k_m'));
+      expect(loaded.activeRuntimeInstallationId, equals('inst-llama-b3500-1'));
+      expect(loaded.activeModelInstallationId, equals('inst-ministral-3b-1'));
+      expect(loaded.lastKnownGoodRuntimeInstallationId,
+          equals('inst-llama-b3500-1'));
+      expect(loaded.explicitUserSelection, isTrue);
     });
 
-    test('Supporta l azzeramento esplicito dei campi tramite copyWith sentinel',
-        () {
-      final state = ActivationState(
-        updatedAt: '2026-07-21T21:00:00Z',
-        activeRuntimeId: 'rt-1',
-        activeModelId: 'm-1',
+    test(
+        'Esegue il recovery automatico da .bak se il file primario di active_state è corrotto',
+        () async {
+      final statePath = pathResolver.activeStatePath;
+      final backupPath = '$statePath.bak';
+
+      final validState = ActivationState(
+        updatedAt: '2026-07-21T20:00:00Z',
+        activeRuntimeInstallationId: 'inst-recovered-rt',
+        activeModelInstallationId: 'inst-recovered-model',
       );
 
-      final cleared = state.copyWith(
-        activeRuntimeId: null,
-        activeModelId: null,
-      );
+      fileSystem.files[backupPath] = jsonEncode(validState.toJson());
+      fileSystem.files[statePath] = ''; // file vuoto corrotto
 
-      expect(cleared.activeRuntimeId, isNull);
-      expect(cleared.activeModelId, isNull);
+      final recovered = await repo.readState();
+      expect(
+          recovered.activeRuntimeInstallationId, equals('inst-recovered-rt'));
+      expect(
+          recovered.activeModelInstallationId, equals('inst-recovered-model'));
+      expect(fileSystem.files[statePath], isNotEmpty);
     });
   });
 }

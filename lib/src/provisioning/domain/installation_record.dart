@@ -3,9 +3,12 @@ import 'catalog_manifest.dart';
 import 'json_safe_value.dart';
 import 'provisioning_options.dart';
 
-/// Descrive un singolo artefatto installato registrato nell'InstallationRecord.
+const Object _unset = Object();
+
+/// Descrive una singola installazione fisica registrata nell'InstallationRecord.
 @immutable
 final class InstalledArtifactDescriptor {
+  final String installationId;
   final String artifactId;
   final CatalogArtifactType artifactType;
   final String displayName;
@@ -18,9 +21,16 @@ final class InstalledArtifactDescriptor {
   final int sizeBytes;
   final String sha256;
   final CatalogArtifactSourceKind sourceKind;
+  final String status;
+  final String? verifiedAt;
+  final String ownership;
+  final String? lastValidationAt;
+  final String? failureDiscriminator;
+  final bool retained;
   final Map<String, dynamic> metadata;
 
   InstalledArtifactDescriptor({
+    required this.installationId,
     required this.artifactId,
     required this.artifactType,
     required this.displayName,
@@ -33,6 +43,12 @@ final class InstalledArtifactDescriptor {
     required this.sizeBytes,
     required this.sha256,
     required this.sourceKind,
+    this.status = 'installed',
+    this.verifiedAt,
+    this.ownership = 'appManaged',
+    this.lastValidationAt,
+    this.failureDiscriminator,
+    this.retained = true,
     Map<String, dynamic> metadata = const {},
   }) : metadata = JsonSafeValue.ensureJsonSafeMap(metadata);
 
@@ -76,7 +92,16 @@ final class InstalledArtifactDescriptor {
         );
       }
 
+      final instId = json['installationId'] as String?;
+      if (instId == null || instId.trim().isEmpty) {
+        throw const ProvisioningException(
+          reason: ProvisioningFailureReason.installationRecordReadFailed,
+          message: 'Campo obbligatorio mancante: installationId.',
+        );
+      }
+
       return InstalledArtifactDescriptor(
+        installationId: instId,
         artifactId: json['artifactId'] as String? ??
             (throw const ProvisioningException(
               reason: ProvisioningFailureReason.installationRecordReadFailed,
@@ -121,6 +146,12 @@ final class InstalledArtifactDescriptor {
               message: 'Campo obbligatorio mancante: sha256.',
             )),
         sourceKind: CatalogArtifactSourceKind.parse(rawSourceKind),
+        status: (json['status'] as String?) ?? 'installed',
+        verifiedAt: json['verifiedAt'] as String?,
+        ownership: (json['ownership'] as String?) ?? 'appManaged',
+        lastValidationAt: json['lastValidationAt'] as String?,
+        failureDiscriminator: json['failureDiscriminator'] as String?,
+        retained: json['retained'] as bool? ?? true,
         metadata: json['metadata'] != null
             ? Map<String, dynamic>.from(json['metadata'] as Map)
             : const {},
@@ -137,6 +168,7 @@ final class InstalledArtifactDescriptor {
 
   Map<String, dynamic> toJson() {
     return {
+      'installationId': installationId,
       'artifactId': artifactId,
       'artifactType': artifactType.name,
       'displayName': displayName,
@@ -149,11 +181,19 @@ final class InstalledArtifactDescriptor {
       'sizeBytes': sizeBytes,
       'sha256': sha256,
       'sourceKind': sourceKind.name,
+      'status': status,
+      if (verifiedAt != null) 'verifiedAt': verifiedAt,
+      'ownership': ownership,
+      if (lastValidationAt != null) 'lastValidationAt': lastValidationAt,
+      if (failureDiscriminator != null)
+        'failureDiscriminator': failureDiscriminator,
+      'retained': retained,
       if (metadata.isNotEmpty) 'metadata': metadata,
     };
   }
 
   InstalledArtifactDescriptor copyWith({
+    String? installationId,
     String? artifactId,
     CatalogArtifactType? artifactType,
     String? displayName,
@@ -166,9 +206,16 @@ final class InstalledArtifactDescriptor {
     int? sizeBytes,
     String? sha256,
     CatalogArtifactSourceKind? sourceKind,
+    String? status,
+    Object? verifiedAt = _unset,
+    String? ownership,
+    Object? lastValidationAt = _unset,
+    Object? failureDiscriminator = _unset,
+    bool? retained,
     Map<String, dynamic>? metadata,
   }) {
     return InstalledArtifactDescriptor(
+      installationId: installationId ?? this.installationId,
       artifactId: artifactId ?? this.artifactId,
       artifactType: artifactType ?? this.artifactType,
       displayName: displayName ?? this.displayName,
@@ -181,6 +228,18 @@ final class InstalledArtifactDescriptor {
       sizeBytes: sizeBytes ?? this.sizeBytes,
       sha256: sha256 ?? this.sha256,
       sourceKind: sourceKind ?? this.sourceKind,
+      status: status ?? this.status,
+      verifiedAt: identical(verifiedAt, _unset)
+          ? this.verifiedAt
+          : verifiedAt as String?,
+      ownership: ownership ?? this.ownership,
+      lastValidationAt: identical(lastValidationAt, _unset)
+          ? this.lastValidationAt
+          : lastValidationAt as String?,
+      failureDiscriminator: identical(failureDiscriminator, _unset)
+          ? this.failureDiscriminator
+          : failureDiscriminator as String?,
+      retained: retained ?? this.retained,
       metadata: metadata ?? this.metadata,
     );
   }
@@ -203,10 +262,10 @@ final class InstallationRecord {
             List<InstalledArtifactDescriptor>.from(installedArtifacts)),
         metadata = JsonSafeValue.ensureJsonSafeMap(metadata);
 
-  factory InstallationRecord.empty({String? updatedAt}) {
+  factory InstallationRecord.empty({required String updatedAt}) {
     return InstallationRecord(
       schemaVersion: '1.0',
-      updatedAt: updatedAt ?? DateTime.now().toUtc().toIso8601String(),
+      updatedAt: updatedAt,
       installedArtifacts: const [],
     );
   }

@@ -6,6 +6,7 @@ export 'aura_core.dart';
 export 'src/agent_runtime/agents/evaluator_agent.dart';
 export 'src/agent_runtime/agents/actor_agent.dart';
 
-// Inference Bridges
+// Inference Bridges & Testing Runtime Mocks
 export 'src/agent_runtime/bridges/mock_inference_bridge.dart';
 export 'src/agent_runtime/bridges/rule_based_evaluator_bridge.dart';
+export 'src/agent_runtime/runtime/testing/mock_inference_runtime.dart';

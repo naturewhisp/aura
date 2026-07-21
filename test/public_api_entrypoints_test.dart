@@ -72,6 +72,9 @@ void main() {
         'mock_inference_bridge.dart',
         'local_api_inference_bridge.dart',
         'rule_based_evaluator_bridge.dart',
+        'rule_based_inference_runtime.dart',
+        'mock_inference_runtime.dart',
+        'runtime_contract_test_harness.dart',
         'evaluator_agent.dart',
         'actor_agent.dart',
         'model_catalog.dart',
@@ -98,13 +101,16 @@ void main() {
 
       expect(content.contains("export 'aura_core.dart';"), isTrue);
       expect(content.contains('local_api_inference_bridge.dart'), isTrue);
+      expect(content.contains('rule_based_inference_runtime.dart'), isTrue);
       expect(content.contains('evaluator_agent.dart'), isTrue);
       expect(content.contains('actor_agent.dart'), isTrue);
       expect(content.contains('model_catalog.dart'), isTrue);
       expect(content.contains('model_router.dart'), isTrue);
 
-      // Should not export MockInferenceBridge
+      // Should not export MockInferenceBridge or MockInferenceRuntime
       expect(content.contains('mock_inference_bridge.dart'), isFalse);
+      expect(content.contains('mock_inference_runtime.dart'), isFalse);
+      expect(content.contains('runtime_contract_test_harness.dart'), isFalse);
     });
 
     test(
@@ -117,6 +123,7 @@ void main() {
 
       expect(content.contains("export 'aura_core.dart';"), isTrue);
       expect(content.contains('mock_inference_bridge.dart'), isTrue);
+      expect(content.contains('mock_inference_runtime.dart'), isTrue);
       expect(content.contains('evaluator_agent.dart'), isTrue);
       expect(content.contains('actor_agent.dart'), isTrue);
       expect(content.contains('rule_based_evaluator_bridge.dart'), isTrue);

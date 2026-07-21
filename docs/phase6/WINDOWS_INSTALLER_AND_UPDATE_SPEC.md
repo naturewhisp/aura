@@ -94,7 +94,7 @@ The initial setup wizard (executed during installation or on first desktop appli
 10. **Resumable Download:** Missing approved artifacts are transferred via HTTP Range requests writing to `.partial` files under `/staging/`.
 11. **Verification:** `IntegrityVerifier` checks SHA-256 and GGUF header consistency.
 12. **Atomic Registration:** Files are committed to `/models/` and registered in `InstalledModelRegistry`.
-13. **Plan Activation:** `ModelExecutionPlanResolver` binds installed handles to logical roles (`aura.evaluator.primary`, `aura.actor.primary`).
+13. **Plan Activation:** `ModelExecutionPlanResolver` maps logical roles to installed model variants and runtime loading requirements; the active runtime/session then creates the corresponding `ModelHandle`s.
 14. **Runtime Smoke Test:** Executes a 1-token non-gameplay generation test to verify backend readiness.
 15. **Final Report:** Displays summary, active backend, and launch options.
 

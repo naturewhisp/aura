@@ -29,6 +29,5 @@ class ManagedLlamaServerException implements Exception {
   });
 
   @override
-  String toString() =>
-      'ManagedLlamaServerException: $message (code: $code)${cause != null ? ' Cause: $cause' : ''}';
+  String toString() => 'ManagedLlamaServerException: $message (code: $code)';
 }

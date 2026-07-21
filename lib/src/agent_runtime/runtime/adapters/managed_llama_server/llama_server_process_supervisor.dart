@@ -43,7 +43,7 @@ class LlamaServerProcessSupervisor {
 
   StreamSubscription<List<int>>? _stdoutSub;
   StreamSubscription<List<int>>? _stderrSub;
-  Completer<void>? _stopCompleter;
+  Future<void>? _stopFuture;
 
   DateTime? _startedAt;
   DateTime? _readyAt;
@@ -74,13 +74,20 @@ class LlamaServerProcessSupervisor {
   /// Avvia il processo `llama-server` eseguendo i tentativi consentiti da `maxStartupAttempts`.
   Future<int> start() async {
     if (_state == LlamaServerSupervisorState.disposed) {
-      throw StateError('Supervisor già dismesso.');
+      throw const ManagedLlamaServerException(
+        code: ManagedLlamaServerFailureCode.unexpectedProcessState,
+        message: 'Impossibile avviare il supervisor nello stato disposed.',
+      );
     }
     if (_state != LlamaServerSupervisorState.idle &&
         _state != LlamaServerSupervisorState.stopped) {
-      throw StateError('Impossibile avviare supervisor nello stato $_state.');
+      throw ManagedLlamaServerException(
+        code: ManagedLlamaServerFailureCode.unexpectedProcessState,
+        message: 'Impossibile avviare il supervisor nello stato $_state.',
+      );
     }
 
+    _stopFuture = null;
     _failureReason = null;
     _failureCode = null;
     _lastExitCode = null;
@@ -106,7 +113,7 @@ class LlamaServerProcessSupervisor {
         } catch (e) {
           throw ManagedLlamaServerException(
             code: ManagedLlamaServerFailureCode.invalidPort,
-            message: 'Allocazione della porta fallita: $e',
+            message: 'Allocazione della porta loopback fallita.',
             cause: e,
           );
         }
@@ -132,7 +139,7 @@ class LlamaServerProcessSupervisor {
         } catch (e) {
           throw ManagedLlamaServerException(
             code: ManagedLlamaServerFailureCode.processLaunchFailed,
-            message: 'Impossibile avviare il processo llama-server: $e',
+            message: 'Impossibile avviare il processo llama-server.',
             cause: e,
           );
         }
@@ -223,7 +230,7 @@ class LlamaServerProcessSupervisor {
       } catch (e) {
         lastException = ManagedLlamaServerException(
           code: ManagedLlamaServerFailureCode.unexpectedProcessState,
-          message: 'Eccezione inattesa all\'avvio: $e',
+          message: 'Errore inatteso durante l\'avvio.',
           cause: e,
         );
         if (attempt < maxAttempts) {
@@ -281,25 +288,23 @@ class LlamaServerProcessSupervisor {
     );
   }
 
-  /// Ferma ordinatamente il processo in modo deterministico e single-flight.
-  Future<void> stop() async {
+  /// Ferma ordinatamente il processo in modo deterministico e re-entrante.
+  Future<void> stop() {
     if (_state == LlamaServerSupervisorState.stopped ||
         _state == LlamaServerSupervisorState.disposed) {
-      return;
+      return Future.value();
     }
 
-    if (_stopCompleter != null) {
-      return _stopCompleter!.future;
-    }
+    return _stopFuture ??= _performStop().whenComplete(() {
+      _stopFuture = null;
+    });
+  }
 
-    _stopCompleter = Completer<void>();
-    _stopCompleter!.future.catchError((_) {});
+  Future<void> _performStop() async {
     _state = LlamaServerSupervisorState.stopping;
-
     try {
       await _terminateProcess(force: false);
       _state = LlamaServerSupervisorState.stopped;
-      _stopCompleter!.complete();
     } catch (e) {
       _state = LlamaServerSupervisorState.failed;
       if (e is ManagedLlamaServerException) {
@@ -307,9 +312,8 @@ class LlamaServerProcessSupervisor {
         _failureReason = e.message;
       } else {
         _failureCode = ManagedLlamaServerFailureCode.unexpectedProcessState;
-        _failureReason = e.toString();
+        _failureReason = 'Errore inatteso durante l\'arresto del processo.';
       }
-      _stopCompleter!.completeError(e);
       rethrow;
     }
   }
@@ -350,11 +354,13 @@ class LlamaServerProcessSupervisor {
         }
       }
     } finally {
-      await _stdoutSub?.cancel();
-      await _stderrSub?.cancel();
-      _stdoutSub = null;
-      _stderrSub = null;
-      _process = null;
+      if (_lastExitCode != null) {
+        await _stdoutSub?.cancel();
+        await _stderrSub?.cancel();
+        _stdoutSub = null;
+        _stderrSub = null;
+        _process = null;
+      }
     }
   }
 
@@ -372,18 +378,17 @@ class LlamaServerProcessSupervisor {
     } catch (e) {
       firstError ??= e;
     }
-    _state = LlamaServerSupervisorState.disposed;
     if (firstError != null) {
+      _state = LlamaServerSupervisorState.failed;
       throw firstError;
     }
+    _state = LlamaServerSupervisorState.disposed;
   }
 
   /// DTO diagnostico sanitizzato per l'ispezione pubblica.
   Map<String, dynamic> getDiagnostics() {
     return {
       'supervisorState': _state.name,
-      'pid': pid,
-      'allocatedPort': _allocatedPort,
       'host': _configuration.host,
       'modelAlias': _configuration.modelAlias,
       'lastExitCode': _lastExitCode,

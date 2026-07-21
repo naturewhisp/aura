@@ -123,6 +123,10 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
       final delegateCapabilities = await _delegateRuntime!.initialize(initReq);
       _initialized = true;
 
+      final normalizedModelCaps = delegateCapabilities.modelCapabilities
+          .where((cap) => cap != ModelCapability.multipleLoadedModels)
+          .toSet();
+
       // 4. Personalizza le capabilities dichiarate per rispecchiare il runtime gestito
       // Info Hiding: non esponiamo mai porta o PID nei DTO pubblici
       return RuntimeCapabilities(
@@ -132,7 +136,7 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
         runtimeBuildId: 'managed',
         selectedBackend: RuntimeBackend.systemManaged,
         generationCapabilities: delegateCapabilities.generationCapabilities,
-        modelCapabilities: delegateCapabilities.modelCapabilities,
+        modelCapabilities: normalizedModelCaps,
         maxConcurrentGenerations: _configuration.parallelSlots ?? 1,
         maxLoadedModels: 1,
         supportsCancellation: delegateCapabilities.supportsCancellation,
@@ -140,6 +144,7 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
         extensions: {
           'managed': true,
           'modelAlias': _configuration.modelAlias,
+          'logicalBindingsCount': 2,
           ...delegateCapabilities.extensions,
         },
       );
@@ -236,10 +241,14 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
     final instanceId = RuntimeInstanceId(
         _configuration.runtimeInstanceId ?? 'managed-llama-instance');
 
-    if (!_initialized || _disposed) {
+    if (!_initialized || _disposed || state == RuntimeState.failed) {
       return RuntimeHealth(
         instanceId: instanceId,
-        state: _disposed ? RuntimeState.disposed : RuntimeState.uninitialized,
+        state: _disposed
+            ? RuntimeState.disposed
+            : (state == RuntimeState.failed
+                ? RuntimeState.failed
+                : RuntimeState.uninitialized),
         responsive: false,
         observedAt: observedAt,
         backend: RuntimeBackend.systemManaged,

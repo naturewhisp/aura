@@ -50,6 +50,10 @@ void main() {
 
       expect(capabilities.runtimeName, equals('llama-server'));
       expect(capabilities.maxLoadedModels, equals(1));
+      expect(
+          capabilities.modelCapabilities
+              .contains(ModelCapability.multipleLoadedModels),
+          isFalse);
       expect(capabilities.extensions['managed'], isTrue);
       // Info Hiding: non deve esporre porta o PID nelle capabilities pubbliche
       expect(capabilities.extensions.containsKey('allocatedPort'), isFalse);

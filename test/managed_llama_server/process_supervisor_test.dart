@@ -38,6 +38,45 @@ void main() {
       expect(supervisor.state, equals(LlamaServerSupervisorState.stopped));
     });
 
+    test('Executes two full start/stop cycles stopping process on both cycles',
+        () async {
+      int launchCount = 0;
+      final fakeLauncher = FakeProcessLauncher(
+        processFactory: () {
+          launchCount++;
+          return FakeManagedProcess(pid: 4000 + launchCount);
+        },
+      );
+      final supervisor = LlamaServerProcessSupervisor(
+        configuration: config,
+        processLauncher: fakeLauncher,
+        portAllocator: const FakePortAllocator(allocatedPort: 8080),
+        healthProbe:
+            FakeLlamaServerHealthProbe(isResponsive: true, modelVisible: true),
+        fileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
+      );
+
+      // Cycle 1
+      await supervisor.start();
+      expect(supervisor.state, equals(LlamaServerSupervisorState.ready));
+      expect(supervisor.pid, equals(4001));
+
+      await supervisor.stop();
+      expect(supervisor.state, equals(LlamaServerSupervisorState.stopped));
+      expect(supervisor.pid, isNull);
+
+      // Cycle 2
+      await supervisor.start();
+      expect(supervisor.state, equals(LlamaServerSupervisorState.ready));
+      expect(supervisor.pid, equals(4002));
+
+      await supervisor.stop();
+      expect(supervisor.state, equals(LlamaServerSupervisorState.stopped));
+      expect(supervisor.pid, isNull);
+    });
+
     test('Process exit early transitions state to failed', () async {
       final fakeProcess = FakeManagedProcess();
       final fakeLauncher = FakeProcessLauncher(process: fakeProcess);
@@ -179,7 +218,9 @@ void main() {
       expect(supervisor.state, equals(LlamaServerSupervisorState.disposed));
     });
 
-    test('Forced termination failure transitions to failed state', () async {
+    test(
+        'Forced termination failure transitions to failed state and retains process handle',
+        () async {
       final fakeProcess = FakeManagedProcess()..killResult = false;
       final fakeLauncher = FakeProcessLauncher(process: fakeProcess);
       final supervisor = LlamaServerProcessSupervisor(
@@ -203,6 +244,68 @@ void main() {
       expect(supervisor.state, equals(LlamaServerSupervisorState.failed));
       expect(supervisor.failureCode,
           equals(ManagedLlamaServerFailureCode.forcedTerminationFailed));
+      expect(supervisor.pid, equals(4242)); // Handle retained!
+    });
+
+    test('Retains failed state and throws when dispose cleanup fails',
+        () async {
+      final fakeProcess = FakeManagedProcess()..killResult = false;
+      final supervisor = LlamaServerProcessSupervisor(
+        configuration: config,
+        processLauncher: FakeProcessLauncher(process: fakeProcess),
+        portAllocator: const FakePortAllocator(allocatedPort: 8080),
+        healthProbe: FakeLlamaServerHealthProbe(isResponsive: true),
+        fileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
+      );
+
+      await supervisor.start();
+      expect(supervisor.dispose(), throwsA(isA<ManagedLlamaServerException>()));
+      await Future.delayed(const Duration(milliseconds: 50));
+
+      expect(supervisor.state,
+          equals(LlamaServerSupervisorState.failed)); // Not disposed!
+    });
+
+    test('start() throws ManagedLlamaServerException when in invalid state',
+        () async {
+      final supervisor = LlamaServerProcessSupervisor(
+        configuration: config,
+        processLauncher: FakeProcessLauncher(),
+        portAllocator: const FakePortAllocator(allocatedPort: 8080),
+        healthProbe: FakeLlamaServerHealthProbe(isResponsive: true),
+        fileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
+      );
+
+      await supervisor.start();
+      expect(
+        supervisor.start(),
+        throwsA(isA<ManagedLlamaServerException>().having(
+          (e) => e.code,
+          'code',
+          equals(ManagedLlamaServerFailureCode.unexpectedProcessState),
+        )),
+      );
+    });
+
+    test('getDiagnostics omits pid and allocatedPort', () async {
+      final supervisor = LlamaServerProcessSupervisor(
+        configuration: config,
+        processLauncher: FakeProcessLauncher(),
+        portAllocator: const FakePortAllocator(allocatedPort: 8080),
+        healthProbe: FakeLlamaServerHealthProbe(isResponsive: true),
+        fileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
+      );
+
+      await supervisor.start();
+      final diags = supervisor.getDiagnostics();
+      expect(diags.containsKey('pid'), isFalse);
+      expect(diags.containsKey('allocatedPort'), isFalse);
     });
 
     test(

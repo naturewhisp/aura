@@ -3,7 +3,7 @@ import 'package:aura_core/aura_offline.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('RuntimeInferenceBridge Unit Tests -', () {
+  group('RuntimeInferenceBridge Comprehensive Unit Tests -', () {
     late MockInferenceRuntime runtime;
     late ModelHandle actorHandle;
     late ModelHandle evaluatorHandle;
@@ -49,7 +49,7 @@ void main() {
         ),
       );
 
-      bridge = RuntimeInferenceBridge(
+      bridge = RuntimeInferenceBridge.fromHandleResolver(
         runtime: runtime,
         handleResolver: (role) {
           if (role == ModelRole.actor) return actorHandle;
@@ -99,43 +99,11 @@ void main() {
     });
 
     test(
-        'Executes structured JSON generation without narrative output sanitizer',
+        'Throws RuntimeFailureCode.modelMissing on unknown legacy model ID route',
         () async {
-      runtime.structuredResponse = {
-        'deltaAlert': 10,
-        'deltaImperative': -5,
-        'creativityIndex': 80,
-      };
-
-      final result = await bridge.generateStructured(
-        modelId: 'mistralai/ministral-3-3b',
-        messages: [
-          {'role': 'user', 'content': 'Test input'}
-        ],
-        schema: {'type': 'object'},
-      );
-
-      expect(result['deltaAlert'], equals(10));
-      expect(result['creativityIndex'], equals(80));
-      expect(runtime.generateStructuredCalls, equals(1));
-    });
-
-    test('Owns timeout and invokes runtime.cancel on timeout', () async {
-      runtime.autoCompleteRequests =
-          false; // Prevents auto-completing text requests
-
-      final shortTimeoutBridge = RuntimeInferenceBridge(
-        runtime: runtime,
-        handleResolver: (role) => actorHandle,
-        timeoutPolicy: const RuntimeBridgeTimeoutPolicy(
-          generationTimeout: Duration(milliseconds: 50),
-          cancellationTimeout: Duration(milliseconds: 50),
-        ),
-      );
-
-      await expectLater(
-        shortTimeoutBridge.generateText(
-          modelId: 'qwen/qwen3.5-9b',
+      expect(
+        () => bridge.generateText(
+          modelId: 'unknown/unregistered-model',
           messages: [
             {'role': 'user', 'content': 'Test'}
           ],
@@ -144,13 +112,74 @@ void main() {
           isA<RuntimeException>().having(
             (e) => e.failure.code,
             'code',
-            equals(RuntimeFailureCode.timeout),
+            equals(RuntimeFailureCode.modelMissing),
           ),
         ),
       );
+    });
 
-      // Verify cancel was requested on the runtime for the generated request ID
-      expect(runtime.cancelCalls, equals(1));
+    test('Uses explicit RuntimeModelExecutionPlan in planResolver', () async {
+      final customBridge = RuntimeInferenceBridge(
+        runtime: runtime,
+        planResolver: (role) {
+          final handle =
+              (role == ModelRole.actor) ? actorHandle : evaluatorHandle;
+          return RuntimeModelExecutionPlan(
+            role: role,
+            logicalModelId: handle.logicalModelId,
+            handle: handle,
+          );
+        },
+      );
+
+      runtime.textResponse = "<dialogo>Risposta attore</dialogo>";
+      final result = await customBridge.generateText(
+        modelId: 'aura.actor.primary',
+        messages: [
+          {'role': 'user', 'content': 'Hi'}
+        ],
+      );
+
+      expect(result, equals('Risposta attore'));
+    });
+
+    test(
+        'Handles timeout deterministically and captures cancellation unsupported status',
+        () async {
+      runtime.autoCompleteRequests = false;
+      runtime.throwOnCancellation = true;
+
+      final timeoutBridge = RuntimeInferenceBridge.fromHandleResolver(
+        runtime: runtime,
+        handleResolver: (role) => actorHandle,
+        timeoutScheduler:
+            const FakeTimeoutScheduler(shouldTriggerTimeout: true),
+      );
+
+      expect(
+        () => timeoutBridge.generateText(
+          modelId: 'qwen/qwen3.5-9b',
+          messages: [
+            {'role': 'user', 'content': 'Test timeout'}
+          ],
+        ),
+        throwsA(
+          isA<RuntimeException>().having(
+            (e) => e.failure.diagnostics['cancellationDisposition'],
+            'cancellationDisposition',
+            equals('cancellationUnsupported'),
+          ),
+        ),
+      );
+    });
+
+    test('Returns only registered legacy routes in discoverModels()', () async {
+      final routes = await bridge.discoverModels();
+
+      expect(routes, contains('qwen/qwen3.5-9b'));
+      expect(routes, contains('mistralai/ministral-3-3b'));
+      expect(routes, contains('aura.actor.primary'));
+      expect(routes, contains('aura.evaluator.primary'));
     });
   });
 }

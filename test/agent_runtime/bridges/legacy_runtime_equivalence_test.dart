@@ -66,7 +66,7 @@ void main() {
         ),
       );
 
-      runtimeBridge = RuntimeInferenceBridge(
+      runtimeBridge = RuntimeInferenceBridge.fromHandleResolver(
         runtime: runtime,
         handleResolver: (role) {
           if (role == ModelRole.actor) return actorHandle;

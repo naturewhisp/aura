@@ -11,6 +11,49 @@ import '../runtime/runtime_ids.dart';
 import '../runtime/runtime_requests.dart';
 import '../runtime/runtime_results.dart';
 
+/// Represents an execution plan binding a [ModelRole] to a [logicalModelId] and loaded [ModelHandle].
+@immutable
+class RuntimeModelExecutionPlan {
+  final ModelRole role;
+  final String logicalModelId;
+  final ModelHandle handle;
+
+  const RuntimeModelExecutionPlan({
+    required this.role,
+    required this.logicalModelId,
+    required this.handle,
+  });
+}
+
+/// Maps legacy model ID strings to [ModelRole]s without heuristic matching.
+@immutable
+class LegacyInferenceRouteResolver {
+  final Map<String, ModelRole> routes;
+
+  const LegacyInferenceRouteResolver({
+    this.routes = const {
+      'qwen/qwen3.5-9b': ModelRole.actor,
+      'mistralai/ministral-3-3b': ModelRole.evaluator,
+      'aura.actor.primary': ModelRole.actor,
+      'aura.evaluator.primary': ModelRole.evaluator,
+    },
+  });
+
+  ModelRole resolveRole(String legacyModelId) {
+    final role = routes[legacyModelId];
+    if (role == null) {
+      throw RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.modelMissing,
+          message:
+              'Route non riconosciuta per il model ID legacy: "$legacyModelId".',
+        ),
+      );
+    }
+    return role;
+  }
+}
+
 /// Factory producing unique [GenerationRequestId] instances.
 abstract interface class GenerationRequestIdFactory {
   GenerationRequestId next();
@@ -62,44 +105,117 @@ class RuntimeBridgeTimeoutPolicy {
   });
 }
 
+/// Scheduler interface managing generation execution timeouts.
+abstract interface class TimeoutScheduler {
+  Future<T> runWithTimeout<T>({
+    required Future<T> Function() action,
+    required Duration timeout,
+    required Future<T> Function() onTimeout,
+  });
+}
+
+/// Production implementation of [TimeoutScheduler] using [Future.timeout].
+class AsyncTimeoutScheduler implements TimeoutScheduler {
+  const AsyncTimeoutScheduler();
+
+  @override
+  Future<T> runWithTimeout<T>({
+    required Future<T> Function() action,
+    required Duration timeout,
+    required Future<T> Function() onTimeout,
+  }) async {
+    try {
+      return await action().timeout(timeout);
+    } on TimeoutException {
+      return await onTimeout();
+    }
+  }
+}
+
+/// Deterministic [TimeoutScheduler] for offline unit testing without real clock delays.
+class FakeTimeoutScheduler implements TimeoutScheduler {
+  final bool shouldTriggerTimeout;
+  final bool shouldTriggerCancelTimeout;
+
+  const FakeTimeoutScheduler({
+    this.shouldTriggerTimeout = false,
+    this.shouldTriggerCancelTimeout = false,
+  });
+
+  @override
+  Future<T> runWithTimeout<T>({
+    required Future<T> Function() action,
+    required Duration timeout,
+    required Future<T> Function() onTimeout,
+  }) async {
+    if (timeout < const Duration(seconds: 10) && shouldTriggerCancelTimeout) {
+      return await onTimeout();
+    }
+    if (timeout >= const Duration(seconds: 10) && shouldTriggerTimeout) {
+      return await onTimeout();
+    }
+    return await action();
+  }
+}
+
+class _LateResultIgnoredException implements Exception {
+  const _LateResultIgnoredException();
+}
+
 /// Compatibility bridge adapting the legacy [InferenceBridge] interface to the new [InferenceRuntime].
-///
-/// Responsibilities:
-/// - Maps legacy string `modelId` to [ModelRole].
-/// - Resolves [ModelRole] to loaded [ModelHandle]s via handle resolver.
-/// - Creates trace IDs and generation request IDs.
-/// - Owns application-level timeout management and triggers cooperative cancellation via `runtime.cancel`.
-/// - Coordinates narrative post-processing using [ActorOutputSanitizer] exclusively for Actor text requests.
 class RuntimeInferenceBridge implements InferenceBridge {
   final InferenceRuntime runtime;
-  final ModelHandle Function(ModelRole role) handleResolver;
-  final ModelRole Function(String legacyModelId) roleResolver;
+  final RuntimeModelExecutionPlan Function(ModelRole role) planResolver;
+  final LegacyInferenceRouteResolver routeResolver;
   final ActorOutputSanitizer sanitizer;
   final GenerationRequestIdFactory requestIdFactory;
   final RuntimeTraceIdFactory traceIdFactory;
   final RuntimeBridgeTimeoutPolicy timeoutPolicy;
+  final TimeoutScheduler timeoutScheduler;
 
   RuntimeInferenceBridge({
     required this.runtime,
-    required this.handleResolver,
-    ModelRole Function(String legacyModelId)? roleResolver,
+    required this.planResolver,
+    LegacyInferenceRouteResolver? routeResolver,
     this.sanitizer = const ActorOutputSanitizer(),
     GenerationRequestIdFactory? requestIdFactory,
     RuntimeTraceIdFactory? traceIdFactory,
     this.timeoutPolicy = const RuntimeBridgeTimeoutPolicy(),
-  })  : roleResolver = roleResolver ?? _defaultRoleResolver,
+    this.timeoutScheduler = const AsyncTimeoutScheduler(),
+  })  : routeResolver = routeResolver ?? const LegacyInferenceRouteResolver(),
         requestIdFactory =
             requestIdFactory ?? SequentialGenerationRequestIdFactory(),
         traceIdFactory = traceIdFactory ?? SequentialRuntimeTraceIdFactory();
 
-  static ModelRole _defaultRoleResolver(String legacyModelId) {
-    final lower = legacyModelId.toLowerCase();
-    if (lower.contains('qwen') ||
-        lower.contains('actor') ||
-        lower.contains('panopticon')) {
-      return ModelRole.actor;
-    }
-    return ModelRole.evaluator;
+  /// Backwards-compatible constructor converting [handleResolver] to a execution plan resolver.
+  factory RuntimeInferenceBridge.fromHandleResolver({
+    required InferenceRuntime runtime,
+    required ModelHandle Function(ModelRole role) handleResolver,
+    LegacyInferenceRouteResolver? routeResolver,
+    ActorOutputSanitizer sanitizer = const ActorOutputSanitizer(),
+    GenerationRequestIdFactory? requestIdFactory,
+    RuntimeTraceIdFactory? traceIdFactory,
+    RuntimeBridgeTimeoutPolicy timeoutPolicy =
+        const RuntimeBridgeTimeoutPolicy(),
+    TimeoutScheduler timeoutScheduler = const AsyncTimeoutScheduler(),
+  }) {
+    return RuntimeInferenceBridge(
+      runtime: runtime,
+      planResolver: (role) {
+        final handle = handleResolver(role);
+        return RuntimeModelExecutionPlan(
+          role: role,
+          logicalModelId: handle.logicalModelId,
+          handle: handle,
+        );
+      },
+      routeResolver: routeResolver,
+      sanitizer: sanitizer,
+      requestIdFactory: requestIdFactory,
+      traceIdFactory: traceIdFactory,
+      timeoutPolicy: timeoutPolicy,
+      timeoutScheduler: timeoutScheduler,
+    );
   }
 
   InferenceRole _parseRole(String roleStr) {
@@ -115,6 +231,62 @@ class RuntimeInferenceBridge implements InferenceBridge {
     }
   }
 
+  Future<T> _executeWithTimeoutAndCancellation<T>({
+    required GenerationRequestId requestId,
+    required Future<T> Function() generateAction,
+  }) async {
+    bool timedOut = false;
+
+    return await timeoutScheduler.runWithTimeout<T>(
+      action: () async {
+        final res = await generateAction();
+        if (timedOut) {
+          throw const _LateResultIgnoredException();
+        }
+        return res;
+      },
+      timeout: timeoutPolicy.generationTimeout,
+      onTimeout: () async {
+        timedOut = true;
+        String cancellationDisposition = 'confirmed';
+        Object? cancelCause;
+
+        try {
+          await timeoutScheduler.runWithTimeout<void>(
+            action: () => runtime.cancel(requestId),
+            timeout: timeoutPolicy.cancellationTimeout,
+            onTimeout: () async {
+              cancellationDisposition = 'cancellationTimedOut';
+            },
+          );
+        } on RuntimeException catch (e) {
+          if (e.failure.code == RuntimeFailureCode.cancellationUnsupported) {
+            cancellationDisposition = 'cancellationUnsupported';
+          } else {
+            cancellationDisposition = 'cancellationFailed';
+          }
+          cancelCause = e.failure;
+        } catch (e) {
+          cancellationDisposition = 'cancellationFailed';
+          cancelCause = e;
+        }
+
+        throw RuntimeException(
+          RuntimeFailure(
+            code: RuntimeFailureCode.timeout,
+            message:
+                'Timeout applicativo durante la generazione (superati ${timeoutPolicy.generationTimeout.inSeconds}s). Status cancellazione: $cancellationDisposition.',
+            diagnostics: {
+              'cancellationDisposition': cancellationDisposition,
+              'requestId': requestId.value,
+            },
+          ),
+          cause: cancelCause,
+        );
+      },
+    );
+  }
+
   @override
   Future<String> generateText({
     required String modelId,
@@ -123,8 +295,8 @@ class RuntimeInferenceBridge implements InferenceBridge {
     int maxTokens = 150,
     bool? thinking,
   }) async {
-    final role = roleResolver(modelId);
-    final handle = handleResolver(role);
+    final role = routeResolver.resolveRole(modelId);
+    final plan = planResolver(role);
     final requestId = requestIdFactory.next();
     final traceId = traceIdFactory.next();
 
@@ -137,7 +309,7 @@ class RuntimeInferenceBridge implements InferenceBridge {
 
     final request = TextGenerationRequest(
       requestId: requestId,
-      model: handle,
+      model: plan.handle,
       messages: inferenceMessages,
       parameters: GenerationParameters(
         temperature: temperature,
@@ -147,29 +319,15 @@ class RuntimeInferenceBridge implements InferenceBridge {
         traceId: traceId,
         sessionId: 'session-bridge',
         agentId: role.name,
-        logicalModelId: handle.logicalModelId,
+        logicalModelId: plan.logicalModelId,
       ),
     );
 
-    TextGenerationResult rawResult;
-    try {
-      rawResult = await runtime
-          .generateText(request)
-          .timeout(timeoutPolicy.generationTimeout);
-    } on TimeoutException {
-      try {
-        await runtime
-            .cancel(requestId)
-            .timeout(timeoutPolicy.cancellationTimeout);
-      } catch (_) {}
-      throw RuntimeException(
-        RuntimeFailure(
-          code: RuntimeFailureCode.timeout,
-          message:
-              'Timeout applicativo durante la generazione del testo (superati ${timeoutPolicy.generationTimeout.inSeconds}s).',
-        ),
-      );
-    }
+    final rawResult =
+        await _executeWithTimeoutAndCancellation<TextGenerationResult>(
+      requestId: requestId,
+      generateAction: () => runtime.generateText(request),
+    );
 
     if (role == ModelRole.actor) {
       final conversationHistory =
@@ -202,8 +360,8 @@ class RuntimeInferenceBridge implements InferenceBridge {
     required Map<String, dynamic> schema,
     double temperature = 0.0,
   }) async {
-    final role = roleResolver(modelId);
-    final handle = handleResolver(role);
+    final role = routeResolver.resolveRole(modelId);
+    final plan = planResolver(role);
     final requestId = requestIdFactory.next();
     final traceId = traceIdFactory.next();
 
@@ -216,7 +374,7 @@ class RuntimeInferenceBridge implements InferenceBridge {
 
     final request = StructuredGenerationRequest(
       requestId: requestId,
-      model: handle,
+      model: plan.handle,
       messages: inferenceMessages,
       schema: JsonSchemaDocument(
         schemaId: 'evaluator_schema',
@@ -230,29 +388,15 @@ class RuntimeInferenceBridge implements InferenceBridge {
         traceId: traceId,
         sessionId: 'session-bridge',
         agentId: role.name,
-        logicalModelId: handle.logicalModelId,
+        logicalModelId: plan.logicalModelId,
       ),
     );
 
-    StructuredGenerationResult result;
-    try {
-      result = await runtime
-          .generateStructured(request)
-          .timeout(timeoutPolicy.generationTimeout);
-    } on TimeoutException {
-      try {
-        await runtime
-            .cancel(requestId)
-            .timeout(timeoutPolicy.cancellationTimeout);
-      } catch (_) {}
-      throw RuntimeException(
-        RuntimeFailure(
-          code: RuntimeFailureCode.timeout,
-          message:
-              'Timeout applicativo durante la generazione strutturata (superati ${timeoutPolicy.generationTimeout.inSeconds}s).',
-        ),
-      );
-    }
+    final result =
+        await _executeWithTimeoutAndCancellation<StructuredGenerationResult>(
+      requestId: requestId,
+      generateAction: () => runtime.generateStructured(request),
+    );
 
     if (result.parsedObject != null) {
       return result.parsedObject!;
@@ -270,6 +414,6 @@ class RuntimeInferenceBridge implements InferenceBridge {
   Future<List<String>> discoverModels() async {
     final health = await runtime.health();
     if (!health.responsive) return const [];
-    return const ['aura.evaluator.primary', 'aura.actor.primary'];
+    return routeResolver.routes.keys.toList();
   }
 }

@@ -2,6 +2,91 @@ import 'package:aura_core/aura_offline.dart';
 import 'package:aura_core/aura_testing.dart';
 import 'package:test/test.dart';
 
+class SpyInferenceRuntime implements InferenceRuntime {
+  int disposeCallCount = 0;
+  bool isUnhealthy;
+
+  SpyInferenceRuntime({this.isUnhealthy = false});
+
+  @override
+  RuntimeState get state => RuntimeState.ready;
+
+  @override
+  Stream<RuntimeEvent> get events => const Stream.empty();
+
+  @override
+  Future<RuntimeCapabilities> initialize(
+      RuntimeInitializationRequest request) async {
+    return const RuntimeCapabilities(
+      adapterId: RuntimeAdapterId('spy'),
+      runtimeName: 'Spy Runtime',
+      runtimeVersion: '1.0.0',
+      runtimeBuildId: 'spy-build',
+      selectedBackend: RuntimeBackend.external,
+      generationCapabilities: {GenerationCapability.text},
+      modelCapabilities: {ModelCapability.multipleLoadedModels},
+      maxConcurrentGenerations: 1,
+      maxLoadedModels: 2,
+    );
+  }
+
+  @override
+  Future<ModelHandle> loadModel(ModelLoadRequest request) async {
+    return ModelHandle(
+      id: ModelHandleId('handle-${request.logicalModelId}'),
+      runtimeInstanceId: const RuntimeInstanceId('spy-instance'),
+      logicalModelId: request.logicalModelId,
+      modelVariantId: request.artifact.modelVariantId,
+      roles: request.roles,
+      loadedAt: DateTime.now(),
+    );
+  }
+
+  @override
+  Future<void> unloadModel(ModelHandle handle) async {}
+
+  @override
+  Future<TextGenerationResult> generateText(
+      TextGenerationRequest request) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<StructuredGenerationResult> generateStructured(
+      StructuredGenerationRequest request) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> cancel(GenerationRequestId requestId) async {}
+
+  @override
+  Future<RuntimeHealth> health() async {
+    return RuntimeHealth(
+      instanceId: const RuntimeInstanceId('spy-instance'),
+      state: RuntimeState.ready,
+      responsive: !isUnhealthy,
+      observedAt: DateTime.now(),
+      backend: RuntimeBackend.external,
+    );
+  }
+
+  @override
+  Future<void> dispose() async {
+    disposeCallCount++;
+  }
+}
+
+class FailingDisposeInferenceRuntime extends SpyInferenceRuntime {
+  FailingDisposeInferenceRuntime({super.isUnhealthy});
+
+  @override
+  Future<void> dispose() async {
+    await super.dispose();
+    throw Exception('Simulated runtime dispose failure');
+  }
+}
+
 void main() {
   group('ApplicationBootstrap Full Paths Tests -', () {
     test('Legacy path constructs LocalApiInferenceBridge with skipHealthCheck',
@@ -84,48 +169,58 @@ void main() {
     });
 
     test(
-        'Fallback policy none maintains unhealthy status when legacy health check fails without switching mode',
+        'Fallback policy none maintains unhealthy status when external health check fails without switching mode (offline deterministic test)',
         () async {
       const factory = ApplicationBootstrapFactory();
       final bootstrap = factory.create();
+      final fakeClient = FakeExternalOpenAiClient(healthy: false);
 
       final result = await bootstrap.bootstrap(
         ApplicationBootstrapRequest(
-          configuration: ApplicationRuntimeConfiguration(
-            runtimeMode: ApplicationRuntimeMode.legacyExternalOpenAi,
-            baseUri: Uri.parse('http://127.0.0.1:9999'), // Unreachable port
+          configuration: const ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
+            actorModelId: 'qwen',
+            evaluatorModelId: 'mistral',
             skipHealthCheck: false,
             fallbackPolicy: BootstrapFallbackPolicy.none,
           ),
+          customHttpClient: fakeClient,
         ),
       );
 
       expect(result.runtimeMode,
-          equals(ApplicationRuntimeMode.legacyExternalOpenAi));
+          equals(ApplicationRuntimeMode.externalOpenAiRuntime));
       expect(result.status.isHealthy, isFalse);
 
       await result.dispose();
     });
 
     test(
-        'Fallback policy ruleBased switches to ruleBased when legacy health check fails',
+        'Fallback policy ruleBased switches to ruleBased and cleanly disposes external runtime and client without leak',
         () async {
       const factory = ApplicationBootstrapFactory();
       final bootstrap = factory.create();
+      final spyRuntime = SpyInferenceRuntime(isUnhealthy: true);
+      final fakeClient = FakeExternalOpenAiClient(healthy: false);
 
       final result = await bootstrap.bootstrap(
         ApplicationBootstrapRequest(
-          configuration: ApplicationRuntimeConfiguration(
-            runtimeMode: ApplicationRuntimeMode.legacyExternalOpenAi,
-            baseUri: Uri.parse('http://127.0.0.1:9999'), // Unreachable port
+          configuration: const ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
+            actorModelId: 'qwen',
+            evaluatorModelId: 'mistral',
             skipHealthCheck: false,
             fallbackPolicy: BootstrapFallbackPolicy.ruleBased,
           ),
+          customRuntime: spyRuntime,
+          customHttpClient: fakeClient,
         ),
       );
 
       expect(result.runtimeMode, equals(ApplicationRuntimeMode.ruleBased));
       expect(result.status.isHealthy, isTrue);
+      expect(spyRuntime.disposeCallCount, equals(1));
+      expect(fakeClient.isClosed, isTrue);
 
       await result.dispose();
     });
@@ -155,14 +250,13 @@ void main() {
     });
 
     test(
-        'Dispose performs best-effort cleanup closing client even if runtime.dispose fails',
+        'Dispose performs best-effort cleanup closing client even when runtime.dispose throws exception',
         () async {
       const factory = ApplicationBootstrapFactory();
       final bootstrap = factory.create();
       final fakeClient = FakeExternalOpenAiClient(healthy: true);
-      final failingRuntime = MockInferenceRuntime();
+      final failingRuntime = FailingDisposeInferenceRuntime();
 
-      // Setup failingRuntime to throw on dispose if possible, or test client closure
       final result = await bootstrap.bootstrap(
         ApplicationBootstrapRequest(
           configuration: const ApplicationRuntimeConfiguration(
@@ -176,8 +270,16 @@ void main() {
         ),
       );
 
-      await result.dispose();
+      try {
+        await result.dispose();
+        fail(
+            'Expected ApplicationBootstrapException due to failing runtime dispose');
+      } on ApplicationBootstrapException catch (e) {
+        expect(e.failure.code,
+            equals(ApplicationBootstrapFailureCode.disposeFailed));
+      }
 
+      expect(failingRuntime.disposeCallCount, equals(1));
       expect(fakeClient.isClosed, isTrue);
     });
 

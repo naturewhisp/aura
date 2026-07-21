@@ -672,7 +672,7 @@ Componenti implementati:
    - Supporta il parsing centralizzato delle variabili d'ambiente (`AURA_RUNTIME_MODE`, `AURA_INFERENCE_BASE_URL`, `AURA_ACTOR_MODEL_ID`, `AURA_EVALUATOR_MODEL_ID`, `AURA_INFERENCE_API_KEY`).
    - Gestisce i tre percorsi di runtime:
      - `legacyExternalOpenAi`: istanzia `LocalApiInferenceBridge` e i router/catalog di compatibilità.
-     - `externalOpenAiRuntime`: istanzia `ExternalOpenAiConfiguration`, `ExternalOpenAiClient`, `ExternalOpenAiRuntime`, effettua i binding espliciti (`aura.actor.primary`, `aura.evaluator.primary` o modello condiviso) e costruisce `RuntimeInferenceBridge`.
+     - `externalOpenAiRuntime`: istanzia `ExternalOpenAiConfiguration`, `ExternalOpenAiClient`, `ExternalOpenAiRuntime`, effettua i binding espliciti (`aura.actor.primary`, `aura.evaluator.primary` o modello condiviso) e costruisce `RuntimeInferenceBridge`. In modalità `useSharedModel`, registra entrambi i binding verso lo stesso `serverModelId` caricando un singolo handle `sharedHandle` con ruoli combinati `{actor, evaluator}` assegnato sia a `actorPlan` che a `evalPlan`.
      - `ruleBased`: istanzia `RuleBasedInferenceRuntime` e `RuntimeInferenceBridge` senza alcuna chiamata di rete.
    - Ownership del ciclo di vita: `dispose()` è idempotente e sicuro da chiamare più volte, garantendo la chiusura deterministica dei client e dei runtime.
 

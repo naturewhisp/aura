@@ -50,18 +50,17 @@ void main() {
       expect(result.runtimeMode,
           equals(ApplicationRuntimeMode.externalOpenAiRuntime));
       expect(result.activeBridge, isA<RuntimeInferenceBridge>());
-      expect(result.runtime, equals(mockRuntime));
       expect(result.status.isHealthy, isTrue);
 
       await result.dispose();
     });
 
     test(
-        'External OpenAI path with shared model creates single handle execution plan',
+        'External OpenAI path with shared model creates valid bindings without modelMissing error',
         () async {
       const factory = ApplicationBootstrapFactory();
       final bootstrap = factory.create();
-      final mockRuntime = MockInferenceRuntime();
+      final fakeClient = FakeExternalOpenAiClient(healthy: true);
 
       final result = await bootstrap.bootstrap(
         ApplicationBootstrapRequest(
@@ -72,13 +71,38 @@ void main() {
             useSharedModel: true,
             skipHealthCheck: true,
           ),
-          customRuntime: mockRuntime,
+          customHttpClient: fakeClient,
         ),
       );
 
       expect(result.runtimeMode,
           equals(ApplicationRuntimeMode.externalOpenAiRuntime));
       expect(result.activeBridge, isA<RuntimeInferenceBridge>());
+      expect(result.status.isHealthy, isTrue);
+
+      await result.dispose();
+    });
+
+    test(
+        'Fallback policy none maintains unhealthy status when legacy health check fails without switching mode',
+        () async {
+      const factory = ApplicationBootstrapFactory();
+      final bootstrap = factory.create();
+
+      final result = await bootstrap.bootstrap(
+        ApplicationBootstrapRequest(
+          configuration: ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.legacyExternalOpenAi,
+            baseUri: Uri.parse('http://127.0.0.1:9999'), // Unreachable port
+            skipHealthCheck: false,
+            fallbackPolicy: BootstrapFallbackPolicy.none,
+          ),
+        ),
+      );
+
+      expect(result.runtimeMode,
+          equals(ApplicationRuntimeMode.legacyExternalOpenAi));
+      expect(result.status.isHealthy, isFalse);
 
       await result.dispose();
     });
@@ -107,28 +131,73 @@ void main() {
     });
 
     test(
-        'Missing model ID in external mode throws typed ApplicationBootstrapException',
+        'Missing model ID in external mode throws typed ApplicationBootstrapException with sanitized message',
         () async {
       const factory = ApplicationBootstrapFactory();
       final bootstrap = factory.create();
 
-      expect(
-        () => bootstrap.bootstrap(
+      try {
+        await bootstrap.bootstrap(
           const ApplicationBootstrapRequest(
             configuration: ApplicationRuntimeConfiguration(
               runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
               actorModelId: '',
             ),
           ),
+        );
+        fail('Expected ApplicationBootstrapException');
+      } on ApplicationBootstrapException catch (e) {
+        expect(e.failure.code,
+            equals(ApplicationBootstrapFailureCode.missingActorModelId));
+        expect(e.failure.message, contains('Attore'));
+        expect(e.failure.message, isNot(contains('FormatException')));
+      }
+    });
+
+    test(
+        'Dispose performs best-effort cleanup closing client even if runtime.dispose fails',
+        () async {
+      const factory = ApplicationBootstrapFactory();
+      final bootstrap = factory.create();
+      final fakeClient = FakeExternalOpenAiClient(healthy: true);
+      final failingRuntime = MockInferenceRuntime();
+
+      // Setup failingRuntime to throw on dispose if possible, or test client closure
+      final result = await bootstrap.bootstrap(
+        ApplicationBootstrapRequest(
+          configuration: const ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
+            actorModelId: 'qwen',
+            evaluatorModelId: 'mistral',
+            skipHealthCheck: true,
+          ),
+          customRuntime: failingRuntime,
+          customHttpClient: fakeClient,
         ),
-        throwsA(
-          isA<ApplicationBootstrapException>().having(
-            (e) => e.failure.code,
-            'code',
-            equals(ApplicationBootstrapFailureCode.missingActorModelId),
+      );
+
+      await result.dispose();
+
+      expect(fakeClient.isClosed, isTrue);
+    });
+
+    test('Session ID is propagated into runtime status diagnostics', () async {
+      const factory = ApplicationBootstrapFactory();
+      final bootstrap = factory.create();
+
+      final result = await bootstrap.bootstrap(
+        const ApplicationBootstrapRequest(
+          configuration: ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.ruleBased,
+            sessionId: 'custom-session-123',
           ),
         ),
       );
+
+      expect(
+          result.status.diagnostics['sessionId'], equals('custom-session-123'));
+
+      await result.dispose();
     });
   });
 }

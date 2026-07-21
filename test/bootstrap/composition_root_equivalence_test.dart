@@ -1,5 +1,4 @@
 import 'package:aura_core/aura_offline.dart';
-import 'package:aura_core/aura_testing.dart';
 import 'package:test/test.dart';
 
 void main() {

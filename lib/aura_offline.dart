@@ -14,7 +14,12 @@ export 'src/agent_runtime/agents/actor_agent.dart';
 // Inference Bridges & Runtime Adapters
 export 'src/agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 export 'src/agent_runtime/bridges/local_api_inference_bridge.dart';
+export 'src/agent_runtime/bridges/runtime_inference_bridge.dart';
 export 'src/agent_runtime/runtime/adapters/rule_based_inference_runtime.dart';
+export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_runtime.dart';
+export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_configuration.dart';
+export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_model_binding.dart';
+export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_client.dart';
 
 // Output Policy Components
 export 'src/agent_runtime/output/actor_output_extraction_strategy.dart';

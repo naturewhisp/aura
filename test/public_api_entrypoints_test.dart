@@ -101,6 +101,8 @@ void main() {
 
       expect(content.contains("export 'aura_core.dart';"), isTrue);
       expect(content.contains('local_api_inference_bridge.dart'), isTrue);
+      expect(content.contains('runtime_inference_bridge.dart'), isTrue);
+      expect(content.contains('external_openai_runtime.dart'), isTrue);
       expect(content.contains('rule_based_inference_runtime.dart'), isTrue);
       expect(content.contains('evaluator_agent.dart'), isTrue);
       expect(content.contains('actor_agent.dart'), isTrue);

@@ -10,3 +10,4 @@ export 'src/agent_runtime/agents/actor_agent.dart';
 export 'src/agent_runtime/bridges/mock_inference_bridge.dart';
 export 'src/agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 export 'src/agent_runtime/runtime/testing/mock_inference_runtime.dart';
+export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_client.dart';

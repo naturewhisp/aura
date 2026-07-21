@@ -135,6 +135,19 @@ class HttpExternalOpenAiClient implements ExternalOpenAiClient {
   }
 }
 
+/// Pending request tracked by [FakeExternalOpenAiClient] when `autoCompleteRequests` is false.
+class PendingFakeExternalRequest {
+  final String? requestId;
+  final Map<String, dynamic> payload;
+  final Completer<ExternalOpenAiResponse> completer;
+
+  PendingFakeExternalRequest({
+    required this.requestId,
+    required this.payload,
+    required this.completer,
+  });
+}
+
 /// Deterministic fake client for offline contract and unit testing.
 class FakeExternalOpenAiClient implements ExternalOpenAiClient {
   bool healthy;
@@ -145,8 +158,10 @@ class FakeExternalOpenAiClient implements ExternalOpenAiClient {
   String defaultFinishReason;
   int statusCodeToReturn;
   String? errorBodyToReturn;
-  Duration simulatedLatency;
+  bool autoCompleteRequests;
+
   final Set<String> cancelledRequestIds = {};
+  final List<PendingFakeExternalRequest> pendingRequests = [];
 
   int chatCompletionsCalls = 0;
   int discoverModelsCalls = 0;
@@ -169,19 +184,11 @@ class FakeExternalOpenAiClient implements ExternalOpenAiClient {
     this.defaultFinishReason = 'stop',
     this.statusCodeToReturn = 200,
     this.errorBodyToReturn,
-    this.simulatedLatency = Duration.zero,
+    this.autoCompleteRequests = true,
   });
 
-  @override
-  Future<ExternalOpenAiResponse> chatCompletions(
-    Map<String, dynamic> payload, {
-    String? requestId,
-  }) async {
-    chatCompletionsCalls++;
-    if (simulatedLatency > Duration.zero) {
-      await Future.delayed(simulatedLatency);
-    }
-
+  ExternalOpenAiResponse _buildResponse(Map<String, dynamic> payload,
+      {String? requestId}) {
     if (requestId != null && cancelledRequestIds.contains(requestId)) {
       return ExternalOpenAiResponse(
         statusCode: 499,
@@ -228,6 +235,46 @@ class FakeExternalOpenAiClient implements ExternalOpenAiClient {
     });
 
     return ExternalOpenAiResponse(statusCode: 200, body: body);
+  }
+
+  @override
+  Future<ExternalOpenAiResponse> chatCompletions(
+    Map<String, dynamic> payload, {
+    String? requestId,
+  }) {
+    chatCompletionsCalls++;
+    if (autoCompleteRequests) {
+      return Future.value(_buildResponse(payload, requestId: requestId));
+    } else {
+      final completer = Completer<ExternalOpenAiResponse>();
+      pendingRequests.add(
+        PendingFakeExternalRequest(
+          requestId: requestId,
+          payload: payload,
+          completer: completer,
+        ),
+      );
+      return completer.future;
+    }
+  }
+
+  void completeNextRequest({ExternalOpenAiResponse? response}) {
+    if (pendingRequests.isEmpty) return;
+    final req = pendingRequests.removeAt(0);
+    req.completer.complete(
+      response ?? _buildResponse(req.payload, requestId: req.requestId),
+    );
+  }
+
+  void failNextRequest(int statusCode, String errorMessage) {
+    if (pendingRequests.isEmpty) return;
+    final req = pendingRequests.removeAt(0);
+    req.completer.complete(
+      ExternalOpenAiResponse(
+        statusCode: statusCode,
+        body: jsonEncode({'error': errorMessage}),
+      ),
+    );
   }
 
   @override

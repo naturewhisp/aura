@@ -1,7 +1,6 @@
 import 'dart:async';
 import '../../inference_runtime.dart';
 import '../../model_handle.dart';
-import '../../runtime_backend.dart';
 import '../../runtime_capabilities.dart';
 import '../../runtime_events.dart';
 import '../../runtime_failure.dart';
@@ -130,7 +129,13 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
     if (binding != null) {
       return binding.serverModelId;
     }
-    return logicalModelId;
+    throw RuntimeException(
+      RuntimeFailure(
+        code: RuntimeFailureCode.modelMissing,
+        message:
+            'Nessun binding configurato per il logical model ID: "$logicalModelId".',
+      ),
+    );
   }
 
   @override
@@ -162,28 +167,31 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
       );
     }
 
-    const capabilities = RuntimeCapabilities(
-      adapterId: RuntimeAdapterId('adapter.external.openai'),
-      runtimeName: 'External OpenAI-Compatible Runtime',
-      runtimeVersion: '1.0.0',
+    final capabilities = RuntimeCapabilities(
+      adapterId: RuntimeAdapterId(configuration.adapterId),
+      runtimeName: configuration.runtimeName,
+      runtimeVersion: configuration.runtimeVersion ?? '1.0.0',
       runtimeBuildId: 'external-openai-v1',
-      selectedBackend: RuntimeBackend.cpu,
+      selectedBackend: configuration.selectedBackend,
       generationCapabilities: {
         GenerationCapability.text,
-        GenerationCapability.structuredJson,
-        GenerationCapability.cancellation,
+        if (configuration.supportsStructuredJson)
+          GenerationCapability.structuredJson,
+        if (configuration.supportsCancellation)
+          GenerationCapability.cancellation,
       },
       modelCapabilities: {
-        ModelCapability.multipleLoadedModels,
+        if (configuration.supportsMultipleLoadedModels)
+          ModelCapability.multipleLoadedModels,
         ModelCapability.cpuExecution,
       },
-      maxConcurrentGenerations: 4,
-      maxLoadedModels: 4,
-      supportsCancellation: true,
+      maxConcurrentGenerations: configuration.maxConcurrentGenerations,
+      maxLoadedModels: configuration.maxLoadedModels,
+      supportsCancellation: configuration.supportsCancellation,
       supportsHealthCheck: true,
       supportsTokenStreaming: false,
       supportsGrammarConstraints: false,
-      supportsJsonSchema: true,
+      supportsJsonSchema: configuration.supportsStructuredJson,
       supportsLoRA: false,
     );
 
@@ -218,33 +226,13 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
       );
     }
 
-    final serverModelId = _resolveServerModelId(request.logicalModelId);
-    if (configuration.supportsDiscovery) {
-      final available = await client.discoverModels();
-      if (available.isNotEmpty && !available.contains(serverModelId)) {
-        _changeState(_activeHandles.isNotEmpty
-            ? RuntimeState.modelReady
-            : RuntimeState.ready);
-        final failure = RuntimeFailure(
-          code: RuntimeFailureCode.modelMissing,
-          message: 'Modello esterno "$serverModelId" non caricato nel server.',
-        );
-        if (!_eventController.isClosed) {
-          _eventController.add(
-            ModelLoadFailed(
-              instanceId: _instanceId!,
-              timestamp: DateTime.now(),
-              loadRequestId: request.requestId,
-              failure: failure,
-            ),
-          );
-        }
-        throw RuntimeException(failure);
-      }
-    }
+    // Verify model binding exists
+    _resolveServerModelId(request.logicalModelId);
 
     final handleId = ModelHandleId(
-        'ext-handle-${request.logicalModelId}-${_activeHandles.length + 1}');
+      'handle-${request.logicalModelId}-${_activeHandles.length + 1}',
+    );
+
     final handle = ModelHandle(
       id: handleId,
       runtimeInstanceId: _instanceId!,
@@ -289,6 +277,11 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
 
     _activeHandles.remove(handle.id);
 
+    final nextState = _activeHandles.isNotEmpty
+        ? RuntimeState.modelReady
+        : RuntimeState.ready;
+    _changeState(nextState);
+
     if (!_eventController.isClosed) {
       _eventController.add(
         ModelUnloadCompleted(
@@ -298,10 +291,6 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
         ),
       );
     }
-
-    _changeState(_activeHandles.isNotEmpty
-        ? RuntimeState.modelReady
-        : RuntimeState.ready);
   }
 
   @override
@@ -393,7 +382,8 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
 
       return result;
     } on RuntimeException catch (e) {
-      if (!_eventController.isClosed) {
+      if (e.failure.code != RuntimeFailureCode.cancelled &&
+          !_eventController.isClosed) {
         _eventController.add(
           GenerationFailed(
             instanceId: _instanceId!,
@@ -524,7 +514,8 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
 
       return result;
     } on RuntimeException catch (e) {
-      if (!_eventController.isClosed) {
+      if (e.failure.code != RuntimeFailureCode.cancelled &&
+          !_eventController.isClosed) {
         _eventController.add(
           GenerationFailed(
             instanceId: _instanceId!,
@@ -566,20 +557,29 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
   @override
   Future<void> cancel(GenerationRequestId requestId) async {
     _ensureNotDisposed();
+    if (!configuration.supportsCancellation) {
+      throw const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.cancellationUnsupported,
+          message:
+              'La cancellazione delle generazioni non è supportata dal backend HTTP.',
+        ),
+      );
+    }
     _activeCancelRequestIds.add(requestId.value);
     await client.cancel(requestId.value);
   }
 
   @override
   Future<RuntimeHealth> health() async {
-    _ensureNotDisposed();
+    _ensureInitializedAndNotDisposed();
     final isResponsive = await client.checkHealth();
     return RuntimeHealth(
-      instanceId: _instanceId ?? const RuntimeInstanceId('uninitialized'),
+      instanceId: _instanceId!,
       state: _state,
       responsive: isResponsive,
       observedAt: DateTime.now(),
-      backend: RuntimeBackend.cpu,
+      backend: configuration.selectedBackend,
       loadedModelCount: _activeHandles.length,
       activeGenerations: _activeGenerationsCount,
     );

@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import '../../runtime_backend.dart';
 
 /// Strategy used to probe the health of an external OpenAI-compatible backend.
 enum ExternalOpenAiHealthStrategy {
@@ -48,6 +49,24 @@ class ExternalOpenAiConfiguration {
   /// Whether model discovery is supported by the server.
   final bool supportsDiscovery;
 
+  /// Reported execution backend.
+  final RuntimeBackend selectedBackend;
+
+  /// Maximum concurrent generations supported.
+  final int maxConcurrentGenerations;
+
+  /// Maximum simultaneously loaded models supported.
+  final int maxLoadedModels;
+
+  /// Whether JSON schema structured output is supported.
+  final bool supportsStructuredJson;
+
+  /// Whether real request-level cancellation is supported.
+  final bool supportsCancellation;
+
+  /// Whether multiple loaded models are supported.
+  final bool supportsMultipleLoadedModels;
+
   const ExternalOpenAiConfiguration({
     required this.baseUri,
     this.adapterId = 'adapter.external.openai',
@@ -61,6 +80,12 @@ class ExternalOpenAiConfiguration {
     this.staticHeaders = const {},
     this.apiKey,
     this.supportsDiscovery = true,
+    this.selectedBackend = RuntimeBackend.external,
+    this.maxConcurrentGenerations = 1,
+    this.maxLoadedModels = 1,
+    this.supportsStructuredJson = true,
+    this.supportsCancellation = false,
+    this.supportsMultipleLoadedModels = false,
   });
 
   /// Default configuration for local development backends (e.g., LM Studio / llama-server).
@@ -82,7 +107,8 @@ class ExternalOpenAiConfiguration {
           baseUri == other.baseUri &&
           adapterId == other.adapterId &&
           runtimeName == other.runtimeName &&
-          transportTimeout == other.transportTimeout;
+          transportTimeout == other.transportTimeout &&
+          supportsCancellation == other.supportsCancellation;
 
   @override
   int get hashCode => Object.hash(
@@ -90,5 +116,6 @@ class ExternalOpenAiConfiguration {
         adapterId,
         runtimeName,
         transportTimeout,
+        supportsCancellation,
       );
 }

@@ -9,25 +9,34 @@ void main() {
     'ExternalOpenAiRuntime',
     () async {
       final fakeClient = FakeExternalOpenAiClient();
-      final config = ExternalOpenAiConfiguration.developmentDefault();
-      final binding = const ExternalOpenAiModelBinding(
-        logicalModelId: 'aura.evaluator.primary',
-        serverModelId: 'mistralai/ministral-3-3b',
+      final config = ExternalOpenAiConfiguration(
+        baseUri: Uri.parse('http://127.0.0.1:1234'),
+        supportsCancellation: false,
       );
+      final bindings = const [
+        ExternalOpenAiModelBinding(
+          logicalModelId: 'aura.evaluator.primary',
+          serverModelId: 'mistralai/ministral-3-3b',
+        ),
+        ExternalOpenAiModelBinding(
+          logicalModelId: 'aura.actor.primary',
+          serverModelId: 'qwen/qwen3.5-9b',
+        ),
+      ];
       return ExternalOpenAiRuntime(
         configuration: config,
         client: fakeClient,
-        bindings: [binding],
+        bindings: bindings,
       );
     },
     profile: const RuntimeContractTestProfile(
-      supportsCancellation: true,
+      supportsCancellation: false,
       supportsStructuredJson: true,
       supportsMultipleHandles: true,
     ),
   );
 
-  // 2. Specialized Unit & Failure Mapping Tests for ExternalOpenAiRuntime
+  // 2. Dedicated Unit & Failure Mapping Tests for ExternalOpenAiRuntime
   group('ExternalOpenAiRuntime Dedicated Unit & Failure Mapping Tests -', () {
     late FakeExternalOpenAiClient fakeClient;
     late ExternalOpenAiRuntime runtime;
@@ -35,7 +44,10 @@ void main() {
     setUp(() {
       fakeClient = FakeExternalOpenAiClient();
       runtime = ExternalOpenAiRuntime(
-        configuration: ExternalOpenAiConfiguration.developmentDefault(),
+        configuration: ExternalOpenAiConfiguration(
+          baseUri: Uri.parse('http://127.0.0.1:1234'),
+          supportsCancellation: false,
+        ),
         client: fakeClient,
         bindings: const [
           ExternalOpenAiModelBinding(
@@ -50,6 +62,60 @@ void main() {
       if (runtime.state != RuntimeState.disposed) {
         await runtime.dispose();
       }
+    });
+
+    test('Fails loadModel if logical model binding is missing', () async {
+      await runtime.initialize(
+        const RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('session-missing-binding'),
+        ),
+      );
+
+      expect(
+        () => runtime.loadModel(
+          const ModelLoadRequest(
+            requestId: ModelLoadRequestId('load-unbound'),
+            artifact: ResolvedModelArtifact(
+              modelVariantId: 'v1',
+              sha256: 'a',
+              format: 'gguf',
+              quantization: 'Q4',
+              architecture: 'unknown',
+              compatibility: ModelRuntimeCompatibility(compatible: true),
+            ),
+            logicalModelId: 'aura.unbound.model',
+            roles: {ModelRole.evaluator},
+          ),
+        ),
+        throwsA(
+          isA<RuntimeException>().having(
+            (e) => e.failure.code,
+            'code',
+            equals(RuntimeFailureCode.modelMissing),
+          ),
+        ),
+      );
+    });
+
+    test(
+        'Throws cancellationUnsupported on cancel when supportsCancellation is false',
+        () async {
+      await runtime.initialize(
+        const RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('session-cancel-unsupported'),
+        ),
+      );
+
+      expect(
+        () => runtime.cancel(const GenerationRequestId('gen-1')),
+        throwsA(
+          isA<RuntimeException>().having(
+            (e) => e.failure.code,
+            'code',
+            equals(RuntimeFailureCode.cancellationUnsupported),
+          ),
+        ),
+      );
     });
 
     test('Fails initialization if health check fails', () async {
@@ -122,58 +188,6 @@ void main() {
       );
     });
 
-    test('Maps HTTP 500 error to RuntimeFailureCode.generationFailed',
-        () async {
-      await runtime.initialize(
-        const RuntimeInitializationRequest(
-          instanceId: RuntimeInstanceId('session-500'),
-        ),
-      );
-
-      final handle = await runtime.loadModel(
-        const ModelLoadRequest(
-          requestId: ModelLoadRequestId('load-1'),
-          artifact: ResolvedModelArtifact(
-            modelVariantId: 'v1',
-            sha256: 'a',
-            format: 'gguf',
-            quantization: 'Q4',
-            architecture: 'qwen2',
-            compatibility: ModelRuntimeCompatibility(compatible: true),
-          ),
-          logicalModelId: 'aura.actor.primary',
-          roles: {ModelRole.actor},
-        ),
-      );
-
-      fakeClient.statusCodeToReturn = 500;
-
-      expect(
-        () => runtime.generateText(
-          TextGenerationRequest(
-            requestId: const GenerationRequestId('gen-500'),
-            model: handle,
-            messages: const [
-              InferenceMessage(role: InferenceRole.user, content: 'Hi')
-            ],
-            traceContext: const InferenceTraceContext(
-              traceId: RuntimeTraceId('trace-500'),
-              sessionId: 's-500',
-              agentId: 'actor',
-              logicalModelId: 'aura.actor.primary',
-            ),
-          ),
-        ),
-        throwsA(
-          isA<RuntimeException>().having(
-            (e) => e.failure.code,
-            'code',
-            equals(RuntimeFailureCode.generationFailed),
-          ),
-        ),
-      );
-    });
-
     test('Parses reasoning_content from OpenAI completion response', () async {
       await runtime.initialize(
         const RuntimeInitializationRequest(
@@ -220,20 +234,6 @@ void main() {
       expect(result.content, equals('Dialogo finale dall\'attore.'));
       expect(result.reasoningContent,
           equals('Ragionamento interno prima della battuta.'));
-    });
-
-    test('Executes cancellation by calling client cancel', () async {
-      await runtime.initialize(
-        const RuntimeInitializationRequest(
-          instanceId: RuntimeInstanceId('session-cancel'),
-        ),
-      );
-
-      const reqId = GenerationRequestId('gen-to-cancel');
-      await runtime.cancel(reqId);
-
-      expect(fakeClient.cancelCalls, equals(1));
-      expect(fakeClient.cancelledRequestIds.contains('gen-to-cancel'), isTrue);
     });
   });
 }

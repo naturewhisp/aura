@@ -3,6 +3,19 @@ import '../domain/provisioning_cancellation_token.dart';
 import '../domain/provisioning_options.dart';
 import 'provisioning_file_system.dart';
 
+/// Eccezione tipizzata specifica per i fallimenti dell'installazione fisica.
+final class ArtifactInstallationException implements Exception {
+  final ProvisioningFailureReason reason;
+  final String message;
+  final bool rollbackPerformed;
+
+  const ArtifactInstallationException({
+    required this.reason,
+    required this.message,
+    this.rollbackPerformed = false,
+  });
+}
+
 /// Risultato dell'installazione fisica eseguita da [AtomicArtifactInstaller].
 final class InstallationResult {
   final String targetInstallPath;
@@ -20,9 +33,10 @@ final class InstallationResult {
 
 /// Installer fisico responsabile dello spostamento sicuro dell'artefatto da staging a destinazione finale.
 ///
-/// **Invariante di Dominio**:
-/// [AtomicArtifactInstaller] non aggiorna MAI l'[InstallationRecord] o l'[ActivationState] e non genera l'[installationId].
-/// La registrazione dell'identità e dello stato persistito è responsabilità esclusiva dei layer superiori.
+/// **Invarianti di Dominio**:
+/// 1. [AtomicArtifactInstaller] non aggiorna MAI l'[InstallationRecord] o l'[ActivationState] e non genera l'[installationId].
+/// 2. Non esegue MAI copie ricorsive direttamente nel percorso target finale [targetInstallPath].
+/// 3. In caso di fallimento di rename atomico, non cancella MAI la destinazione finale [targetInstallPath] (che appartiene a race/altre operazioni).
 final class AtomicArtifactInstaller {
   final ProvisioningFileSystem _fileSystem;
 
@@ -30,13 +44,12 @@ final class AtomicArtifactInstaller {
     required ProvisioningFileSystem fileSystem,
   }) : _fileSystem = fileSystem;
 
-  /// Installa un artefatto da [stagingSourcePath] a [targetInstallPath] usando una directory intermedia isolata.
+  /// Installa un artefatto da [stagingSourcePath] a [targetInstallPath] usando [intermediateInstallPath].
   Future<InstallationResult> installArtifact({
     required CatalogArtifact artifact,
     required String stagingSourcePath,
     required String targetInstallPath,
-    required ProvisioningConflictPolicy conflictPolicy,
-    required String operationId,
+    required String intermediateInstallPath,
     ProvisioningCancellationToken? cancellationToken,
   }) async {
     cancellationToken?.throwIfCancelled();
@@ -46,43 +59,45 @@ final class AtomicArtifactInstaller {
     final targetFileExists = await _fileSystem.fileExists(targetInstallPath);
 
     if (targetDirExists || targetFileExists) {
-      throw const ProvisioningException(
+      throw const ArtifactInstallationException(
         reason: ProvisioningFailureReason.installationConflict,
         message:
             'La directory di installazione finale esiste già sul filesystem.',
+        rollbackPerformed: false,
       );
     }
 
-    final intermediateTargetPath = '$targetInstallPath.installing-$operationId';
-    bool physicalRollbackAttempted = false;
+    bool physicalCopyStarted = false;
 
     try {
       cancellationToken?.throwIfCancelled();
 
-      // Pulizia di eventuali residui intermedi precedenti
-      await _fileSystem.deleteDirectoryBestEffort(intermediateTargetPath);
-      await _fileSystem.deleteFileBestEffort(intermediateTargetPath);
+      // Pulizia preventiva dell'intermediate di nostra proprietà
+      await _fileSystem.deleteDirectoryBestEffort(intermediateInstallPath);
+      await _fileSystem.deleteFileBestEffort(intermediateInstallPath);
+
+      physicalCopyStarted = true;
 
       if (await _fileSystem.directoryExists(stagingSourcePath)) {
         await _fileSystem.copyDirectory(
-            stagingSourcePath, intermediateTargetPath);
+            stagingSourcePath, intermediateInstallPath);
       } else if (await _fileSystem.fileExists(stagingSourcePath)) {
-        final targetFilePath = '$intermediateTargetPath\\${artifact.fileName}';
+        final targetFilePath = '$intermediateInstallPath\\${artifact.fileName}';
         await _fileSystem.copyFile(stagingSourcePath, targetFilePath);
       } else {
-        throw const ProvisioningException(
+        throw const ArtifactInstallationException(
           reason: ProvisioningFailureReason.atomicMoveFailed,
           message:
               'Sorgente di staging non trovata per l\'installazione finale.',
+          rollbackPerformed: true,
         );
       }
 
-      physicalRollbackAttempted = true;
       cancellationToken?.throwIfCancelled();
 
       // Spostamento finale atomico SENZA fallback a copia nel target definitivo
       await _fileSystem.renameDirectoryWithoutFallback(
-          intermediateTargetPath, targetInstallPath);
+          intermediateInstallPath, targetInstallPath);
 
       return InstallationResult(
         targetInstallPath: targetInstallPath,
@@ -91,20 +106,25 @@ final class AtomicArtifactInstaller {
         rollbackPerformed: false,
       );
     } catch (e) {
-      // Rollback fisico: eliminazione della directory intermedia isolata e pulizia target
-      if (physicalRollbackAttempted) {
-        await _fileSystem.deleteDirectoryBestEffort(intermediateTargetPath);
-        await _fileSystem.deleteFileBestEffort(intermediateTargetPath);
-        await _fileSystem.deleteDirectoryBestEffort(targetInstallPath);
-        await _fileSystem.deleteFileBestEffort(targetInstallPath);
-      }
+      // Pulizia incondizionata della SOLA directory intermedia di nostra proprietà
+      final intermediateCleaned = await _fileSystem
+              .deleteDirectoryBestEffort(intermediateInstallPath) &&
+          await _fileSystem.deleteFileBestEffort(intermediateInstallPath);
 
-      if (e is ProvisioningException) {
+      if (e is ArtifactInstallationException) {
         rethrow;
       }
-      throw const ProvisioningException(
+      if (e is ProvisioningException) {
+        throw ArtifactInstallationException(
+          reason: e.reason,
+          message: e.message,
+          rollbackPerformed: physicalCopyStarted && intermediateCleaned,
+        );
+      }
+      throw ArtifactInstallationException(
         reason: ProvisioningFailureReason.atomicMoveFailed,
         message: 'Spostamento o installazione finale dell\'artefatto fallita.',
+        rollbackPerformed: physicalCopyStarted && intermediateCleaned,
       );
     }
   }

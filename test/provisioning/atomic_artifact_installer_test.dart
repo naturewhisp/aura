@@ -46,13 +46,13 @@ void main() {
           .writeAsString('binary content');
 
       final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
+      final intermediateDir = '$targetDir.installing-op-install-1';
 
       final res = await installer.installArtifact(
         artifact: sampleArtifact,
         stagingSourcePath: stagingDir.path,
         targetInstallPath: targetDir,
-        conflictPolicy: ProvisioningConflictPolicy.fail,
-        operationId: 'op-install-1',
+        intermediateInstallPath: intermediateDir,
       );
 
       expect(res.installed, isTrue);
@@ -62,22 +62,23 @@ void main() {
     });
 
     test(
-        'Lancia ProvisioningException in caso di conflitto con la destinazione finale sul filesystem',
+        'Lancia ArtifactInstallationException in caso di conflitto con la destinazione finale sul filesystem',
         () async {
       final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
       await Directory(targetDir).create(recursive: true);
       await File('$targetDir\\llama-server.exe')
           .writeAsString('existing content');
 
+      final intermediateDir = '$targetDir.installing-op-install-4';
+
       expect(
         () => installer.installArtifact(
           artifact: sampleArtifact,
           stagingSourcePath: '${tempDir.path}\\staging\\extracted',
           targetInstallPath: targetDir,
-          conflictPolicy: ProvisioningConflictPolicy.fail,
-          operationId: 'op-install-4',
+          intermediateInstallPath: intermediateDir,
         ),
-        throwsA(isA<ProvisioningException>().having(
+        throwsA(isA<ArtifactInstallationException>().having(
           (e) => e.reason,
           'reason',
           equals(ProvisioningFailureReason.installationConflict),

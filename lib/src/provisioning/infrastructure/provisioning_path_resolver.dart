@@ -179,6 +179,16 @@ final class ProvisioningPathResolver {
     return _join(bundledRoot, cleanAssetId);
   }
 
+  /// Calcola il path della directory temporanea intermedia per l'installazione atomica.
+  String resolveIntermediateInstallPath({
+    required CatalogArtifact artifact,
+    required String operationId,
+  }) {
+    final cleanOpId = sanitizeSegment(operationId);
+    final targetPath = resolveInstalledArtifactPath(artifact);
+    return '$targetPath.installing-$cleanOpId';
+  }
+
   /// Calcola il path assoluto della directory di staging per un'operazione.
   String resolveStagingDirectory(String operationId) {
     final cleanOpId = sanitizeSegment(operationId);

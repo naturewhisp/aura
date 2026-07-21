@@ -18,6 +18,7 @@ final class FakeProvisioningHttpClient implements ProvisioningHttpClient {
     required int expectedSizeBytes,
     ProvisioningCancellationToken? cancellationToken,
     RedirectHostPolicy redirectHostPolicy = RedirectHostPolicy.sameHostOnly,
+    Set<String> allowedRedirectHosts = const {},
     Duration timeout = const Duration(minutes: 5),
   }) async {
     cancellationToken?.throwIfCancelled();

@@ -52,7 +52,7 @@ final class ArtifactIngestionEngine {
 
     final sourceKind = _mapSourceKind(artifact.sourceKind);
 
-    // Validazione Piattaforma ed Architettura (Finding 1)
+    // Validazione Piattaforma ed Architettura
     if (!_equalsNormalized(artifact.platform, request.expectedPlatform)) {
       return ProvisioningResult.failure(
         operationId: request.operationId,
@@ -78,12 +78,18 @@ final class ArtifactIngestionEngine {
 
     final targetInstallPath =
         _pathResolver.resolveInstalledArtifactPath(artifact);
+    final intermediateInstallPath =
+        _pathResolver.resolveIntermediateInstallPath(
+      artifact: artifact,
+      operationId: request.operationId,
+    );
     final stagingPath =
         _pathResolver.resolveStagingDirectory(request.operationId);
 
     bool physicalRollbackPerformed = false;
-    bool cleanupSucceeded = true;
     int bytesProcessed = 0;
+
+    late ProvisioningResult result;
 
     try {
       cancellationToken?.throwIfCancelled();
@@ -161,7 +167,6 @@ final class ArtifactIngestionEngine {
           await _fileSystem.copyFile(bundledFilePath, rawIngestedFilePath);
           bytesProcessed = await _fileSystem.getFileSize(rawIngestedFilePath);
 
-          // Verifica della dimensione per sorgente bundled (Finding 9)
           if (bytesProcessed != artifact.sizeBytes) {
             return ProvisioningResult.failure(
               operationId: request.operationId,
@@ -197,7 +202,6 @@ final class ArtifactIngestionEngine {
           await _fileSystem.copyFile(localPath, rawIngestedFilePath);
           bytesProcessed = await _fileSystem.getFileSize(rawIngestedFilePath);
 
-          // Verifica della dimensione per sorgente localImport (Finding 9)
           if (bytesProcessed != artifact.sizeBytes) {
             return ProvisioningResult.failure(
               operationId: request.operationId,
@@ -244,46 +248,47 @@ final class ArtifactIngestionEngine {
       cancellationToken?.throwIfCancelled();
 
       // 5. Installazione fisica atomica tramite intermediate directory
-      try {
-        final installResult = await _installer.installArtifact(
-          artifact: artifact,
-          stagingSourcePath: stagingSourceForInstall,
-          targetInstallPath: targetInstallPath,
-          conflictPolicy: request.conflictPolicy,
-          operationId: request.operationId,
-          cancellationToken: cancellationToken,
-        );
+      final installResult = await _installer.installArtifact(
+        artifact: artifact,
+        stagingSourcePath: stagingSourceForInstall,
+        targetInstallPath: targetInstallPath,
+        intermediateInstallPath: intermediateInstallPath,
+        cancellationToken: cancellationToken,
+      );
 
-        return ProvisioningResult(
-          operationId: request.operationId,
-          artifactId: artifact.artifactId,
-          status: installResult.alreadyInstalled
-              ? ProvisioningStatus.alreadyInstalled
-              : ProvisioningStatus.success,
-          installed: installResult.installed,
-          alreadyInstalled: installResult.alreadyInstalled,
-          verified: true,
-          bytesProcessed: bytesProcessed,
-          sourceKind: sourceKind,
-          installationId: null,
-          cleanupSucceeded: cleanupSucceeded,
-        );
-      } catch (e) {
-        physicalRollbackPerformed = true;
-        rethrow;
-      }
+      result = ProvisioningResult(
+        operationId: request.operationId,
+        artifactId: artifact.artifactId,
+        status: installResult.alreadyInstalled
+            ? ProvisioningStatus.alreadyInstalled
+            : ProvisioningStatus.success,
+        installed: installResult.installed,
+        alreadyInstalled: installResult.alreadyInstalled,
+        verified: true,
+        bytesProcessed: bytesProcessed,
+        sourceKind: sourceKind,
+        installationId: null,
+      );
+    } on ArtifactInstallationException catch (e) {
+      result = ProvisioningResult.failure(
+        operationId: request.operationId,
+        artifactId: artifact.artifactId,
+        sourceKind: sourceKind,
+        failureReason: e.reason,
+        sanitizedMessage: e.message,
+        rollbackPerformed: e.rollbackPerformed,
+      );
     } on ProvisioningException catch (e) {
-      return ProvisioningResult.failure(
+      result = ProvisioningResult.failure(
         operationId: request.operationId,
         artifactId: artifact.artifactId,
         sourceKind: sourceKind,
         failureReason: e.reason,
         sanitizedMessage: e.message,
         rollbackPerformed: physicalRollbackPerformed,
-        cleanupSucceeded: cleanupSucceeded,
       );
     } catch (_) {
-      return ProvisioningResult.failure(
+      result = ProvisioningResult.failure(
         operationId: request.operationId,
         artifactId: artifact.artifactId,
         sourceKind: sourceKind,
@@ -291,13 +296,15 @@ final class ArtifactIngestionEngine {
         sanitizedMessage:
             'Errore imprevisto durante l\'ingestione dell\'artefatto.',
         rollbackPerformed: physicalRollbackPerformed,
-        cleanupSucceeded: cleanupSucceeded,
       );
     } finally {
-      // Pulizia incondizionata dello staging
-      cleanupSucceeded =
+      // Pulizia incondizionata dello staging e aggiornamento esatto di cleanupSucceeded (Finding 6)
+      final cleanupOk =
           await _fileSystem.deleteDirectoryBestEffort(stagingPath);
+      result = result.copyWith(cleanupSucceeded: cleanupOk);
     }
+
+    return result;
   }
 
   static ProvisioningSourceKind _mapSourceKind(

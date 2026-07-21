@@ -21,6 +21,7 @@ abstract class ProvisioningHttpClient {
     required int expectedSizeBytes,
     ProvisioningCancellationToken? cancellationToken,
     RedirectHostPolicy redirectHostPolicy = RedirectHostPolicy.sameHostOnly,
+    Set<String> allowedRedirectHosts = const {},
     Duration timeout = const Duration(minutes: 5),
   });
 
@@ -52,13 +53,28 @@ final class HttpProvisioningHttpClient implements ProvisioningHttpClient {
     required int expectedSizeBytes,
     ProvisioningCancellationToken? cancellationToken,
     RedirectHostPolicy redirectHostPolicy = RedirectHostPolicy.sameHostOnly,
+    Set<String> allowedRedirectHosts = const {},
     Duration timeout = const Duration(minutes: 5),
   }) async {
     cancellationToken?.throwIfCancelled();
 
+    final globalDeadline = DateTime.now().add(timeout);
+
+    Duration getRemainingTimeout() {
+      final rem = globalDeadline.difference(DateTime.now());
+      if (rem.isNegative || rem == Duration.zero) {
+        throw const ProvisioningException(
+          reason: ProvisioningFailureReason.downloadTimeout,
+          message: 'Timeout globale per il download superato.',
+        );
+      }
+      return rem;
+    }
+
     var currentUriStr = uri;
     var redirectCount = 0;
     http.StreamedResponse? finalResponse;
+    Uri? initialParsedUri;
 
     while (redirectCount <= maxRedirects) {
       cancellationToken?.throwIfCancelled();
@@ -75,12 +91,15 @@ final class HttpProvisioningHttpClient implements ProvisioningHttpClient {
         );
       }
 
+      initialParsedUri ??= parsedUri;
+
       final request = http.Request('GET', parsedUri)..followRedirects = false;
       http.StreamedResponse response;
 
       try {
-        response = await _client.send(request).timeout(timeout);
-      } catch (_) {
+        response = await _client.send(request).timeout(getRemainingTimeout());
+      } catch (e) {
+        if (e is ProvisioningException) rethrow;
         throw const ProvisioningException(
           reason: ProvisioningFailureReason.downloadFailed,
           message:
@@ -128,21 +147,40 @@ final class HttpProvisioningHttpClient implements ProvisioningHttpClient {
           );
         }
 
-        // Verifica Policy Cambio Host (Finding 6)
-        if (redirectHostPolicy == RedirectHostPolicy.sameHostOnly &&
-            redirectUri.host.toLowerCase() != parsedUri.host.toLowerCase()) {
-          await response.stream
-              .drain<void>()
-              .timeout(const Duration(seconds: 2))
-              .catchError((_) {});
-          throw const ProvisioningException(
-            reason: ProvisioningFailureReason.redirectRejected,
-            message:
-                'Redirect verso host esterno rifiutato dalla policy applicativa.',
-          );
+        // Verifica Policy Cambio Host & Porta (Finding 4)
+        if (redirectHostPolicy == RedirectHostPolicy.sameHostOnly) {
+          if (_getHostWithPort(redirectUri) !=
+              _getHostWithPort(initialParsedUri)) {
+            await response.stream
+                .drain<void>()
+                .timeout(const Duration(seconds: 2))
+                .catchError((_) {});
+            throw const ProvisioningException(
+              reason: ProvisioningFailureReason.redirectRejected,
+              message:
+                  'Redirect verso host/porta esterno rifiutato dalla policy sameHostOnly.',
+            );
+          }
+        } else if (redirectHostPolicy == RedirectHostPolicy.allowListedHosts) {
+          final targetHost = redirectUri.host.toLowerCase();
+          final allowedNormalized =
+              allowedRedirectHosts.map((h) => h.trim().toLowerCase()).toSet();
+          if (!allowedNormalized.contains(targetHost) &&
+              _getHostWithPort(redirectUri) !=
+                  _getHostWithPort(initialParsedUri)) {
+            await response.stream
+                .drain<void>()
+                .timeout(const Duration(seconds: 2))
+                .catchError((_) {});
+            throw const ProvisioningException(
+              reason: ProvisioningFailureReason.redirectRejected,
+              message:
+                  'Redirect verso host non presente nell\'allowlist rifiutato.',
+            );
+          }
         }
 
-        // Drena lo stream della risposta 3xx prima di proseguire (Finding 7)
+        // Drena lo stream della risposta 3xx prima di proseguire
         await response.stream
             .drain<void>()
             .timeout(const Duration(seconds: 2))
@@ -157,6 +195,11 @@ final class HttpProvisioningHttpClient implements ProvisioningHttpClient {
         break;
       }
 
+      // Drena le risposte HTTP di errore non-200/non-3xx prima di lanciare eccezione (Finding 9)
+      await response.stream
+          .drain<void>()
+          .timeout(const Duration(seconds: 2))
+          .catchError((_) {});
       throw ProvisioningException(
         reason: ProvisioningFailureReason.downloadFailed,
         message:
@@ -222,7 +265,6 @@ final class HttpProvisioningHttpClient implements ProvisioningHttpClient {
         cancelOnError: true,
       );
 
-      // In ascolto concorrente di: streamDone, cancellationToken, timeout (Finding 5)
       final cancelFuture = cancellationToken?.whenCancelled.then((_) {
         subscription?.cancel();
         throw const ProvisioningException(
@@ -231,11 +273,13 @@ final class HttpProvisioningHttpClient implements ProvisioningHttpClient {
         );
       });
 
+      final remainingStreamTimeout = getRemainingTimeout();
+
       if (cancelFuture != null) {
         await Future.any([
           streamDone.future,
           cancelFuture,
-        ]).timeout(timeout, onTimeout: () {
+        ]).timeout(remainingStreamTimeout, onTimeout: () {
           subscription?.cancel();
           throw const ProvisioningException(
             reason: ProvisioningFailureReason.downloadTimeout,
@@ -243,7 +287,7 @@ final class HttpProvisioningHttpClient implements ProvisioningHttpClient {
           );
         });
       } else {
-        await streamDone.future.timeout(timeout, onTimeout: () {
+        await streamDone.future.timeout(remainingStreamTimeout, onTimeout: () {
           subscription?.cancel();
           throw const ProvisioningException(
             reason: ProvisioningFailureReason.downloadTimeout,
@@ -283,5 +327,9 @@ final class HttpProvisioningHttpClient implements ProvisioningHttpClient {
       }
       throw const ProvisioningIoException(operation: 'downloadFile');
     }
+  }
+
+  static String _getHostWithPort(Uri uri) {
+    return '${uri.host.toLowerCase()}:${uri.port}';
   }
 }

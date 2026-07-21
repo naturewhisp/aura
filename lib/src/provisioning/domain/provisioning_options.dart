@@ -244,6 +244,40 @@ final class ProvisioningResult {
       },
     );
   }
+
+  ProvisioningResult copyWith({
+    String? operationId,
+    String? artifactId,
+    ProvisioningStatus? status,
+    String? installationId,
+    bool? installed,
+    bool? alreadyInstalled,
+    bool? activated,
+    bool? verified,
+    int? bytesProcessed,
+    ProvisioningSourceKind? sourceKind,
+    bool? rollbackPerformed,
+    bool? cleanupSucceeded,
+    ProvisioningFailureReason? failureReason,
+    Map<String, dynamic>? sanitizedDiagnostics,
+  }) {
+    return ProvisioningResult(
+      operationId: operationId ?? this.operationId,
+      artifactId: artifactId ?? this.artifactId,
+      status: status ?? this.status,
+      installationId: installationId ?? this.installationId,
+      installed: installed ?? this.installed,
+      alreadyInstalled: alreadyInstalled ?? this.alreadyInstalled,
+      activated: activated ?? this.activated,
+      verified: verified ?? this.verified,
+      bytesProcessed: bytesProcessed ?? this.bytesProcessed,
+      sourceKind: sourceKind ?? this.sourceKind,
+      rollbackPerformed: rollbackPerformed ?? this.rollbackPerformed,
+      cleanupSucceeded: cleanupSucceeded ?? this.cleanupSucceeded,
+      failureReason: failureReason ?? this.failureReason,
+      sanitizedDiagnostics: sanitizedDiagnostics ?? this.sanitizedDiagnostics,
+    );
+  }
 }
 
 /// Eccezione tipizzata del dominio di provisioning.

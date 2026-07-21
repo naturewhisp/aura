@@ -17,11 +17,15 @@ abstract class ArchiveExtractor {
 }
 
 /// Implementazione concreta basata su `package:archive` con protezione integrata Zip Slip e Zip Bomb limit.
+///
+/// **Invariante Architetturale**:
+/// I modelli GGUF ed i binari multi-GB vengono distribuiti come file unici non compressi (`compression: none`).
+/// Gli archivi ZIP sono riservati a piccole utility pre-impacchettate con limite massimo pre-decode di 256 MB.
 final class ZipArchiveExtractor implements ArchiveExtractor {
   static const int maxArchiveEntries = 10000;
   static const int maxSingleFileBytes = 5 * 1024 * 1024 * 1024; // 5 GB
   static const int maxCompressedArchiveLimit =
-      2 * 1024 * 1024 * 1024; // 2 GB per archivi ZIP compressi
+      256 * 1024 * 1024; // 256 MB limite conservativo pre-decode ZIP
   static const double maxCompressionRatio = 100.0;
 
   static final RegExp _invalidCharsRegex = RegExp(r'[<>:"|?*\x00-\x1F]');
@@ -51,12 +55,12 @@ final class ZipArchiveExtractor implements ArchiveExtractor {
 
     final archiveSizeBytes = await archiveFile.length();
 
-    // Controlli PRE-DECODE sulla dimensione dell'archivio compresso
+    // Controlli PRE-DECODE sulla dimensione dell'archivio compresso PRIMA di caricare i byte in RAM
     if (archiveSizeBytes > maxCompressedArchiveLimit) {
       throw const ProvisioningException(
         reason: ProvisioningFailureReason.sizeLimitExceeded,
         message:
-            'Dimensione dell\'archivio ZIP compresso supera il limite massimo consentito di 2 GB.',
+            'Dimensione dell\'archivio ZIP compresso supera il limite massimo consentito di 256 MB.',
       );
     }
 

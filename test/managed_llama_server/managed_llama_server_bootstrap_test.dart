@@ -18,7 +18,9 @@ void main() {
     });
 
     tearDown(() async {
-      await bootstrap.dispose();
+      try {
+        await bootstrap.dispose();
+      } catch (_) {}
     });
 
     test(
@@ -33,9 +35,15 @@ void main() {
         customPortAllocator: const FakePortAllocator(allocatedPort: 8080),
         customHealthProbe:
             FakeLlamaServerHealthProbe(isResponsive: true, modelVisible: true),
+        customFileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
         customDelegateFactory: (clientConfig) => ExternalOpenAiRuntime(
           configuration: clientConfig,
-          client: FakeExternalOpenAiClient(healthy: true),
+          client: FakeExternalOpenAiClient(
+            healthy: true,
+            availableModels: const ['test-model'],
+          ),
           bindings: const [
             ExternalOpenAiModelBinding(
               logicalModelId: 'aura.actor.primary',
@@ -57,7 +65,9 @@ void main() {
           equals(ApplicationRuntimeMode.managedLlamaServer));
       expect(result.status.isHealthy, isTrue);
       expect(result.status.diagnostics['managed'], isTrue);
-      expect(result.status.diagnostics['allocatedPort'], equals(8080));
+      // Info Hiding: no port or PID in diagnostics
+      expect(result.status.diagnostics.containsKey('allocatedPort'), isFalse);
+      expect(result.status.diagnostics.containsKey('pid'), isFalse);
     });
 
     test(
@@ -72,6 +82,9 @@ void main() {
         customProcessLauncher: FakeProcessLauncher(shouldFail: true),
         customPortAllocator: const FakePortAllocator(allocatedPort: 8080),
         customHealthProbe: FakeLlamaServerHealthProbe(isResponsive: false),
+        customFileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
       );
 
       final result = await bootstrap.bootstrap(request);

@@ -15,6 +15,7 @@ import '../external_openai/external_openai_model_binding.dart';
 import '../external_openai/external_openai_runtime.dart';
 import 'llama_server_process_supervisor.dart';
 import 'managed_llama_server_configuration.dart';
+import 'managed_llama_server_failure.dart';
 
 /// Adapter runtime per la gestione locale di `llama-server` su Windows.
 ///
@@ -31,6 +32,7 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
 
   ExternalOpenAiRuntime? _delegateRuntime;
   bool _initialized = false;
+  bool _disposed = false;
   Future<void>? _disposeFuture;
   final List<ModelHandle> _activeHandles = [];
   final StreamController<RuntimeEvent> _eventController =
@@ -50,12 +52,18 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
   LlamaServerProcessSupervisor get supervisor => _supervisor;
 
   @override
-  RuntimeState get state => _initialized
-      ? RuntimeState.ready
-      : (_supervisor.state == LlamaServerSupervisorState.starting ||
-              _supervisor.state == LlamaServerSupervisorState.probing
-          ? RuntimeState.initializing
-          : RuntimeState.uninitialized);
+  RuntimeState get state {
+    if (_disposed) return RuntimeState.disposed;
+    if (_supervisor.state == LlamaServerSupervisorState.failed) {
+      return RuntimeState.failed;
+    }
+    if (_initialized) return RuntimeState.ready;
+    if (_supervisor.state == LlamaServerSupervisorState.starting ||
+        _supervisor.state == LlamaServerSupervisorState.probing) {
+      return RuntimeState.initializing;
+    }
+    return RuntimeState.uninitialized;
+  }
 
   @override
   Stream<RuntimeEvent> get events => _eventController.stream;
@@ -81,8 +89,8 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
         baseUri: Uri.parse('http://${_configuration.host}:$allocatedPort'),
         apiKey: _configuration.apiKey,
         transportTimeout: _configuration.startupTimeout,
-        supportsMultipleLoadedModels: false,
-        maxLoadedModels: 1,
+        supportsMultipleLoadedModels: true,
+        maxLoadedModels: 2,
       );
 
       final bindings = [
@@ -116,6 +124,7 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
       _initialized = true;
 
       // 4. Personalizza le capabilities dichiarate per rispecchiare il runtime gestito
+      // Info Hiding: non esponiamo mai porta o PID nei DTO pubblici
       return RuntimeCapabilities(
         adapterId: const RuntimeAdapterId('llama-server-managed'),
         runtimeName: 'llama-server',
@@ -130,10 +139,18 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
         supportsHealthCheck: true,
         extensions: {
           'managed': true,
-          'allocatedPort': allocatedPort,
           'modelAlias': _configuration.modelAlias,
           ...delegateCapabilities.extensions,
         },
+      );
+    } on ManagedLlamaServerException catch (e) {
+      await dispose();
+      throw RuntimeException(
+        RuntimeFailure(
+          code: _mapFailureCode(e.code),
+          message: e.message,
+        ),
+        cause: e,
       );
     } catch (e) {
       await dispose();
@@ -152,15 +169,29 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
   Future<ModelHandle> loadModel(ModelLoadRequest request) async {
     _checkInitialized();
 
-    if (_activeHandles.isNotEmpty &&
-        _activeHandles.any((h) => h.logicalModelId != request.logicalModelId)) {
+    // Consente multipli logical handle sullo stesso modello fisico
+    if (request.artifact.modelVariantId != _configuration.modelAlias) {
       throw const RuntimeException(
         RuntimeFailure(
           code: RuntimeFailureCode.unsupportedCapability,
           message:
-              'ManagedLlamaServerRuntime supporta un solo modello fisico alla volta per processo.',
+              'ManagedLlamaServerRuntime supporta solo il caricamento del modello fisico configurato.',
         ),
       );
+    }
+
+    if (request.artifact.localArtifactUri != null) {
+      final requestPath = request.artifact.localArtifactUri!.toFilePath();
+      final configPath = Uri.file(_configuration.modelPath).toFilePath();
+      if (requestPath != configPath) {
+        throw const RuntimeException(
+          RuntimeFailure(
+            code: RuntimeFailureCode.unsupportedCapability,
+            message:
+                'ManagedLlamaServerRuntime supporta solo il caricamento del modello al percorso configurato.',
+          ),
+        );
+      }
     }
 
     final handle = await _delegateRuntime!.loadModel(request);
@@ -205,10 +236,10 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
     final instanceId = RuntimeInstanceId(
         _configuration.runtimeInstanceId ?? 'managed-llama-instance');
 
-    if (!_initialized) {
+    if (!_initialized || _disposed) {
       return RuntimeHealth(
         instanceId: instanceId,
-        state: RuntimeState.uninitialized,
+        state: _disposed ? RuntimeState.disposed : RuntimeState.uninitialized,
         responsive: false,
         observedAt: observedAt,
         backend: RuntimeBackend.systemManaged,
@@ -220,6 +251,7 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
 
     final isHealthy = supervisorHealth.responsive && delegateHealth.responsive;
 
+    // Info Hiding: escludiamo pid e porta dai diagnostics dello status pubblico
     return RuntimeHealth(
       instanceId: instanceId,
       state: isHealthy ? RuntimeState.ready : RuntimeState.failed,
@@ -238,30 +270,82 @@ class ManagedLlamaServerRuntime implements InferenceRuntime {
 
   Future<void> _performDispose() async {
     _initialized = false;
+    _disposed = true;
     _activeHandles.clear();
+
+    final List<Object> errors = [];
 
     try {
       if (_delegateRuntime != null) {
         await _delegateRuntime!.dispose();
-        _delegateRuntime = null;
       }
-    } catch (_) {}
+    } catch (e) {
+      errors.add(e);
+    } finally {
+      _delegateRuntime = null;
+    }
 
     try {
       await _supervisor.dispose();
-    } catch (_) {}
+    } catch (e) {
+      errors.add(e);
+    }
 
-    await _eventController.close();
+    try {
+      await _eventController.close();
+    } catch (e) {
+      errors.add(e);
+    }
+
+    if (errors.isNotEmpty) {
+      throw RuntimeException(
+        const RuntimeFailure(
+          code: RuntimeFailureCode.invalidState,
+          message:
+              'Errore durante la dismissione di ManagedLlamaServerRuntime.',
+        ),
+        cause: errors.length == 1 ? errors.first : errors,
+      );
+    }
   }
 
   void _checkInitialized() {
-    if (!_initialized || _delegateRuntime == null) {
+    if (!_initialized || _delegateRuntime == null || _disposed) {
       throw const RuntimeException(
         RuntimeFailure(
           code: RuntimeFailureCode.invalidState,
-          message: 'ManagedLlamaServerRuntime non inizializzato o dismesso.',
+          message:
+              'ManagedLlamaServerRuntime non inizializzato, dismesso o in stato di errore.',
         ),
       );
+    }
+  }
+
+  RuntimeFailureCode _mapFailureCode(ManagedLlamaServerFailureCode code) {
+    switch (code) {
+      case ManagedLlamaServerFailureCode.executableMissing:
+      case ManagedLlamaServerFailureCode.executableNotFile:
+      case ManagedLlamaServerFailureCode.modelMissing:
+      case ManagedLlamaServerFailureCode.modelNotFile:
+        return RuntimeFailureCode.invalidArgument;
+      case ManagedLlamaServerFailureCode.invalidPort:
+      case ManagedLlamaServerFailureCode.invalidConfiguration:
+      case ManagedLlamaServerFailureCode.unsupportedHost:
+        return RuntimeFailureCode.invalidArgument;
+      case ManagedLlamaServerFailureCode.processLaunchFailed:
+        return RuntimeFailureCode.runtimeInitializationFailed;
+      case ManagedLlamaServerFailureCode.processExitedEarly:
+        return RuntimeFailureCode.runtimeCrashed;
+      case ManagedLlamaServerFailureCode.startupTimeout:
+        return RuntimeFailureCode.timeout;
+      case ManagedLlamaServerFailureCode.healthCheckFailed:
+        return RuntimeFailureCode.backendUnavailable;
+      case ManagedLlamaServerFailureCode.shutdownTimeout:
+        return RuntimeFailureCode.timeout;
+      case ManagedLlamaServerFailureCode.forcedTerminationFailed:
+        return RuntimeFailureCode.invalidState;
+      case ManagedLlamaServerFailureCode.unexpectedProcessState:
+        return RuntimeFailureCode.invalidState;
     }
   }
 }

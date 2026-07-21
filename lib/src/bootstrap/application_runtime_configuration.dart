@@ -186,7 +186,7 @@ class ApplicationRuntimeConfiguration {
         parallelSlots: parallel ?? defaults.managedLlamaConfig?.parallelSlots,
         startupTimeout: startupTimeout,
         shutdownTimeout: shutdownTimeout,
-        apiKey: apiKey,
+        apiKey: apiKey ?? 'managed-llama-secret',
         diagnosticMode: defaults.diagnosticMode,
       );
     }

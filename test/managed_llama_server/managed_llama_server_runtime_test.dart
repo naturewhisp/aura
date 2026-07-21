@@ -20,6 +20,9 @@ void main() {
         portAllocator: const FakePortAllocator(allocatedPort: 8080),
         healthProbe:
             FakeLlamaServerHealthProbe(isResponsive: true, modelVisible: true),
+        fileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
       );
 
       runtime = ManagedLlamaServerRuntime(
@@ -27,33 +30,38 @@ void main() {
         supervisor: supervisor,
         delegateFactory: (clientConfig, bindings) => ExternalOpenAiRuntime(
           configuration: clientConfig,
-          client: FakeExternalOpenAiClient(healthy: true),
+          client: FakeExternalOpenAiClient(
+              healthy: true, availableModels: const ['test-model']),
           bindings: bindings,
         ),
       );
     });
 
     tearDown(() async {
-      await runtime.dispose();
+      try {
+        await runtime.dispose();
+      } catch (_) {}
     });
 
     test(
-        'initialize starts supervisor and prepares delegate runtime capabilities',
+        'initialize starts supervisor and prepares delegate runtime capabilities without leaking port/pid',
         () async {
       final capabilities = await runtime.initialize();
 
       expect(capabilities.runtimeName, equals('llama-server'));
       expect(capabilities.maxLoadedModels, equals(1));
       expect(capabilities.extensions['managed'], isTrue);
-      expect(capabilities.extensions['allocatedPort'], equals(8080));
+      // Info Hiding: non deve esporre porta o PID nelle capabilities pubbliche
+      expect(capabilities.extensions.containsKey('allocatedPort'), isFalse);
+      expect(capabilities.extensions.containsKey('pid'), isFalse);
     });
 
     test(
-        'loadModel creates model handle and rejects conflicting second physical model',
+        'loadModel allows multiple logical handles on the same physical model alias',
         () async {
       await runtime.initialize();
 
-      final loadReq = ModelLoadRequest(
+      final loadReq1 = ModelLoadRequest(
         requestId: const ModelLoadRequestId('load-1'),
         artifact: ResolvedModelArtifact(
           modelVariantId: 'test-model',
@@ -65,17 +73,35 @@ void main() {
           localArtifactUri: Uri.file('model.gguf'),
         ),
         logicalModelId: 'aura.actor.primary',
-        roles: const {ModelRole.actor, ModelRole.evaluator},
+        roles: const {ModelRole.actor},
       );
 
-      final handle = await runtime.loadModel(loadReq);
-
-      expect(handle.logicalModelId, equals('aura.actor.primary'));
+      final handle1 = await runtime.loadModel(loadReq1);
+      expect(handle1.logicalModelId, equals('aura.actor.primary'));
 
       final loadReq2 = ModelLoadRequest(
         requestId: const ModelLoadRequestId('load-2'),
         artifact: ResolvedModelArtifact(
-          modelVariantId: 'different-model',
+          modelVariantId: 'test-model',
+          sha256: 'sha',
+          format: 'gguf',
+          quantization: 'q4',
+          architecture: 'llama',
+          compatibility: const ModelRuntimeCompatibility(compatible: true),
+          localArtifactUri: Uri.file('model.gguf'),
+        ),
+        logicalModelId: 'aura.evaluator.primary',
+        roles: const {ModelRole.evaluator},
+      );
+
+      // Dev'essere caricato con successo (stesso alias fisico, ID logico differente)
+      final handle2 = await runtime.loadModel(loadReq2);
+      expect(handle2.logicalModelId, equals('aura.evaluator.primary'));
+
+      final loadReq3 = ModelLoadRequest(
+        requestId: const ModelLoadRequestId('load-3'),
+        artifact: ResolvedModelArtifact(
+          modelVariantId: 'different-physical-model',
           sha256: 'sha2',
           format: 'gguf',
           quantization: 'q4',
@@ -83,12 +109,13 @@ void main() {
           compatibility: const ModelRuntimeCompatibility(compatible: true),
           localArtifactUri: Uri.file('different_model.gguf'),
         ),
-        logicalModelId: 'aura.evaluator.secondary',
-        roles: const {ModelRole.evaluator},
+        logicalModelId: 'aura.actor.secondary',
+        roles: const {ModelRole.actor},
       );
 
+      // Deve rifiutare un modello fisico differente
       expect(
-        () => runtime.loadModel(loadReq2),
+        () => runtime.loadModel(loadReq3),
         throwsA(isA<RuntimeException>().having(
           (e) => e.failure.code,
           'code',
@@ -157,25 +184,93 @@ void main() {
       expect(structuredRes.rawContent, isNotEmpty);
     });
 
-    test('health combines supervisor status and delegate health', () async {
+    test(
+        'health combines supervisor status and delegate health without exposing port/pid',
+        () async {
       await runtime.initialize();
 
       final health = await runtime.health();
 
       expect(health.responsive, isTrue);
       expect(health.state, equals(RuntimeState.ready));
+      // Info Hiding check
+      expect(
+          health.warnings.any((w) =>
+              w.message.contains('allocatedPort') || w.message.contains('pid')),
+          isFalse);
     });
 
-    test('dispose is idempotent and single-flight', () async {
-      await runtime.initialize();
+    test(
+        'Map ManagedLlamaServerException to RuntimeException on initialize failure',
+        () async {
+      final badSupervisor = LlamaServerProcessSupervisor(
+        configuration: config,
+        processLauncher: FakeProcessLauncher(shouldFail: true),
+        portAllocator: const FakePortAllocator(allocatedPort: 8080),
+        healthProbe: FakeLlamaServerHealthProbe(isResponsive: true),
+        fileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
+      );
 
-      final f1 = runtime.dispose();
-      final f2 = runtime.dispose();
+      final badRuntime = ManagedLlamaServerRuntime(
+        configuration: config,
+        supervisor: badSupervisor,
+        delegateFactory: (clientConfig, bindings) => ExternalOpenAiRuntime(
+          configuration: clientConfig,
+          client: FakeExternalOpenAiClient(
+              healthy: true, availableModels: const ['test-model']),
+          bindings: bindings,
+        ),
+      );
 
-      await f1;
-      await f2;
+      expect(
+        badRuntime.initialize(),
+        throwsA(isA<RuntimeException>().having(
+          (e) => e.failure.code,
+          'code',
+          equals(RuntimeFailureCode.runtimeInitializationFailed),
+        )),
+      );
+    });
 
-      expect(supervisor.state, equals(LlamaServerSupervisorState.disposed));
+    test(
+        'dispose propagates grouped errors on failure but completes best-effort',
+        () async {
+      final errorSupervisor = LlamaServerProcessSupervisor(
+        configuration: config,
+        processLauncher: FakeProcessLauncher(
+            process: FakeManagedProcess()..killResult = false),
+        portAllocator: const FakePortAllocator(allocatedPort: 8080),
+        healthProbe: FakeLlamaServerHealthProbe(isResponsive: true),
+        fileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
+      );
+
+      final errorRuntime = ManagedLlamaServerRuntime(
+        configuration: config,
+        supervisor: errorSupervisor,
+        delegateFactory: (clientConfig, bindings) => ExternalOpenAiRuntime(
+          configuration: clientConfig,
+          client: FakeExternalOpenAiClient(
+              healthy: true, availableModels: const ['test-model']),
+          bindings: bindings,
+        ),
+      );
+
+      await errorRuntime.initialize();
+
+      expect(
+        errorRuntime.dispose(),
+        throwsA(isA<RuntimeException>().having(
+          (e) => e.failure.code,
+          'code',
+          equals(RuntimeFailureCode.invalidState),
+        )),
+      );
+
+      expect(errorRuntime.state, equals(RuntimeState.disposed));
     });
   });
 }

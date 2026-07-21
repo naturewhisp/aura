@@ -17,6 +17,7 @@ class FakeManagedProcess implements ManagedProcess {
 
   bool isKilled = false;
   ProcessSignal? lastSignal;
+  bool killResult = true;
 
   FakeManagedProcess({this.pid = 4242});
 
@@ -53,6 +54,7 @@ class FakeManagedProcess implements ManagedProcess {
   bool kill([ProcessSignal signal = ProcessSignal.sigterm]) {
     isKilled = true;
     lastSignal = signal;
+    if (!killResult) return false;
     if (!_exitCodeCompleter.isCompleted) {
       _exitCodeCompleter.complete(signal == ProcessSignal.sigkill ? -9 : 0);
       _stdoutController.close();
@@ -64,12 +66,18 @@ class FakeManagedProcess implements ManagedProcess {
 
 /// ProcessLauncher fake che restituisce istanze di [FakeManagedProcess].
 class FakeProcessLauncher implements ProcessLauncher {
-  final FakeManagedProcess process;
+  final FakeManagedProcess? _process;
+  final FakeManagedProcess Function()? processFactory;
   final bool shouldFail;
   ProcessLaunchRequest? lastLaunchRequest;
 
-  FakeProcessLauncher({FakeManagedProcess? process, this.shouldFail = false})
-      : process = process ?? FakeManagedProcess();
+  FakeProcessLauncher({
+    FakeManagedProcess? process,
+    this.processFactory,
+    this.shouldFail = false,
+  }) : _process = process;
+
+  FakeManagedProcess get process => _process ?? FakeManagedProcess();
 
   @override
   Future<ManagedProcess> start(ProcessLaunchRequest request) async {
@@ -77,7 +85,13 @@ class FakeProcessLauncher implements ProcessLauncher {
     if (shouldFail) {
       throw Exception('Impossibile avviare il processo fake.');
     }
-    return process;
+    if (processFactory != null) {
+      return processFactory!();
+    }
+    if (_process != null) {
+      return _process!;
+    }
+    return FakeManagedProcess();
   }
 }
 
@@ -103,6 +117,7 @@ class FakeLlamaServerHealthProbe implements HealthProbe {
   bool isResponsive;
   bool modelVisible;
   int statusCode;
+  bool isDisposed = false;
 
   FakeLlamaServerHealthProbe({
     this.isResponsive = true,
@@ -124,4 +139,26 @@ class FakeLlamaServerHealthProbe implements HealthProbe {
       diagnostics: {'fake': true},
     );
   }
+
+  @override
+  Future<void> dispose() async {
+    isDisposed = true;
+  }
+}
+
+/// FileSystem fake per validare configurazioni nei test.
+class FakeFileSystem implements ManagedFileSystem {
+  final Set<String> existingFiles;
+  final Set<String> existingDirectories;
+
+  const FakeFileSystem({
+    this.existingFiles = const {},
+    this.existingDirectories = const {},
+  });
+
+  @override
+  bool fileExists(String path) => existingFiles.contains(path);
+
+  @override
+  bool directoryExists(String path) => existingDirectories.contains(path);
 }

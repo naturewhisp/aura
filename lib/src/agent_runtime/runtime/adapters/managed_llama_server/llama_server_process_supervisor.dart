@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show ProcessSignal;
+import 'dart_io_process_launcher.dart';
 import 'llama_server_command_builder.dart';
 import 'llama_server_health_probe.dart';
 import 'managed_llama_server_configuration.dart';
@@ -26,6 +27,7 @@ class LlamaServerProcessSupervisor {
   final ProcessLauncher _processLauncher;
   final PortAllocator _portAllocator;
   final HealthProbe _healthProbe;
+  final ManagedFileSystem _fileSystem;
   final LlamaServerCommandBuilder _commandBuilder;
 
   LlamaServerSupervisorState _state = LlamaServerSupervisorState.idle;
@@ -37,6 +39,7 @@ class LlamaServerProcessSupervisor {
 
   final List<String> _logBuffer = [];
   static const int _maxLogLines = 100;
+  static const int _maxLineLength = 512;
 
   StreamSubscription<List<int>>? _stdoutSub;
   StreamSubscription<List<int>>? _stderrSub;
@@ -50,12 +53,14 @@ class LlamaServerProcessSupervisor {
     required ProcessLauncher processLauncher,
     required PortAllocator portAllocator,
     required HealthProbe healthProbe,
+    ManagedFileSystem fileSystem = const LocalFileSystem(),
     LlamaServerCommandBuilder commandBuilder =
         const LlamaServerCommandBuilder(),
   })  : _configuration = configuration,
         _processLauncher = processLauncher,
         _portAllocator = portAllocator,
         _healthProbe = healthProbe,
+        _fileSystem = fileSystem,
         _commandBuilder = commandBuilder;
 
   LlamaServerSupervisorState get state => _state;
@@ -66,7 +71,7 @@ class LlamaServerProcessSupervisor {
   ManagedLlamaServerFailureCode? get failureCode => _failureCode;
   List<String> get logTail => List.unmodifiable(_logBuffer);
 
-  /// Avvia il processo `llama-server`, alloca la porta e ne attende la prontezza HTTP.
+  /// Avvia il processo `llama-server` eseguendo i tentativi consentiti da `maxStartupAttempts`.
   Future<int> start() async {
     if (_state == LlamaServerSupervisorState.disposed) {
       throw StateError('Supervisor già dismesso.');
@@ -76,101 +81,165 @@ class LlamaServerProcessSupervisor {
       throw StateError('Impossibile avviare supervisor nello stato $_state.');
     }
 
-    _state = LlamaServerSupervisorState.starting;
     _failureReason = null;
     _failureCode = null;
     _lastExitCode = null;
     _startedAt = DateTime.now();
-    _logBuffer.clear();
 
-    try {
-      // 1. Validazione configurazione
-      _configuration.validate();
+    final maxAttempts = _configuration.maxStartupAttempts;
+    ManagedLlamaServerException? lastException;
 
-      // 2. Allocazione porta loopback
-      _allocatedPort = await _portAllocator.allocatePort(
-        preferredPort: _configuration.preferredPort,
-        host: _configuration.host,
-      );
+    for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+      _state = LlamaServerSupervisorState.starting;
+      _logBuffer.clear();
 
-      // 3. Costruzione argomenti CLI
-      final args = _commandBuilder.build(
-        configuration: _configuration,
-        allocatedPort: _allocatedPort!,
-      );
+      try {
+        // 1. Validazione configurazione obbligatoria ad ogni tentativo
+        _configuration.validate(_fileSystem);
 
-      // 4. Lancio del processo
-      final launchRequest = ProcessLaunchRequest(
-        executable: _configuration.executablePath,
-        arguments: args,
-        workingDirectory: _configuration.workingDirectory,
-        environment: _configuration.environmentOverrides.isNotEmpty
-            ? _configuration.environmentOverrides
-            : null,
-      );
-
-      _process = await _processLauncher.start(launchRequest);
-
-      // 5. Sottoscrizione bounded agli stream di output
-      _stdoutSub = _process!.stdoutBytes.listen(
-        (bytes) => _appendLogLines('STDOUT', bytes),
-      );
-      _stderrSub = _process!.stderrBytes.listen(
-        (bytes) => _appendLogLines('STDERR', bytes),
-      );
-
-      // 6. Monitoraggio dell'uscita prematura del processo
-      unawaited(_process!.exitCode.then((code) {
-        _lastExitCode = code;
-        if (_state == LlamaServerSupervisorState.starting ||
-            _state == LlamaServerSupervisorState.probing) {
-          _state = LlamaServerSupervisorState.failed;
-          _failureCode = ManagedLlamaServerFailureCode.processExitedEarly;
-          _failureReason =
-              'Il processo llama-server è terminato prematuramente con exit code $code.';
-        }
-      }));
-
-      // 7. Polling di readiness HTTP entro il timeout di avvio
-      _state = LlamaServerSupervisorState.probing;
-      final baseUri =
-          Uri.parse('http://${_configuration.host}:$_allocatedPort');
-
-      final pollStartTime = DateTime.now();
-      while (DateTime.now().difference(pollStartTime) <
-          _configuration.startupTimeout) {
-        if (_state == LlamaServerSupervisorState.failed) {
-          throw Exception(
-              _failureReason ?? 'Processo terminato durante l\'avvio.');
+        // 2. Allocazione porta loopback
+        try {
+          _allocatedPort = await _portAllocator.allocatePort(
+            preferredPort: _configuration.preferredPort,
+            host: _configuration.host,
+          );
+        } catch (e) {
+          throw ManagedLlamaServerException(
+            code: ManagedLlamaServerFailureCode.invalidPort,
+            message: 'Allocazione della porta fallita: $e',
+            cause: e,
+          );
         }
 
-        final probeResult = await _healthProbe.probe(
-          baseUri: baseUri,
-          expectedModelAlias: _configuration.modelAlias,
-          timeout: const Duration(seconds: 1),
+        // 3. Costruzione argomenti CLI
+        final args = _commandBuilder.build(
+          configuration: _configuration,
+          allocatedPort: _allocatedPort!,
         );
 
-        if (probeResult.responsive && probeResult.modelVisible) {
+        // 4. Lancio del processo
+        final launchRequest = ProcessLaunchRequest(
+          executable: _configuration.executablePath,
+          arguments: args,
+          workingDirectory: _configuration.workingDirectory,
+          environment: _configuration.environmentOverrides.isNotEmpty
+              ? _configuration.environmentOverrides
+              : null,
+        );
+
+        try {
+          _process = await _processLauncher.start(launchRequest);
+        } catch (e) {
+          throw ManagedLlamaServerException(
+            code: ManagedLlamaServerFailureCode.processLaunchFailed,
+            message: 'Impossibile avviare il processo llama-server: $e',
+            cause: e,
+          );
+        }
+
+        // 5. Sottoscrizione stream
+        _stdoutSub = _process!.stdoutBytes.listen(
+          (bytes) => _appendLogLines('STDOUT', bytes),
+        );
+        _stderrSub = _process!.stderrBytes.listen(
+          (bytes) => _appendLogLines('STDERR', bytes),
+        );
+
+        // 6. Monitoraggio dell'uscita prematura o inattesa del processo
+        final currentProcess = _process!;
+        unawaited(currentProcess.exitCode.then((code) {
+          if (currentProcess != _process) return;
+          _lastExitCode = code;
+          if (_state == LlamaServerSupervisorState.starting ||
+              _state == LlamaServerSupervisorState.probing) {
+            _state = LlamaServerSupervisorState.failed;
+            _failureCode = ManagedLlamaServerFailureCode.processExitedEarly;
+            _failureReason =
+                'Il processo llama-server è terminato prematuramente con exit code $code.';
+          } else if (_state == LlamaServerSupervisorState.ready) {
+            _state = LlamaServerSupervisorState.failed;
+            _failureCode = ManagedLlamaServerFailureCode.processExitedEarly;
+            _failureReason =
+                'Il processo llama-server si è arrestato inaspettatamente dopo l\'avvio con exit code $code.';
+          }
+        }));
+
+        // 7. Polling di readiness HTTP entro il timeout di avvio
+        _state = LlamaServerSupervisorState.probing;
+        final baseUri =
+            Uri.parse('http://${_configuration.host}:$_allocatedPort');
+
+        final pollStartTime = DateTime.now();
+        bool ready = false;
+        while (DateTime.now().difference(pollStartTime) <
+            _configuration.startupTimeout) {
+          if (_state == LlamaServerSupervisorState.failed) {
+            throw ManagedLlamaServerException(
+              code: _failureCode ??
+                  ManagedLlamaServerFailureCode.processExitedEarly,
+              message:
+                  _failureReason ?? 'Il processo è terminato durante l\'avvio.',
+            );
+          }
+
+          final probeResult = await _healthProbe.probe(
+            baseUri: baseUri,
+            expectedModelAlias: _configuration.modelAlias,
+            timeout: const Duration(seconds: 1),
+          );
+
+          if (probeResult.responsive && probeResult.modelVisible) {
+            ready = true;
+            break;
+          }
+
+          await Future.delayed(_configuration.healthPollInterval);
+        }
+
+        if (ready) {
           _state = LlamaServerSupervisorState.ready;
           _readyAt = DateTime.now();
           return _allocatedPort!;
         }
 
-        await Future.delayed(_configuration.healthPollInterval);
+        // Se timed out:
+        _state = LlamaServerSupervisorState.failed;
+        _failureCode = ManagedLlamaServerFailureCode.startupTimeout;
+        _failureReason =
+            'Timeout di avvio superato (${_configuration.startupTimeout.inSeconds}s) prima della prontezza HTTP.';
+        await _terminateProcess(force: true);
+        throw ManagedLlamaServerException(
+          code: ManagedLlamaServerFailureCode.startupTimeout,
+          message: _failureReason!,
+        );
+      } on ManagedLlamaServerException catch (e) {
+        lastException = e;
+        if (attempt < maxAttempts) {
+          try {
+            await _terminateProcess(force: true);
+          } catch (_) {}
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      } catch (e) {
+        lastException = ManagedLlamaServerException(
+          code: ManagedLlamaServerFailureCode.unexpectedProcessState,
+          message: 'Eccezione inattesa all\'avvio: $e',
+          cause: e,
+        );
+        if (attempt < maxAttempts) {
+          try {
+            await _terminateProcess(force: true);
+          } catch (_) {}
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
       }
-
-      // If we timed out before ready:
-      _state = LlamaServerSupervisorState.failed;
-      _failureCode = ManagedLlamaServerFailureCode.startupTimeout;
-      _failureReason =
-          'Timeout di avvio superato (${_configuration.startupTimeout.inSeconds}s) prima della prontezza HTTP.';
-      await _terminateProcess(force: true);
-      throw Exception(_failureReason);
-    } catch (e) {
-      _state = LlamaServerSupervisorState.failed;
-      await _terminateProcess(force: true);
-      rethrow;
     }
+
+    _state = LlamaServerSupervisorState.failed;
+    _failureCode = lastException?.code ??
+        ManagedLlamaServerFailureCode.unexpectedProcessState;
+    _failureReason = lastException?.message ?? 'Tentativi di avvio falliti.';
+    throw lastException!;
   }
 
   void _appendLogLines(String source, List<int> bytes) {
@@ -178,9 +247,14 @@ class LlamaServerProcessSupervisor {
       final text = utf8.decode(bytes, allowMalformed: true);
       final lines = text.split('\n');
       for (final line in lines) {
-        final trimmed = line.trimRight();
+        var trimmed = line.trimRight();
         if (trimmed.isNotEmpty) {
-          _logBuffer.add('[$source] $trimmed');
+          if (trimmed.length > _maxLineLength) {
+            trimmed = '${trimmed.substring(0, _maxLineLength)}... [TRUNCATED]';
+          }
+          final sanitized =
+              trimmed.replaceAll(RegExp(r'\x1B\[[0-9;]*[a-zA-Z]'), '');
+          _logBuffer.add('[$source] $sanitized');
           if (_logBuffer.length > _maxLogLines) {
             _logBuffer.removeAt(0);
           }
@@ -219,6 +293,7 @@ class LlamaServerProcessSupervisor {
     }
 
     _stopCompleter = Completer<void>();
+    _stopCompleter!.future.catchError((_) {});
     _state = LlamaServerSupervisorState.stopping;
 
     try {
@@ -227,6 +302,13 @@ class LlamaServerProcessSupervisor {
       _stopCompleter!.complete();
     } catch (e) {
       _state = LlamaServerSupervisorState.failed;
+      if (e is ManagedLlamaServerException) {
+        _failureCode = e.code;
+        _failureReason = e.message;
+      } else {
+        _failureCode = ManagedLlamaServerFailureCode.unexpectedProcessState;
+        _failureReason = e.toString();
+      }
       _stopCompleter!.completeError(e);
       rethrow;
     }
@@ -237,20 +319,36 @@ class LlamaServerProcessSupervisor {
 
     try {
       if (force) {
-        _process!.kill(ProcessSignal.sigkill);
+        final killed = _process!.kill(ProcessSignal.sigkill);
+        if (!killed) {
+          throw const ManagedLlamaServerException(
+            code: ManagedLlamaServerFailureCode.forcedTerminationFailed,
+            message: 'Invio di SIGKILL fallito durante arresto forzato.',
+          );
+        }
+        final exitCode = await _process!.exitCode.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => throw const ManagedLlamaServerException(
+            code: ManagedLlamaServerFailureCode.forcedTerminationFailed,
+            message: 'Il processo non ha risposto a SIGKILL entro 5 secondi.',
+          ),
+        );
+        _lastExitCode = exitCode;
       } else {
-        _process!.kill(ProcessSignal.sigterm);
-      }
+        final killed = _process!.kill(ProcessSignal.sigterm);
+        if (!killed) {
+          await _terminateProcess(force: true);
+          return;
+        }
 
-      try {
-        await _process!.exitCode.timeout(_configuration.shutdownTimeout);
-      } on TimeoutException {
-        // Se sigterm va in timeout, applica il force kill
-        _process!.kill(ProcessSignal.sigkill);
-        await _process!.exitCode
-            .timeout(const Duration(seconds: 5), onTimeout: () => -1);
+        try {
+          final exitCode =
+              await _process!.exitCode.timeout(_configuration.shutdownTimeout);
+          _lastExitCode = exitCode;
+        } on TimeoutException {
+          await _terminateProcess(force: true);
+        }
       }
-    } catch (_) {
     } finally {
       await _stdoutSub?.cancel();
       await _stderrSub?.cancel();
@@ -263,8 +361,21 @@ class LlamaServerProcessSupervisor {
   /// Dismette permanentemente il supervisor e le sue risorse.
   Future<void> dispose() async {
     if (_state == LlamaServerSupervisorState.disposed) return;
-    await stop();
+    Object? firstError;
+    try {
+      await stop();
+    } catch (e) {
+      firstError ??= e;
+    }
+    try {
+      await _healthProbe.dispose();
+    } catch (e) {
+      firstError ??= e;
+    }
     _state = LlamaServerSupervisorState.disposed;
+    if (firstError != null) {
+      throw firstError;
+    }
   }
 
   /// DTO diagnostico sanitizzato per l'ispezione pubblica.

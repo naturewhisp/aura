@@ -41,3 +41,14 @@ class DartIoProcessLauncher implements ProcessLauncher {
     return _DartIoManagedProcess(process);
   }
 }
+
+/// Implementazione di [ManagedFileSystem] basata sul pacchetto `dart:io`.
+class LocalFileSystem implements ManagedFileSystem {
+  const LocalFileSystem();
+
+  @override
+  bool fileExists(String path) => io.File(path).existsSync();
+
+  @override
+  bool directoryExists(String path) => io.Directory(path).existsSync();
+}

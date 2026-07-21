@@ -29,6 +29,9 @@ class ApplicationBootstrapRequest {
   /// Custom [HealthProbe] per iniezione nei test managed llama-server.
   final HealthProbe? customHealthProbe;
 
+  /// Custom [ManagedFileSystem] per iniezione nei test managed llama-server.
+  final ManagedFileSystem? customFileSystem;
+
   /// Custom delegate factory per `ExternalOpenAiRuntime` nei test.
   final ExternalOpenAiRuntime Function(ExternalOpenAiConfiguration config)?
       customDelegateFactory;
@@ -44,6 +47,7 @@ class ApplicationBootstrapRequest {
     this.customProcessLauncher,
     this.customPortAllocator,
     this.customHealthProbe,
+    this.customFileSystem,
     this.customDelegateFactory,
     this.environmentOverride,
   });

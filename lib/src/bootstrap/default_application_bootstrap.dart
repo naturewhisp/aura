@@ -483,9 +483,11 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       );
     }
 
+    final fileSystem = request.customFileSystem ?? const LocalFileSystem();
+
     try {
-      managedConfig.validate();
-    } on RuntimeException catch (e) {
+      managedConfig.validate(fileSystem);
+    } on ManagedLlamaServerException catch (e) {
       if (config.fallbackPolicy == BootstrapFallbackPolicy.ruleBased) {
         final cleanupDiag = await _cleanUpActiveResourcesBeforeFallback();
         final result = await _bootstrapRuleBased(config);
@@ -501,7 +503,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
             diagnostics: {
               ...result.status.diagnostics,
               ...cleanupDiag,
-              'fallbackReason': e.failure.message,
+              'fallbackReason': e.message,
               if (config.sessionId != null) 'sessionId': config.sessionId,
             },
           ),
@@ -511,7 +513,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       throw ApplicationBootstrapException(
         ApplicationBootstrapFailure(
           code: ApplicationBootstrapFailureCode.incompleteConfiguration,
-          message: e.failure.message,
+          message: e.message,
         ),
         e,
       );
@@ -529,6 +531,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       processLauncher: processLauncher,
       portAllocator: portAllocator,
       healthProbe: healthProbe,
+      fileSystem: fileSystem,
     );
 
     final runtime = request.customRuntime ??
@@ -607,13 +610,10 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     final status = ApplicationRuntimeStatus(
       runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
       isHealthy: true,
-      statusDescription:
-          'ManagedLlamaServerRuntime attivo e pronto su porta ${supervisor.allocatedPort}.',
+      statusDescription: 'ManagedLlamaServerRuntime attivo e pronto.',
       diagnostics: {
         'managed': true,
-        'allocatedPort': supervisor.allocatedPort,
         'modelAlias': managedConfig.modelAlias,
-        'pid': supervisor.pid,
         if (config.sessionId != null) 'sessionId': config.sessionId,
       },
     );

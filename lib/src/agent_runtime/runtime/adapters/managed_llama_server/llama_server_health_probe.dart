@@ -30,6 +30,8 @@ abstract interface class HealthProbe {
     String? expectedModelAlias,
     Duration timeout = const Duration(seconds: 2),
   });
+
+  Future<void> dispose();
 }
 
 /// Implementazione concreta basata sul client HTTP standard.
@@ -112,6 +114,11 @@ class HttpLlamaServerHealthProbe implements HealthProbe {
         diagnostics: {'latencyMs': stopwatch.elapsedMilliseconds},
       );
     }
+  }
+
+  @override
+  Future<void> dispose() async {
+    _client.close();
   }
 
   Future<bool> _verifyModelAlias(

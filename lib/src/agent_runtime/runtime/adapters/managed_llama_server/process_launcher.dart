@@ -33,3 +33,9 @@ abstract interface class ManagedProcess {
 abstract interface class ProcessLauncher {
   Future<ManagedProcess> start(ProcessLaunchRequest request);
 }
+
+/// Contratto iniettabile per l'accesso e la validazione del filesystem.
+abstract interface class ManagedFileSystem {
+  bool fileExists(String path);
+  bool directoryExists(String path);
+}

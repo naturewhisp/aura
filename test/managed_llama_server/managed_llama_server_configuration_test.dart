@@ -1,4 +1,4 @@
-import 'package:aura_core/aura_offline.dart';
+import 'package:aura_core/aura_testing.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -22,10 +22,10 @@ void main() {
 
       expect(
         () => config.validate(),
-        throwsA(isA<RuntimeException>().having(
-          (e) => e.failure.code,
+        throwsA(isA<ManagedLlamaServerException>().having(
+          (e) => e.code,
           'code',
-          equals(RuntimeFailureCode.invalidArgument),
+          equals(ManagedLlamaServerFailureCode.invalidConfiguration),
         )),
       );
     });
@@ -38,10 +38,10 @@ void main() {
 
       expect(
         () => config.validate(),
-        throwsA(isA<RuntimeException>().having(
-          (e) => e.failure.code,
+        throwsA(isA<ManagedLlamaServerException>().having(
+          (e) => e.code,
           'code',
-          equals(RuntimeFailureCode.invalidArgument),
+          equals(ManagedLlamaServerFailureCode.invalidConfiguration),
         )),
       );
     });
@@ -55,10 +55,10 @@ void main() {
 
       expect(
         () => config.validate(),
-        throwsA(isA<RuntimeException>().having(
-          (e) => e.failure.code,
+        throwsA(isA<ManagedLlamaServerException>().having(
+          (e) => e.code,
           'code',
-          equals(RuntimeFailureCode.invalidArgument),
+          equals(ManagedLlamaServerFailureCode.unsupportedHost),
         )),
       );
     });
@@ -72,10 +72,10 @@ void main() {
 
       expect(
         () => config.validate(),
-        throwsA(isA<RuntimeException>().having(
-          (e) => e.failure.code,
+        throwsA(isA<ManagedLlamaServerException>().having(
+          (e) => e.code,
           'code',
-          equals(RuntimeFailureCode.invalidArgument),
+          equals(ManagedLlamaServerFailureCode.invalidPort),
         )),
       );
     });
@@ -89,27 +89,32 @@ void main() {
 
       expect(
         () => config.validate(),
-        throwsA(isA<RuntimeException>().having(
-          (e) => e.failure.code,
+        throwsA(isA<ManagedLlamaServerException>().having(
+          (e) => e.code,
           'code',
-          equals(RuntimeFailureCode.invalidArgument),
+          equals(ManagedLlamaServerFailureCode.invalidConfiguration),
         )),
       );
     });
 
-    test('Validates file existence when checker function is provided', () {
+    test('Validates file existence when fileSystem is provided', () {
       const config = ManagedLlamaServerConfiguration(
         executablePath: 'C:\\llama\\llama-server.exe',
         modelPath: 'C:\\models\\model.gguf',
       );
 
+      const fs = FakeFileSystem(
+        existingFiles: {
+          'C:\\llama\\llama-server.exe'
+        }, // missing modelPath GGUF
+      );
+
       expect(
-        () => config.validate(
-            fileExists: (path) => path.contains('llama-server.exe')),
-        throwsA(isA<RuntimeException>().having(
-          (e) => e.failure.code,
+        () => config.validate(fs),
+        throwsA(isA<ManagedLlamaServerException>().having(
+          (e) => e.code,
           'code',
-          equals(RuntimeFailureCode.invalidArgument),
+          equals(ManagedLlamaServerFailureCode.modelMissing),
         )),
       );
     });

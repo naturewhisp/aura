@@ -66,3 +66,11 @@ export 'src/deception/deception_evaluation.dart';
 export 'src/lexical/lexical_tag_evaluator.dart';
 export 'src/lexical/lexical_scan_result.dart';
 export 'src/lexical/hidden_tag_evaluation.dart';
+
+// Application Composition Root & Bootstrap Contracts (Phase 6.2a)
+export 'src/bootstrap/application_runtime_mode.dart';
+export 'src/bootstrap/application_runtime_configuration.dart';
+export 'src/bootstrap/application_bootstrap_request.dart';
+export 'src/bootstrap/application_bootstrap_result.dart';
+export 'src/bootstrap/application_bootstrap.dart';
+export 'src/bootstrap/application_bootstrap_failure.dart';

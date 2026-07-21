@@ -22,7 +22,7 @@ void main() async {
   const bootstrapFactory = ApplicationBootstrapFactory();
   final bootstrap = bootstrapFactory.create();
 
-  late final ApplicationBootstrapResult result;
+  final ApplicationBootstrapResult result;
   try {
     result = await bootstrap.bootstrap(
       ApplicationBootstrapRequest(
@@ -33,17 +33,10 @@ void main() async {
         environmentOverride: Platform.environment,
       ),
     );
-  } catch (e) {
-    // Fallback di emergenza in caso di errori critici durante il bootstrap
-    final fallbackBootstrap = bootstrapFactory.create();
-    result = await fallbackBootstrap.bootstrap(
-      ApplicationBootstrapRequest(
-        configuration: ApplicationRuntimeConfiguration(
-          runtimeMode: ApplicationRuntimeMode.ruleBased,
-          sessionId: initialState.sessionId,
-        ),
-      ),
-    );
+  } on ApplicationBootstrapException catch (e) {
+    debugPrint(
+        "[BOOTSTRAP ERROR] Inizializzazione applicazione fallita: ${e.failure.message}");
+    rethrow;
   }
 
   // Inizializza il notifier della gestione dello stato con le dipendenze fornite dal bootstrap
@@ -51,6 +44,7 @@ void main() async {
     controller: result.controller,
     bridge: result.activeBridge,
     initialState: initialState,
+    onDispose: result.dispose,
   );
 
   runApp(AuraApp(notifier: controllerNotifier));

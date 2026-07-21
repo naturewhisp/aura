@@ -1571,6 +1571,21 @@ void _sessionTests() {
       }
     });
 
+    test('onDispose callback is executed when notifier is disposed', () async {
+      bool onDisposeCalled = false;
+      final notifier = GameControllerNotifier(
+        bridge: mockBridge,
+        initialState: baseState,
+        customStoragePath: tempDir.path,
+        onDispose: () async {
+          onDisposeCalled = true;
+        },
+      );
+
+      notifier.dispose();
+      expect(onDisposeCalled, isTrue);
+    });
+
     GameControllerNotifier makeNotifier({
       FakeSettingsRepository? settingsRepo,
       SessionRepository? sessionRepo,

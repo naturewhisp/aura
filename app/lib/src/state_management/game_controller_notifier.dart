@@ -293,6 +293,9 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Configurazione dei timeout per le inferenze degli agenti.
   final InferenceTimeouts inferenceTimeouts;
 
+  /// Callback di dismissione risorse del composition root.
+  final Future<void> Function()? onDispose;
+
   /// Crea un notifier di gestione dello stato a partire dallo stato iniziale e dal bridge.
   ///
   /// Accetta un [settingsRepository] e un [sessionRepository] opzionali per l'iniezione della dipendenza nei test.
@@ -308,6 +311,7 @@ class GameControllerNotifier extends ChangeNotifier {
     SessionRepository? sessionRepository,
     this.tutorialController = const TutorialSessionController(),
     this.inferenceTimeouts = InferenceTimeouts.defaults,
+    this.onDispose,
   }) : _storagePath = customStoragePath ??
             ((Platform.environment.containsKey('FLUTTER_TEST') ||
                     Platform.environment.containsKey('DART_TEST'))
@@ -1350,6 +1354,7 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
     _disposed = true;
     _invalidatePendingOperations();
     gameStateNotifier.dispose();
+    onDispose?.call();
     super.dispose();
   }
 }

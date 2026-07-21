@@ -433,19 +433,17 @@ Una trappola scattata deve avere priorità sui bonus di `preferred_reframe`, per
 
 ---
 
-## 6. Pipeline di Pulizia delle Risposte (Response Cleaning)
+## 6. Pipeline di Pulizia delle Risposta e Output Policies (Phase 6.1b)
 
-Per estrarre il puro dialogo diegetico da risposte che potrebbero contenere riflessioni o scorie di prompt, il `LocalApiInferenceBridge` applica **6 strategie sequenziali** prima di validare l'output:
+Per estrarre il puro dialogo diegetico ed eliminare processi di pensiero (CoT) o allucinazioni cinesi/duplicazioni, l'architettura delega l'interpretazione e la pulizia dell'output ad una pipeline pura e testabile ed agnostica dalla piattaforma (`ActorOutputSanitizer`), composta da quattro componenti specializzati:
 
-1.  **Tag Chiusi Coerenti:** Cerca blocchi delimitati da `<dialogo>...</dialogo>` o `<dialogue>...</dialogue>`. Prende l'ultimo blocco valido che non contiene processi di pensiero in inglese o prompt di esempio.
-2.  **Tag Aperti (Troncamento):** Se il modello viene interrotto prima di chiudere il tag (es. esaurimento token), il parser isola l'ultimo tag aperto `<dialogo>` ed estrae il testo fino alla fine.
-3.  **Rimozione di XML Thought e Thinking Process:** Elimina in modo preventivo tutti i blocchi racchiusi tra tag `<thought>...</thought>` o che iniziano con l'intestazione `Thinking Process:`.
-4.  **Isolamento delle Doppie Virgolette:** Cerca frasi racchiuse tra virgolette (`"..."`) posizionate alla fine del testo o negli ultimi 400 caratteri del flusso generato.
-5.  **Intestazioni Noto-Gerarchiche:** Rileva ed estrae il testo posizionato dopo prefissi come `Response:`, `Final Output:`, `Dialogue:`, `Attacco:`.
-6.  **Filtro Righe Markdown:** Analizza il testo riga per riga dal basso verso l'alto, prendendo la prima riga utile che non inizia con caratteri di elenchi puntati (`*`, `-`), cancelletti (`#`) o numerazioni.
+*   **`ReasoningContentPolicy`:** Gestisce il rilevamento e la bonifica dei residui di pensiero (`<thought>`, `Thinking Process:`), i prompt di esempio e le euristiche di leakage per stopword grammaticali in inglese.
+*   **`CharacterSetGuard`:** Esegue la validazione dello script dei caratteri ed intercetta allucinazioni cinesi/giapponesi/coreane (CJK range `0x4E00..0x9FFF`, `0x3400..0x4DBF`, `0x20000..0x2A6DF`, `0x3000..0x303F`, `0x3040..0x309F`, `0x30A0..0x30FF`, `0xAC00..0xD7AF`).
+*   **`DuplicateResponseGuard`:** Verifica l'assenza di duplicazione verbale rispetto alla cronologia storica del dialogo (`conversationHistory`).
+*   **`ActorOutputSanitizer`:** Orchestratore centrale che applica in sequenza deterministica il fallback del ragionamento nativo, le **6 strategie di estrazione** (1. Tag Chiusi Coerenti `<dialogo>`, 2. Tag Aperti Troncati, 3. Virgolette Incongruenti, 4. Intestazioni Noto-Gerarchiche `Response:`, 5. Ultimo Elemento di Elenco Numerato, 6. Ultima Riga Naturale Markdown), la rimozione dei prefissi di ruolo (`GIOCATORE:`, `PANOPTICON:`, `HACKER:`) ed emette eccezioni tipizzate `OutputPolicyFailure` con codici dedicati in caso di violazione delle policy.
 
-> [!WARNING]
-> La pipeline include inoltre un rilevamento di caratteri cinesi (CJK) e un controllo di duplicazione verbale (per impedire all'LLM di fare l'eco dello storico della chat). Se uno di questi filtri fallisce, la risposta viene rigettata innescando il pool di fallback diegetico.
+> [!NOTE]
+> `LocalApiInferenceBridge` mantiene il proprio costruttore `const` iniettando `const ActorOutputSanitizer()` e delegando a quest'ultimo la sanificazione del testo primario senza alterare il proprio contratto HTTP.
 
 ---
 

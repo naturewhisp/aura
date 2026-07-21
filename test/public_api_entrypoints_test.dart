@@ -106,6 +106,8 @@ void main() {
       expect(content.contains('actor_agent.dart'), isTrue);
       expect(content.contains('model_catalog.dart'), isTrue);
       expect(content.contains('model_router.dart'), isTrue);
+      expect(content.contains('actor_output_sanitizer.dart'), isTrue);
+      expect(content.contains('output_policy_failure.dart'), isTrue);
 
       // Should not export MockInferenceBridge or MockInferenceRuntime
       expect(content.contains('mock_inference_bridge.dart'), isFalse);

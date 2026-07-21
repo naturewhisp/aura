@@ -93,19 +93,30 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     }
   }
 
-  Future<void> _cleanUpActiveResourcesBeforeFallback() async {
+  Future<Map<String, dynamic>> _cleanUpActiveResourcesBeforeFallback() async {
+    final fallbackErrors = <String>[];
     if (_activeRuntime != null) {
       try {
         await _activeRuntime!.dispose();
-      } catch (_) {}
-      _activeRuntime = null;
+      } catch (e) {
+        fallbackErrors.add('Runtime dispose error: $e');
+      } finally {
+        _activeRuntime = null;
+      }
     }
     if (_activeClient != null) {
       try {
         await _activeClient!.close();
-      } catch (_) {}
-      _activeClient = null;
+      } catch (e) {
+        fallbackErrors.add('Client close error: $e');
+      } finally {
+        _activeClient = null;
+      }
     }
+    return {
+      'fallbackCleanupPerformed': true,
+      if (fallbackErrors.isNotEmpty) 'fallbackCleanupErrors': fallbackErrors,
+    };
   }
 
   Future<ApplicationBootstrapResult> _bootstrapLegacy(
@@ -373,8 +384,10 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
 
       if (!isHealthy &&
           config.fallbackPolicy == BootstrapFallbackPolicy.ruleBased) {
-        await _cleanUpActiveResourcesBeforeFallback();
-        return await _bootstrapRuleBased(config);
+        final cleanupDiagnostics =
+            await _cleanUpActiveResourcesBeforeFallback();
+        return await _bootstrapRuleBased(config,
+            fallbackDiagnostics: cleanupDiagnostics);
       }
     }
 
@@ -400,8 +413,9 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
   }
 
   Future<ApplicationBootstrapResult> _bootstrapRuleBased(
-    ApplicationRuntimeConfiguration config,
-  ) async {
+    ApplicationRuntimeConfiguration config, {
+    Map<String, dynamic>? fallbackDiagnostics,
+  }) async {
     final sessionId =
         (config.sessionId != null && config.sessionId!.trim().isNotEmpty)
             ? config.sessionId!.trim()
@@ -470,6 +484,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       statusDescription: 'Motore offline deterministico (rule-based) attivo.',
       diagnostics: {
         'sessionId': sessionId,
+        if (fallbackDiagnostics != null) ...fallbackDiagnostics,
       },
     );
 

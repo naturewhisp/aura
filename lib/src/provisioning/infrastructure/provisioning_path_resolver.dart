@@ -17,19 +17,33 @@ final class ProvisioningPathResolver {
       RegExp(r'^(?:[A-Za-z]:[\\/]|/|\\[\\/])');
 
   ProvisioningPathResolver({
-    required this.appManagedRoot,
-    required this.bundledRoot,
-  }) {
-    _validateRoot('appManagedRoot', appManagedRoot);
-    _validateRoot('bundledRoot', bundledRoot);
+    required String appManagedRoot,
+    required String bundledRoot,
+  })  : appManagedRoot = canonicalizeRoot(appManagedRoot),
+        bundledRoot = canonicalizeRoot(bundledRoot) {
+    _validateRoot('appManagedRoot', this.appManagedRoot);
+    _validateRoot('bundledRoot', this.bundledRoot);
 
-    if (appManagedRoot.trim() == bundledRoot.trim()) {
+    if (_canonicalizeKey(this.appManagedRoot) ==
+        _canonicalizeKey(this.bundledRoot)) {
       throw const ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message: 'appManagedRoot e bundledRoot non possono essere coincidenti.',
       );
     }
   }
+
+  /// Normalizza una root di percorso rimuovendo slash ridondanti e standardizzando i separatori Windows.
+  static String canonicalizeRoot(String root) {
+    var normalized = root.trim().replaceAll('/', r'\');
+    while (normalized.length > 3 && normalized.endsWith(r'\')) {
+      normalized = normalized.substring(0, normalized.length - 1);
+    }
+    return normalized;
+  }
+
+  static String _canonicalizeKey(String root) =>
+      canonicalizeRoot(root).toLowerCase();
 
   static void _validateRoot(String paramName, String root) {
     final trimmed = root.trim();

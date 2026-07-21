@@ -73,6 +73,30 @@ void main() {
       );
     });
 
+    test(
+        'Normalizza le root e rileva coincidenze case-insensitive e con trailing slash',
+        () {
+      expect(
+        () => ProvisioningPathResolver(
+          appManagedRoot: r'C:\SameRoot\AURA\',
+          bundledRoot: r'c:/sameroot/aura',
+        ),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.invalidCatalog),
+        )),
+      );
+
+      final customResolver = ProvisioningPathResolver(
+        appManagedRoot: r'C:/AppManaged/Aura/',
+        bundledRoot: r'C:\Program Files\Aura\',
+      );
+
+      expect(customResolver.appManagedRoot, equals(r'C:\AppManaged\Aura'));
+      expect(customResolver.bundledRoot, equals(r'C:\Program Files\Aura'));
+    });
+
     test('Risolve path utilizzando CatalogArtifactType fortemente tipizzato',
         () {
       final relRt = resolver.resolveRelativeInstallPath(

@@ -93,6 +93,21 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     }
   }
 
+  Future<void> _cleanUpActiveResourcesBeforeFallback() async {
+    if (_activeRuntime != null) {
+      try {
+        await _activeRuntime!.dispose();
+      } catch (_) {}
+      _activeRuntime = null;
+    }
+    if (_activeClient != null) {
+      try {
+        await _activeClient!.close();
+      } catch (_) {}
+      _activeClient = null;
+    }
+  }
+
   Future<ApplicationBootstrapResult> _bootstrapLegacy(
     ApplicationRuntimeConfiguration config,
   ) async {
@@ -185,6 +200,8 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       baseUri: baseUri,
       apiKey: config.apiKey,
       transportTimeout: config.timeout,
+      supportsMultipleLoadedModels: !config.useSharedModel,
+      maxLoadedModels: config.useSharedModel ? 1 : 2,
     );
 
     final client = request.customHttpClient ??
@@ -230,6 +247,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       await runtime.initialize(
         RuntimeInitializationRequest(
           instanceId: RuntimeInstanceId('instance-$sessionId'),
+          adapterOptions: const {'skipHealthCheck': 'true'},
         ),
       );
     } on RuntimeException catch (e) {
@@ -355,6 +373,7 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
 
       if (!isHealthy &&
           config.fallbackPolicy == BootstrapFallbackPolicy.ruleBased) {
+        await _cleanUpActiveResourcesBeforeFallback();
         return await _bootstrapRuleBased(config);
       }
     }

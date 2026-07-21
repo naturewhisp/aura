@@ -18,11 +18,10 @@ abstract final class CatalogManifestParser {
     final dynamic decoded;
     try {
       decoded = jsonDecode(jsonString);
-    } catch (e) {
-      throw ProvisioningException(
+    } catch (_) {
+      throw const ProvisioningException(
         reason: ProvisioningFailureReason.catalogMalformed,
         message: 'Sintassi JSON del catalogo non valida.',
-        cause: e,
       );
     }
 
@@ -53,11 +52,12 @@ abstract final class CatalogManifestParser {
 
     try {
       return CatalogManifest.fromJson(jsonMap);
-    } catch (e) {
-      throw ProvisioningException(
+    } on ProvisioningException {
+      rethrow;
+    } catch (_) {
+      throw const ProvisioningException(
         reason: ProvisioningFailureReason.catalogMalformed,
         message: 'Errore nella struttura dei campi del catalogo manifest.',
-        cause: e,
       );
     }
   }

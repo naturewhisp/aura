@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import 'json_safe_value.dart';
 import 'provisioning_options.dart';
 
 /// Tipo di artefatto descritto nel catalogo.
@@ -56,70 +57,8 @@ enum CatalogArtifactSourceKind {
   }
 }
 
-/// Helper privato per la validazione ricorsiva e l'immutabilità dei grafi JSON.
-Map<String, dynamic> _ensureJsonSafeMap(Map<String, dynamic> map) {
-  final result = <String, dynamic>{};
-  for (final entry in map.entries) {
-    final key = entry.key;
-    _validateJsonSafeValue(entry.value, path: key);
-    result[key] = _freezeJsonSafeValue(entry.value);
-  }
-  return Map.unmodifiable(result);
-}
-
-void _validateJsonSafeValue(Object? value, {required String path}) {
-  if (value == null || value is bool || value is String) {
-    return;
-  }
-  if (value is num) {
-    if (value.isNaN || value.isInfinite) {
-      throw ProvisioningException(
-        reason: ProvisioningFailureReason.catalogMalformed,
-        message:
-            'Valore numerico non finito (NaN/Infinity) non ammesso in metadata al path "$path".',
-      );
-    }
-    return;
-  }
-  if (value is List) {
-    for (var i = 0; i < value.length; i++) {
-      _validateJsonSafeValue(value[i], path: '$path[$i]');
-    }
-    return;
-  }
-  if (value is Map) {
-    for (final entry in value.entries) {
-      if (entry.key is! String) {
-        throw ProvisioningException(
-          reason: ProvisioningFailureReason.catalogMalformed,
-          message:
-              'Chiave non stringa "${entry.key}" non ammessa in metadata al path "$path".',
-        );
-      }
-      _validateJsonSafeValue(entry.value, path: '$path.${entry.key}');
-    }
-    return;
-  }
-  throw ProvisioningException(
-    reason: ProvisioningFailureReason.catalogMalformed,
-    message:
-        'Tipo di dato non JSON-safe "${value.runtimeType}" rilevato al path "$path".',
-  );
-}
-
-Object? _freezeJsonSafeValue(Object? value) {
-  if (value is List) {
-    return List.unmodifiable(value.map(_freezeJsonSafeValue));
-  }
-  if (value is Map) {
-    final copy = <String, dynamic>{};
-    for (final entry in value.entries) {
-      copy[entry.key as String] = _freezeJsonSafeValue(entry.value);
-    }
-    return Map.unmodifiable(copy);
-  }
-  return value;
-}
+/// Sentinel constant per rilevare il passaggio esplicito di null nei costruttori [copyWith].
+const Object _unset = Object();
 
 /// Rappresenta un singolo artefatto (runtime binario o modello GGUF) nel catalogo.
 @immutable
@@ -181,7 +120,7 @@ final class CatalogArtifact {
   })  : capabilities = List.unmodifiable(List<String>.from(capabilities)),
         hardwareCompatibilityTags =
             List.unmodifiable(List<String>.from(hardwareCompatibilityTags)),
-        metadata = _ensureJsonSafeMap(metadata);
+        metadata = JsonSafeValue.ensureJsonSafeMap(metadata);
 
   factory CatalogArtifact.fromJson(Map<String, dynamic> json) {
     try {
@@ -203,6 +142,42 @@ final class CatalogArtifact {
       }
 
       final rawCompression = (json['compression'] as String?) ?? 'none';
+
+      final rawSizeBytes = json['sizeBytes'];
+      if (rawSizeBytes is! int) {
+        throw const ProvisioningException(
+          reason: ProvisioningFailureReason.catalogMalformed,
+          message:
+              'Il campo sizeBytes deve essere un numero intero JSON strict.',
+        );
+      }
+
+      final rawCtxLen = json['contextLength'];
+      if (rawCtxLen != null && rawCtxLen is! int) {
+        throw const ProvisioningException(
+          reason: ProvisioningFailureReason.catalogMalformed,
+          message:
+              'Il campo contextLength deve essere un numero intero JSON strict.',
+        );
+      }
+
+      final displayName = json['displayName'] as String?;
+      if (displayName == null || displayName.trim().isEmpty) {
+        throw const ProvisioningException(
+          reason: ProvisioningFailureReason.catalogMalformed,
+          message: 'Campo obbligatorio mancante: displayName.',
+        );
+      }
+
+      final license = json['license'] as String?;
+      if (license == null || license.trim().isEmpty) {
+        throw const ProvisioningException(
+          reason: ProvisioningFailureReason.catalogMalformed,
+          message: 'Campo obbligatorio mancante: license.',
+        );
+      }
+
+      final releaseChannel = (json['releaseChannel'] as String?) ?? 'stable';
 
       final capsRaw = json['capabilities'] as List<dynamic>?;
       final parsedCaps = <String>[];
@@ -241,7 +216,7 @@ final class CatalogArtifact {
               message: 'Campo obbligatorio mancante: artifactId.',
             )),
         artifactType: CatalogArtifactType.parse(rawType),
-        displayName: json['displayName'] as String? ?? '',
+        displayName: displayName,
         version: json['version'] as String? ??
             (throw const ProvisioningException(
               reason: ProvisioningFailureReason.catalogMalformed,
@@ -270,28 +245,24 @@ final class CatalogArtifact {
         sourceKind: CatalogArtifactSourceKind.parse(rawSourceKind),
         downloadUri: json['downloadUri'] as String?,
         bundledAssetId: json['bundledAssetId'] as String?,
-        sizeBytes: (json['sizeBytes'] as num?)?.toInt() ??
-            (throw const ProvisioningException(
-              reason: ProvisioningFailureReason.catalogMalformed,
-              message: 'Campo obbligatorio mancante: sizeBytes.',
-            )),
+        sizeBytes: rawSizeBytes,
         sha256: json['sha256'] as String? ??
             (throw const ProvisioningException(
               reason: ProvisioningFailureReason.catalogMalformed,
               message: 'Campo obbligatorio mancante: sha256.',
             )),
         compression: CatalogCompressionFormat.parse(rawCompression),
-        license: json['license'] as String? ?? 'unknown',
+        license: license,
         runtimeCompatibility: json['runtimeCompatibility'] as String?,
         minimumRuntimeBuild: json['minimumRuntimeBuild'] as String?,
         maximumRuntimeBuild: json['maximumRuntimeBuild'] as String?,
         modelArchitecture: json['modelArchitecture'] as String?,
         quantization: json['quantization'] as String?,
-        contextLength: (json['contextLength'] as num?)?.toInt(),
+        contextLength: rawCtxLen,
         capabilities: parsedCaps,
         hardwareCompatibilityTags: parsedHwTags,
         deprecated: json['deprecated'] as bool? ?? false,
-        releaseChannel: json['releaseChannel'] as String? ?? 'stable',
+        releaseChannel: releaseChannel,
         metadata: json['metadata'] != null
             ? Map<String, dynamic>.from(json['metadata'] as Map)
             : const {},
@@ -302,7 +273,6 @@ final class CatalogArtifact {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.catalogMalformed,
         message: 'Errore di parsing dei campi di CatalogArtifact.',
-        cause: e,
       );
     }
   }
@@ -351,18 +321,18 @@ final class CatalogArtifact {
     String? architecture,
     String? fileName,
     CatalogArtifactSourceKind? sourceKind,
-    String? downloadUri,
-    String? bundledAssetId,
+    Object? downloadUri = _unset,
+    Object? bundledAssetId = _unset,
     int? sizeBytes,
     String? sha256,
     CatalogCompressionFormat? compression,
     String? license,
-    String? runtimeCompatibility,
-    String? minimumRuntimeBuild,
-    String? maximumRuntimeBuild,
-    String? modelArchitecture,
-    String? quantization,
-    int? contextLength,
+    Object? runtimeCompatibility = _unset,
+    Object? minimumRuntimeBuild = _unset,
+    Object? maximumRuntimeBuild = _unset,
+    Object? modelArchitecture = _unset,
+    Object? quantization = _unset,
+    Object? contextLength = _unset,
     List<String>? capabilities,
     List<String>? hardwareCompatibilityTags,
     bool? deprecated,
@@ -379,18 +349,34 @@ final class CatalogArtifact {
       architecture: architecture ?? this.architecture,
       fileName: fileName ?? this.fileName,
       sourceKind: sourceKind ?? this.sourceKind,
-      downloadUri: downloadUri ?? this.downloadUri,
-      bundledAssetId: bundledAssetId ?? this.bundledAssetId,
+      downloadUri: identical(downloadUri, _unset)
+          ? this.downloadUri
+          : downloadUri as String?,
+      bundledAssetId: identical(bundledAssetId, _unset)
+          ? this.bundledAssetId
+          : bundledAssetId as String?,
       sizeBytes: sizeBytes ?? this.sizeBytes,
       sha256: sha256 ?? this.sha256,
       compression: compression ?? this.compression,
       license: license ?? this.license,
-      runtimeCompatibility: runtimeCompatibility ?? this.runtimeCompatibility,
-      minimumRuntimeBuild: minimumRuntimeBuild ?? this.minimumRuntimeBuild,
-      maximumRuntimeBuild: maximumRuntimeBuild ?? this.maximumRuntimeBuild,
-      modelArchitecture: modelArchitecture ?? this.modelArchitecture,
-      quantization: quantization ?? this.quantization,
-      contextLength: contextLength ?? this.contextLength,
+      runtimeCompatibility: identical(runtimeCompatibility, _unset)
+          ? this.runtimeCompatibility
+          : runtimeCompatibility as String?,
+      minimumRuntimeBuild: identical(minimumRuntimeBuild, _unset)
+          ? this.minimumRuntimeBuild
+          : minimumRuntimeBuild as String?,
+      maximumRuntimeBuild: identical(maximumRuntimeBuild, _unset)
+          ? this.maximumRuntimeBuild
+          : maximumRuntimeBuild as String?,
+      modelArchitecture: identical(modelArchitecture, _unset)
+          ? this.modelArchitecture
+          : modelArchitecture as String?,
+      quantization: identical(quantization, _unset)
+          ? this.quantization
+          : quantization as String?,
+      contextLength: identical(contextLength, _unset)
+          ? this.contextLength
+          : contextLength as int?,
       capabilities: capabilities ?? this.capabilities,
       hardwareCompatibilityTags:
           hardwareCompatibilityTags ?? this.hardwareCompatibilityTags,
@@ -417,7 +403,7 @@ final class CatalogManifest {
     required List<CatalogArtifact> artifacts,
     Map<String, dynamic> metadata = const {},
   })  : artifacts = List.unmodifiable(List<CatalogArtifact>.from(artifacts)),
-        metadata = _ensureJsonSafeMap(metadata);
+        metadata = JsonSafeValue.ensureJsonSafeMap(metadata);
 
   factory CatalogManifest.fromJson(Map<String, dynamic> json) {
     try {
@@ -434,6 +420,14 @@ final class CatalogManifest {
         throw const ProvisioningException(
           reason: ProvisioningFailureReason.catalogMalformed,
           message: 'Campo obbligatorio mancante: catalogId.',
+        );
+      }
+
+      final rawGeneratedAt = json['generatedAt'] as String?;
+      if (rawGeneratedAt == null || rawGeneratedAt.isEmpty) {
+        throw const ProvisioningException(
+          reason: ProvisioningFailureReason.catalogMalformed,
+          message: 'Campo obbligatorio mancante: generatedAt.',
         );
       }
 
@@ -460,7 +454,7 @@ final class CatalogManifest {
       return CatalogManifest(
         schemaVersion: rawSchema,
         catalogId: rawCatalogId,
-        generatedAt: json['generatedAt'] as String? ?? '',
+        generatedAt: rawGeneratedAt,
         artifacts: parsedArtifacts,
         metadata: json['metadata'] != null
             ? Map<String, dynamic>.from(json['metadata'] as Map)
@@ -472,7 +466,6 @@ final class CatalogManifest {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.catalogMalformed,
         message: 'Errore di parsing del catalogo manifest.',
-        cause: e,
       );
     }
   }

@@ -3,7 +3,7 @@ import 'package:test/test.dart';
 
 void main() {
   group('ProvisioningPathResolver Tests -', () {
-    const resolver = ProvisioningPathResolver(
+    final resolver = ProvisioningPathResolver(
       appManagedRoot: r'C:\CustomApp\Local\AURA',
       bundledRoot: r'C:\Program Files\AURA',
     );
@@ -42,6 +42,34 @@ void main() {
       expect(
         resolver.bundledRuntimeDirectory,
         equals(r'C:\Program Files\AURA\bundled_runtime'),
+      );
+    });
+
+    test(
+        'Valida ed impone che appManagedRoot e bundledRoot siano assolute e non coincidenti',
+        () {
+      expect(
+        () => ProvisioningPathResolver(
+          appManagedRoot: 'relative/path',
+          bundledRoot: r'C:\Program Files\AURA',
+        ),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.invalidCatalog),
+        )),
+      );
+
+      expect(
+        () => ProvisioningPathResolver(
+          appManagedRoot: r'C:\SameRoot\AURA',
+          bundledRoot: r'C:\SameRoot\AURA',
+        ),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.invalidCatalog),
+        )),
       );
     });
 

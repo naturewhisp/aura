@@ -13,11 +13,47 @@ final class ProvisioningPathResolver {
     r'^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\..*)?$',
     caseSensitive: false,
   );
+  static final RegExp _absolutePathRegex =
+      RegExp(r'^(?:[A-Za-z]:[\\/]|/|\\[\\/])');
 
-  const ProvisioningPathResolver({
+  ProvisioningPathResolver({
     required this.appManagedRoot,
     required this.bundledRoot,
-  });
+  }) {
+    _validateRoot('appManagedRoot', appManagedRoot);
+    _validateRoot('bundledRoot', bundledRoot);
+
+    if (appManagedRoot.trim() == bundledRoot.trim()) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'appManagedRoot e bundledRoot non possono essere coincidenti.',
+      );
+    }
+  }
+
+  static void _validateRoot(String paramName, String root) {
+    final trimmed = root.trim();
+    if (trimmed.isEmpty) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Il parametro "$paramName" non può essere vuoto.',
+      );
+    }
+    if (trimmed.contains('\x00') || trimmed.contains('..')) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Il parametro "$paramName" contiene caratteri non ammessi (null byte o traversal).',
+      );
+    }
+    if (!_absolutePathRegex.hasMatch(trimmed)) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Il parametro "$paramName" deve essere un percorso assoluto valido: "$root".',
+      );
+    }
+  }
 
   /// Path del file `installation_record.json`.
   String get installationRecordPath =>

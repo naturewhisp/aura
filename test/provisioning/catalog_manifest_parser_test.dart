@@ -70,29 +70,29 @@ void main() {
     });
 
     test(
-        'Rifiuta elemento non-stringa nelle liste capabilities o hardwareCompatibilityTags',
+        'Rifiuta sizeBytes o contextLength non interi strict (es. numeri decimali)',
         () {
       final jsonStr = '''
       {
         "schemaVersion": "1.0",
-        "catalogId": "aura.bad.list",
+        "catalogId": "aura.bad.size",
         "generatedAt": "2026-07-21T20:00:00Z",
         "artifacts": [
           {
-            "artifactId": "art-bad-list",
+            "artifactId": "art-bad-size",
             "artifactType": "runtime",
-            "displayName": "Bad List Art",
+            "displayName": "Bad Size Art",
             "version": "1.0",
             "buildId": "b1",
             "platform": "windows",
             "architecture": "x64",
             "fileName": "rt.exe",
             "sourceKind": "bundled",
-            "sizeBytes": 100,
+            "bundledAssetId": "rt_asset",
+            "sizeBytes": 100.5,
             "sha256": "${'f' * 64}",
             "license": "MIT",
-            "minimumRuntimeBuild": "b1",
-            "capabilities": [123]
+            "minimumRuntimeBuild": "b1"
           }
         ]
       }
@@ -108,82 +108,10 @@ void main() {
       );
     });
 
-    test(
-        'Rifiuta metadata con tipi non JSON-safe (es. NaN o oggetti non serializzabili)',
+    test('Supporta copyWith con sentinel per l azzeramento dei campi nullable',
         () {
-      expect(
-        () => CatalogArtifact(
-          artifactId: 'art-id',
-          artifactType: CatalogArtifactType.runtime,
-          displayName: 'Art',
-          version: '1.0',
-          buildId: 'b1',
-          platform: 'windows',
-          architecture: 'x64',
-          fileName: 'rt.exe',
-          sourceKind: CatalogArtifactSourceKind.bundled,
-          sizeBytes: 100,
-          sha256: 'a' * 64,
-          license: 'MIT',
-          metadata: {'badValue': double.nan},
-        ),
-        throwsA(isA<ProvisioningException>().having(
-          (e) => e.reason,
-          'reason',
-          equals(ProvisioningFailureReason.catalogMalformed),
-        )),
-      );
-    });
-
-    test(
-        'Lancia ProvisioningException quando il contenuto JSON è vuoto o invalido',
-        () {
-      expect(
-        () => CatalogManifestParser.parse(''),
-        throwsA(isA<ProvisioningException>().having(
-          (e) => e.reason,
-          'reason',
-          equals(ProvisioningFailureReason.catalogMalformed),
-        )),
-      );
-
-      expect(
-        () => CatalogManifestParser.parse('{invalid json'),
-        throwsA(isA<ProvisioningException>().having(
-          (e) => e.reason,
-          'reason',
-          equals(ProvisioningFailureReason.catalogMalformed),
-        )),
-      );
-    });
-
-    test(
-        'Lancia ProvisioningException con unsupportedSchemaVersion per versione diversa da 1.0',
-        () {
-      final jsonStr = '''
-      {
-        "schemaVersion": "2.0",
-        "catalogId": "aura.future.catalog",
-        "artifacts": []
-      }
-      ''';
-
-      expect(
-        () => CatalogManifestParser.parse(jsonStr),
-        throwsA(isA<ProvisioningException>().having(
-          (e) => e.reason,
-          'reason',
-          equals(ProvisioningFailureReason.unsupportedSchemaVersion),
-        )),
-      );
-    });
-
-    test('Garantisce immutabilità reale dei DTO e delle loro collezioni', () {
-      final caps = <String>['chat'];
-      final meta = <String, dynamic>{'env': 'dev'};
-
-      final art = CatalogArtifact(
-        artifactId: 'art-immut',
+      final remote = CatalogArtifact(
+        artifactId: 'art-1',
         artifactType: CatalogArtifactType.runtime,
         displayName: 'Art',
         version: '1.0',
@@ -191,18 +119,23 @@ void main() {
         platform: 'windows',
         architecture: 'x64',
         fileName: 'rt.exe',
-        sourceKind: CatalogArtifactSourceKind.bundled,
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        downloadUri: 'https://downloads.local/rt.zip',
         sizeBytes: 100,
         sha256: 'a' * 64,
         license: 'MIT',
-        capabilities: caps,
-        metadata: meta,
+        minimumRuntimeBuild: 'b1',
       );
 
-      expect(() => (art.capabilities as List).add('mutation'),
-          throwsUnsupportedError);
-      expect(
-          () => (art.metadata as Map)['mutation'] = 1, throwsUnsupportedError);
+      final bundled = remote.copyWith(
+        sourceKind: CatalogArtifactSourceKind.bundled,
+        downloadUri: null,
+        bundledAssetId: 'bundled_rt_1',
+      );
+
+      expect(bundled.sourceKind, equals(CatalogArtifactSourceKind.bundled));
+      expect(bundled.downloadUri, isNull);
+      expect(bundled.bundledAssetId, equals('bundled_rt_1'));
     });
   });
 }

@@ -1,4 +1,5 @@
 import 'package:meta/meta.dart';
+import 'json_safe_value.dart';
 
 /// Policy applicativa per la gestione del download di artefatti remoti.
 enum ProvisioningDownloadPolicy {
@@ -193,7 +194,7 @@ final class ProvisioningResult {
     this.failureReason,
     Map<String, dynamic> sanitizedDiagnostics = const {},
   }) : sanitizedDiagnostics =
-            Map.unmodifiable(Map<String, dynamic>.from(sanitizedDiagnostics));
+            JsonSafeValue.ensureJsonSafeMap(sanitizedDiagnostics);
 
   factory ProvisioningResult.success({
     required String operationId,
@@ -249,12 +250,10 @@ final class ProvisioningResult {
 final class ProvisioningException implements Exception {
   final ProvisioningFailureReason reason;
   final String message;
-  final Object? cause;
 
   const ProvisioningException({
     required this.reason,
     required this.message,
-    this.cause,
   });
 
   @override

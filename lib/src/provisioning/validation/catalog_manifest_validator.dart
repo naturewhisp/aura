@@ -1,5 +1,6 @@
 import '../domain/catalog_manifest.dart';
 import '../domain/provisioning_options.dart';
+import '../infrastructure/provisioning_path_resolver.dart';
 
 /// Validatore semantico per documenti [CatalogManifest].
 abstract final class CatalogManifestValidator {
@@ -16,6 +17,15 @@ abstract final class CatalogManifestValidator {
       throw const ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message: 'Il catalogo ha un catalogId vuoto.',
+      );
+    }
+
+    if (manifest.generatedAt.trim().isEmpty ||
+        DateTime.tryParse(manifest.generatedAt.trim()) == null) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Il catalogo ha un campo generatedAt non valido (atteso ISO-8601).',
       );
     }
 
@@ -45,10 +55,39 @@ abstract final class CatalogManifestValidator {
       );
     }
 
+    if (artifact.displayName.trim().isEmpty) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Artefatto "$id" ha displayName vuoto.',
+      );
+    }
+
     if (artifact.version.trim().isEmpty || artifact.buildId.trim().isEmpty) {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message: 'Artefatto "$id" ha version o buildId vuoto.',
+      );
+    }
+
+    if (artifact.platform.trim().isEmpty ||
+        artifact.architecture.trim().isEmpty) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Artefatto "$id" ha platform o architecture vuota.',
+      );
+    }
+
+    if (artifact.license.trim().isEmpty) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Artefatto "$id" ha license vuota.',
+      );
+    }
+
+    if (artifact.releaseChannel.trim().isEmpty) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Artefatto "$id" ha releaseChannel vuoto.',
       );
     }
 
@@ -66,6 +105,13 @@ abstract final class CatalogManifestValidator {
         reason: ProvisioningFailureReason.invalidCatalog,
         message:
             'Artefatto "$id" ha un hash SHA-256 non valido (attesi 64 caratteri esadecimali).',
+      );
+    }
+
+    if (artifact.contextLength != null && artifact.contextLength! <= 0) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Artefatto "$id" ha contextLength <= 0.',
       );
     }
 
@@ -113,11 +159,15 @@ abstract final class CatalogManifestValidator {
           );
         }
         final uri = Uri.tryParse(artifact.downloadUri!.trim());
-        if (uri == null || uri.scheme.toLowerCase() != 'https') {
+        if (uri == null ||
+            !uri.isAbsolute ||
+            uri.scheme.toLowerCase() != 'https' ||
+            uri.host.isEmpty ||
+            uri.userInfo.isNotEmpty) {
           throw ProvisioningException(
             reason: ProvisioningFailureReason.invalidSourceUri,
             message:
-                'Artefatto remoto "$id" ha un downloadUri non HTTPS sicuro.',
+                'Artefatto remoto "$id" ha un downloadUri non HTTPS assoluto valido.',
           );
         }
         if (artifact.bundledAssetId != null) {
@@ -128,23 +178,39 @@ abstract final class CatalogManifestValidator {
           );
         }
         break;
+
       case CatalogArtifactSourceKind.bundled:
-        if (artifact.downloadUri != null &&
-            artifact.downloadUri!.trim().isNotEmpty) {
+        if (artifact.downloadUri != null) {
           throw ProvisioningException(
             reason: ProvisioningFailureReason.invalidCatalog,
             message:
                 'Artefatto bundled "$id" non può dichiarare un downloadUri remoto.',
           );
         }
+        if (artifact.bundledAssetId == null ||
+            artifact.bundledAssetId!.trim().isEmpty) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.invalidCatalog,
+            message:
+                'Artefatto bundled "$id" richiede un bundledAssetId non vuoto.',
+          );
+        }
+        ProvisioningPathResolver.sanitizeSegment(artifact.bundledAssetId!);
         break;
+
       case CatalogArtifactSourceKind.localImport:
-        if (artifact.downloadUri != null &&
-            artifact.downloadUri!.trim().isNotEmpty) {
+        if (artifact.downloadUri != null) {
           throw ProvisioningException(
             reason: ProvisioningFailureReason.invalidCatalog,
             message:
                 'Artefatto localImport "$id" non può dichiarare un downloadUri predefinito.',
+          );
+        }
+        if (artifact.bundledAssetId != null) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.invalidCatalog,
+            message:
+                'Artefatto localImport "$id" non può dichiarare un bundledAssetId.',
           );
         }
         break;

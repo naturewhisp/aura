@@ -11,7 +11,11 @@ void main() {
 
     setUp(() async {
       fakeClient = FakeExternalOpenAiClient();
-      final config = ExternalOpenAiConfiguration.developmentDefault();
+      final config = ExternalOpenAiConfiguration(
+        baseUri: Uri.parse('http://127.0.0.1:1234'),
+        maxLoadedModels: 2,
+        supportsMultipleLoadedModels: true,
+      );
 
       runtime = ExternalOpenAiRuntime(
         configuration: config,
@@ -143,6 +147,22 @@ void main() {
           ),
         ),
       );
+    });
+
+    test(
+        'Translates thinking parameter to enable_thinking payload fields in HTTP client',
+        () async {
+      fakeClient.defaultResponseContent = "<dialogo>Thinking test</dialogo>";
+
+      await runtimeBridge.generateText(
+        modelId: 'qwen/qwen3.5-9b',
+        messages: [
+          {'role': 'user', 'content': 'Hello'}
+        ],
+        thinking: true,
+      );
+
+      expect(fakeClient.chatCompletionsCalls, equals(1));
     });
   });
 }

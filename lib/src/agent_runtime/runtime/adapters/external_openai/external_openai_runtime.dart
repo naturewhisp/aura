@@ -1,6 +1,7 @@
 import 'dart:async';
 import '../../inference_runtime.dart';
 import '../../model_handle.dart';
+import '../../runtime_backend.dart';
 import '../../runtime_capabilities.dart';
 import '../../runtime_events.dart';
 import '../../runtime_failure.dart';
@@ -167,6 +168,9 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
       );
     }
 
+    final actualSupportsCancellation = configuration.supportsCancellation &&
+        client.supportsRequestCancellation;
+
     final capabilities = RuntimeCapabilities(
       adapterId: RuntimeAdapterId(configuration.adapterId),
       runtimeName: configuration.runtimeName,
@@ -177,17 +181,17 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
         GenerationCapability.text,
         if (configuration.supportsStructuredJson)
           GenerationCapability.structuredJson,
-        if (configuration.supportsCancellation)
-          GenerationCapability.cancellation,
+        if (actualSupportsCancellation) GenerationCapability.cancellation,
       },
       modelCapabilities: {
         if (configuration.supportsMultipleLoadedModels)
           ModelCapability.multipleLoadedModels,
-        ModelCapability.cpuExecution,
+        if (configuration.selectedBackend == RuntimeBackend.cpu)
+          ModelCapability.cpuExecution,
       },
       maxConcurrentGenerations: configuration.maxConcurrentGenerations,
       maxLoadedModels: configuration.maxLoadedModels,
-      supportsCancellation: configuration.supportsCancellation,
+      supportsCancellation: actualSupportsCancellation,
       supportsHealthCheck: true,
       supportsTokenStreaming: false,
       supportsGrammarConstraints: false,
@@ -213,6 +217,19 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
   @override
   Future<ModelHandle> loadModel(ModelLoadRequest request) async {
     _ensureInitializedAndNotDisposed();
+
+    if (_activeHandles.length >= configuration.maxLoadedModels ||
+        (!configuration.supportsMultipleLoadedModels &&
+            _activeHandles.isNotEmpty)) {
+      throw const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.tooManyLoadedModels,
+          message:
+              'Superato il limite massimo di modelli caricati simultaneamente.',
+        ),
+      );
+    }
+
     _changeState(RuntimeState.loadingModel);
 
     if (!_eventController.isClosed) {
@@ -226,37 +243,60 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
       );
     }
 
-    // Verify model binding exists
-    _resolveServerModelId(request.logicalModelId);
+    try {
+      // Verify model binding exists
+      _resolveServerModelId(request.logicalModelId);
 
-    final handleId = ModelHandleId(
-      'handle-${request.logicalModelId}-${_activeHandles.length + 1}',
-    );
-
-    final handle = ModelHandle(
-      id: handleId,
-      runtimeInstanceId: _instanceId!,
-      logicalModelId: request.logicalModelId,
-      modelVariantId: request.artifact.modelVariantId,
-      roles: request.roles,
-      loadedAt: DateTime.now(),
-    );
-
-    _activeHandles[handleId] = handle;
-    _changeState(RuntimeState.modelReady);
-
-    if (!_eventController.isClosed) {
-      _eventController.add(
-        ModelLoadCompleted(
-          instanceId: _instanceId!,
-          timestamp: DateTime.now(),
-          loadRequestId: request.requestId,
-          handle: handle,
-        ),
+      final handleId = ModelHandleId(
+        'handle-${request.logicalModelId}-${_activeHandles.length + 1}',
       );
-    }
 
-    return handle;
+      final handle = ModelHandle(
+        id: handleId,
+        runtimeInstanceId: _instanceId!,
+        logicalModelId: request.logicalModelId,
+        modelVariantId: request.artifact.modelVariantId,
+        roles: request.roles,
+        loadedAt: DateTime.now(),
+      );
+
+      _activeHandles[handleId] = handle;
+      _changeState(RuntimeState.modelReady);
+
+      if (!_eventController.isClosed) {
+        _eventController.add(
+          ModelLoadCompleted(
+            instanceId: _instanceId!,
+            timestamp: DateTime.now(),
+            loadRequestId: request.requestId,
+            handle: handle,
+          ),
+        );
+      }
+
+      return handle;
+    } catch (e) {
+      if (!_eventController.isClosed) {
+        final failure = e is RuntimeException
+            ? e.failure
+            : RuntimeFailure(
+                code: RuntimeFailureCode.modelLoadFailed,
+                message: e.toString(),
+              );
+        _eventController.add(
+          ModelLoadFailed(
+            instanceId: _instanceId!,
+            timestamp: DateTime.now(),
+            loadRequestId: request.requestId,
+            failure: failure,
+          ),
+        );
+      }
+      _changeState(_activeHandles.isNotEmpty
+          ? RuntimeState.modelReady
+          : RuntimeState.ready);
+      rethrow;
+    }
   }
 
   @override
@@ -300,6 +340,15 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
     _ensureInitializedAndNotDisposed();
     _validateHandle(request.model);
 
+    if (_activeGenerationsCount >= configuration.maxConcurrentGenerations) {
+      throw const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.concurrencyLimitExceeded,
+          message: 'Superato il limite massimo di generazioni concorrenti.',
+        ),
+      );
+    }
+
     _activeGenerationsCount++;
     _changeState(RuntimeState.generating,
         traceId: request.traceContext.traceId);
@@ -331,6 +380,21 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
 
     if (request.parameters.seed != null) {
       payload['seed'] = request.parameters.seed;
+    }
+
+    switch (request.parameters.thinkingPolicy) {
+      case ThinkingPolicy.enabled:
+        payload['enable_thinking'] = true;
+        payload['chat_template_kwargs'] = {'enable_thinking': true};
+        payload['thinking'] = {'type': 'enabled'};
+        break;
+      case ThinkingPolicy.disabled:
+        payload['enable_thinking'] = false;
+        payload['chat_template_kwargs'] = {'enable_thinking': false};
+        payload['thinking'] = {'type': 'disabled'};
+        break;
+      case ThinkingPolicy.runtimeDefault:
+        break;
     }
 
     final stopwatch = Stopwatch()..start();
@@ -428,6 +492,15 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
   ) async {
     _ensureInitializedAndNotDisposed();
     _validateHandle(request.model);
+
+    if (_activeGenerationsCount >= configuration.maxConcurrentGenerations) {
+      throw const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.concurrencyLimitExceeded,
+          message: 'Superato il limite massimo di generazioni concorrenti.',
+        ),
+      );
+    }
 
     _activeGenerationsCount++;
     _changeState(RuntimeState.generating,

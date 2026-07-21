@@ -20,6 +20,9 @@ class ExternalOpenAiResponse {
 
 /// Abstract transport client interface for external OpenAI-compatible communication.
 abstract interface class ExternalOpenAiClient {
+  /// Queries whether this transport supports real request-level cancellation.
+  bool get supportsRequestCancellation;
+
   /// Posts a chat completions request and returns raw HTTP response data.
   Future<ExternalOpenAiResponse> chatCompletions(
     Map<String, dynamic> payload, {
@@ -48,6 +51,9 @@ class HttpExternalOpenAiClient implements ExternalOpenAiClient {
     required this.configuration,
     http.Client? httpClient,
   }) : _httpClient = httpClient ?? http.Client();
+
+  @override
+  bool get supportsRequestCancellation => false;
 
   Map<String, String> get _defaultHeaders {
     final headers = <String, String>{
@@ -158,7 +164,16 @@ class FakeExternalOpenAiClient implements ExternalOpenAiClient {
   String defaultFinishReason;
   int statusCodeToReturn;
   String? errorBodyToReturn;
+
+  /// When non-null, [_buildResponse] returns this response verbatim,
+  /// bypassing all other logic. Useful for injecting malformed or
+  /// edge-case bodies that cannot be produced by the normal builder
+  /// (e.g. a 200 OK with invalid JSON, or an empty `choices` array).
+  ExternalOpenAiResponse? forcedResponse;
+
   bool autoCompleteRequests;
+  @override
+  bool supportsRequestCancellation;
 
   final Set<String> cancelledRequestIds = {};
   final List<PendingFakeExternalRequest> pendingRequests = [];
@@ -184,7 +199,9 @@ class FakeExternalOpenAiClient implements ExternalOpenAiClient {
     this.defaultFinishReason = 'stop',
     this.statusCodeToReturn = 200,
     this.errorBodyToReturn,
+    this.forcedResponse,
     this.autoCompleteRequests = true,
+    this.supportsRequestCancellation = false,
   });
 
   ExternalOpenAiResponse _buildResponse(Map<String, dynamic> payload,
@@ -195,6 +212,9 @@ class FakeExternalOpenAiClient implements ExternalOpenAiClient {
         body: jsonEncode({'error': 'Request cancelled by client'}),
       );
     }
+
+    // Bypass all normal builder logic when a forced response is set.
+    if (forcedResponse != null) return forcedResponse!;
 
     if (statusCodeToReturn != 200) {
       return ExternalOpenAiResponse(

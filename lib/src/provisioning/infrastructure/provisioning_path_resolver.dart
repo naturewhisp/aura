@@ -33,13 +33,52 @@ final class ProvisioningPathResolver {
     }
   }
 
-  /// Normalizza una root di percorso rimuovendo slash ridondanti e standardizzando i separatori Windows.
+  /// Normalizza una root di percorso rimuovendo separatori duplicati, segmenti `.` e trailing slash ridondanti.
   static String canonicalizeRoot(String root) {
-    var normalized = root.trim().replaceAll('/', r'\');
-    while (normalized.length > 3 && normalized.endsWith(r'\')) {
-      normalized = normalized.substring(0, normalized.length - 1);
+    final trimmed = root.trim().replaceAll('/', r'\');
+    if (trimmed.isEmpty) return trimmed;
+
+    final isUnc = trimmed.startsWith(r'\\');
+    var prefix = '';
+    var rest = trimmed;
+
+    if (isUnc) {
+      prefix = r'\\';
+      rest = trimmed.substring(2);
+    } else {
+      final driveMatch = RegExp(r'^[A-Za-z]:').firstMatch(trimmed);
+      if (driveMatch != null) {
+        prefix = driveMatch.group(0)!;
+        rest = trimmed.substring(prefix.length);
+      }
     }
-    return normalized;
+
+    final rawSegments = rest.split(r'\');
+    final cleanSegments = <String>[];
+
+    for (final seg in rawSegments) {
+      final s = seg.trim();
+      if (s.isEmpty || s == '.') {
+        continue;
+      }
+      if (s == '..') {
+        throw const ProvisioningException(
+          reason: ProvisioningFailureReason.invalidCatalog,
+          message: 'Path traversal ("..") non ammesso nel percorso di root.',
+        );
+      }
+      cleanSegments.add(s);
+    }
+
+    if (cleanSegments.isEmpty) {
+      return '$prefix\\';
+    }
+
+    final joined = cleanSegments.join(r'\');
+    if (prefix.isNotEmpty) {
+      return '$prefix\\$joined';
+    }
+    return joined;
   }
 
   static String _canonicalizeKey(String root) =>

@@ -73,13 +73,38 @@ void main() {
       );
     });
 
-    test(
-        'Normalizza le root e rileva coincidenze case-insensitive e con trailing slash',
-        () {
+    test('Normalizza segmenti ., separatori multipli e path UNC', () {
+      // Test segmenti .
       expect(
         () => ProvisioningPathResolver(
-          appManagedRoot: r'C:\SameRoot\AURA\',
-          bundledRoot: r'c:/sameroot/aura',
+          appManagedRoot: r'C:\AURA',
+          bundledRoot: r'c:\.\aura',
+        ),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.invalidCatalog),
+        )),
+      );
+
+      // Test separatori doppi
+      expect(
+        () => ProvisioningPathResolver(
+          appManagedRoot: r'C:\AURA',
+          bundledRoot: r'c:\\aura',
+        ),
+        throwsA(isA<ProvisioningException>().having(
+          (e) => e.reason,
+          'reason',
+          equals(ProvisioningFailureReason.invalidCatalog),
+        )),
+      );
+
+      // Test UNC path equivalenza
+      expect(
+        () => ProvisioningPathResolver(
+          appManagedRoot: r'\\server\share\AURA',
+          bundledRoot: r'\\server\share\.\aura',
         ),
         throwsA(isA<ProvisioningException>().having(
           (e) => e.reason,
@@ -89,8 +114,8 @@ void main() {
       );
 
       final customResolver = ProvisioningPathResolver(
-        appManagedRoot: r'C:/AppManaged/Aura/',
-        bundledRoot: r'C:\Program Files\Aura\',
+        appManagedRoot: r'C:/AppManaged/./Aura//',
+        bundledRoot: r'C:\Program Files\\Aura\.\',
       );
 
       expect(customResolver.appManagedRoot, equals(r'C:\AppManaged\Aura'));

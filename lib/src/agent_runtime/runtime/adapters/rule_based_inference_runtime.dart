@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import '../../bridges/rule_based_evaluator_bridge.dart';
 import '../inference_runtime.dart';
 import '../model_handle.dart';
@@ -23,6 +24,7 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
   RuntimeState _state = RuntimeState.uninitialized;
   RuntimeInstanceId? _instanceId;
   final Set<ModelHandleId> _activeHandles = {};
+  int _activeGenerationsCount = 0;
 
   RuleBasedInferenceRuntime({
     RuleBasedEvaluatorBridge bridge = const RuleBasedEvaluatorBridge(),
@@ -84,16 +86,15 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
       generationCapabilities: {
         GenerationCapability.text,
         GenerationCapability.structuredJson,
-        GenerationCapability.cancellation,
         GenerationCapability.deterministicSeed,
       },
       modelCapabilities: {
         ModelCapability.sharedModelAcrossRoles,
         ModelCapability.cpuExecution,
       },
-      maxConcurrentGenerations: 4,
+      maxConcurrentGenerations: 1,
       maxLoadedModels: 10,
-      supportsCancellation: true,
+      supportsCancellation: false,
       supportsHealthCheck: true,
       supportsTokenStreaming: false,
       supportsGrammarConstraints: false,
@@ -117,15 +118,7 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
 
   @override
   Future<ModelHandle> loadModel(ModelLoadRequest request) async {
-    _ensureInitialized();
-    if (_state.isDisposed) {
-      throw const RuntimeException(
-        RuntimeFailure(
-          code: RuntimeFailureCode.disposed,
-          message: 'Runtime is disposed.',
-        ),
-      );
-    }
+    _ensureInitializedAndNotDisposed();
 
     _changeState(RuntimeState.loadingModel);
     _eventController.add(
@@ -165,7 +158,7 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
 
   @override
   Future<void> unloadModel(ModelHandle handle) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     _validateHandle(handle);
 
     _changeState(RuntimeState.unloadingModel);
@@ -195,9 +188,10 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
   @override
   Future<TextGenerationResult> generateText(
       TextGenerationRequest request) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     _validateHandle(request.model);
 
+    _activeGenerationsCount++;
     _changeState(RuntimeState.generating,
         traceId: request.traceContext.traceId);
     _eventController.add(
@@ -211,40 +205,67 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
     );
 
     final stopwatch = Stopwatch()..start();
-    const fallbackText =
-        "PANOPTICON: Sistema deterministico in esecuzione offline.";
-    stopwatch.stop();
+    try {
+      const fallbackText =
+          "PANOPTICON: Sistema deterministico in esecuzione offline.";
+      stopwatch.stop();
 
-    final result = TextGenerationResult(
-      requestId: request.requestId,
-      model: request.model,
-      content: fallbackText,
-      finishReason: GenerationFinishReason.completed,
-      latency: stopwatch.elapsed,
-    );
-
-    _eventController.add(
-      GenerationCompleted(
-        instanceId: _instanceId!,
-        timestamp: DateTime.now(),
+      final result = TextGenerationResult(
         requestId: request.requestId,
+        model: request.model,
+        content: fallbackText,
+        finishReason: GenerationFinishReason.completed,
         latency: stopwatch.elapsed,
-        traceId: request.traceContext.traceId,
-      ),
-    );
+      );
 
-    _changeState(RuntimeState.modelReady,
-        traceId: request.traceContext.traceId);
-    return result;
+      _eventController.add(
+        GenerationCompleted(
+          instanceId: _instanceId!,
+          timestamp: DateTime.now(),
+          requestId: request.requestId,
+          latency: stopwatch.elapsed,
+          traceId: request.traceContext.traceId,
+        ),
+      );
+
+      return result;
+    } catch (e, st) {
+      stopwatch.stop();
+      final failure = RuntimeFailure(
+        code: RuntimeFailureCode.generationFailed,
+        message: 'Rule-based text generation failed: $e',
+      );
+      _eventController.add(
+        GenerationFailed(
+          instanceId: _instanceId!,
+          timestamp: DateTime.now(),
+          requestId: request.requestId,
+          failure: failure,
+          traceId: request.traceContext.traceId,
+        ),
+      );
+      throw RuntimeException(failure, cause: e, stackTrace: st);
+    } finally {
+      _activeGenerationsCount--;
+      if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+        _changeState(
+          _activeHandles.isNotEmpty
+              ? RuntimeState.modelReady
+              : RuntimeState.ready,
+          traceId: request.traceContext.traceId,
+        );
+      }
+    }
   }
 
   @override
   Future<StructuredGenerationResult> generateStructured(
     StructuredGenerationRequest request,
   ) async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     _validateHandle(request.model);
 
+    _activeGenerationsCount++;
     _changeState(RuntimeState.generating,
         traceId: request.traceContext.traceId);
     _eventController.add(
@@ -258,68 +279,91 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
     );
 
     final stopwatch = Stopwatch()..start();
+    try {
+      final legacyMessages = request.messages
+          .map((m) => {'role': m.role.name, 'content': m.content})
+          .toList();
 
-    final legacyMessages = request.messages
-        .map((m) => {'role': m.role.name, 'content': m.content})
-        .toList();
+      final parsedMap = await _bridge.generateStructured(
+        modelId: request.model.logicalModelId,
+        messages: legacyMessages,
+        schema: request.schema.document,
+      );
 
-    final parsedMap = await _bridge.generateStructured(
-      modelId: request.model.logicalModelId,
-      messages: legacyMessages,
-      schema: request.schema.document,
-    );
+      stopwatch.stop();
 
-    stopwatch.stop();
-
-    final result = StructuredGenerationResult(
-      requestId: request.requestId,
-      model: request.model,
-      rawContent:
-          legacyMessages.isNotEmpty ? legacyMessages.last['content'] ?? '' : '',
-      parsedObject: parsedMap,
-      appliedMode: StructuredOutputMode.promptConstrained,
-      finishReason: GenerationFinishReason.completed,
-      latency: stopwatch.elapsed,
-    );
-
-    _eventController.add(
-      GenerationCompleted(
-        instanceId: _instanceId!,
-        timestamp: DateTime.now(),
+      final result = StructuredGenerationResult(
         requestId: request.requestId,
+        model: request.model,
+        rawContent: jsonEncode(parsedMap),
+        parsedObject: parsedMap,
+        appliedMode: StructuredOutputMode.promptConstrained,
+        finishReason: GenerationFinishReason.completed,
         latency: stopwatch.elapsed,
-        traceId: request.traceContext.traceId,
-      ),
-    );
+      );
 
-    _changeState(RuntimeState.modelReady,
-        traceId: request.traceContext.traceId);
-    return result;
-  }
-
-  @override
-  Future<void> cancel(GenerationRequestId requestId) async {
-    _ensureInitialized();
-    if (_instanceId != null) {
       _eventController.add(
-        GenerationCancelled(
+        GenerationCompleted(
           instanceId: _instanceId!,
           timestamp: DateTime.now(),
-          requestId: requestId,
+          requestId: request.requestId,
+          latency: stopwatch.elapsed,
+          traceId: request.traceContext.traceId,
         ),
       );
+
+      return result;
+    } catch (e, st) {
+      stopwatch.stop();
+      final failure = RuntimeFailure(
+        code: RuntimeFailureCode.generationFailed,
+        message: 'Rule-based structured generation failed: $e',
+      );
+      _eventController.add(
+        GenerationFailed(
+          instanceId: _instanceId!,
+          timestamp: DateTime.now(),
+          requestId: request.requestId,
+          failure: failure,
+          traceId: request.traceContext.traceId,
+        ),
+      );
+      throw RuntimeException(failure, cause: e, stackTrace: st);
+    } finally {
+      _activeGenerationsCount--;
+      if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+        _changeState(
+          _activeHandles.isNotEmpty
+              ? RuntimeState.modelReady
+              : RuntimeState.ready,
+          traceId: request.traceContext.traceId,
+        );
+      }
     }
   }
 
   @override
+  Future<void> cancel(GenerationRequestId requestId) async {
+    _ensureInitializedAndNotDisposed();
+    throw const RuntimeException(
+      RuntimeFailure(
+        code: RuntimeFailureCode.cancellationUnsupported,
+        message: 'Cancellation is unsupported by RuleBasedInferenceRuntime.',
+        suggestedAction: RuntimeRecoveryAction.none,
+      ),
+    );
+  }
+
+  @override
   Future<RuntimeHealth> health() async {
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     return RuntimeHealth(
       instanceId: _instanceId!,
       state: _state,
       responsive: true,
       observedAt: DateTime.now(),
       backend: RuntimeBackend.deterministic,
+      activeGenerations: _activeGenerationsCount,
       loadedModelCount: _activeHandles.length,
     );
   }
@@ -337,6 +381,7 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
     }
 
     _activeHandles.clear();
+    _activeGenerationsCount = 0;
     _changeState(RuntimeState.disposed);
 
     if (_instanceId != null && !_eventController.isClosed) {
@@ -350,7 +395,15 @@ class RuleBasedInferenceRuntime implements InferenceRuntime {
     await _eventController.close();
   }
 
-  void _ensureInitialized() {
+  void _ensureInitializedAndNotDisposed() {
+    if (_state == RuntimeState.disposed) {
+      throw const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.disposed,
+          message: 'Runtime is disposed.',
+        ),
+      );
+    }
     if (_state == RuntimeState.uninitialized) {
       throw const RuntimeException(
         RuntimeFailure(

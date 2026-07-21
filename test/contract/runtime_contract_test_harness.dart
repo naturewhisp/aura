@@ -1,4 +1,5 @@
-import 'package:aura_core/aura_core.dart';
+import 'dart:async';
+import 'package:aura_core/aura_testing.dart';
 import 'package:test/test.dart';
 
 /// Contract test profile to customize feature checks based on declared runtime capabilities.
@@ -78,7 +79,7 @@ void runInferenceRuntimeContractTests(
           architecture: 'llama',
           compatibility: ModelRuntimeCompatibility(compatible: true),
         ),
-        logicalModelId: 'mistralai/ministral-3-3b',
+        logicalModelId: 'aura.evaluator.primary',
         roles: const {ModelRole.evaluator},
       );
 
@@ -110,27 +111,27 @@ void runInferenceRuntimeContractTests(
           architecture: 'llama',
           compatibility: ModelRuntimeCompatibility(compatible: true),
         ),
-        logicalModelId: 'mistralai/ministral-3-3b',
+        logicalModelId: 'aura.evaluator.primary',
         roles: const {ModelRole.evaluator},
       );
 
       final handle = await runtime.loadModel(loadReq);
-      expect(handle.logicalModelId, equals('mistralai/ministral-3-3b'));
+      expect(handle.logicalModelId, equals('aura.evaluator.primary'));
       expect(
           handle.runtimeInstanceId, equals(const RuntimeInstanceId('sess-1')));
       expect(runtime.state, equals(RuntimeState.modelReady));
     });
 
-    test('Rejects handle belonging to another session', () async {
+    test('Rejects handle belonging to another session or instance', () async {
       await runtime.initialize(
         const RuntimeInitializationRequest(
             instanceId: RuntimeInstanceId('sess-1')),
       );
 
-      final invalidHandle = ModelHandle(
+      final foreignHandle = ModelHandle(
         id: const ModelHandleId('foreign-handle'),
         runtimeInstanceId: const RuntimeInstanceId('other-session'),
-        logicalModelId: 'mistralai/ministral-3-3b',
+        logicalModelId: 'aura.evaluator.primary',
         modelVariantId: 'variant-01',
         roles: const {ModelRole.evaluator},
         loadedAt: DateTime.now(),
@@ -138,7 +139,7 @@ void runInferenceRuntimeContractTests(
 
       final genReq = TextGenerationRequest(
         requestId: const GenerationRequestId('gen-1'),
-        model: invalidHandle,
+        model: foreignHandle,
         messages: const [
           InferenceMessage(role: InferenceRole.user, content: 'Hi')
         ],
@@ -146,7 +147,7 @@ void runInferenceRuntimeContractTests(
           traceId: RuntimeTraceId('trace-1'),
           sessionId: 'sess-1',
           agentId: 'evaluator',
-          logicalModelId: 'mistralai/ministral-3-3b',
+          logicalModelId: 'aura.evaluator.primary',
         ),
       );
 
@@ -179,7 +180,7 @@ void runInferenceRuntimeContractTests(
             architecture: 'llama',
             compatibility: ModelRuntimeCompatibility(compatible: true),
           ),
-          logicalModelId: 'qwen/qwen3.5-9b',
+          logicalModelId: 'aura.actor.primary',
           roles: const {ModelRole.actor},
         ),
       );
@@ -194,7 +195,7 @@ void runInferenceRuntimeContractTests(
           traceId: RuntimeTraceId('trace-1'),
           sessionId: 'sess-1',
           agentId: 'actor',
-          logicalModelId: 'qwen/qwen3.5-9b',
+          logicalModelId: 'aura.actor.primary',
         ),
       );
 
@@ -222,7 +223,7 @@ void runInferenceRuntimeContractTests(
             architecture: 'llama',
             compatibility: ModelRuntimeCompatibility(compatible: true),
           ),
-          logicalModelId: 'mistralai/ministral-3-3b',
+          logicalModelId: 'aura.evaluator.primary',
           roles: const {ModelRole.evaluator},
         ),
       );
@@ -241,7 +242,7 @@ void runInferenceRuntimeContractTests(
           traceId: RuntimeTraceId('trace-struct-1'),
           sessionId: 'sess-1',
           agentId: 'evaluator',
-          logicalModelId: 'mistralai/ministral-3-3b',
+          logicalModelId: 'aura.evaluator.primary',
         ),
       );
 
@@ -267,7 +268,7 @@ void runInferenceRuntimeContractTests(
             architecture: 'llama',
             compatibility: ModelRuntimeCompatibility(compatible: true),
           ),
-          logicalModelId: 'qwen/qwen3.5-9b',
+          logicalModelId: 'aura.actor.primary',
           roles: const {ModelRole.actor},
         ),
       );
@@ -284,7 +285,7 @@ void runInferenceRuntimeContractTests(
           traceId: RuntimeTraceId('trace-2'),
           sessionId: 'sess-1',
           agentId: 'actor',
-          logicalModelId: 'qwen/qwen3.5-9b',
+          logicalModelId: 'aura.actor.primary',
         ),
       );
 
@@ -312,35 +313,360 @@ void runInferenceRuntimeContractTests(
       expect(h.state, equals(RuntimeState.ready));
     });
 
-    test('Dispose is idempotent and rejects further operations', () async {
-      await runtime.initialize(
-        const RuntimeInitializationRequest(
-            instanceId: RuntimeInstanceId('sess-1')),
-      );
+    group('Cancellation semantics -', () {
+      test(
+          'Cancels generation or throws cancellationUnsupported based on capability',
+          () async {
+        await runtime.initialize(
+          const RuntimeInitializationRequest(
+              instanceId: RuntimeInstanceId('sess-cancel')),
+        );
 
-      await runtime.dispose();
-      expect(runtime.state, equals(RuntimeState.disposed));
+        final handle = await runtime.loadModel(
+          ModelLoadRequest(
+            requestId: const ModelLoadRequestId('load-cancel'),
+            artifact: const ResolvedModelArtifact(
+              modelVariantId: 'variant-01',
+              sha256: 'abc',
+              format: 'gguf',
+              quantization: 'Q4_K_M',
+              architecture: 'llama',
+              compatibility: ModelRuntimeCompatibility(compatible: true),
+            ),
+            logicalModelId: 'aura.actor.primary',
+            roles: const {ModelRole.actor},
+          ),
+        );
 
-      // Idempotent dispose
-      await runtime.dispose();
-      expect(runtime.state, equals(RuntimeState.disposed));
+        if (!profile.supportsCancellation) {
+          expect(
+            () => runtime.cancel(const GenerationRequestId('req-1')),
+            throwsA(
+              isA<RuntimeException>().having(
+                (e) => e.failure.code,
+                'code',
+                equals(RuntimeFailureCode.cancellationUnsupported),
+              ),
+            ),
+          );
+        } else if (runtime is MockInferenceRuntime) {
+          final mock = runtime as MockInferenceRuntime;
+          mock.autoCompleteRequests = false;
 
-      final loadReq = ModelLoadRequest(
-        requestId: const ModelLoadRequestId('load-after-dispose'),
-        artifact: const ResolvedModelArtifact(
-          modelVariantId: 'variant-01',
-          sha256: 'abc',
-          format: 'gguf',
-          quantization: 'Q4_K_M',
-          architecture: 'llama',
-          compatibility: ModelRuntimeCompatibility(compatible: true),
-        ),
-        logicalModelId: 'mistralai/ministral-3-3b',
-        roles: const {ModelRole.evaluator},
-      );
+          final genFuture = mock.generateText(
+            TextGenerationRequest(
+              requestId: const GenerationRequestId('req-pending-cancel'),
+              model: handle,
+              messages: const [
+                InferenceMessage(role: InferenceRole.user, content: 'Wait')
+              ],
+              traceContext: const InferenceTraceContext(
+                traceId: RuntimeTraceId('trace-cancel'),
+                sessionId: 'sess-cancel',
+                agentId: 'actor',
+                logicalModelId: 'aura.actor.primary',
+              ),
+            ),
+          );
 
-      expect(
-          () => runtime.loadModel(loadReq), throwsA(isA<RuntimeException>()));
+          final expectCancelFuture = expectLater(
+            genFuture,
+            throwsA(
+              isA<RuntimeException>().having(
+                (e) => e.failure.code,
+                'code',
+                equals(RuntimeFailureCode.cancelled),
+              ),
+            ),
+          );
+
+          await runtime.cancel(const GenerationRequestId('req-pending-cancel'));
+          await expectCancelFuture;
+
+          // Verify model handle remains valid post-cancellation
+          mock.autoCompleteRequests = true;
+          final res = await mock.generateText(
+            TextGenerationRequest(
+              requestId: const GenerationRequestId('req-post-cancel'),
+              model: handle,
+              messages: const [
+                InferenceMessage(role: InferenceRole.user, content: 'Retry')
+              ],
+              traceContext: const InferenceTraceContext(
+                traceId: RuntimeTraceId('trace-retry'),
+                sessionId: 'sess-cancel',
+                agentId: 'actor',
+                logicalModelId: 'aura.actor.primary',
+              ),
+            ),
+          );
+          expect(res.content, isNotEmpty);
+        }
+      });
+    });
+
+    group('Multiple handles support -', () {
+      test('Loads multiple handles and manages separate residency', () async {
+        if (!profile.supportsMultipleHandles) return;
+
+        await runtime.initialize(
+          const RuntimeInitializationRequest(
+              instanceId: RuntimeInstanceId('sess-multi')),
+        );
+
+        final handleEval = await runtime.loadModel(
+          ModelLoadRequest(
+            requestId: const ModelLoadRequestId('load-eval'),
+            artifact: const ResolvedModelArtifact(
+              modelVariantId: 'variant-eval',
+              sha256: 'abc',
+              format: 'gguf',
+              quantization: 'Q4_K_M',
+              architecture: 'llama',
+              compatibility: ModelRuntimeCompatibility(compatible: true),
+            ),
+            logicalModelId: 'aura.evaluator.primary',
+            roles: const {ModelRole.evaluator},
+          ),
+        );
+
+        final handleActor = await runtime.loadModel(
+          ModelLoadRequest(
+            requestId: const ModelLoadRequestId('load-actor'),
+            artifact: const ResolvedModelArtifact(
+              modelVariantId: 'variant-actor',
+              sha256: 'def',
+              format: 'gguf',
+              quantization: 'Q4_K_M',
+              architecture: 'llama',
+              compatibility: ModelRuntimeCompatibility(compatible: true),
+            ),
+            logicalModelId: 'aura.actor.primary',
+            roles: const {ModelRole.actor},
+          ),
+        );
+
+        expect(handleEval.id, isNot(equals(handleActor.id)));
+
+        // Unload one, other remains valid
+        await runtime.unloadModel(handleEval);
+
+        final genReq = TextGenerationRequest(
+          requestId: const GenerationRequestId('gen-actor-still-valid'),
+          model: handleActor,
+          messages: const [
+            InferenceMessage(role: InferenceRole.user, content: 'Still here')
+          ],
+          traceContext: const InferenceTraceContext(
+            traceId: RuntimeTraceId('trace-multi'),
+            sessionId: 'sess-multi',
+            agentId: 'actor',
+            logicalModelId: 'aura.actor.primary',
+          ),
+        );
+
+        final res = await runtime.generateText(genReq);
+        expect(res.content, isNotEmpty);
+      });
+    });
+
+    group('Event ordering -', () {
+      test('Emits events in valid sequence during lifecycle', () async {
+        final eventsList = <RuntimeEvent>[];
+        final subscription = runtime.events.listen(eventsList.add);
+
+        await runtime.initialize(
+          const RuntimeInitializationRequest(
+              instanceId: RuntimeInstanceId('sess-events')),
+        );
+
+        final handle = await runtime.loadModel(
+          ModelLoadRequest(
+            requestId: const ModelLoadRequestId('load-events'),
+            artifact: const ResolvedModelArtifact(
+              modelVariantId: 'variant-01',
+              sha256: 'abc',
+              format: 'gguf',
+              quantization: 'Q4_K_M',
+              architecture: 'llama',
+              compatibility: ModelRuntimeCompatibility(compatible: true),
+            ),
+            logicalModelId: 'aura.evaluator.primary',
+            roles: const {ModelRole.evaluator},
+          ),
+        );
+
+        await runtime.generateText(
+          TextGenerationRequest(
+            requestId: const GenerationRequestId('gen-events'),
+            model: handle,
+            messages: const [
+              InferenceMessage(role: InferenceRole.user, content: 'Event test')
+            ],
+            traceContext: const InferenceTraceContext(
+              traceId: RuntimeTraceId('trace-events'),
+              sessionId: 'sess-events',
+              agentId: 'evaluator',
+              logicalModelId: 'aura.evaluator.primary',
+            ),
+          ),
+        );
+
+        await runtime.unloadModel(handle);
+        await runtime.dispose();
+        await subscription.cancel();
+
+        final types = eventsList.map((e) => e.runtimeType).toList();
+        expect(types, contains(RuntimeStateChanged));
+        expect(types, contains(RuntimeInitialized));
+        expect(types, contains(ModelLoadStarted));
+        expect(types, contains(ModelLoadCompleted));
+        expect(types, contains(GenerationStarted));
+        expect(types, contains(GenerationCompleted));
+        expect(types, contains(ModelUnloadStarted));
+        expect(types, contains(ModelUnloadCompleted));
+        expect(types, contains(RuntimeDisposing));
+        expect(types, contains(RuntimeDisposed));
+      });
+    });
+
+    group('Post-dispose operations -', () {
+      test(
+          'Enforces RuntimeFailureCode.disposed across all operations post-dispose',
+          () async {
+        await runtime.initialize(
+          const RuntimeInitializationRequest(
+              instanceId: RuntimeInstanceId('sess-dispose')),
+        );
+
+        final handle = await runtime.loadModel(
+          ModelLoadRequest(
+            requestId: const ModelLoadRequestId('load-dispose'),
+            artifact: const ResolvedModelArtifact(
+              modelVariantId: 'variant-01',
+              sha256: 'abc',
+              format: 'gguf',
+              quantization: 'Q4_K_M',
+              architecture: 'llama',
+              compatibility: ModelRuntimeCompatibility(compatible: true),
+            ),
+            logicalModelId: 'aura.evaluator.primary',
+            roles: const {ModelRole.evaluator},
+          ),
+        );
+
+        await runtime.dispose();
+        expect(runtime.state, equals(RuntimeState.disposed));
+
+        final dummyLoad = ModelLoadRequest(
+          requestId: const ModelLoadRequestId('dummy-load'),
+          artifact: const ResolvedModelArtifact(
+            modelVariantId: 'v',
+            sha256: 'a',
+            format: 'gguf',
+            quantization: 'q',
+            architecture: 'a',
+            compatibility: ModelRuntimeCompatibility(compatible: true),
+          ),
+          logicalModelId: 'aura.evaluator.primary',
+          roles: const {ModelRole.evaluator},
+        );
+
+        final dummyGenText = TextGenerationRequest(
+          requestId: const GenerationRequestId('dummy-gen'),
+          model: handle,
+          messages: const [
+            InferenceMessage(role: InferenceRole.user, content: 'x')
+          ],
+          traceContext: const InferenceTraceContext(
+            traceId: RuntimeTraceId('t'),
+            sessionId: 's',
+            agentId: 'a',
+            logicalModelId: 'm',
+          ),
+        );
+
+        final dummyGenStruct = StructuredGenerationRequest(
+          requestId: const GenerationRequestId('dummy-struct'),
+          model: handle,
+          messages: const [
+            InferenceMessage(role: InferenceRole.user, content: 'x')
+          ],
+          schema: const JsonSchemaDocument(schemaId: 's', document: {}),
+          traceContext: const InferenceTraceContext(
+            traceId: RuntimeTraceId('t'),
+            sessionId: 's',
+            agentId: 'a',
+            logicalModelId: 'm',
+          ),
+        );
+
+        expect(
+          () => runtime.loadModel(dummyLoad),
+          throwsA(
+            isA<RuntimeException>().having(
+              (e) => e.failure.code,
+              'code',
+              equals(RuntimeFailureCode.disposed),
+            ),
+          ),
+        );
+
+        expect(
+          () => runtime.unloadModel(handle),
+          throwsA(
+            isA<RuntimeException>().having(
+              (e) => e.failure.code,
+              'code',
+              equals(RuntimeFailureCode.disposed),
+            ),
+          ),
+        );
+
+        expect(
+          () => runtime.generateText(dummyGenText),
+          throwsA(
+            isA<RuntimeException>().having(
+              (e) => e.failure.code,
+              'code',
+              equals(RuntimeFailureCode.disposed),
+            ),
+          ),
+        );
+
+        expect(
+          () => runtime.generateStructured(dummyGenStruct),
+          throwsA(
+            isA<RuntimeException>().having(
+              (e) => e.failure.code,
+              'code',
+              equals(RuntimeFailureCode.disposed),
+            ),
+          ),
+        );
+
+        expect(
+          () => runtime.cancel(const GenerationRequestId('dummy-cancel')),
+          throwsA(
+            isA<RuntimeException>().having(
+              (e) => e.failure.code,
+              'code',
+              equals(RuntimeFailureCode.disposed),
+            ),
+          ),
+        );
+
+        expect(
+          () => runtime.health(),
+          throwsA(
+            isA<RuntimeException>().having(
+              (e) => e.failure.code,
+              'code',
+              equals(RuntimeFailureCode.disposed),
+            ),
+          ),
+        );
+      });
     });
   });
 }

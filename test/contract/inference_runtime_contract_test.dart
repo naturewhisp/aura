@@ -8,11 +8,21 @@ void main() {
     runInferenceRuntimeContractTests(
       'MockInferenceRuntime',
       () async => MockInferenceRuntime(),
+      profile: const RuntimeContractTestProfile(
+        supportsCancellation: true,
+        supportsStructuredJson: true,
+        supportsMultipleHandles: true,
+      ),
     );
 
     runInferenceRuntimeContractTests(
       'RuleBasedInferenceRuntime',
       () async => RuleBasedInferenceRuntime(),
+      profile: const RuntimeContractTestProfile(
+        supportsCancellation: false,
+        supportsStructuredJson: true,
+        supportsMultipleHandles: true,
+      ),
     );
   });
 }

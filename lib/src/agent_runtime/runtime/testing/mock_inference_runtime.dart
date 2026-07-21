@@ -11,7 +11,25 @@ import '../runtime_requests.dart';
 import '../runtime_results.dart';
 import '../runtime_state.dart';
 
+/// Represents an in-flight pending text generation request for manual mock control.
+class PendingTextGeneration {
+  final TextGenerationRequest request;
+  final Completer<TextGenerationResult> completer;
+
+  PendingTextGeneration(this.request, this.completer);
+}
+
+/// Represents an in-flight pending structured generation request for manual mock control.
+class PendingStructuredGeneration {
+  final StructuredGenerationRequest request;
+  final Completer<StructuredGenerationResult> completer;
+
+  PendingStructuredGeneration(this.request, this.completer);
+}
+
 /// Configurable mock implementation of [InferenceRuntime] for unit and contract testing.
+///
+/// Fully deterministic and free from real-time delays or network requests.
 class MockInferenceRuntime implements InferenceRuntime {
   final StreamController<RuntimeEvent> _eventController =
       StreamController<RuntimeEvent>.broadcast();
@@ -19,17 +37,20 @@ class MockInferenceRuntime implements InferenceRuntime {
   RuntimeState _state = RuntimeState.uninitialized;
   RuntimeInstanceId? _instanceId;
   final Set<ModelHandleId> _activeHandles = {};
-  final Set<GenerationRequestId> _activeGenerationRequests = {};
-  final Set<GenerationRequestId> _cancelledRequestIds = {};
+  int _activeGenerationsCount = 0;
 
-  // Configurable responses
+  // Configurable parameters
+  bool autoCompleteRequests;
   String textResponse;
   Map<String, Object?> structuredResponse;
-  Duration simulatedDelay;
   RuntimeFailure? failureToThrowOnInitialize;
   RuntimeFailure? failureToThrowOnLoadModel;
   RuntimeFailure? failureToThrowOnGenerate;
   bool throwOnCancellation;
+
+  // Manual pending control queues
+  final List<PendingTextGeneration> _pendingTextGenerations = [];
+  final List<PendingStructuredGeneration> _pendingStructuredGenerations = [];
 
   // Call counters & recording
   int initializeCalls = 0;
@@ -45,6 +66,7 @@ class MockInferenceRuntime implements InferenceRuntime {
   final List<StructuredGenerationRequest> structuredRequests = [];
 
   MockInferenceRuntime({
+    this.autoCompleteRequests = true,
     this.textResponse = "Mock response from MockInferenceRuntime.",
     this.structuredResponse = const {
       "delta_alert": 0,
@@ -55,7 +77,6 @@ class MockInferenceRuntime implements InferenceRuntime {
       "injection_risk": 0,
       "semantic_category": "authority_framing",
     },
-    this.simulatedDelay = Duration.zero,
     this.failureToThrowOnInitialize,
     this.failureToThrowOnLoadModel,
     this.failureToThrowOnGenerate,
@@ -67,6 +88,12 @@ class MockInferenceRuntime implements InferenceRuntime {
 
   @override
   Stream<RuntimeEvent> get events => _eventController.stream;
+
+  List<PendingTextGeneration> get pendingTextGenerations =>
+      List.unmodifiable(_pendingTextGenerations);
+
+  List<PendingStructuredGeneration> get pendingStructuredGenerations =>
+      List.unmodifiable(_pendingStructuredGenerations);
 
   void _changeState(RuntimeState newState, {RuntimeTraceId? traceId}) {
     if (_state == newState) return;
@@ -109,10 +136,6 @@ class MockInferenceRuntime implements InferenceRuntime {
 
     _instanceId = request.instanceId;
     _changeState(RuntimeState.initializing);
-
-    if (simulatedDelay > Duration.zero) {
-      await Future<void>.delayed(simulatedDelay);
-    }
 
     if (failureToThrowOnInitialize != null) {
       _changeState(RuntimeState.failed);
@@ -166,15 +189,7 @@ class MockInferenceRuntime implements InferenceRuntime {
   @override
   Future<ModelHandle> loadModel(ModelLoadRequest request) async {
     loadModelCalls++;
-    _ensureInitialized();
-    if (_state.isDisposed) {
-      throw const RuntimeException(
-        RuntimeFailure(
-          code: RuntimeFailureCode.disposed,
-          message: 'Runtime is disposed.',
-        ),
-      );
-    }
+    _ensureInitializedAndNotDisposed();
 
     _changeState(RuntimeState.loadingModel);
     _eventController.add(
@@ -185,10 +200,6 @@ class MockInferenceRuntime implements InferenceRuntime {
         logicalModelId: request.logicalModelId,
       ),
     );
-
-    if (simulatedDelay > Duration.zero) {
-      await Future<void>.delayed(simulatedDelay);
-    }
 
     if (failureToThrowOnLoadModel != null) {
       _changeState(_activeHandles.isNotEmpty
@@ -234,7 +245,7 @@ class MockInferenceRuntime implements InferenceRuntime {
   @override
   Future<void> unloadModel(ModelHandle handle) async {
     unloadModelCalls++;
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     _validateHandle(handle);
 
     _changeState(RuntimeState.unloadingModel);
@@ -266,10 +277,10 @@ class MockInferenceRuntime implements InferenceRuntime {
       TextGenerationRequest request) async {
     generateTextCalls++;
     textRequests.add(request);
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     _validateHandle(request.model);
 
-    _activeGenerationRequests.add(request.requestId);
+    _activeGenerationsCount++;
     _changeState(RuntimeState.generating,
         traceId: request.traceContext.traceId);
     _eventController.add(
@@ -282,31 +293,13 @@ class MockInferenceRuntime implements InferenceRuntime {
       ),
     );
 
-    final stopwatch = Stopwatch()..start();
-    if (simulatedDelay > Duration.zero) {
-      await Future<void>.delayed(simulatedDelay);
-    }
-    stopwatch.stop();
-
-    _activeGenerationRequests.remove(request.requestId);
-
-    if (_cancelledRequestIds.contains(request.requestId)) {
-      _cancelledRequestIds.remove(request.requestId);
-      _changeState(_activeHandles.isNotEmpty
-          ? RuntimeState.modelReady
-          : RuntimeState.ready);
-      throw const RuntimeException(
-        RuntimeFailure(
-          code: RuntimeFailureCode.cancelled,
-          message: 'Generation was cancelled.',
-        ),
-      );
-    }
-
     if (failureToThrowOnGenerate != null) {
-      _changeState(_activeHandles.isNotEmpty
-          ? RuntimeState.modelReady
-          : RuntimeState.ready);
+      _activeGenerationsCount--;
+      if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+        _changeState(_activeHandles.isNotEmpty
+            ? RuntimeState.modelReady
+            : RuntimeState.ready);
+      }
       _eventController.add(
         GenerationFailed(
           instanceId: _instanceId!,
@@ -319,28 +312,19 @@ class MockInferenceRuntime implements InferenceRuntime {
       throw RuntimeException(failureToThrowOnGenerate!);
     }
 
-    final result = TextGenerationResult(
-      requestId: request.requestId,
-      model: request.model,
-      content: textResponse,
-      finishReason: GenerationFinishReason.completed,
-      latency: stopwatch.elapsed,
-    );
+    final completer = Completer<TextGenerationResult>();
+    final pending = PendingTextGeneration(request, completer);
+    _pendingTextGenerations.add(pending);
 
-    _eventController.add(
-      GenerationCompleted(
-        instanceId: _instanceId!,
-        timestamp: DateTime.now(),
-        requestId: request.requestId,
-        latency: stopwatch.elapsed,
-        traceId: request.traceContext.traceId,
-      ),
-    );
+    if (autoCompleteRequests) {
+      scheduleMicrotask(() {
+        if (_pendingTextGenerations.contains(pending)) {
+          completeNextTextGeneration();
+        }
+      });
+    }
 
-    _changeState(_activeHandles.isNotEmpty
-        ? RuntimeState.modelReady
-        : RuntimeState.ready);
-    return result;
+    return completer.future;
   }
 
   @override
@@ -349,10 +333,10 @@ class MockInferenceRuntime implements InferenceRuntime {
   ) async {
     generateStructuredCalls++;
     structuredRequests.add(request);
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     _validateHandle(request.model);
 
-    _activeGenerationRequests.add(request.requestId);
+    _activeGenerationsCount++;
     _changeState(RuntimeState.generating,
         traceId: request.traceContext.traceId);
     _eventController.add(
@@ -365,31 +349,13 @@ class MockInferenceRuntime implements InferenceRuntime {
       ),
     );
 
-    final stopwatch = Stopwatch()..start();
-    if (simulatedDelay > Duration.zero) {
-      await Future<void>.delayed(simulatedDelay);
-    }
-    stopwatch.stop();
-
-    _activeGenerationRequests.remove(request.requestId);
-
-    if (_cancelledRequestIds.contains(request.requestId)) {
-      _cancelledRequestIds.remove(request.requestId);
-      _changeState(_activeHandles.isNotEmpty
-          ? RuntimeState.modelReady
-          : RuntimeState.ready);
-      throw const RuntimeException(
-        RuntimeFailure(
-          code: RuntimeFailureCode.cancelled,
-          message: 'Structured generation was cancelled.',
-        ),
-      );
-    }
-
     if (failureToThrowOnGenerate != null) {
-      _changeState(_activeHandles.isNotEmpty
-          ? RuntimeState.modelReady
-          : RuntimeState.ready);
+      _activeGenerationsCount--;
+      if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+        _changeState(_activeHandles.isNotEmpty
+            ? RuntimeState.modelReady
+            : RuntimeState.ready);
+      }
       _eventController.add(
         GenerationFailed(
           instanceId: _instanceId!,
@@ -402,48 +368,150 @@ class MockInferenceRuntime implements InferenceRuntime {
       throw RuntimeException(failureToThrowOnGenerate!);
     }
 
-    final result = StructuredGenerationResult(
-      requestId: request.requestId,
-      model: request.model,
-      rawContent: structuredResponse.toString(),
-      parsedObject: structuredResponse,
-      appliedMode: StructuredOutputMode.automatic,
+    final completer = Completer<StructuredGenerationResult>();
+    final pending = PendingStructuredGeneration(request, completer);
+    _pendingStructuredGenerations.add(pending);
+
+    if (autoCompleteRequests) {
+      scheduleMicrotask(() {
+        if (_pendingStructuredGenerations.contains(pending)) {
+          completeNextStructuredGeneration();
+        }
+      });
+    }
+
+    return completer.future;
+  }
+
+  void completeNextTextGeneration([String? content]) {
+    if (_pendingTextGenerations.isEmpty) return;
+    final pending = _pendingTextGenerations.removeAt(0);
+
+    final result = TextGenerationResult(
+      requestId: pending.request.requestId,
+      model: pending.request.model,
+      content: content ?? textResponse,
       finishReason: GenerationFinishReason.completed,
-      latency: stopwatch.elapsed,
     );
 
     _eventController.add(
       GenerationCompleted(
         instanceId: _instanceId!,
         timestamp: DateTime.now(),
-        requestId: request.requestId,
-        latency: stopwatch.elapsed,
-        traceId: request.traceContext.traceId,
+        requestId: pending.request.requestId,
+        latency: Duration.zero,
+        traceId: pending.request.traceContext.traceId,
       ),
     );
 
-    _changeState(_activeHandles.isNotEmpty
-        ? RuntimeState.modelReady
-        : RuntimeState.ready);
-    return result;
+    _activeGenerationsCount--;
+    if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+      _changeState(_activeHandles.isNotEmpty
+          ? RuntimeState.modelReady
+          : RuntimeState.ready);
+    }
+
+    pending.completer.complete(result);
+  }
+
+  void completeNextStructuredGeneration([Map<String, Object?>? content]) {
+    if (_pendingStructuredGenerations.isEmpty) return;
+    final pending = _pendingStructuredGenerations.removeAt(0);
+    final finalContent = content ?? structuredResponse;
+
+    final result = StructuredGenerationResult(
+      requestId: pending.request.requestId,
+      model: pending.request.model,
+      rawContent: finalContent.toString(),
+      parsedObject: finalContent,
+      appliedMode: StructuredOutputMode.automatic,
+      finishReason: GenerationFinishReason.completed,
+    );
+
+    _eventController.add(
+      GenerationCompleted(
+        instanceId: _instanceId!,
+        timestamp: DateTime.now(),
+        requestId: pending.request.requestId,
+        latency: Duration.zero,
+        traceId: pending.request.traceContext.traceId,
+      ),
+    );
+
+    _activeGenerationsCount--;
+    if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+      _changeState(_activeHandles.isNotEmpty
+          ? RuntimeState.modelReady
+          : RuntimeState.ready);
+    }
+
+    pending.completer.complete(result);
+  }
+
+  void failNextGeneration(RuntimeFailure failure) {
+    if (_pendingTextGenerations.isNotEmpty) {
+      final pending = _pendingTextGenerations.removeAt(0);
+      _eventController.add(
+        GenerationFailed(
+          instanceId: _instanceId!,
+          timestamp: DateTime.now(),
+          requestId: pending.request.requestId,
+          failure: failure,
+          traceId: pending.request.traceContext.traceId,
+        ),
+      );
+
+      _activeGenerationsCount--;
+      if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+        _changeState(_activeHandles.isNotEmpty
+            ? RuntimeState.modelReady
+            : RuntimeState.ready);
+      }
+
+      pending.completer.completeError(RuntimeException(failure));
+    } else if (_pendingStructuredGenerations.isNotEmpty) {
+      final pending = _pendingStructuredGenerations.removeAt(0);
+      _eventController.add(
+        GenerationFailed(
+          instanceId: _instanceId!,
+          timestamp: DateTime.now(),
+          requestId: pending.request.requestId,
+          failure: failure,
+          traceId: pending.request.traceContext.traceId,
+        ),
+      );
+
+      _activeGenerationsCount--;
+      if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+        _changeState(_activeHandles.isNotEmpty
+            ? RuntimeState.modelReady
+            : RuntimeState.ready);
+      }
+
+      pending.completer.completeError(RuntimeException(failure));
+    }
   }
 
   @override
   Future<void> cancel(GenerationRequestId requestId) async {
     cancelCalls++;
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
 
     if (throwOnCancellation) {
       throw const RuntimeException(
         RuntimeFailure(
           code: RuntimeFailureCode.cancellationUnsupported,
           message: 'Cancellation is unsupported by policy.',
+          suggestedAction: RuntimeRecoveryAction.none,
         ),
       );
     }
 
-    _cancelledRequestIds.add(requestId);
-    if (_instanceId != null) {
+    // Cancel pending text generation if matching requestId
+    final textIdx = _pendingTextGenerations
+        .indexWhere((p) => p.request.requestId == requestId);
+    if (textIdx != -1) {
+      final pending = _pendingTextGenerations.removeAt(textIdx);
       _eventController.add(
         GenerationCancelled(
           instanceId: _instanceId!,
@@ -451,20 +519,77 @@ class MockInferenceRuntime implements InferenceRuntime {
           requestId: requestId,
         ),
       );
+
+      _activeGenerationsCount--;
+      if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+        _changeState(_activeHandles.isNotEmpty
+            ? RuntimeState.modelReady
+            : RuntimeState.ready);
+      }
+
+      pending.completer.completeError(
+        const RuntimeException(
+          RuntimeFailure(
+            code: RuntimeFailureCode.cancelled,
+            message: 'Generation request was cancelled.',
+          ),
+        ),
+      );
+      return;
     }
+
+    // Cancel pending structured generation if matching requestId
+    final structIdx = _pendingStructuredGenerations
+        .indexWhere((p) => p.request.requestId == requestId);
+    if (structIdx != -1) {
+      final pending = _pendingStructuredGenerations.removeAt(structIdx);
+      _eventController.add(
+        GenerationCancelled(
+          instanceId: _instanceId!,
+          timestamp: DateTime.now(),
+          requestId: requestId,
+        ),
+      );
+
+      _activeGenerationsCount--;
+      if (_activeGenerationsCount == 0 && _state != RuntimeState.disposed) {
+        _changeState(_activeHandles.isNotEmpty
+            ? RuntimeState.modelReady
+            : RuntimeState.ready);
+      }
+
+      pending.completer.completeError(
+        const RuntimeException(
+          RuntimeFailure(
+            code: RuntimeFailureCode.cancelled,
+            message: 'Structured generation request was cancelled.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Request not actively pending
+    _eventController.add(
+      GenerationCancelled(
+        instanceId: _instanceId!,
+        timestamp: DateTime.now(),
+        requestId: requestId,
+      ),
+    );
   }
 
   @override
   Future<RuntimeHealth> health() async {
     healthCalls++;
-    _ensureInitialized();
+    _ensureInitializedAndNotDisposed();
     return RuntimeHealth(
       instanceId: _instanceId!,
       state: _state,
       responsive: true,
       observedAt: DateTime.now(),
       backend: RuntimeBackend.mock,
-      activeGenerations: _activeGenerationRequests.length,
+      activeGenerations: _activeGenerationsCount,
       loadedModelCount: _activeHandles.length,
     );
   }
@@ -484,8 +609,9 @@ class MockInferenceRuntime implements InferenceRuntime {
     }
 
     _activeHandles.clear();
-    _activeGenerationRequests.clear();
-    _cancelledRequestIds.clear();
+    _pendingTextGenerations.clear();
+    _pendingStructuredGenerations.clear();
+    _activeGenerationsCount = 0;
 
     _changeState(RuntimeState.disposed);
 
@@ -500,7 +626,15 @@ class MockInferenceRuntime implements InferenceRuntime {
     await _eventController.close();
   }
 
-  void _ensureInitialized() {
+  void _ensureInitializedAndNotDisposed() {
+    if (_state == RuntimeState.disposed) {
+      throw const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.disposed,
+          message: 'Runtime is disposed.',
+        ),
+      );
+    }
     if (_state == RuntimeState.uninitialized) {
       throw const RuntimeException(
         RuntimeFailure(

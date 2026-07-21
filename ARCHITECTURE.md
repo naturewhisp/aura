@@ -603,19 +603,19 @@ Componenti e contratti implementati:
    - Gerarchia di eventi sigillati: `sealed class RuntimeEvent`.
 
 2. **Mock & Rule-Based Runtime Adapters**
-   - `MockInferenceRuntime` (`testing/mock_inference_runtime.dart`): mock completo per test unitari e di contratto. Supporta simulazione di latenza, risposte e fallimenti configurabili, invalidazione degli handle e tracciamento delle chiamate. Esportato unicamente via `aura_testing.dart`.
-   - `RuleBasedInferenceRuntime` (`adapters/rule_based_inference_runtime.dart`): adattatore offline deterministico per l'integrazione di `RuleBasedEvaluatorBridge` nel nuovo contratto di inferenza.
+   - `MockInferenceRuntime` (`testing/mock_inference_runtime.dart`): mock deterministico senza ritardi reali (`Future.delayed`) o sleep arbitrari, dotato di coda controllabile di richieste pendenti (`pendingTextGenerations`, `pendingStructuredGenerations`), avanzamento manuale o automatico (`autoCompleteRequests`), tracciamento della concorrenza e rigida normalizzazione di `RuntimeFailureCode.disposed` su tutte le operazioni post-`dispose()`. Esportato unicamente via `aura_testing.dart`.
+   - `RuleBasedInferenceRuntime` (`adapters/rule_based_inference_runtime.dart`): adattatore offline deterministico integrato con `RuleBasedEvaluatorBridge`. Dichiara in modo veritiero `supportsCancellation: false`, controlla la concorrenza attiva (`maxConcurrentGenerations: 1`), serializza correttamente `rawContent` come JSON ed effettua la normalizzazione `try/catch/finally` con emissione di `GenerationFailed` in caso di errori.
 
 3. **Contract Test Harness & Integration Isolation**
-   - Harness di test condiviso `runInferenceRuntimeContractTests(...)` (`testing/runtime_contract_test_harness.dart`).
+   - Harness di test condiviso `runInferenceRuntimeContractTests(...)` (`test/contract/runtime_contract_test_harness.dart`), comprensivo di verifiche deterministiche su cancellazione, `cancellationUnsupported`, ordine dello stream di eventi, risposte strutturate, isolamento degli handle tra sessioni/istanze diverse, e fallimento tipizzato `RuntimeFailureCode.disposed` per ogni metodo post-disposizione. I test usano esclusivamente ID logici astratti (`aura.evaluator.primary`, `aura.actor.primary`).
    - Spostamento del test live verso LM Studio in `integration_test/runtime/live_lm_studio_test.dart` (taggato `@Tags(['network', 'real-model'])`).
    - Protocol test offline con server HTTP loopback controllato dal ciclo di vita del test (`test/agent_runtime/fake_http_bridge_test.dart`).
 
 4. **Automation & CI**
-   - Script `tool/run_ci_tests.ps1` per l'esecuzione sequenziale e deterministica delle verifiche di formattazione, analisi statica e test per i moduli `aura` ed `app`.
+   - Script `tool/run_ci_tests.ps1` per l'esecuzione sequenziale e deterministica delle verifiche di formattazione (`dart format`), analisi statica (`dart analyze`, `flutter analyze`) e test unitari/contratto (`dart test`, `flutter test`) per i moduli `aura` ed `app`.
 
 > [!NOTE]
-> Le sottofasi successive (`ManagedLlamaServerRuntime`, `ModelLifecycleManager`, hardware probe, installer e Android JNI/FFI) restano pianificate per le sottofasi da 6.1b in poi.
+> Le sottofasi successive (`ExternalOpenAiRuntime` in 6.1b, `ManagedLlamaServerRuntime`, `ModelLifecycleManager`, hardware probe, installer e Android JNI/FFI) restano pianificate per le sottofasi da 6.1b in poi.
 
 
 

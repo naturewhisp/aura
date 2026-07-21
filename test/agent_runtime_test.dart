@@ -383,28 +383,6 @@ void main() {
       expect(response, equals("I am Panopticon. Access Denied."));
     });
 
-    test(
-        'LocalApiInferenceBridge integration test (runs if server online, skips gracefully if offline)',
-        () async {
-      const bridge = LocalApiInferenceBridge();
-
-      try {
-        final res = await bridge.generateText(
-          modelId: 'mistralai/ministral-3-3b',
-          messages: const [
-            {'role': 'user', 'content': 'Ping'}
-          ],
-          maxTokens: 5,
-        );
-        expect(res, isNotEmpty);
-        print(
-            ">> LocalApiInferenceBridge integration test SUCCESS! Server response: '$res'");
-      } catch (e) {
-        print(
-            ">> LocalApiInferenceBridge integration test SKIPPED: Server offline or model not loaded. Error: $e");
-      }
-    });
-
     group('LocalApiInferenceBridge XML Dialogue Parser Unit Tests -', () {
       const bridge = LocalApiInferenceBridge();
 

@@ -1995,3 +1995,53 @@ Stable logical model identities are resolved to exact, immutable physical varian
 Provider model IDs, repository names, filenames, and local paths remain implementation metadata. They do not cross into agents or gameplay.
 
 This model allows A.U.R.A. to replace models, choose device-appropriate quantizations, support offline imports, update and roll back safely, and prepare Android and future LoRA specialization without changing the deterministic game architecture.
+
+---
+
+## 42. Local GGUF Recognition, Variant Matching & Classification Levels
+
+### 42.1 Verification Beyond Filename
+
+When local GGUF files are scanned or presented for import:
+1. **Filename Insufficiency:** A filename (e.g. `qwen2.5-9b-instruct-q4_k_m.gguf`) is treated as a **non-binding label** and never used as sole proof of compatibility or integrity.
+2. **Deep Header Inspection:** `ModelInspector` parses GGUF binary headers to extract:
+   - GGUF magic bytes (`0x46554747`) & header version;
+   - Model architecture (e.g. `qwen2`, `llama`);
+   - Quantization format (e.g. `Q4_K_M`, `Q8_0`);
+   - Context length capability (`context_length`);
+   - Chat template presence (`tokenizer.chat_template`).
+3. **Integrity Hash Check:** `IntegrityVerifier` computes SHA-256 for exact matching against manifest variants.
+
+### 42.2 Classification Levels
+
+Every inspected local file is assigned one of six normative classification levels:
+
+1. **`exactVerifiedMatch`:**
+   - SHA-256 digest matches an active variant in the official manifest.
+   - **Status:** Fully verified. Eligible for direct managed store adoption (`importedManaged`).
+2. **`compatibleKnownVariant`:**
+   - Header metadata matches a known variant architecture and quantization, but SHA-256 differs (e.g. custom re-quantization or patch).
+   - **Status:** Compatible known variant. Eligible for managed import or external binding with UI notification.
+3. **`compatibleUnverifiedImport`:**
+   - Valid GGUF header compatible with A.U.R.A. logical role requirements (`evaluator` or `actor`), but unlisted in manifest.
+   - **Status:** Unverified import. Permitted for external binding (`externalLocal`) or manual import with explanatory user warning.
+4. **`externallyOwnedBinding`:**
+   - File resides outside managed store and is bound directly without copying.
+   - **Status:** External binding. Non-managed, read-only lifecycle.
+5. **`incompatible`:**
+   - Header reveals unsupported architecture, missing chat template, or insufficient context capability.
+   - **Status:** Hard-blocked from loading.
+6. **`unknownReviewRequired`:**
+   - Corrupted file, invalid GGUF magic bytes, or unreadable structure.
+   - **Status:** Hard-blocked; flagged for manual review or deletion.
+
+### 42.3 Managed Store Eligibility Matrix
+
+| Classification Level | Managed Store Import (`importedManaged`) | External Binding (`externalLocal`) | Auto-Update / Repair |
+| :--- | :--- | :--- | :--- |
+| `exactVerifiedMatch` | **Allowed** (Full managed status) | **Allowed** | **Enabled** |
+| `compatibleKnownVariant` | **Allowed** (With notification) | **Allowed** | **Manual only** |
+| `compatibleUnverifiedImport` | **Allowed** (With warning) | **Allowed** | **Disabled** |
+| `externallyOwnedBinding` | N/A | **Active** | **Disabled** |
+| `incompatible` | **Prohibited** | **Prohibited** | N/A |
+| `unknownReviewRequired` | **Prohibited** | **Prohibited** | N/A |

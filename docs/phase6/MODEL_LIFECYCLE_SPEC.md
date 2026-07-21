@@ -2004,3 +2004,90 @@ A.U.R.A. will manage production model artifacts through an explicit, recoverable
 Externally owned development models remain a separate transient domain and never masquerade as verified managed installations.
 
 The lifecycle guarantees that only compatible, verified and explicitly activated artifacts reach `InferenceRuntime`, while keeping gameplay, runtime execution and platform-specific storage concerns cleanly separated.
+
+---
+
+## 43. Hardware-Aware Provisioning and Managed Model Store Specification
+
+### 43.1 Managed Model Store Directory & Layout
+
+A.U.R.A. operates a strictly managed model store for all production inference artifacts.
+
+#### 43.1.1 Platform-Appropriate Defaults
+The model store directory defaults to platform-appropriate locations:
+- **Windows:** `%LOCALAPPDATA%\AURA\models`
+- **Linux:** `~/.local/share/aura/models`
+- **macOS:** `~/Library/Application Support/aura/models`
+- **Android:** App-private storage directory (e.g. `/data/user/0/com.aura/app_models`)
+
+#### 43.1.2 Custom Directory Selection
+- During initial provisioning (via installer or first-run wizard) or subsequently through App Settings, the user can select a custom model store directory.
+- The physical storage path is managed by `ModelStore` and recorded in application preferences and `InstalledModelRegistry`.
+- The storage path **must never be encoded** into logical model IDs (`logicalModelId`) or `ModelHandle`s.
+
+#### 43.1.3 Internal Store Directory Layout
+```text
+<ManagedModelStorePath>/
+  ├── registry.json           # Canonical state of installed models
+  ├── journal.log             # Operational log for crash recovery
+  ├── models/                 # Verified, immutable GGUF artifacts
+  │   ├── sha256_<hash_a>.gguf
+  │   └── sha256_<hash_b>.gguf
+  ├── staging/                # In-progress downloads and imports (.partial files)
+  ├── locks/                  # File locks for concurrent process safety
+  └── quarantine/             # Corrupted or revoked artifacts
+```
+
+### 43.2 Existing Local GGUF Discovery & Classification
+
+When the user requests scanning of existing local directories for GGUF files:
+
+#### 43.2.1 Scanning and Verification
+- Filename matching alone is **strictly insufficient** to verify an artifact.
+- `ModelInspector` inspects GGUF headers (magic, version, architecture, quantization, context size) and `IntegrityVerifier` calculates/verifies SHA-256 where applicable.
+
+#### 43.2.2 Import vs External Local Binding
+Discovered local models are categorized into two explicit domains:
+
+1. **Imported Managed Model (`importedManaged`):**
+   - The artifact is copied or moved into `<ManagedModelStorePath>/staging/`, verified against the manifest, and committed to `/models/`.
+   - Recorded in `registry.json` as a managed installation.
+   - Fully eligible for automated app lifecycle management (updates, repair, garbage collection, uninstallation).
+
+2. **Externally Owned Local Binding (`externalLocal`):**
+   - The file remains in the user's external directory and is **never modified or deleted** by A.U.R.A.
+   - Registered as a local external binding referencing the external path.
+   - Displayed in UI with a distinct "External" indicator.
+   - Lifecycle operations (auto-update, repair, managed deletion) are **disabled** for external bindings.
+
+### 43.3 Store Migration Procedure
+
+Changing the managed model store directory from path $A$ to path $B$ follows a transactional, crash-safe procedure:
+
+1. **Preflight Space & Write Check:**
+   - `ModelStore` verifies that destination path $B$ has sufficient free storage (total size of managed models $+ 15\%$ safety margin) and valid write permissions.
+2. **Operation Pause:**
+   - Active generations are completed or paused; new lifecycle operations are locked.
+3. **Staging Transfer:**
+   - Artifacts are copied from $A$ to $B/\text{staging}/$.
+4. **Post-Transfer Verification:**
+   - `IntegrityVerifier` computes SHA-256 digests for all transferred files in $B/\text{staging}/$ and matches them against `registry.json`.
+5. **Atomic Commit & Path Switch:**
+   - Files are moved from $B/\text{staging}/$ to $B/\text{models}/$.
+   - `registry.json` is updated with the new base path $B$.
+   - Application configuration updates active store pointer to $B$.
+6. **Rollback & Recovery:**
+   - If any transfer or verification step fails, the operation aborts, files in $B/\text{staging}/$ are cleaned up, and active store remains at $A$.
+   - Source directory $A$ is **never deleted** before explicit commit. The user is prompted whether to retain or delete the legacy directory $A$ after successful migration.
+
+### 43.4 Consent and Policy Normative Constraints
+
+1. **Zero Implicit Downloads:**
+   - Network downloads of model artifacts **never occur implicitly** or without user authorization.
+2. **Explicit Consent Prompting:**
+   - Prior to any download, the user must be presented with a clear summary: exact file size, required disk space, Hugging Face / repository source URI, license agreement, and target store path.
+3. **Resumable Transfers:**
+   - All network transfers use HTTP Range requests writing to `.partial` files under `/staging/`. Downloads can be paused, resumed, or cancelled at any time without corrupting the store.
+4. **`ModelAvailabilityPolicy` Enforcement:**
+   - Default policy for automated test suites and headless runs is `neverDownload`.
+   - Production first-run setup invokes `downloadIfMissing` only after explicit user consent is registered.

@@ -2247,3 +2247,50 @@ A.U.R.A. will use a platform-neutral, confidence-aware hardware profile to selec
 Hardware selection will be conservative, deterministic and explainable. Runtime-reported facts override probe assumptions, and no plan will rely solely on marketed product names or raw RAM/VRAM totals.
 
 The Windows development workstation with 64 GiB RAM and 12 GiB VRAM will be used as a reference validation profile, while the architecture remains capable of supporting lower-resource Windows systems and Android arm64 devices through sequential, shared-model and deterministic fallback plans.
+
+---
+
+## 59. Explainable Recommendation & User Profile Specification
+
+### 59.1 Explainable Provisioning Recommendation Engine
+
+The hardware profiler and `HardwareProfileBuilder` generate an **explainable recommendation proposal** for application provisioning and installer setup.
+
+#### 59.1.1 Proposal Data Payload
+The recommendation proposal includes:
+- **Recommended Backend:** Selected inference runtime backend (e.g. `cuda`, `vulkan`, `metal`, `cpu`).
+- **Recommended Variants:** Model variant IDs for `aura.evaluator.primary` and `aura.actor.primary`.
+- **Quantization & Topology:** Target quantization (e.g. `Q4_K_M`), context size (e.g. 2048 / 4096 tokens), and model residence strategy (separate side-by-side models vs single shared model).
+- **Resource Footprint Estimates:** Expected RAM, VRAM, and disk storage requirements.
+- **Confidence & Rationale:** Numerical confidence score (0–100%) and human-readable explanation (e.g. *"Dedicated GPU VRAM (12 GiB) detected; dual-model CUDA residency recommended"*).
+- **Warnings & Alternatives:** Potential performance bottlenecks and compatible fallback plans.
+
+### 59.2 User-Facing Performance Profiles
+
+A.U.R.A. exposes four user-facing profile presets:
+
+1. **Automatic / Recommended (`automatic`):**
+   - Automatically selects the optimal execution plan based on hardware detection and safety margins.
+2. **Memory Saver (`memorySaver`):**
+   - Minimizes VRAM and RAM footprint by selecting lightweight quantizations (e.g. `Q4_K_M`), smaller context sizes, or single-model shared residency.
+3. **Quality (`quality`):**
+   - Maximizes model fidelity and parameters up to the maximum safe hardware ceiling.
+4. **Manual / Advanced (`manual`):**
+   - Allows fine-grained user override of runtime backend, GPU layers, CPU threads, context size, and model variants.
+
+### 59.3 Persistent Preference Modes
+
+The active provisioning mode is persisted in application settings:
+- **`automatic`:** Re-evaluates hardware on hardware changes and applies dynamic recommendations.
+- **`recommendedPinned`:** Locks the initial recommended plan confirmed during installer setup until the user manually re-runs benchmarks.
+- **`manual`:** Preserves user-defined manual overrides.
+
+### 59.4 Validation Rules & Profiler Boundaries
+
+1. **User Override Authority:**
+   - The user is never forced to accept the recommendation proposal.
+2. **Compatibility Enforcement:**
+   - Manual configurations that violate physical system limits (e.g. allocation exceeding total VRAM + RAM leading to fatal process crash) are **hard-blocked** with explanatory diagnostic messages.
+   - Suboptimal but compatible configurations (e.g. running on CPU when CUDA GPU is available) generate **warnings** but are permitted.
+3. **Read-Only Profiler Boundary:**
+   - The hardware profiler is strictly read-only. It **never initiates downloads, model store modifications, or process execution**. It produces structured inputs exclusively for `ModelExecutionPlanResolver` and provisioning UI wizards.

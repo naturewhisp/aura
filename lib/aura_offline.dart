@@ -15,3 +15,13 @@ export 'src/agent_runtime/agents/actor_agent.dart';
 export 'src/agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 export 'src/agent_runtime/bridges/local_api_inference_bridge.dart';
 export 'src/agent_runtime/runtime/adapters/rule_based_inference_runtime.dart';
+
+// Output Policy Components
+export 'src/agent_runtime/output/actor_output_extraction_strategy.dart';
+export 'src/agent_runtime/output/actor_output_sanitizer.dart';
+export 'src/agent_runtime/output/actor_output_sanitization_request.dart';
+export 'src/agent_runtime/output/actor_output_sanitization_result.dart';
+export 'src/agent_runtime/output/character_set_guard.dart';
+export 'src/agent_runtime/output/duplicate_response_guard.dart';
+export 'src/agent_runtime/output/output_policy_failure.dart';
+export 'src/agent_runtime/output/reasoning_content_policy.dart';

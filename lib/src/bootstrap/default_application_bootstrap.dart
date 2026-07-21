@@ -94,28 +94,37 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
   }
 
   Future<Map<String, dynamic>> _cleanUpActiveResourcesBeforeFallback() async {
-    final fallbackErrors = <String>[];
+    bool runtimeSuccess = true;
+    bool clientSuccess = true;
+    int failureCount = 0;
+
     if (_activeRuntime != null) {
       try {
         await _activeRuntime!.dispose();
-      } catch (e) {
-        fallbackErrors.add('Runtime dispose error: $e');
+      } catch (_) {
+        runtimeSuccess = false;
+        failureCount++;
       } finally {
         _activeRuntime = null;
       }
     }
+
     if (_activeClient != null) {
       try {
         await _activeClient!.close();
-      } catch (e) {
-        fallbackErrors.add('Client close error: $e');
+      } catch (_) {
+        clientSuccess = false;
+        failureCount++;
       } finally {
         _activeClient = null;
       }
     }
+
     return {
       'fallbackCleanupPerformed': true,
-      if (fallbackErrors.isNotEmpty) 'fallbackCleanupErrors': fallbackErrors,
+      'runtimeDisposeSucceeded': runtimeSuccess,
+      'clientCloseSucceeded': clientSuccess,
+      'fallbackCleanupFailureCount': failureCount,
     };
   }
 

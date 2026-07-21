@@ -221,6 +221,11 @@ void main() {
       expect(result.status.isHealthy, isTrue);
       expect(spyRuntime.disposeCallCount, equals(1));
       expect(fakeClient.isClosed, isTrue);
+      expect(result.status.diagnostics['fallbackCleanupPerformed'], isTrue);
+      expect(result.status.diagnostics['runtimeDisposeSucceeded'], isTrue);
+      expect(result.status.diagnostics['clientCloseSucceeded'], isTrue);
+      expect(
+          result.status.diagnostics['fallbackCleanupFailureCount'], equals(0));
 
       await result.dispose();
     });

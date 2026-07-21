@@ -56,6 +56,43 @@ void main() {
       expect(result, equals('Risposta di test dal server mock.'));
     });
 
+    test('generateText propagates OutputPolicyFailure on policy violation',
+        () async {
+      server.listen((HttpRequest request) async {
+        final responsePayload = {
+          'choices': [
+            {
+              'message': {
+                'content': 'Risposta con testo cantiere 你好',
+              },
+            },
+          ],
+        };
+
+        request.response
+          ..headers.contentType = ContentType.json
+          ..statusCode = HttpStatus.ok
+          ..write(jsonEncode(responsePayload));
+        await request.response.close();
+      });
+
+      expect(
+        () => bridge.generateText(
+          modelId: 'test-model',
+          messages: [
+            {'role': 'user', 'content': 'Test request'},
+          ],
+        ),
+        throwsA(
+          isA<OutputPolicyFailure>().having(
+            (e) => e.code,
+            'code',
+            equals(OutputPolicyFailureCode.invalidCharacterSet),
+          ),
+        ),
+      );
+    });
+
     test('generateStructured parses JSON schema response correctly', () async {
       server.listen((HttpRequest request) async {
         final responsePayload = {

@@ -5,7 +5,7 @@
 **Status:** APPROVED  
 **Phase:** 6.2c — Runtime Baseline Consolidation & Provisioning Readiness  
 **Implementation Baseline:** `a57379fdb092db1fa76d6a0b1c17ce999d67b4ad`  
-**Documentation Consolidation Baseline:** `24edc84f88511bf6dca057be37057fcdb0d3ab96`  
+**Documentation Consolidation Baseline:** `bb07864e4644bdb04814d7d4c0411c777657060f`  
 **Primary Platform Target:** Windows x64 (managed out-of-process `llama-server.exe`)  
 **Secondary Platform Target:** Android arm64 (Phase 7, native in-process)  
 **Last Updated:** 2026-07-21  
@@ -26,7 +26,7 @@ The primary purpose of Phase 6.2c is to consolidate the implemented runtime arch
 |  [PHASE 6.2b (COMPLETED & VERIFIED)]                                              |
 |  - Managed Out-of-Process Execution (`llama-server.exe`)                          |
 |  - Process Ownership, Monitoring, Failure Detection & Cleanup                     |
-|  - Dynamic Loopback Port Allocation (`8080` fallback range)                        |
+|  - Dynamic Loopback Port Allocation (preferred port or ephemeral bind-to-zero)     |
 |  - Single Physical Model Loading with Dual Logical Handles (`actor` & `evaluator`) |
 |  - Health Probing, Retries, Single-Flight Stop/Dispose & Safety Sanitization      |
 |                                                                                   |
@@ -55,8 +55,8 @@ The concrete implementation resides under `lib/src/agent_runtime/runtime/adapter
 1. **`ManagedLlamaServerRuntime`**: Implements `InferenceRuntime` for out-of-process `llama-server.exe` sidecars. Manages initialization, logical handle bindings (`aura.actor.primary`, `aura.evaluator.primary`), health status reporting, generation forwarding, and single-flight disposal.
 2. **`LlamaServerProcessSupervisor`**: Encapsulates OS process execution, state transitions (`stopped` -> `starting` -> `probing` -> `ready` | `failed`), bounded log tailing, ANSI sanitization, and graceful/forced process termination (`SIGTERM` / `SIGKILL`).
 3. **`HttpLlamaServerHealthProbe`**: Performs HTTP `/health` polling to verify sidecar responsiveness and model slot availability.
-4. **`LoopbackPortAllocator`**: Dynamically binds available loopback TCP ports (default target `8080`).
-5. **`LlamaServerCommandBuilder`**: Constructs CLI flags for `llama-server.exe` (`--model`, `--port`, `--ctx-size`, `--n-gpu-layers`, `--alias`, `--jinja`).
+4. **`LoopbackPortAllocator`**: Binds preferred port when explicitly configured; otherwise allocates an ephemeral loopback port through bind-to-zero.
+5. **`LlamaServerCommandBuilder`**: Constructs CLI flags for `llama-server.exe` (`--model`, `--host`, `--port`, `--alias`, `--ctx-size`, `--n-gpu-layers`, `--threads`, `--batch-size`, `--parallel`, `--seed`).
 6. **`ManagedFileSystem` / `LocalFileSystem`**: Abstraction layer isolating direct File/Directory I/O for unit testing.
 7. **`FakeManagedProcess` & Test Fixtures**: Deterministic mocks enabling offline test suites without launching native processes or binding OS sockets.
 
@@ -172,7 +172,7 @@ Before beginning implementation work for Phase 6.3, the following readiness crit
 - [x] **Implementation Baseline Frozen**: Baseline commit `a57379fdb092db1fa76d6a0b1c17ce999d67b4ad` verified.
 - [x] **Canonical Specification Alignment**: `ARCHITECTURE.md`, `CROSS_PLATFORM_RUNTIME_ADR.md`, `INFERENCE_RUNTIME_CONTRACT.md`, `MODEL_LIFECYCLE_SPEC.md`, `MODEL_MANIFEST_SPEC.md`, `TEST_RUNTIME_STRATEGY.md`, `WINDOWS_INSTALLER_AND_UPDATE_SPEC.md`, and `AGENTS.md` updated without contradictions.
 - [x] **Single Canonical Source**: No duplicate JSON schemas or conflicting definitions across documents.
-- [x] **Relative Link Invariant**: Zero `file:///` links, absolute Windows paths, or local developer paths in repository documentation files.
+- [x] **Relative Link Invariant**: No `file:///` links, no developer-specific absolute paths, and no workstation-local references. Canonical OS layout examples are allowed.
 - [x] **Consistent Terminology**: "Managed out-of-process" used strictly for Windows `llama-server.exe` sidecars; "Native in-process" reserved for Android FFI.
 - [x] **Manifest Tripartition Approved**: Catalog Manifest, Installation Record, and Activation State cleanly separated.
 - [x] **Windows Directory Ownership Approved**: `Program Files` vs `LocalAppData` ownership, precedence, and uninstall policies formalized.

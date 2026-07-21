@@ -19,6 +19,8 @@ class FakeManagedProcess implements ManagedProcess {
   ProcessSignal? lastSignal;
   bool killResult = true;
 
+  bool get isExited => _exitCodeCompleter.isCompleted;
+
   FakeManagedProcess({this.pid = 4242});
 
   @override
@@ -88,7 +90,7 @@ class FakeProcessLauncher implements ProcessLauncher {
     if (processFactory != null) {
       return processFactory!();
     }
-    if (_process != null) {
+    if (_process != null && !_process!.isExited) {
       return _process!;
     }
     return FakeManagedProcess();

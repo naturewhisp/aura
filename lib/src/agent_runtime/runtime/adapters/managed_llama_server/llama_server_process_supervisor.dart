@@ -44,6 +44,7 @@ class LlamaServerProcessSupervisor {
   StreamSubscription<List<int>>? _stdoutSub;
   StreamSubscription<List<int>>? _stderrSub;
   Future<void>? _stopFuture;
+  Future<void>? _disposeFuture;
 
   DateTime? _startedAt;
   DateTime? _readyAt;
@@ -88,6 +89,7 @@ class LlamaServerProcessSupervisor {
     }
 
     _stopFuture = null;
+    _disposeFuture = null;
     _failureReason = null;
     _failureCode = null;
     _lastExitCode = null;
@@ -321,6 +323,15 @@ class LlamaServerProcessSupervisor {
   Future<void> _terminateProcess({required bool force}) async {
     if (_process == null) return;
 
+    if (_lastExitCode != null) {
+      await _stdoutSub?.cancel();
+      await _stderrSub?.cancel();
+      _stdoutSub = null;
+      _stderrSub = null;
+      _process = null;
+      return;
+    }
+
     try {
       if (force) {
         final killed = _process!.kill(ProcessSignal.sigkill);
@@ -364,9 +375,16 @@ class LlamaServerProcessSupervisor {
     }
   }
 
-  /// Dismette permanentemente il supervisor e le sue risorse.
-  Future<void> dispose() async {
-    if (_state == LlamaServerSupervisorState.disposed) return;
+  /// Dismette permanentemente il supervisor e le sue risorse in modo single-flight.
+  Future<void> dispose() {
+    if (_state == LlamaServerSupervisorState.disposed) {
+      return Future.value();
+    }
+
+    return _disposeFuture ??= _performDispose();
+  }
+
+  Future<void> _performDispose() async {
     Object? firstError;
     try {
       await stop();
@@ -380,6 +398,7 @@ class LlamaServerProcessSupervisor {
     }
     if (firstError != null) {
       _state = LlamaServerSupervisorState.failed;
+      _disposeFuture = null;
       throw firstError;
     }
     _state = LlamaServerSupervisorState.disposed;

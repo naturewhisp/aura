@@ -6,8 +6,8 @@ void main() {
     const config = ManagedLlamaServerConfiguration(
       executablePath: 'llama-server.exe',
       modelPath: 'model.gguf',
-      startupTimeout: Duration(seconds: 2),
-      healthPollInterval: Duration(milliseconds: 50),
+      startupTimeout: Duration(milliseconds: 200),
+      healthPollInterval: Duration(milliseconds: 10),
       maxStartupAttempts: 2,
     );
 
@@ -81,7 +81,7 @@ void main() {
       final fakeProcess = FakeManagedProcess();
       final fakeLauncher = FakeProcessLauncher(process: fakeProcess);
       final supervisor = LlamaServerProcessSupervisor(
-        configuration: config,
+        configuration: config.copyWith(maxStartupAttempts: 1),
         processLauncher: fakeLauncher,
         portAllocator: const FakePortAllocator(allocatedPort: 8080),
         healthProbe: FakeLlamaServerHealthProbe(isResponsive: false),
@@ -91,10 +91,11 @@ void main() {
       );
 
       final startFuture = supervisor.start();
+      await pumpEventQueue();
       fakeProcess.completeExit(1);
 
-      expect(startFuture, throwsA(isA<ManagedLlamaServerException>()));
-      await Future.delayed(const Duration(milliseconds: 100));
+      await expectLater(
+          startFuture, throwsA(isA<ManagedLlamaServerException>()));
 
       expect(supervisor.state, equals(LlamaServerSupervisorState.failed));
       expect(supervisor.failureCode,
@@ -121,12 +122,44 @@ void main() {
       expect(supervisor.state, equals(LlamaServerSupervisorState.ready));
 
       fakeProcess.completeExit(5);
-      await Future.delayed(const Duration(milliseconds: 100));
+      await pumpEventQueue();
 
       expect(supervisor.state, equals(LlamaServerSupervisorState.failed));
       expect(supervisor.failureCode,
           equals(ManagedLlamaServerFailureCode.processExitedEarly));
       expect(supervisor.lastExitCode, equals(5));
+    });
+
+    test(
+        'Already exited process is cleaned up as success during stop without kill failure',
+        () async {
+      final fakeProcess = FakeManagedProcess();
+      final supervisor = LlamaServerProcessSupervisor(
+        configuration: config,
+        processLauncher: FakeProcessLauncher(process: fakeProcess),
+        portAllocator: const FakePortAllocator(allocatedPort: 8080),
+        healthProbe:
+            FakeLlamaServerHealthProbe(isResponsive: true, modelVisible: true),
+        fileSystem: const FakeFileSystem(
+          existingFiles: {'llama-server.exe', 'model.gguf'},
+        ),
+      );
+
+      await supervisor.start();
+      expect(supervisor.state, equals(LlamaServerSupervisorState.ready));
+
+      // Process exits spontaneously
+      fakeProcess.completeExit(0);
+      await pumpEventQueue();
+
+      expect(supervisor.state, equals(LlamaServerSupervisorState.failed));
+      expect(supervisor.lastExitCode, equals(0));
+
+      // stop() should succeed without throwing forcedTerminationFailed or attempting kill
+      await supervisor.stop();
+
+      expect(supervisor.state, equals(LlamaServerSupervisorState.stopped));
+      expect(supervisor.pid, isNull);
     });
 
     test('Startup timeout when health probe never becomes responsive',
@@ -135,7 +168,7 @@ void main() {
       final fakeLauncher = FakeProcessLauncher(process: fakeProcess);
       final supervisor = LlamaServerProcessSupervisor(
         configuration:
-            config.copyWith(startupTimeout: const Duration(milliseconds: 200)),
+            config.copyWith(startupTimeout: const Duration(milliseconds: 50)),
         processLauncher: fakeLauncher,
         portAllocator: const FakePortAllocator(allocatedPort: 8080),
         healthProbe: FakeLlamaServerHealthProbe(isResponsive: false),
@@ -144,8 +177,8 @@ void main() {
         ),
       );
 
-      expect(supervisor.start(), throwsA(isA<ManagedLlamaServerException>()));
-      await Future.delayed(const Duration(milliseconds: 300));
+      await expectLater(
+          supervisor.start(), throwsA(isA<ManagedLlamaServerException>()));
 
       expect(supervisor.state, equals(LlamaServerSupervisorState.failed));
       expect(supervisor.failureCode,
@@ -158,8 +191,8 @@ void main() {
       final healthProbe = FakeLlamaServerHealthProbe(isResponsive: false);
       final supervisor = LlamaServerProcessSupervisor(
         configuration: config.copyWith(
-          startupTimeout: const Duration(milliseconds: 100),
-          maxStartupAttempts: 3,
+          startupTimeout: const Duration(milliseconds: 50),
+          maxStartupAttempts: 2,
         ),
         processLauncher: fakeLauncher,
         portAllocator: const FakePortAllocator(allocatedPort: 8080),
@@ -169,7 +202,7 @@ void main() {
         ),
       );
 
-      expect(
+      await expectLater(
         supervisor.start(),
         throwsA(isA<ManagedLlamaServerException>().having(
           (e) => e.code,
@@ -178,7 +211,6 @@ void main() {
         )),
       );
 
-      await Future.delayed(const Duration(milliseconds: 500));
       expect(supervisor.state, equals(LlamaServerSupervisorState.failed));
     });
 
@@ -201,7 +233,7 @@ void main() {
       fakeProcess
           .emitStdout('\x1B[1mllama-server\x1B[0m initialized successfully\n');
       fakeProcess.emitStdout('${"A" * 600}\n'); // over max line length
-      await Future.delayed(const Duration(milliseconds: 50));
+      await pumpEventQueue();
 
       final diags = supervisor.getDiagnostics();
       expect(diags['logTail'], isNotNull);
@@ -238,8 +270,8 @@ void main() {
       expect(supervisor.state, equals(LlamaServerSupervisorState.ready));
 
       // Attempt to stop, which should trigger sigkill and fail
-      expect(supervisor.stop(), throwsA(isA<ManagedLlamaServerException>()));
-      await Future.delayed(const Duration(milliseconds: 100));
+      await expectLater(
+          supervisor.stop(), throwsA(isA<ManagedLlamaServerException>()));
 
       expect(supervisor.state, equals(LlamaServerSupervisorState.failed));
       expect(supervisor.failureCode,
@@ -261,8 +293,8 @@ void main() {
       );
 
       await supervisor.start();
-      expect(supervisor.dispose(), throwsA(isA<ManagedLlamaServerException>()));
-      await Future.delayed(const Duration(milliseconds: 50));
+      await expectLater(
+          supervisor.dispose(), throwsA(isA<ManagedLlamaServerException>()));
 
       expect(supervisor.state,
           equals(LlamaServerSupervisorState.failed)); // Not disposed!
@@ -309,7 +341,7 @@ void main() {
     });
 
     test(
-        'Dispose is single-flight, idempotent, and disposes health probe client',
+        'Dispose is single-flight, returns identical Future for concurrent calls, and disposes health probe client',
         () async {
       final healthProbe = FakeLlamaServerHealthProbe(isResponsive: true);
       final supervisor = LlamaServerProcessSupervisor(
@@ -327,6 +359,8 @@ void main() {
 
       final f1 = supervisor.dispose();
       final f2 = supervisor.dispose();
+
+      expect(identical(f1, f2), isTrue);
 
       await f1;
       await f2;

@@ -1343,21 +1343,19 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
     notifyListeners();
   }
 
-  bool _shutdown = false;
+  Future<void>? _shutdownFuture;
 
-  /// Specifica se il notifier ha completato la procedura di shutdown asincrona delle risorse.
-  bool get isShutdown => _shutdown;
+  /// Specifica se la procedura di shutdown delle risorse è stata avviata o completata.
+  bool get isShutdown => _shutdownFuture != null;
 
-  /// Esegue la dismissione asincrona e deterministica delle risorse del composition root.
-  Future<void> shutdown() async {
-    if (_shutdown) return;
-    _shutdown = true;
+  /// Esegue la dismissione asincrona e deterministica delle risorse del composition root (single-flight).
+  Future<void> shutdown() {
+    return _shutdownFuture ??= _performShutdown();
+  }
+
+  Future<void> _performShutdown() async {
     if (onDispose != null) {
-      try {
-        await onDispose!();
-      } catch (e) {
-        debugPrint("[NOTIFIER] Errore durante lo shutdown delle risorse: $e");
-      }
+      await onDispose!();
     }
   }
 
@@ -1372,8 +1370,8 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
     _disposed = true;
     _invalidatePendingOperations();
     gameStateNotifier.dispose();
-    if (!_shutdown) {
-      _shutdown = true;
+    if (_shutdownFuture == null) {
+      _shutdownFuture = Future.value();
       onDispose?.call();
     }
     super.dispose();

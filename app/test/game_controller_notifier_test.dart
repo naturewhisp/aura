@@ -2213,6 +2213,42 @@ void _sessionTests() {
       expect(notifier.inferenceTimeouts.actor,
           equals(const Duration(milliseconds: 456)));
     });
+
+    test('8. shutdown() è single-flight e richiama onDispose una sola volta',
+        () async {
+      int disposeCount = 0;
+      final notifier = GameControllerNotifier(
+        bridge: MockInferenceBridge(),
+        initialState: initialGameState,
+        onDispose: () async {
+          disposeCount++;
+        },
+      );
+
+      final f1 = notifier.shutdown();
+      final f2 = notifier.shutdown();
+
+      expect(identical(f1, f2), isTrue);
+      await f1;
+      await f2;
+
+      expect(disposeCount, equals(1));
+      expect(notifier.isShutdown, isTrue);
+    });
+
+    test(
+        '9. shutdown() propaga le eccezioni sollevate da onDispose al chiamante',
+        () async {
+      final notifier = GameControllerNotifier(
+        bridge: MockInferenceBridge(),
+        initialState: initialGameState,
+        onDispose: () async {
+          throw Exception('Dispose failure');
+        },
+      );
+
+      expect(() => notifier.shutdown(), throwsA(isA<Exception>()));
+    });
   });
 }
 

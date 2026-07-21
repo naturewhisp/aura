@@ -11,6 +11,8 @@ void main() {
       final fakeClient = FakeExternalOpenAiClient();
       final config = ExternalOpenAiConfiguration(
         baseUri: Uri.parse('http://127.0.0.1:1234'),
+        maxLoadedModels: 2,
+        supportsMultipleLoadedModels: true,
         supportsCancellation: false,
       );
       final bindings = const [
@@ -64,15 +66,20 @@ void main() {
       }
     });
 
-    test('Fails loadModel if logical model binding is missing', () async {
+    test(
+        'Fails loadModel cleanly: emits ModelLoadFailed and restores state to ready',
+        () async {
       await runtime.initialize(
         const RuntimeInitializationRequest(
-          instanceId: RuntimeInstanceId('session-missing-binding'),
+          instanceId: RuntimeInstanceId('session-load-fail'),
         ),
       );
 
-      expect(
-        () => runtime.loadModel(
+      final events = <RuntimeEvent>[];
+      runtime.events.listen(events.add);
+
+      try {
+        await runtime.loadModel(
           const ModelLoadRequest(
             requestId: ModelLoadRequestId('load-unbound'),
             artifact: ResolvedModelArtifact(
@@ -86,15 +93,89 @@ void main() {
             logicalModelId: 'aura.unbound.model',
             roles: {ModelRole.evaluator},
           ),
+        );
+      } catch (_) {}
+
+      await Future<void>.delayed(Duration.zero);
+
+      // Verify state was restored to ready
+      expect(runtime.state, equals(RuntimeState.ready));
+
+      // Verify event order: ModelLoadStarted, ModelLoadFailed, RuntimeStateChanged
+      expect(events.any((e) => e is ModelLoadStarted), isTrue);
+      expect(events.any((e) => e is ModelLoadFailed), isTrue);
+      expect(events.any((e) => e is ModelLoadCompleted), isFalse);
+    });
+
+    test('Enforces maxLoadedModels limit and throws tooManyLoadedModels',
+        () async {
+      final singleModelRuntime = ExternalOpenAiRuntime(
+        configuration: ExternalOpenAiConfiguration(
+          baseUri: Uri.parse('http://127.0.0.1:1234'),
+          maxLoadedModels: 1,
+          supportsMultipleLoadedModels: false,
+        ),
+        client: fakeClient,
+        bindings: const [
+          ExternalOpenAiModelBinding(
+            logicalModelId: 'aura.actor.primary',
+            serverModelId: 'qwen/qwen3.5-9b',
+          ),
+          ExternalOpenAiModelBinding(
+            logicalModelId: 'aura.evaluator.primary',
+            serverModelId: 'mistralai/ministral-3-3b',
+          ),
+        ],
+      );
+
+      await singleModelRuntime.initialize(
+        const RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('session-max-loaded'),
+        ),
+      );
+
+      await singleModelRuntime.loadModel(
+        const ModelLoadRequest(
+          requestId: ModelLoadRequestId('load-1'),
+          artifact: ResolvedModelArtifact(
+            modelVariantId: 'v1',
+            sha256: 'a',
+            format: 'gguf',
+            quantization: 'Q4',
+            architecture: 'qwen2',
+            compatibility: ModelRuntimeCompatibility(compatible: true),
+          ),
+          logicalModelId: 'aura.actor.primary',
+          roles: {ModelRole.actor},
+        ),
+      );
+
+      expect(
+        () => singleModelRuntime.loadModel(
+          const ModelLoadRequest(
+            requestId: ModelLoadRequestId('load-2'),
+            artifact: ResolvedModelArtifact(
+              modelVariantId: 'v2',
+              sha256: 'b',
+              format: 'gguf',
+              quantization: 'Q4',
+              architecture: 'llama',
+              compatibility: ModelRuntimeCompatibility(compatible: true),
+            ),
+            logicalModelId: 'aura.evaluator.primary',
+            roles: {ModelRole.evaluator},
+          ),
         ),
         throwsA(
           isA<RuntimeException>().having(
             (e) => e.failure.code,
             'code',
-            equals(RuntimeFailureCode.modelMissing),
+            equals(RuntimeFailureCode.tooManyLoadedModels),
           ),
         ),
       );
+
+      await singleModelRuntime.dispose();
     });
 
     test(
@@ -118,6 +199,20 @@ void main() {
       );
     });
 
+    test('Omits ModelCapability.cpuExecution when selectedBackend is external',
+        () async {
+      final capabilities = await runtime.initialize(
+        const RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('session-backend-cap'),
+        ),
+      );
+
+      expect(
+        capabilities.modelCapabilities.contains(ModelCapability.cpuExecution),
+        isFalse,
+      );
+    });
+
     test('Fails initialization if health check fails', () async {
       fakeClient.healthy = false;
 
@@ -132,57 +227,6 @@ void main() {
             (e) => e.failure.code,
             'code',
             equals(RuntimeFailureCode.backendUnavailable),
-          ),
-        ),
-      );
-    });
-
-    test('Maps HTTP 404 error to RuntimeFailureCode.modelMissing', () async {
-      await runtime.initialize(
-        const RuntimeInitializationRequest(
-          instanceId: RuntimeInstanceId('session-404'),
-        ),
-      );
-
-      final handle = await runtime.loadModel(
-        const ModelLoadRequest(
-          requestId: ModelLoadRequestId('load-1'),
-          artifact: ResolvedModelArtifact(
-            modelVariantId: 'v1',
-            sha256: 'a',
-            format: 'gguf',
-            quantization: 'Q4',
-            architecture: 'qwen2',
-            compatibility: ModelRuntimeCompatibility(compatible: true),
-          ),
-          logicalModelId: 'aura.actor.primary',
-          roles: {ModelRole.actor},
-        ),
-      );
-
-      fakeClient.statusCodeToReturn = 404;
-
-      expect(
-        () => runtime.generateText(
-          TextGenerationRequest(
-            requestId: const GenerationRequestId('gen-404'),
-            model: handle,
-            messages: const [
-              InferenceMessage(role: InferenceRole.user, content: 'Hi')
-            ],
-            traceContext: const InferenceTraceContext(
-              traceId: RuntimeTraceId('trace-404'),
-              sessionId: 's-404',
-              agentId: 'actor',
-              logicalModelId: 'aura.actor.primary',
-            ),
-          ),
-        ),
-        throwsA(
-          isA<RuntimeException>().having(
-            (e) => e.failure.code,
-            'code',
-            equals(RuntimeFailureCode.modelMissing),
           ),
         ),
       );

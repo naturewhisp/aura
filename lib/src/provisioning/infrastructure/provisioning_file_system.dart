@@ -1,5 +1,5 @@
 import 'dart:io';
-import '../domain/provisioning_options.dart';
+import 'provisioning_io_exception.dart';
 
 /// Abilitatore astratto di I/O filesystem per isolamento architetturale e testabilità.
 abstract class ProvisioningFileSystem {
@@ -12,11 +12,21 @@ abstract class ProvisioningFileSystem {
   /// Legge il contenuto testuale di un file.
   Future<String> readAsString(String path);
 
-  /// Scrive il contenuto in modo atomico (temp file -> backup .bak -> sostituzione finale).
-  Future<void> writeStringAtomic(String path, String content);
+  /// Scrive il contenuto in modo sicuro con supporto al backup .bak (temp file -> backup -> sostituzione).
+  Future<void> writeStringRecoverably(
+    String path,
+    String content, {
+    bool preserveExistingBackup = false,
+  });
 
-  /// Elimina il file al percorso specificato.
+  /// Ripristina il file di destinazione dal backup senza distruggere il file di backup stesso.
+  Future<void> restoreFromBackup(String targetPath, String backupPath);
+
+  /// Elimina rigorosamente un file. Lancia [ProvisioningIoException] in caso di errore I/O.
   Future<void> deleteFile(String path);
+
+  /// Tenta l'eliminazione del file senza lanciare eccezioni. Ritorna true se eliminato.
+  Future<bool> deleteFileBestEffort(String path);
 
   /// Copia un file da sorgente a destinazione.
   Future<void> copyFile(String sourcePath, String targetPath);
@@ -44,10 +54,7 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
     try {
       return await File(path).readAsString();
     } catch (_) {
-      throw ProvisioningException(
-        reason: ProvisioningFailureReason.installationRecordReadFailed,
-        message: 'Impossibile leggere il file al percorso: "$path".',
-      );
+      throw const ProvisioningIoException(operation: 'readAsString');
     }
   }
 
@@ -59,10 +66,7 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
         await dir.create(recursive: true);
       }
     } catch (_) {
-      throw ProvisioningException(
-        reason: ProvisioningFailureReason.atomicMoveFailed,
-        message: 'Impossibile creare la directory al percorso: "$path".',
-      );
+      throw const ProvisioningIoException(operation: 'createDirectory');
     }
   }
 
@@ -73,7 +77,23 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       if (await file.exists()) {
         await file.delete();
       }
-    } catch (_) {}
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'deleteFile');
+    }
+  }
+
+  @override
+  Future<bool> deleteFileBestEffort(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) {
+        await file.delete();
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }
 
   @override
@@ -84,15 +104,39 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       await target.parent.create(recursive: true);
       await source.copy(target.path);
     } catch (_) {
-      throw ProvisioningException(
-        reason: ProvisioningFailureReason.atomicMoveFailed,
-        message: 'Copia del file fallita da "$sourcePath" a "$targetPath".',
-      );
+      throw const ProvisioningIoException(operation: 'copyFile');
     }
   }
 
   @override
-  Future<void> writeStringAtomic(String path, String content) async {
+  Future<void> restoreFromBackup(String targetPath, String backupPath) async {
+    try {
+      final backup = File(backupPath);
+      if (!await backup.exists()) {
+        throw const ProvisioningIoException(
+            operation: 'restoreFromBackup_missing');
+      }
+
+      final content = await backup.readAsString();
+      await writeStringRecoverably(
+        targetPath,
+        content,
+        preserveExistingBackup: true,
+      );
+    } on ProvisioningIoException {
+      rethrow;
+    } catch (_) {
+      throw const ProvisioningIoException(
+          operation: 'restoreFromBackup_failed');
+    }
+  }
+
+  @override
+  Future<void> writeStringRecoverably(
+    String path,
+    String content, {
+    bool preserveExistingBackup = false,
+  }) async {
     final targetFile = File(path);
     final parentDir = targetFile.parent;
     if (!await parentDir.exists()) {
@@ -108,11 +152,12 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       await tempFile.writeAsString(content, flush: true);
 
       if (await targetFile.exists()) {
-        // Se il file di destinazione esiste già, crea/aggiorna il backup .bak
-        if (await backupFile.exists()) {
-          await backupFile.delete();
+        if (!preserveExistingBackup) {
+          if (await backupFile.exists()) {
+            await backupFile.delete();
+          }
+          await targetFile.copy(backupFile.path);
         }
-        await targetFile.copy(backupFile.path);
         await targetFile.delete();
       }
 
@@ -123,10 +168,7 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
           await tempFile.delete();
         } catch (_) {}
       }
-      throw const ProvisioningException(
-        reason: ProvisioningFailureReason.installationRecordWriteFailed,
-        message: 'Scrittura atomica del file sul filesystem fallita.',
-      );
+      throw const ProvisioningIoException(operation: 'writeStringRecoverably');
     }
   }
 }

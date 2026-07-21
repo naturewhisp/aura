@@ -94,6 +94,7 @@ export 'src/provisioning/validation/catalog_manifest_parser.dart';
 export 'src/provisioning/validation/catalog_manifest_validator.dart';
 export 'src/provisioning/infrastructure/provisioning_path_resolver.dart';
 export 'src/provisioning/infrastructure/provisioning_file_system.dart';
+export 'src/provisioning/infrastructure/provisioning_io_exception.dart';
 export 'src/provisioning/infrastructure/provisioning_lock.dart';
 export 'src/provisioning/infrastructure/installation_record_repository.dart';
 export 'src/provisioning/infrastructure/activation_state_repository.dart';

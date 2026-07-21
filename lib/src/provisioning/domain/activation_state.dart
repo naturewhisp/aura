@@ -4,6 +4,43 @@ import 'provisioning_options.dart';
 
 const Object _unset = Object();
 
+/// Preferenza per la sorgente del runtime di inferenza.
+enum RuntimeSourcePreference {
+  appManaged,
+  bundled;
+
+  static RuntimeSourcePreference parse(String value) {
+    for (final pref in RuntimeSourcePreference.values) {
+      if (pref.name == value.trim()) {
+        return pref;
+      }
+    }
+    throw ProvisioningException(
+      reason: ProvisioningFailureReason.catalogMalformed,
+      message: 'RuntimeSourcePreference non valida: "$value".',
+    );
+  }
+}
+
+/// Policy di fallback per la gestione di errori durante il bootstrap/inferenza.
+enum ProvisionedFallbackPolicy {
+  managedLlamaServerWithRuleBasedFallback,
+  managedLlamaServerOnly,
+  ruleBasedOnly;
+
+  static ProvisionedFallbackPolicy parse(String value) {
+    for (final policy in ProvisionedFallbackPolicy.values) {
+      if (policy.name == value.trim()) {
+        return policy;
+      }
+    }
+    throw ProvisioningException(
+      reason: ProvisioningFailureReason.catalogMalformed,
+      message: 'ProvisionedFallbackPolicy non valida: "$value".',
+    );
+  }
+}
+
 /// Rappresenta lo stato di attivazione corrente del runtime e del modello riferito ad installazioni stabili.
 @immutable
 final class ActivationState {
@@ -13,8 +50,8 @@ final class ActivationState {
   final String? activeModelInstallationId;
   final String? lastKnownGoodRuntimeInstallationId;
   final String? lastKnownGoodModelInstallationId;
-  final String runtimeSourcePreference;
-  final String fallbackPolicy;
+  final RuntimeSourcePreference runtimeSourcePreference;
+  final ProvisionedFallbackPolicy fallbackPolicy;
   final bool explicitUserSelection;
   final String? selectedModelAlias;
   final Map<String, dynamic> metadata;
@@ -26,8 +63,9 @@ final class ActivationState {
     this.activeModelInstallationId,
     this.lastKnownGoodRuntimeInstallationId,
     this.lastKnownGoodModelInstallationId,
-    this.runtimeSourcePreference = 'appManaged',
-    this.fallbackPolicy = 'managedLlamaServerWithRuleBasedFallback',
+    this.runtimeSourcePreference = RuntimeSourcePreference.appManaged,
+    this.fallbackPolicy =
+        ProvisionedFallbackPolicy.managedLlamaServerWithRuleBasedFallback,
     this.explicitUserSelection = false,
     this.selectedModelAlias,
     Map<String, dynamic> metadata = const {},
@@ -50,6 +88,14 @@ final class ActivationState {
         );
       }
 
+      if (rawSchema.trim() != '1.0') {
+        throw ProvisioningException(
+          reason: ProvisioningFailureReason.unsupportedSchemaVersion,
+          message:
+              'Versione di schema non supportata: "$rawSchema". Attesa: "1.0".',
+        );
+      }
+
       final rawUpdatedAt = json['updatedAt'] as String?;
       if (rawUpdatedAt == null || rawUpdatedAt.trim().isEmpty) {
         throw const ProvisioningException(
@@ -57,6 +103,11 @@ final class ActivationState {
           message: 'Campo obbligatorio mancante: updatedAt.',
         );
       }
+
+      final rawPref =
+          (json['runtimeSourcePreference'] as String?) ?? 'appManaged';
+      final rawFallback = (json['fallbackPolicy'] as String?) ??
+          'managedLlamaServerWithRuleBasedFallback';
 
       return ActivationState(
         schemaVersion: rawSchema,
@@ -68,10 +119,8 @@ final class ActivationState {
             json['lastKnownGoodRuntimeInstallationId'] as String?,
         lastKnownGoodModelInstallationId:
             json['lastKnownGoodModelInstallationId'] as String?,
-        runtimeSourcePreference:
-            (json['runtimeSourcePreference'] as String?) ?? 'appManaged',
-        fallbackPolicy: (json['fallbackPolicy'] as String?) ??
-            'managedLlamaServerWithRuleBasedFallback',
+        runtimeSourcePreference: RuntimeSourcePreference.parse(rawPref),
+        fallbackPolicy: ProvisionedFallbackPolicy.parse(rawFallback),
         explicitUserSelection: json['explicitUserSelection'] as bool? ?? false,
         selectedModelAlias: json['selectedModelAlias'] as String?,
         metadata: json['metadata'] != null
@@ -101,8 +150,8 @@ final class ActivationState {
             lastKnownGoodRuntimeInstallationId,
       if (lastKnownGoodModelInstallationId != null)
         'lastKnownGoodModelInstallationId': lastKnownGoodModelInstallationId,
-      'runtimeSourcePreference': runtimeSourcePreference,
-      'fallbackPolicy': fallbackPolicy,
+      'runtimeSourcePreference': runtimeSourcePreference.name,
+      'fallbackPolicy': fallbackPolicy.name,
       'explicitUserSelection': explicitUserSelection,
       if (selectedModelAlias != null) 'selectedModelAlias': selectedModelAlias,
       if (metadata.isNotEmpty) 'metadata': metadata,
@@ -116,8 +165,8 @@ final class ActivationState {
     Object? activeModelInstallationId = _unset,
     Object? lastKnownGoodRuntimeInstallationId = _unset,
     Object? lastKnownGoodModelInstallationId = _unset,
-    String? runtimeSourcePreference,
-    String? fallbackPolicy,
+    RuntimeSourcePreference? runtimeSourcePreference,
+    ProvisionedFallbackPolicy? fallbackPolicy,
     bool? explicitUserSelection,
     Object? selectedModelAlias = _unset,
     Map<String, dynamic>? metadata,

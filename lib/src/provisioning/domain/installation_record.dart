@@ -5,6 +5,44 @@ import 'provisioning_options.dart';
 
 const Object _unset = Object();
 
+/// Stato di una specifica installazione nel registro locale.
+enum InstallationStatus {
+  installed,
+  verified,
+  invalid,
+  removed;
+
+  static InstallationStatus parse(String value) {
+    for (final status in InstallationStatus.values) {
+      if (status.name == value.trim()) {
+        return status;
+      }
+    }
+    throw ProvisioningException(
+      reason: ProvisioningFailureReason.catalogMalformed,
+      message: 'InstallationStatus non valido: "$value".',
+    );
+  }
+}
+
+/// Ownership e gestione del ciclo di vita dell'artefatto installato.
+enum ArtifactOwnership {
+  appManaged,
+  bundled;
+
+  static ArtifactOwnership parse(String value) {
+    for (final ownership in ArtifactOwnership.values) {
+      if (ownership.name == value.trim()) {
+        return ownership;
+      }
+    }
+    throw ProvisioningException(
+      reason: ProvisioningFailureReason.catalogMalformed,
+      message: 'ArtifactOwnership non valido: "$value".',
+    );
+  }
+}
+
 /// Descrive una singola installazione fisica registrata nell'InstallationRecord.
 @immutable
 final class InstalledArtifactDescriptor {
@@ -21,9 +59,9 @@ final class InstalledArtifactDescriptor {
   final int sizeBytes;
   final String sha256;
   final CatalogArtifactSourceKind sourceKind;
-  final String status;
+  final InstallationStatus status;
   final String? verifiedAt;
-  final String ownership;
+  final ArtifactOwnership ownership;
   final String? lastValidationAt;
   final String? failureDiscriminator;
   final bool retained;
@@ -43,9 +81,9 @@ final class InstalledArtifactDescriptor {
     required this.sizeBytes,
     required this.sha256,
     required this.sourceKind,
-    this.status = 'installed',
+    this.status = InstallationStatus.installed,
     this.verifiedAt,
-    this.ownership = 'appManaged',
+    this.ownership = ArtifactOwnership.appManaged,
     this.lastValidationAt,
     this.failureDiscriminator,
     this.retained = true,
@@ -100,6 +138,9 @@ final class InstalledArtifactDescriptor {
         );
       }
 
+      final rawStatus = (json['status'] as String?) ?? 'installed';
+      final rawOwnership = (json['ownership'] as String?) ?? 'appManaged';
+
       return InstalledArtifactDescriptor(
         installationId: instId,
         artifactId: json['artifactId'] as String? ??
@@ -146,9 +187,9 @@ final class InstalledArtifactDescriptor {
               message: 'Campo obbligatorio mancante: sha256.',
             )),
         sourceKind: CatalogArtifactSourceKind.parse(rawSourceKind),
-        status: (json['status'] as String?) ?? 'installed',
+        status: InstallationStatus.parse(rawStatus),
         verifiedAt: json['verifiedAt'] as String?,
-        ownership: (json['ownership'] as String?) ?? 'appManaged',
+        ownership: ArtifactOwnership.parse(rawOwnership),
         lastValidationAt: json['lastValidationAt'] as String?,
         failureDiscriminator: json['failureDiscriminator'] as String?,
         retained: json['retained'] as bool? ?? true,
@@ -181,9 +222,9 @@ final class InstalledArtifactDescriptor {
       'sizeBytes': sizeBytes,
       'sha256': sha256,
       'sourceKind': sourceKind.name,
-      'status': status,
+      'status': status.name,
       if (verifiedAt != null) 'verifiedAt': verifiedAt,
-      'ownership': ownership,
+      'ownership': ownership.name,
       if (lastValidationAt != null) 'lastValidationAt': lastValidationAt,
       if (failureDiscriminator != null)
         'failureDiscriminator': failureDiscriminator,
@@ -206,9 +247,9 @@ final class InstalledArtifactDescriptor {
     int? sizeBytes,
     String? sha256,
     CatalogArtifactSourceKind? sourceKind,
-    String? status,
+    InstallationStatus? status,
     Object? verifiedAt = _unset,
-    String? ownership,
+    ArtifactOwnership? ownership,
     Object? lastValidationAt = _unset,
     Object? failureDiscriminator = _unset,
     bool? retained,
@@ -277,6 +318,14 @@ final class InstallationRecord {
         throw const ProvisioningException(
           reason: ProvisioningFailureReason.installationRecordReadFailed,
           message: 'Campo obbligatorio mancante: schemaVersion.',
+        );
+      }
+
+      if (rawSchema.trim() != '1.0') {
+        throw ProvisioningException(
+          reason: ProvisioningFailureReason.unsupportedSchemaVersion,
+          message:
+              'Versione di schema non supportata: "$rawSchema". Attesa: "1.0".',
         );
       }
 

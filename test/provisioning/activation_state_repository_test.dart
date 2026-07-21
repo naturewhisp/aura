@@ -31,7 +31,8 @@ void main() {
       expect(state.activeModelInstallationId, isNull);
     });
 
-    test('Scrive e legge l ActivationState basato su installationId stabili',
+    test(
+        'Scrive e legge l ActivationState basato su installationId stabili ed enum tipizzati',
         () async {
       final stateToSave = ActivationState(
         updatedAt: '2026-07-21T21:00:00Z',
@@ -39,8 +40,9 @@ void main() {
         activeModelInstallationId: 'inst-ministral-3b-1',
         lastKnownGoodRuntimeInstallationId: 'inst-llama-b3500-1',
         lastKnownGoodModelInstallationId: 'inst-ministral-3b-1',
-        runtimeSourcePreference: 'appManaged',
-        fallbackPolicy: 'managedLlamaServerWithRuleBasedFallback',
+        runtimeSourcePreference: RuntimeSourcePreference.appManaged,
+        fallbackPolicy:
+            ProvisionedFallbackPolicy.managedLlamaServerWithRuleBasedFallback,
         explicitUserSelection: true,
       );
 
@@ -49,13 +51,28 @@ void main() {
       final loaded = await repo.readState();
       expect(loaded.activeRuntimeInstallationId, equals('inst-llama-b3500-1'));
       expect(loaded.activeModelInstallationId, equals('inst-ministral-3b-1'));
-      expect(loaded.lastKnownGoodRuntimeInstallationId,
-          equals('inst-llama-b3500-1'));
+      expect(loaded.runtimeSourcePreference,
+          equals(RuntimeSourcePreference.appManaged));
+      expect(
+          loaded.fallbackPolicy,
+          equals(ProvisionedFallbackPolicy
+              .managedLlamaServerWithRuleBasedFallback));
       expect(loaded.explicitUserSelection, isTrue);
     });
 
+    test('updateState serializza transazionalmente le modifiche', () async {
+      await repo.updateState((current) {
+        return current.copyWith(
+          activeRuntimeInstallationId: 'inst-runtime-2',
+        );
+      });
+
+      final updated = await repo.readState();
+      expect(updated.activeRuntimeInstallationId, equals('inst-runtime-2'));
+    });
+
     test(
-        'Esegue il recovery automatico da .bak se il file primario di active_state è corrotto',
+        'Esegue il recovery da .bak per active_state corrotto senza sovrascrivere il backup valido',
         () async {
       final statePath = pathResolver.activeStatePath;
       final backupPath = '$statePath.bak';
@@ -74,7 +91,7 @@ void main() {
           recovered.activeRuntimeInstallationId, equals('inst-recovered-rt'));
       expect(
           recovered.activeModelInstallationId, equals('inst-recovered-model'));
-      expect(fileSystem.files[statePath], isNotEmpty);
+      expect(fileSystem.files[backupPath], contains('inst-recovered-rt'));
     });
   });
 }

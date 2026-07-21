@@ -14,7 +14,9 @@ abstract interface class ProvisioningLock {
 
 /// Implementazione in-memory basata su accodamento asincrono deterministico per chiave.
 final class InMemoryProvisioningLock implements ProvisioningLock {
-  final Map<String, Future<dynamic>> _keyLocks = {};
+  final Map<String, Future<dynamic>> _keyLocks;
+
+  InMemoryProvisioningLock() : _keyLocks = {};
 
   @override
   Future<T> synchronized<T>(

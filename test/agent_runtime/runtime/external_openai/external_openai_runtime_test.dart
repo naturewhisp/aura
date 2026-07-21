@@ -245,7 +245,7 @@ void main() {
     });
 
     // -------------------------------------------------------------------------
-    // Cancellation capability
+    // Cancellation capability checks
     // -------------------------------------------------------------------------
     test(
         'Throws cancellationUnsupported on cancel when '
@@ -263,6 +263,276 @@ void main() {
             (e) => e.failure.code,
             'code',
             RuntimeFailureCode.cancellationUnsupported,
+          ),
+        ),
+      );
+    });
+
+    test(
+        'Throws cancellationUnsupported on cancel when configuration.supportsCancellation is true '
+        'but client.supportsRequestCancellation is false', () async {
+      final runtimeWithConfigCancel = ExternalOpenAiRuntime(
+        configuration: ExternalOpenAiConfiguration(
+          baseUri: Uri.parse('http://127.0.0.1:1234'),
+          supportsCancellation: true,
+        ),
+        client:
+            fakeClient, // fakeClient.supportsRequestCancellation defaults to false
+        bindings: const [
+          ExternalOpenAiModelBinding(
+            logicalModelId: 'aura.actor.primary',
+            serverModelId: 'qwen/qwen3.5-9b',
+          ),
+        ],
+      );
+      addTearDown(() async {
+        if (runtimeWithConfigCancel.state != RuntimeState.disposed) {
+          await runtimeWithConfigCancel.dispose();
+        }
+      });
+
+      await runtimeWithConfigCancel.initialize(
+        const RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('session-cancel-check'),
+        ),
+      );
+
+      await expectLater(
+        runtimeWithConfigCancel.cancel(const GenerationRequestId('gen-cancel')),
+        throwsA(
+          isA<RuntimeException>().having(
+            (e) => e.failure.code,
+            'code',
+            RuntimeFailureCode.cancellationUnsupported,
+          ),
+        ),
+      );
+    });
+
+    // -------------------------------------------------------------------------
+    // Monotonic handle sequence IDs and non-colliding IDs after unload
+    // -------------------------------------------------------------------------
+    test('Uses monotonic handle sequence and maintains unique IDs after unload',
+        () async {
+      final multiRuntime = ExternalOpenAiRuntime(
+        configuration: ExternalOpenAiConfiguration(
+          baseUri: Uri.parse('http://127.0.0.1:1234'),
+          maxLoadedModels: 3,
+          supportsMultipleLoadedModels: true,
+        ),
+        client: fakeClient,
+        bindings: const [
+          ExternalOpenAiModelBinding(
+            logicalModelId: 'aura.actor.primary',
+            serverModelId: 'qwen/qwen3.5-9b',
+          ),
+          ExternalOpenAiModelBinding(
+            logicalModelId: 'aura.evaluator.primary',
+            serverModelId: 'mistralai/ministral-3-3b',
+          ),
+        ],
+      );
+      addTearDown(() async {
+        if (multiRuntime.state != RuntimeState.disposed) {
+          await multiRuntime.dispose();
+        }
+      });
+
+      await multiRuntime.initialize(
+        const RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('session-monotonic-handles'),
+        ),
+      );
+
+      final h1 = await multiRuntime.loadModel(
+        const ModelLoadRequest(
+          requestId: ModelLoadRequestId('load-1'),
+          artifact: ResolvedModelArtifact(
+            modelVariantId: 'v1',
+            sha256: 'a',
+            format: 'gguf',
+            quantization: 'Q4',
+            architecture: 'qwen2',
+            compatibility: ModelRuntimeCompatibility(compatible: true),
+          ),
+          logicalModelId: 'aura.actor.primary',
+          roles: {ModelRole.actor},
+        ),
+      );
+
+      final h2 = await multiRuntime.loadModel(
+        const ModelLoadRequest(
+          requestId: ModelLoadRequestId('load-2'),
+          artifact: ResolvedModelArtifact(
+            modelVariantId: 'v1',
+            sha256: 'a',
+            format: 'gguf',
+            quantization: 'Q4',
+            architecture: 'llama',
+            compatibility: ModelRuntimeCompatibility(compatible: true),
+          ),
+          logicalModelId: 'aura.evaluator.primary',
+          roles: {ModelRole.evaluator},
+        ),
+      );
+
+      // Unload h1
+      await multiRuntime.unloadModel(h1);
+
+      // Load h3
+      final h3 = await multiRuntime.loadModel(
+        const ModelLoadRequest(
+          requestId: ModelLoadRequestId('load-3'),
+          artifact: ResolvedModelArtifact(
+            modelVariantId: 'v2',
+            sha256: 'b',
+            format: 'gguf',
+            quantization: 'Q4',
+            architecture: 'qwen2',
+            compatibility: ModelRuntimeCompatibility(compatible: true),
+          ),
+          logicalModelId: 'aura.actor.primary',
+          roles: {ModelRole.actor},
+        ),
+      );
+
+      expect(h1.id.value, isNot(equals(h2.id.value)));
+      expect(h2.id.value, isNot(equals(h3.id.value)));
+      expect(h1.id.value, isNot(equals(h3.id.value)));
+      // h2 must still be registered and functional
+      expect(multiRuntime.state, equals(RuntimeState.modelReady));
+    });
+
+    // -------------------------------------------------------------------------
+    // supportsStructuredJson enforcement
+    // -------------------------------------------------------------------------
+    test(
+        'Throws structuredOutputUnavailable in generateStructured when supportsStructuredJson is false',
+        () async {
+      final noJsonRuntime = ExternalOpenAiRuntime(
+        configuration: ExternalOpenAiConfiguration(
+          baseUri: Uri.parse('http://127.0.0.1:1234'),
+          supportsStructuredJson: false,
+        ),
+        client: fakeClient,
+        bindings: const [
+          ExternalOpenAiModelBinding(
+            logicalModelId: 'aura.actor.primary',
+            serverModelId: 'qwen/qwen3.5-9b',
+          ),
+        ],
+      );
+      addTearDown(() async {
+        if (noJsonRuntime.state != RuntimeState.disposed) {
+          await noJsonRuntime.dispose();
+        }
+      });
+
+      await noJsonRuntime.initialize(
+        const RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('session-no-json'),
+        ),
+      );
+
+      final handle = await noJsonRuntime.loadModel(
+        const ModelLoadRequest(
+          requestId: ModelLoadRequestId('load-1'),
+          artifact: ResolvedModelArtifact(
+            modelVariantId: 'v1',
+            sha256: 'a',
+            format: 'gguf',
+            quantization: 'Q4',
+            architecture: 'qwen2',
+            compatibility: ModelRuntimeCompatibility(compatible: true),
+          ),
+          logicalModelId: 'aura.actor.primary',
+          roles: {ModelRole.actor},
+        ),
+      );
+
+      await expectLater(
+        noJsonRuntime.generateStructured(
+          StructuredGenerationRequest(
+            requestId: const GenerationRequestId('gen-struct-fail'),
+            model: handle,
+            messages: const [
+              InferenceMessage(role: InferenceRole.user, content: 'test'),
+            ],
+            schema: const JsonSchemaDocument(
+              schemaId: 'test_schema',
+              document: {'type': 'object'},
+            ),
+            traceContext: const InferenceTraceContext(
+              traceId: RuntimeTraceId('t'),
+              sessionId: 's',
+              agentId: 'actor',
+              logicalModelId: 'aura.actor.primary',
+            ),
+          ),
+        ),
+        throwsA(
+          isA<RuntimeException>().having(
+            (e) => e.failure.code,
+            'code',
+            RuntimeFailureCode.structuredOutputUnavailable,
+          ),
+        ),
+      );
+    });
+
+    // -------------------------------------------------------------------------
+    // Binding roles validation
+    // -------------------------------------------------------------------------
+    test('Throws invalidArgument when loadModel roles exceed binding roles',
+        () async {
+      final restrictedBindingRuntime = ExternalOpenAiRuntime(
+        configuration: ExternalOpenAiConfiguration(
+          baseUri: Uri.parse('http://127.0.0.1:1234'),
+        ),
+        client: fakeClient,
+        bindings: const [
+          ExternalOpenAiModelBinding(
+            logicalModelId: 'aura.evaluator.only',
+            serverModelId: 'mistralai/ministral-3-3b',
+            roles: {ModelRole.evaluator},
+          ),
+        ],
+      );
+      addTearDown(() async {
+        if (restrictedBindingRuntime.state != RuntimeState.disposed) {
+          await restrictedBindingRuntime.dispose();
+        }
+      });
+
+      await restrictedBindingRuntime.initialize(
+        const RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('session-restricted-roles'),
+        ),
+      );
+
+      await expectLater(
+        restrictedBindingRuntime.loadModel(
+          const ModelLoadRequest(
+            requestId: ModelLoadRequestId('load-unauthorized-role'),
+            artifact: ResolvedModelArtifact(
+              modelVariantId: 'v1',
+              sha256: 'a',
+              format: 'gguf',
+              quantization: 'Q4',
+              architecture: 'llama',
+              compatibility: ModelRuntimeCompatibility(compatible: true),
+            ),
+            logicalModelId: 'aura.evaluator.only',
+            roles: {
+              ModelRole.actor
+            }, // Binding only allows ModelRole.evaluator!
+          ),
+        ),
+        throwsA(
+          isA<RuntimeException>().having(
+            (e) => e.failure.code,
+            'code',
+            RuntimeFailureCode.invalidArgument,
           ),
         ),
       );

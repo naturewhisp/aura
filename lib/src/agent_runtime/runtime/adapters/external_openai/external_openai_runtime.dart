@@ -33,6 +33,7 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
   final Map<ModelHandleId, ModelHandle> _activeHandles = {};
   final Set<String> _activeCancelRequestIds = {};
   int _activeGenerationsCount = 0;
+  int _nextHandleSequence = 0;
 
   ExternalOpenAiRuntime({
     required this.configuration,
@@ -125,9 +126,21 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
     }
   }
 
-  String _resolveServerModelId(String logicalModelId) {
+  String _resolveServerModelId(String logicalModelId,
+      {Set<ModelRole>? requestedRoles}) {
     final binding = bindings[logicalModelId];
     if (binding != null) {
+      if (requestedRoles != null &&
+          requestedRoles.isNotEmpty &&
+          !requestedRoles.every((role) => binding.roles.contains(role))) {
+        throw RuntimeException(
+          RuntimeFailure(
+            code: RuntimeFailureCode.invalidArgument,
+            message:
+                'Ruoli richiesti ($requestedRoles) non consentiti dal binding del modello: "$logicalModelId".',
+          ),
+        );
+      }
       return binding.serverModelId;
     }
     throw RuntimeException(
@@ -244,11 +257,13 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
     }
 
     try {
-      // Verify model binding exists
-      _resolveServerModelId(request.logicalModelId);
+      // Verify model binding exists and validate requested roles against binding
+      _resolveServerModelId(request.logicalModelId,
+          requestedRoles: request.roles);
 
+      _nextHandleSequence++;
       final handleId = ModelHandleId(
-        'handle-${request.logicalModelId}-${_activeHandles.length + 1}',
+        'handle-${request.logicalModelId}-$_nextHandleSequence',
       );
 
       final handle = ModelHandle(
@@ -275,14 +290,27 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
       }
 
       return handle;
-    } catch (e) {
+    } on RuntimeException catch (e) {
       if (!_eventController.isClosed) {
-        final failure = e is RuntimeException
-            ? e.failure
-            : RuntimeFailure(
-                code: RuntimeFailureCode.modelLoadFailed,
-                message: e.toString(),
-              );
+        _eventController.add(
+          ModelLoadFailed(
+            instanceId: _instanceId!,
+            timestamp: DateTime.now(),
+            loadRequestId: request.requestId,
+            failure: e.failure,
+          ),
+        );
+      }
+      _changeState(_activeHandles.isNotEmpty
+          ? RuntimeState.modelReady
+          : RuntimeState.ready);
+      rethrow;
+    } catch (e) {
+      const failure = RuntimeFailure(
+        code: RuntimeFailureCode.modelLoadFailed,
+        message: 'Errore imprevisto durante il caricamento del modello.',
+      );
+      if (!_eventController.isClosed) {
         _eventController.add(
           ModelLoadFailed(
             instanceId: _instanceId!,
@@ -295,7 +323,7 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
       _changeState(_activeHandles.isNotEmpty
           ? RuntimeState.modelReady
           : RuntimeState.ready);
-      rethrow;
+      throw RuntimeException(failure, cause: e);
     }
   }
 
@@ -493,6 +521,16 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
     _ensureInitializedAndNotDisposed();
     _validateHandle(request.model);
 
+    if (!configuration.supportsStructuredJson) {
+      throw const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.structuredOutputUnavailable,
+          message:
+              'La generazione JSON strutturata non è supportata dalla configurazione del runtime.',
+        ),
+      );
+    }
+
     if (_activeGenerationsCount >= configuration.maxConcurrentGenerations) {
       throw const RuntimeException(
         RuntimeFailure(
@@ -528,6 +566,7 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
               })
           .toList(),
       'temperature': request.parameters.temperature,
+      'max_tokens': request.parameters.maxOutputTokens,
       'response_format': {
         'type': 'json_schema',
         'json_schema': {
@@ -630,12 +669,13 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
   @override
   Future<void> cancel(GenerationRequestId requestId) async {
     _ensureNotDisposed();
-    if (!configuration.supportsCancellation) {
+    if (!configuration.supportsCancellation ||
+        !client.supportsRequestCancellation) {
       throw const RuntimeException(
         RuntimeFailure(
           code: RuntimeFailureCode.cancellationUnsupported,
           message:
-              'La cancellazione delle generazioni non è supportata dal backend HTTP.',
+              'La cancellazione delle generazioni non è supportata dal backend o dal transport HTTP.',
         ),
       );
     }

@@ -46,30 +46,15 @@ final class AtomicArtifactInstaller {
     final targetFileExists = await _fileSystem.fileExists(targetInstallPath);
 
     if (targetDirExists || targetFileExists) {
-      if (conflictPolicy == ProvisioningConflictPolicy.returnAlreadyInstalled) {
-        // Verifica fisica che l'installazione esistente sia integra e non vuota
-        final isExistingValid =
-            await _verifyExistingInstallation(targetInstallPath);
-        if (isExistingValid) {
-          return InstallationResult(
-            targetInstallPath: targetInstallPath,
-            installed: false,
-            alreadyInstalled: true,
-            rollbackPerformed: false,
-          );
-        }
-        // Se la directory esistente era vuota o corrotta, la elimina e forza la nuova installazione
-        await _fileSystem.deleteDirectoryBestEffort(targetInstallPath);
-        await _fileSystem.deleteFileBestEffort(targetInstallPath);
-      } else {
-        throw const ProvisioningException(
-          reason: ProvisioningFailureReason.installationConflict,
-          message: 'La directory di installazione finale esiste già.',
-        );
-      }
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationConflict,
+        message:
+            'La directory di installazione finale esiste già sul filesystem.',
+      );
     }
 
     final intermediateTargetPath = '$targetInstallPath.installing-$operationId';
+    bool physicalRollbackAttempted = false;
 
     try {
       cancellationToken?.throwIfCancelled();
@@ -92,21 +77,11 @@ final class AtomicArtifactInstaller {
         );
       }
 
+      physicalRollbackAttempted = true;
       cancellationToken?.throwIfCancelled();
 
-      // Verifica di integrità sulla directory intermedia
-      final isIntermediateValid =
-          await _verifyExistingInstallation(intermediateTargetPath);
-      if (!isIntermediateValid) {
-        throw const ProvisioningException(
-          reason: ProvisioningFailureReason.atomicMoveFailed,
-          message:
-              'La directory di installazione intermedia è risultata vuota o corrotta.',
-        );
-      }
-
-      // Spostamento finale dalla directory intermedia alla destinazione definitiva
-      await _fileSystem.moveDirectory(
+      // Spostamento finale atomico SENZA fallback a copia nel target definitivo
+      await _fileSystem.renameDirectoryWithoutFallback(
           intermediateTargetPath, targetInstallPath);
 
       return InstallationResult(
@@ -116,11 +91,13 @@ final class AtomicArtifactInstaller {
         rollbackPerformed: false,
       );
     } catch (e) {
-      // Rollback fisico: eliminazione della directory intermedia e parziale target
-      await _fileSystem.deleteDirectoryBestEffort(intermediateTargetPath);
-      await _fileSystem.deleteFileBestEffort(intermediateTargetPath);
-      await _fileSystem.deleteDirectoryBestEffort(targetInstallPath);
-      await _fileSystem.deleteFileBestEffort(targetInstallPath);
+      // Rollback fisico: eliminazione della directory intermedia isolata e pulizia target
+      if (physicalRollbackAttempted) {
+        await _fileSystem.deleteDirectoryBestEffort(intermediateTargetPath);
+        await _fileSystem.deleteFileBestEffort(intermediateTargetPath);
+        await _fileSystem.deleteDirectoryBestEffort(targetInstallPath);
+        await _fileSystem.deleteFileBestEffort(targetInstallPath);
+      }
 
       if (e is ProvisioningException) {
         rethrow;
@@ -130,16 +107,5 @@ final class AtomicArtifactInstaller {
         message: 'Spostamento o installazione finale dell\'artefatto fallita.',
       );
     }
-  }
-
-  Future<bool> _verifyExistingInstallation(String path) async {
-    if (await _fileSystem.directoryExists(path)) {
-      final items = await _fileSystem.listDirectory(path);
-      return items.isNotEmpty;
-    } else if (await _fileSystem.fileExists(path)) {
-      final size = await _fileSystem.getFileSize(path);
-      return size > 0;
-    }
-    return false;
   }
 }

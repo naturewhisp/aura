@@ -9,11 +9,15 @@ final class FakeProvisioningHttpClient implements ProvisioningHttpClient {
   final Map<String, List<int>> remoteFiles = {};
 
   @override
+  Future<void> close() async {}
+
+  @override
   Future<int> downloadFile({
     required String uri,
     required String targetPath,
     required int expectedSizeBytes,
     ProvisioningCancellationToken? cancellationToken,
+    RedirectHostPolicy redirectHostPolicy = RedirectHostPolicy.sameHostOnly,
     Duration timeout = const Duration(minutes: 5),
   }) async {
     cancellationToken?.throwIfCancelled();
@@ -119,6 +123,8 @@ void main() {
         artifactId: 'llama-b3500',
         downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
         consent: consent,
+        expectedPlatform: 'windows',
+        expectedArchitecture: 'x64',
       );
 
       final result = await engine.ingestArtifact(
@@ -130,6 +136,7 @@ void main() {
       expect(result.installed, isTrue);
       expect(result.verified, isTrue);
       expect(result.installationId, isNull);
+      expect(result.cleanupSucceeded, isTrue);
 
       final installedFile = File(
         '${tempDir.path}\\app_managed\\runtimes\\llama-b3500\\b3500\\llama-server.exe',
@@ -139,6 +146,50 @@ void main() {
       final stagingDir =
           Directory('${tempDir.path}\\app_managed\\staging\\op-ingest-1');
       expect(await stagingDir.exists(), isFalse);
+    });
+
+    test(
+        'Rifiuta l ingestione se la piattaforma o l architettura non corrispondono',
+        () async {
+      final artifact = CatalogArtifact(
+        artifactId: 'llama-b3500',
+        artifactType: CatalogArtifactType.runtime,
+        displayName: 'llama-server b3500',
+        version: 'b3500',
+        buildId: 'b3500',
+        platform: 'linux',
+        architecture: 'arm64',
+        fileName: 'llama-server.exe',
+        license: 'MIT',
+        sizeBytes: 100,
+        sha256: 'a' * 64,
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        downloadUri: 'https://downloads.aura.local/llama.zip',
+      );
+
+      final manifest = CatalogManifest(
+        schemaVersion: '1.0',
+        catalogId: 'cat-test-1',
+        generatedAt: '2026-07-21T21:00:00.000Z',
+        artifacts: [artifact],
+      );
+
+      final request = ProvisioningRequest(
+        operationId: 'op-mismatch-1',
+        catalogId: 'cat-test-1',
+        artifactId: 'llama-b3500',
+        expectedPlatform: 'windows',
+        expectedArchitecture: 'x64',
+      );
+
+      final result = await engine.ingestArtifact(
+        request: request,
+        manifest: manifest,
+      );
+
+      expect(result.status, equals(ProvisioningStatus.failed));
+      expect(result.failureReason,
+          equals(ProvisioningFailureReason.unsupportedPlatform));
     });
 
     test(
@@ -174,6 +225,8 @@ void main() {
         operationId: 'op-cancel-1',
         catalogId: 'cat-test-1',
         artifactId: 'llama-b3500',
+        expectedPlatform: 'windows',
+        expectedArchitecture: 'x64',
       );
 
       final result = await engine.ingestArtifact(

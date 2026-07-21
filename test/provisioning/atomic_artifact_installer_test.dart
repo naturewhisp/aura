@@ -38,7 +38,7 @@ void main() {
     });
 
     test(
-        'Installa correttamente l artefatto da staging a target final usando una directory intermedia isolata',
+        'Installa correttamente l artefatto da staging a target final usando un rename atomico isolato',
         () async {
       final stagingDir = Directory('${tempDir.path}\\staging\\extracted');
       await stagingDir.create(recursive: true);
@@ -62,52 +62,7 @@ void main() {
     });
 
     test(
-        'Verifica l installazione esistente ed accetta gia installato se integra',
-        () async {
-      final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
-      await Directory(targetDir).create(recursive: true);
-      await File('$targetDir\\llama-server.exe')
-          .writeAsString('existing content');
-
-      final res = await installer.installArtifact(
-        artifact: sampleArtifact,
-        stagingSourcePath: '${tempDir.path}\\staging\\extracted',
-        targetInstallPath: targetDir,
-        conflictPolicy: ProvisioningConflictPolicy.returnAlreadyInstalled,
-        operationId: 'op-install-2',
-      );
-
-      expect(res.installed, isFalse);
-      expect(res.alreadyInstalled, isTrue);
-    });
-
-    test(
-        'Sostituisce una directory di destinazione vuota o corrotta anche se returnAlreadyInstalled',
-        () async {
-      final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
-      await Directory(targetDir)
-          .create(recursive: true); // directory vuota (corrotta)
-
-      final stagingDir = Directory('${tempDir.path}\\staging\\extracted');
-      await stagingDir.create(recursive: true);
-      await File('${stagingDir.path}\\llama-server.exe')
-          .writeAsString('fresh content');
-
-      final res = await installer.installArtifact(
-        artifact: sampleArtifact,
-        stagingSourcePath: stagingDir.path,
-        targetInstallPath: targetDir,
-        conflictPolicy: ProvisioningConflictPolicy.returnAlreadyInstalled,
-        operationId: 'op-install-3',
-      );
-
-      expect(res.installed, isTrue);
-      expect(res.alreadyInstalled, isFalse);
-      expect(await File('$targetDir\\llama-server.exe').readAsString(),
-          equals('fresh content'));
-    });
-
-    test('Lancia ProvisioningException in caso di conflitto con policy fail',
+        'Lancia ProvisioningException in caso di conflitto con la destinazione finale sul filesystem',
         () async {
       final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
       await Directory(targetDir).create(recursive: true);

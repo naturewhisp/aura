@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'provisioning_io_exception.dart';
 
-/// Abilitatore astratto di I/O filesystem per isolamento architetturale completo e testabilità.
+/// Abilitatore astratto di I/O filesystem per isolamento architetturalmente completo e testabilità.
 abstract class ProvisioningFileSystem {
   /// Ritorna true se il file esiste al percorso specificato.
   Future<bool> fileExists(String path);
@@ -26,12 +26,6 @@ abstract class ProvisioningFileSystem {
   Future<List<String>> listDirectory(String path);
 
   /// Scrive il contenuto in modo sicuro garantendo il ripristino da backup (temp file -> backup -> sostituzione).
-  ///
-  /// Nota Semantica su Windows:
-  /// Su Windows, la sostituzione di un file esistente richiede la cancellazione del target prima di eseguire `rename()`.
-  /// Questo metodo implementa una **scrittura recuperabile (recoverable write)** protetta dal file `.bak`, non un'operazione
-  /// atomica a singola istruzione nativa POSIX. In caso di crash tra la cancellazione del target e il rename del temp,
-  /// il file di backup `.bak` rimane integro garantendo il recupero completo al successivo avvio.
   Future<void> writeStringRecoverably(
     String path,
     String content, {
@@ -61,6 +55,11 @@ abstract class ProvisioningFileSystem {
 
   /// Sposta una directory da sorgente a destinazione con fallback a copia ricorsiva.
   Future<void> moveDirectory(String sourcePath, String targetPath);
+
+  /// Rinomina rigorosamente una directory nello stesso volume SENZA alcun fallback a copia ricorsiva.
+  /// Lancia [ProvisioningIoException] se il rename atomico fallisce.
+  Future<void> renameDirectoryWithoutFallback(
+      String sourcePath, String targetPath);
 
   /// Crea una directory e le sue parent.
   Future<void> createDirectory(String path);
@@ -248,6 +247,20 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       }
     } catch (_) {
       throw const ProvisioningIoException(operation: 'moveDirectory');
+    }
+  }
+
+  @override
+  Future<void> renameDirectoryWithoutFallback(
+      String sourcePath, String targetPath) async {
+    try {
+      final sourceDir = Directory(sourcePath);
+      final targetDir = Directory(targetPath);
+      await targetDir.parent.create(recursive: true);
+      await sourceDir.rename(targetDir.path);
+    } catch (_) {
+      throw const ProvisioningIoException(
+          operation: 'renameDirectoryWithoutFallback');
     }
   }
 

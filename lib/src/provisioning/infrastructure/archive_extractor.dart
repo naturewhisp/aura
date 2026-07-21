@@ -20,6 +20,8 @@ abstract class ArchiveExtractor {
 final class ZipArchiveExtractor implements ArchiveExtractor {
   static const int maxArchiveEntries = 10000;
   static const int maxSingleFileBytes = 5 * 1024 * 1024 * 1024; // 5 GB
+  static const int maxCompressedArchiveLimit =
+      2 * 1024 * 1024 * 1024; // 2 GB per archivi ZIP compressi
   static const double maxCompressionRatio = 100.0;
 
   static final RegExp _invalidCharsRegex = RegExp(r'[<>:"|?*\x00-\x1F]');
@@ -48,6 +50,16 @@ final class ZipArchiveExtractor implements ArchiveExtractor {
     }
 
     final archiveSizeBytes = await archiveFile.length();
+
+    // Controlli PRE-DECODE sulla dimensione dell'archivio compresso
+    if (archiveSizeBytes > maxCompressedArchiveLimit) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.sizeLimitExceeded,
+        message:
+            'Dimensione dell\'archivio ZIP compresso supera il limite massimo consentito di 2 GB.',
+      );
+    }
+
     final allowedMaxTotalBytes = maxExpectedBytes * 10 > 10 * 1024 * 1024 * 1024
         ? 10 * 1024 * 1024 * 1024
         : (maxExpectedBytes * 10 < 100 * 1024 * 1024
@@ -116,10 +128,10 @@ final class ZipArchiveExtractor implements ArchiveExtractor {
               .startsWith(canonicalTargetDirWithSep) &&
           canonicalEntryPath.toLowerCase() !=
               canonicalTargetDir.toLowerCase()) {
-        throw ProvisioningException(
+        throw const ProvisioningException(
           reason: ProvisioningFailureReason.unsafeArchiveEntry,
           message:
-              'Voce di archivio non sicura: tenta l\'uscita dalla directory di destinazione ($rawName).',
+              'Voce di archivio non sicura: tenta l\'uscita dalla directory di destinazione.',
         );
       }
 
@@ -130,7 +142,8 @@ final class ZipArchiveExtractor implements ArchiveExtractor {
         if (fileLength > maxSingleFileBytes) {
           throw const ProvisioningException(
             reason: ProvisioningFailureReason.sizeLimitExceeded,
-            message: 'Singolo file estratto supera il limite massimo di 5 GB.',
+            message:
+                'Singolo file estratto supera il limite massimo consentito.',
           );
         }
 
@@ -201,10 +214,10 @@ final class ZipArchiveExtractor implements ArchiveExtractor {
       if (s.isEmpty || s == '.') continue;
 
       if (_invalidCharsRegex.hasMatch(s)) {
-        throw ProvisioningException(
+        throw const ProvisioningException(
           reason: ProvisioningFailureReason.unsafeArchiveEntry,
           message:
-              'Segmento di archivio contiene caratteri non validi Windows: "$s".',
+              'Segmento di archivio contiene caratteri non validi Windows.',
         );
       }
 
@@ -212,16 +225,16 @@ final class ZipArchiveExtractor implements ArchiveExtractor {
           s.endsWith('.') ||
           s.startsWith(' ') ||
           s.endsWith(' ')) {
-        throw ProvisioningException(
+        throw const ProvisioningException(
           reason: ProvisioningFailureReason.unsafeArchiveEntry,
-          message: 'Segmento di archivio con spazi o punti ai margini: "$s".',
+          message: 'Segmento di archivio con spazi o punti ai margini.',
         );
       }
 
       if (_reservedWindowsNamesRegex.hasMatch(s)) {
-        throw ProvisioningException(
+        throw const ProvisioningException(
           reason: ProvisioningFailureReason.unsafeArchiveEntry,
-          message: 'Segmento di archivio usa un nome riservato Windows: "$s".',
+          message: 'Segmento di archivio usa un nome riservato Windows.',
         );
       }
     }

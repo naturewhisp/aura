@@ -153,6 +153,13 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
   }
 
   @override
+  Future<void> renameDirectoryWithoutFallback(
+      String sourcePath, String targetPath) async {
+    await copyDirectory(sourcePath, targetPath);
+    await deleteDirectoryBestEffort(sourcePath);
+  }
+
+  @override
   Future<void> createDirectory(String path) async {
     directories.add(path);
   }

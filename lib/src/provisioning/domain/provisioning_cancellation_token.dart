@@ -1,26 +1,42 @@
+import 'dart:async';
 import 'provisioning_options.dart';
 
-/// Contratto astratto per l'annullamento coordinato delle operazioni asincrone di provisioning.
+/// Contratto astratto per l'annullamento coordinato ed asincrono delle operazioni di provisioning.
 abstract interface class ProvisioningCancellationToken {
   /// Restituisce true se l'annullamento è stato richiesto.
   bool get isCancellationRequested;
+
+  /// Restituisce un [Future] che si completa non appena l'annullamento viene richiesto.
+  Future<void> get whenCancelled;
 
   /// Lancia un [ProvisioningException] con ragione [ProvisioningFailureReason.operationCancelled]
   /// se l'annullamento è stato richiesto.
   void throwIfCancelled();
 }
 
-/// Implementazione concreta controllabile di [ProvisioningCancellationToken].
+/// Implementazione concreta controllabile ed asincrona di [ProvisioningCancellationToken].
 final class DefaultProvisioningCancellationToken
     implements ProvisioningCancellationToken {
+  final Completer<void> _completer = Completer<void>();
   bool _isCancelled = false;
+
+  DefaultProvisioningCancellationToken() {
+    // Previene eccezioni Unhandled Async Error nel test zone se il completer non viene ascoltato.
+    _completer.future.catchError((_) {});
+  }
 
   @override
   bool get isCancellationRequested => _isCancelled;
 
+  @override
+  Future<void> get whenCancelled => _completer.future;
+
   /// Richiede l'annullamento dell'operazione.
   void cancel() {
-    _isCancelled = true;
+    if (!_isCancelled) {
+      _isCancelled = true;
+      _completer.complete();
+    }
   }
 
   @override

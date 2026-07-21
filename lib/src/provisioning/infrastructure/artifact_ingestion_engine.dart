@@ -51,12 +51,38 @@ final class ArtifactIngestionEngine {
     }
 
     final sourceKind = _mapSourceKind(artifact.sourceKind);
+
+    // Validazione Piattaforma ed Architettura (Finding 1)
+    if (!_equalsNormalized(artifact.platform, request.expectedPlatform)) {
+      return ProvisioningResult.failure(
+        operationId: request.operationId,
+        artifactId: artifact.artifactId,
+        sourceKind: sourceKind,
+        failureReason: ProvisioningFailureReason.unsupportedPlatform,
+        sanitizedMessage:
+            'Piattaforma dell\'artefatto non supportata o non corrispondente.',
+      );
+    }
+
+    if (!_equalsNormalized(
+        artifact.architecture, request.expectedArchitecture)) {
+      return ProvisioningResult.failure(
+        operationId: request.operationId,
+        artifactId: artifact.artifactId,
+        sourceKind: sourceKind,
+        failureReason: ProvisioningFailureReason.unsupportedArchitecture,
+        sanitizedMessage:
+            'Architettura dell\'artefatto non supportata o non corrispondente.',
+      );
+    }
+
     final targetInstallPath =
         _pathResolver.resolveInstalledArtifactPath(artifact);
     final stagingPath =
         _pathResolver.resolveStagingDirectory(request.operationId);
 
     bool physicalRollbackPerformed = false;
+    bool cleanupSucceeded = true;
     int bytesProcessed = 0;
 
     try {
@@ -135,6 +161,18 @@ final class ArtifactIngestionEngine {
           await _fileSystem.copyFile(bundledFilePath, rawIngestedFilePath);
           bytesProcessed = await _fileSystem.getFileSize(rawIngestedFilePath);
 
+          // Verifica della dimensione per sorgente bundled (Finding 9)
+          if (bytesProcessed != artifact.sizeBytes) {
+            return ProvisioningResult.failure(
+              operationId: request.operationId,
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
+              failureReason: ProvisioningFailureReason.sizeMismatch,
+              sanitizedMessage:
+                  'Dimensione dell\'artefatto bundled non corrispondente al catalogo.',
+            );
+          }
+
         case CatalogArtifactSourceKind.localImport:
           final localPath = request.customSourcePath;
           if (localPath == null || localPath.trim().isEmpty) {
@@ -158,6 +196,18 @@ final class ArtifactIngestionEngine {
           }
           await _fileSystem.copyFile(localPath, rawIngestedFilePath);
           bytesProcessed = await _fileSystem.getFileSize(rawIngestedFilePath);
+
+          // Verifica della dimensione per sorgente localImport (Finding 9)
+          if (bytesProcessed != artifact.sizeBytes) {
+            return ProvisioningResult.failure(
+              operationId: request.operationId,
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
+              failureReason: ProvisioningFailureReason.sizeMismatch,
+              sanitizedMessage:
+                  'Dimensione del file locale non corrispondente al catalogo.',
+            );
+          }
       }
 
       cancellationToken?.throwIfCancelled();
@@ -194,28 +244,34 @@ final class ArtifactIngestionEngine {
       cancellationToken?.throwIfCancelled();
 
       // 5. Installazione fisica atomica tramite intermediate directory
-      final installResult = await _installer.installArtifact(
-        artifact: artifact,
-        stagingSourcePath: stagingSourceForInstall,
-        targetInstallPath: targetInstallPath,
-        conflictPolicy: request.conflictPolicy,
-        operationId: request.operationId,
-        cancellationToken: cancellationToken,
-      );
+      try {
+        final installResult = await _installer.installArtifact(
+          artifact: artifact,
+          stagingSourcePath: stagingSourceForInstall,
+          targetInstallPath: targetInstallPath,
+          conflictPolicy: request.conflictPolicy,
+          operationId: request.operationId,
+          cancellationToken: cancellationToken,
+        );
 
-      return ProvisioningResult(
-        operationId: request.operationId,
-        artifactId: artifact.artifactId,
-        status: installResult.alreadyInstalled
-            ? ProvisioningStatus.alreadyInstalled
-            : ProvisioningStatus.success,
-        installed: installResult.installed,
-        alreadyInstalled: installResult.alreadyInstalled,
-        verified: true,
-        bytesProcessed: bytesProcessed,
-        sourceKind: sourceKind,
-        installationId: null,
-      );
+        return ProvisioningResult(
+          operationId: request.operationId,
+          artifactId: artifact.artifactId,
+          status: installResult.alreadyInstalled
+              ? ProvisioningStatus.alreadyInstalled
+              : ProvisioningStatus.success,
+          installed: installResult.installed,
+          alreadyInstalled: installResult.alreadyInstalled,
+          verified: true,
+          bytesProcessed: bytesProcessed,
+          sourceKind: sourceKind,
+          installationId: null,
+          cleanupSucceeded: cleanupSucceeded,
+        );
+      } catch (e) {
+        physicalRollbackPerformed = true;
+        rethrow;
+      }
     } on ProvisioningException catch (e) {
       return ProvisioningResult.failure(
         operationId: request.operationId,
@@ -224,6 +280,7 @@ final class ArtifactIngestionEngine {
         failureReason: e.reason,
         sanitizedMessage: e.message,
         rollbackPerformed: physicalRollbackPerformed,
+        cleanupSucceeded: cleanupSucceeded,
       );
     } catch (_) {
       return ProvisioningResult.failure(
@@ -234,10 +291,12 @@ final class ArtifactIngestionEngine {
         sanitizedMessage:
             'Errore imprevisto durante l\'ingestione dell\'artefatto.',
         rollbackPerformed: physicalRollbackPerformed,
+        cleanupSucceeded: cleanupSucceeded,
       );
     } finally {
       // Pulizia incondizionata dello staging
-      await _fileSystem.deleteDirectoryBestEffort(stagingPath);
+      cleanupSucceeded =
+          await _fileSystem.deleteDirectoryBestEffort(stagingPath);
     }
   }
 
@@ -250,5 +309,9 @@ final class ArtifactIngestionEngine {
       CatalogArtifactSourceKind.localImport =>
         ProvisioningSourceKind.localImport,
     };
+  }
+
+  static bool _equalsNormalized(String a, String b) {
+    return a.trim().toLowerCase() == b.trim().toLowerCase();
   }
 }

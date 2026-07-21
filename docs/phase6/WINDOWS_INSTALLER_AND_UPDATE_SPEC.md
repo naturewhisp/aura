@@ -154,3 +154,25 @@ The `ModelProvisioningService` contract orchestrates:
   - `[ ] Remove Managed Model Store (%LOCALAPPDATA%\AURA\models)` (Unchecked by default)
   - `[ ] Remove Audio Assets and User Replays` (Unchecked by default)
 - User models are never deleted during uninstallation unless explicitly checked by the user.
+
+---
+
+## 7. Windows Directory Layout Ownership & Precedence Rules
+
+### 7.1 Directory Ownership Tripartition
+1. **Program Files Directory (`C:\Program Files\AURA\`) [Read-Only / Installer Owned]**:
+   - Holds application executable `aura.exe`, Inno Setup uninstaller `unins000.exe`, and optional baseline sidecar `bundled_runtime\llama-server.exe`.
+   - Modifiable only with Administrator privileges during Windows setup or official application update installers.
+2. **Local AppData Directory (`%LOCALAPPDATA%\AURA\`) [Read-Write / Application Owned]**:
+   - Holds app-acquired sidecar binaries (`runtimes\build-b3500-win-x64\`), GGUF models (`models\`), atomic staging area (`staging\`), HTTP download cache (`cache\`), application/sidecar logs (`logs\`), local inventory (`installation_record.json`), and active session state (`active_state.json`).
+   - Modifiable directly by the non-elevated user application without requiring UAC elevation.
+
+### 7.2 Sidecar Execution Precedence Policy
+When `DefaultApplicationBootstrap` resolves `executablePath`:
+1. Check `active_state.json` for an active custom or app-acquired runtime build under `%LOCALAPPDATA%\AURA\runtimes\<build_id>\llama-server.exe`. If present, valid, and executable, select it (**Precedence 1**).
+2. Fall back to the baseline bundled sidecar under `C:\Program Files\AURA\bundled_runtime\llama-server.exe` (**Precedence 2**).
+3. If neither path exists or is executable, fail bootstrap with `ApplicationBootstrapFailure.executableNotFound`.
+
+### 7.3 Artifact Retention & Uninstall Policy
+- **Transient Cleanup:** The application automatically cleans up temporary files in `%LOCALAPPDATA%\AURA\staging\` upon startup and after download completion.
+- **Uninstallation Retention:** The Inno Setup uninstaller defaults to preserving user models, runtimes, and replays in `%LOCALAPPDATA%\AURA\` to prevent accidental data loss when upgrading or reinstalling A.U.R.A.

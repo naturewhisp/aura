@@ -725,33 +725,49 @@ Componenti implementati:
    - Nessun test unitario o di contratto della suite CI avvia processi reali, contatta socket di rete reali o scarica modelli.
    - Test di integrazione opzionale skipped by default in `test/integration/managed_llama_server_real_process_test.dart` (taggato `@Tags(['network', 'real-model'])`).
 
-### 11.6 Planned Model Provisioning Boundary (Design Specification)
+### 11.6 Fase 6.2c — Runtime Baseline Consolidation & Provisioning Readiness
 
-Stato: **Pianificato / Specificato Normativamente** *(Nessuna implementazione codice presente nelle Fasi 6.1c, 6.2a, 6.2b)*.
+Stato: **completata (tranche documentale)**.
 
+Riferimento normativo: [PHASE_6_2B_BASELINE_AND_6_3_READINESS.md](docs/phase6/PHASE_6_2B_BASELINE_AND_6_3_READINESS.md).
+
+Deliverable ed Esiti:
+1. **Baseline di Implementazione Formale:**
+   - Implementation Baseline fissa al commit `a57379fdb092db1fa76d6a0b1c17ce999d67b4ad`.
+   - Esecuzione **managed out-of-process** di `llama-server.exe` per Windows attestata, supervisionata e protetta da crash isolati.
+2. **Decision Matrix e Mappatura delle Specifiche:**
+   - Censite tutte le decisioni architetturali con stato formale (`APPROVED`, `DEFERRED`, `OPEN`, `SUPERSEDED`).
+   - Sintonizzati i documenti canonici di Fase 6 ([CROSS_PLATFORM_RUNTIME_ADR.md](docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md), [INFERENCE_RUNTIME_CONTRACT.md](docs/phase6/INFERENCE_RUNTIME_CONTRACT.md), [MODEL_LIFECYCLE_SPEC.md](docs/phase6/MODEL_LIFECYCLE_SPEC.md), [MODEL_MANIFEST_SPEC.md](docs/phase6/MODEL_MANIFEST_SPEC.md), [TEST_RUNTIME_STRATEGY.md](docs/phase6/TEST_RUNTIME_STRATEGY.md), [WINDOWS_INSTALLER_AND_UPDATE_SPEC.md](docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md)).
+3. **Tripartizione dei Manifest per la 6.3:**
+   - Congelata la tripartizione tra *Catalog Manifest* (remoto/immutabile, firmabile con hash SHA-256), *Installation Record* (registro locale in `%LOCALAPPDATA%\AURA\installation_record.json`) ed *Activation State* (stato attivo locale in `%LOCALAPPDATA%\AURA\active_state.json`).
+4. **Ownership e Directory Layout su Windows:**
+   - Formalizzata la separazione tra `Program Files` (asset in sola lettura posseduti dall'installer Inno Setup) e `%LOCALAPPDATA%\AURA` (runtime dinamici acquisiti, modelli, staging atomico, cache e stato attivo posseduti dall'app).
+5. **Divieto di Link Assoluti nei Documenti:**
+   - Enforzato l'uso esclusivo di link relativi per tutti i documenti del repository (divieto assoluto di `file:///` e path assoluti specifici dello sviluppatore).
+
+### 11.7 Planned Model Provisioning Boundary (Fase 6.3)
+
+Stato: **Pianificato / Specificato Normativamente** *(Pronto per l'implementazione dopo la 6.2c)*.
 
 Specifiche e Principi Architetturali:
 
 1. **Service Boundary Condiviso (`ModelProvisioningService`)**:
-   - `ModelProvisioningService` è il boundary dell'application layer che orchestrerà il provisioning hardware-aware, la migrazione del model store, la scansione/classificazione dei GGUF locali e la gestione del consenso.
-   - Sarà consumato in modo identico sia dal **Windows Installer Wizard** sia dalla schermata **Runtime & Models Settings** dell'applicazione Flutter. L'installer non possederà una seconda implementazione indipendente del lifecycle dei modelli.
+   - `ModelProvisioningService` è il boundary dell'application layer che orchestrerà l'acquisizione degli artefatti, la verifica SHA-256, lo staging atomico, la scansione/classificazione dei GGUF locali ed il passaggio a `ManagedLlamaServerConfiguration`.
+   - Sarà consumato sia dal **Windows Installer Wizard** sia dalla schermata **Runtime & Models Settings** dell'applicazione Flutter. L'installer non possederà una seconda implementazione indipendente del lifecycle dei modelli.
+   - *Nota:* L'hardware auto-profiling e recommendation engine è differito ad una fase dedicata post-6.3.
 
 2. **Proprietà Permanente dell'Applicazione**:
-   - L'installer eseguirà soltanto il provisioning hardware-aware iniziale; l'applicazione manterrà il controllo permanente su model store, profili di performance, modelli installati, import compatibili, aggiornamenti, repair e rollback.
+   - L'installer eseguirà soltanto l'eventuale installazione iniziale del runtime baseline sotto `Program Files`; l'applicazione manterrà il controllo permanente su model store, runtime acquisiti in `%LOCALAPPDATA%\AURA\runtimes`, modelli installati, aggiornamenti, repair e rollback.
 
-3. **Directory Custom del Managed Model Store**:
-   - Il managed model store utilizzerà un default per piattaforma (`%LOCALAPPDATA%\AURA\models` su Windows), ma consentirà all'utente di selezionare una directory custom durante il setup o nelle impostazioni.
-   - Il percorso fisico del model store non viene mai codificato all'interno dei logical model ID o nei file del manifest.
+3. **Staging Atomico e Precedenza Runtime**:
+   - I download ed estrazioni avvengono in `%LOCALAPPDATA%\AURA\staging\<uuid>\`. Dopo la verifica dell'hash SHA-256, la directory viene spostata atomicamente nella destinazione finale.
+   - Il bootstrap risolve la precedenza: runtime attivo in `LocalAppData` (se valido e compatibile) prevale sul runtime bundled sotto `Program Files`.
 
-4. **Classificazione e Binding di Modelli GGUF Locali**:
-   - I modelli GGUF locali scoperti tramite scansione vengono classificati su 6 livelli normativi (`exactVerifiedMatch`, `compatibleKnownVariant`, `compatibleUnverifiedImport`, `externallyOwnedBinding`, `incompatible`, `unknownReviewRequired`).
-   - Si applica una distinzione netta tra modelli gestiti ed importati (`importedManaged`, copiati e gestiti dallo store) e modelli locali ad associazione esterna (`externalLocal`, mantenuti nella cartella utente originaria senza alcuna modifica). La sola coincidenza del nome file non costituisce mai prova di compatibilità.
-
-5. **Consenso ed Assenza di Download Impliciti**:
+4. **Consenso ed Assenza di Download Impliciti**:
    - Tutti i download da repository di terze parti (es. Hugging Face) richiedono il consenso esplicito dell'utente previa presentazione di un riepilogo dettagliato (spazio richiesto, dimensione download, licenze, percorso). La policy predefinita è `neverDownload`.
 
 > [!NOTE]
-> L'implementazione di `ModelProvisioningService`, `ArtifactDownloader`, `ModelStore` e delle relative UI appartiene alle sottofasi da **6.3** in avanti. Le Fasi 6.1c, 6.2a e 6.2b restano focalizzate sui contratti di runtime, sul composition root e sulla supervisione del processo locale.
+> L'implementazione di `ModelProvisioningService`, `ArtifactDownloader`, `ModelStore` e delle relative UI appartiene alla Fase **6.3**. Le Fasi 6.2b e 6.2c hanno completato la supervisione out-of-process, la state machine del processo ed il consolidamento normativo.
 
 
 

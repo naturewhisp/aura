@@ -654,9 +654,41 @@ Componenti implementati:
    - Suite di test di equivalenza comportamentale (`legacy_runtime_equivalence_test.dart`) che dimostra perfetta corrispondenza di output e policy tra il vecchio ed il nuovo percorso di runtime.
    - Preservazione al 100% dell'invarianza del composition root legacy (`LocalApiInferenceBridge`, `main.dart`, `bin/aura_cli.dart`, `bin/run_simulation.dart`).
 
-### 11.4 Planned Model Provisioning Boundary (Design Specification)
+### 11.4 Fase 6.2a — Spostamento del Composition Root & Selezione Esplicita del Runtime Path
 
-Stato: **Pianificato / Specificato Normativamente** *(Nessuna implementazione codice presente nella Fase 6.1c)*.
+Stato: **completata**.
+
+Componenti implementati:
+
+1. **Application Bootstrap Contract (`lib/src/bootstrap/`)**
+   - `ApplicationBootstrap`: contratto astratto del composition root applicativo platform-neutral per la costruzione delle dipendenze e l'inizializzazione del runtime.
+   - `ApplicationRuntimeMode`: enum tipizzata per la selezione esplicita del runtime path (`legacyExternalOpenAi`, `externalOpenAiRuntime`, `ruleBased`). Nessun percorso viene selezionato tramite stringhe sciolte o euristiche implicite.
+   - `ApplicationRuntimeConfiguration`: configurazione immutabile e tipizzata (`runtimeMode`, `baseUri`, `apiKey`, `actorModelId`, `evaluatorModelId`, `timeout`, `skipHealthCheck`, `useSharedModel`, `sessionId`, `diagnosticMode`, `fallbackPolicy`).
+   - `ApplicationBootstrapRequest` e `ApplicationBootstrapResult`: DTO di input ed output del bootstrap. `ApplicationBootstrapResult` espone `controller`, `activeBridge`, `runtimeMode` e `status` (DTO diagnostico non sensibile), nascondendo alla UI client HTTP, API key e `ModelHandle`.
+   - `ApplicationBootstrapException` e `ApplicationBootstrapFailure`: gestione centralizzata dei fallimenti di bootstrap che impedisce il leak di eccezioni grezze (`FormatException`, `SocketException`, `ClientException`) verso i consumer applicativi.
+
+2. **Composition Root Implementation & Ownership (`DefaultApplicationBootstrap` / `ApplicationBootstrapFactory`)**
+   - `DefaultApplicationBootstrap`: implementazione concreta che gestisce la creazione e l'ownership del ciclo di vita delle risorse (`InferenceRuntime`, `ExternalOpenAiClient`, `InferenceBridge`).
+   - Supporta il parsing centralizzato delle variabili d'ambiente (`AURA_RUNTIME_MODE`, `AURA_INFERENCE_BASE_URL`, `AURA_ACTOR_MODEL_ID`, `AURA_EVALUATOR_MODEL_ID`, `AURA_INFERENCE_API_KEY`).
+   - Gestisce i tre percorsi di runtime:
+     - `legacyExternalOpenAi`: istanzia `LocalApiInferenceBridge` e i router/catalog di compatibilità.
+     - `externalOpenAiRuntime`: istanzia `ExternalOpenAiConfiguration`, `ExternalOpenAiClient`, `ExternalOpenAiRuntime`, effettua i binding espliciti (`aura.actor.primary`, `aura.evaluator.primary` o modello condiviso) e costruisce `RuntimeInferenceBridge`.
+     - `ruleBased`: istanzia `RuleBasedInferenceRuntime` e `RuntimeInferenceBridge` senza alcuna chiamata di rete.
+   - Ownership del ciclo di vita: `dispose()` è idempotente e sicuro da chiamare più volte, garantendo la chiusura deterministica dei client e dei runtime.
+
+3. **Integrazione Entrypoint Applicativi**
+   - `app/lib/main.dart`: delega la costruzione delle dipendenze ad `ApplicationBootstrapFactory` ed avvia l'App Flutter senza conoscere `LocalApiInferenceBridge`, `ExternalOpenAiRuntime` o endpoint HTTP.
+   - `bin/aura_cli.dart`: utilizza `ApplicationBootstrap`, supporta flag CLI (`--runtime`, `--base-url`, `--actor-model`, `--evaluator-model`) e garantisce la dismissione delle risorse tramite `try/finally`.
+   - `bin/run_simulation.dart`: utilizza `ApplicationBootstrap` impostando di default la modalità `ruleBased` offline deterministica per i test di simulazione.
+
+4. **Debito Tecnico Residuo e Confine Fase 6.2b**
+   - *Debito Tecnico Residuo:* I model ID fisici di fallback figurano ancora all'interno delle rotte di `LegacyInferenceRouteResolver`; verranno migrati del tutto nelle fasi successive.
+   - *Confine con Fase 6.2b:* Non sono stati implementati `ManagedLlamaServerRuntime`, l'avvio di `llama-server.exe`, la supervisione di processi, i download di modelli/runtime, il `ModelLifecycleManager` o le schermate di impostazioni.
+
+### 11.5 Planned Model Provisioning Boundary (Design Specification)
+
+Stato: **Pianificato / Specificato Normativamente** *(Nessuna implementazione codice presente nella Fase 6.1c e 6.2a)*.
+
 
 Specifiche e Principi Architetturali:
 

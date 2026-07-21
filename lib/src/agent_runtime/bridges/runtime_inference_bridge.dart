@@ -105,11 +105,19 @@ class RuntimeBridgeTimeoutPolicy {
   });
 }
 
-/// Scheduler interface managing generation execution timeouts.
+/// Semantic identifier for the operation being timed out.
+///
+/// Passed explicitly by the orchestrator so that [TimeoutScheduler]
+/// implementations can dispatch without inspecting the concrete timeout
+/// duration value, which is fragile and subject to configuration change.
+enum TimeoutTarget { generation, cancellation }
+
+/// Scheduler interface managing application-level timeouts.
 abstract interface class TimeoutScheduler {
   Future<T> runWithTimeout<T>({
     required Future<T> Function() action,
     required Duration timeout,
+    required TimeoutTarget target,
     required Future<T> Function() onTimeout,
   });
 }
@@ -122,6 +130,7 @@ class AsyncTimeoutScheduler implements TimeoutScheduler {
   Future<T> runWithTimeout<T>({
     required Future<T> Function() action,
     required Duration timeout,
+    required TimeoutTarget target,
     required Future<T> Function() onTimeout,
   }) async {
     try {
@@ -132,26 +141,42 @@ class AsyncTimeoutScheduler implements TimeoutScheduler {
   }
 }
 
-/// Deterministic [TimeoutScheduler] for offline unit testing without real clock delays.
+/// Deterministic [TimeoutScheduler] for offline unit testing.
+///
+/// Uses the explicit [TimeoutTarget] passed by the orchestrator to decide
+/// whether to trigger the timeout handler.  No duration heuristic is used.
 class FakeTimeoutScheduler implements TimeoutScheduler {
+  /// When true, triggers the timeout handler on [TimeoutTarget.generation] calls.
   final bool shouldTriggerTimeout;
+
+  /// When true, triggers the timeout handler on [TimeoutTarget.cancellation] calls.
   final bool shouldTriggerCancelTimeout;
+
+  /// When set, triggers the timeout handler only for the matching [TimeoutTarget].
+  /// Takes precedence over [shouldTriggerTimeout] / [shouldTriggerCancelTimeout].
+  final TimeoutTarget? targetToFail;
 
   const FakeTimeoutScheduler({
     this.shouldTriggerTimeout = false,
     this.shouldTriggerCancelTimeout = false,
+    this.targetToFail,
   });
 
   @override
   Future<T> runWithTimeout<T>({
     required Future<T> Function() action,
     required Duration timeout,
+    required TimeoutTarget target,
     required Future<T> Function() onTimeout,
   }) async {
-    if (timeout < const Duration(seconds: 10) && shouldTriggerCancelTimeout) {
-      return await onTimeout();
-    }
-    if (timeout >= const Duration(seconds: 10) && shouldTriggerTimeout) {
+    // Use the explicit semantic target — no duration heuristic.
+    final trigger = targetToFail != null
+        ? targetToFail == target
+        : (target == TimeoutTarget.generation
+            ? shouldTriggerTimeout
+            : shouldTriggerCancelTimeout);
+
+    if (trigger) {
       return await onTimeout();
     }
     return await action();
@@ -218,6 +243,39 @@ class RuntimeInferenceBridge implements InferenceBridge {
     );
   }
 
+  void _validateExecutionPlan(
+    RuntimeModelExecutionPlan plan,
+    ModelRole requestedRole,
+  ) {
+    if (plan.role != requestedRole) {
+      throw RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.invalidState,
+          message:
+              'Incoerenza nel piano di esecuzione: ruolo richiesto $requestedRole, ma il piano indica ${plan.role}.',
+        ),
+      );
+    }
+    if (plan.logicalModelId != plan.handle.logicalModelId) {
+      throw RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.invalidState,
+          message:
+              'Incoerenza logical ID nel piano: "${plan.logicalModelId}" vs handle "${plan.handle.logicalModelId}".',
+        ),
+      );
+    }
+    if (!plan.handle.roles.contains(requestedRole)) {
+      throw RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.invalidState,
+          message:
+              'L\'handle fornito non autorizza il ruolo richiesto $requestedRole.',
+        ),
+      );
+    }
+  }
+
   InferenceRole _parseRole(String roleStr) {
     switch (roleStr.toLowerCase()) {
       case 'system':
@@ -227,7 +285,13 @@ class RuntimeInferenceBridge implements InferenceBridge {
       case 'assistant':
         return InferenceRole.assistant;
       default:
-        return InferenceRole.user;
+        throw RuntimeException(
+          RuntimeFailure(
+            code: RuntimeFailureCode.invalidArgument,
+            message:
+                'Ruolo messaggio sconosciuto o non supportato: "$roleStr". I ruoli validi sono: system, user, assistant.',
+          ),
+        );
     }
   }
 
@@ -246,6 +310,7 @@ class RuntimeInferenceBridge implements InferenceBridge {
         return res;
       },
       timeout: timeoutPolicy.generationTimeout,
+      target: TimeoutTarget.generation,
       onTimeout: () async {
         timedOut = true;
         String cancellationDisposition = 'confirmed';
@@ -255,6 +320,7 @@ class RuntimeInferenceBridge implements InferenceBridge {
           await timeoutScheduler.runWithTimeout<void>(
             action: () => runtime.cancel(requestId),
             timeout: timeoutPolicy.cancellationTimeout,
+            target: TimeoutTarget.cancellation,
             onTimeout: () async {
               cancellationDisposition = 'cancellationTimedOut';
             },
@@ -297,6 +363,8 @@ class RuntimeInferenceBridge implements InferenceBridge {
   }) async {
     final role = routeResolver.resolveRole(modelId);
     final plan = planResolver(role);
+    _validateExecutionPlan(plan, role);
+
     final requestId = requestIdFactory.next();
     final traceId = traceIdFactory.next();
 
@@ -307,6 +375,12 @@ class RuntimeInferenceBridge implements InferenceBridge {
             ))
         .toList();
 
+    final thinkingPolicy = switch (thinking) {
+      true => ThinkingPolicy.enabled,
+      false => ThinkingPolicy.disabled,
+      null => ThinkingPolicy.runtimeDefault,
+    };
+
     final request = TextGenerationRequest(
       requestId: requestId,
       model: plan.handle,
@@ -314,6 +388,7 @@ class RuntimeInferenceBridge implements InferenceBridge {
       parameters: GenerationParameters(
         temperature: temperature,
         maxOutputTokens: maxTokens,
+        thinkingPolicy: thinkingPolicy,
       ),
       traceContext: InferenceTraceContext(
         traceId: traceId,
@@ -362,6 +437,7 @@ class RuntimeInferenceBridge implements InferenceBridge {
   }) async {
     final role = routeResolver.resolveRole(modelId);
     final plan = planResolver(role);
+    _validateExecutionPlan(plan, role);
     final requestId = requestIdFactory.next();
     final traceId = traceIdFactory.next();
 

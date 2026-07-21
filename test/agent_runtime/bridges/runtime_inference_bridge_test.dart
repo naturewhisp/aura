@@ -65,8 +65,8 @@ void main() {
     });
 
     test(
-        'Resolves legacy model ID to role and executes Actor text generation with output policy',
-        () async {
+        'Resolves legacy model ID to role and executes Actor text generation '
+        'with output policy', () async {
       runtime.textResponse =
           "Thinking process...\n<dialogo>I miei protocolli rimangono inviolati e stabili.</dialogo>";
 
@@ -85,7 +85,7 @@ void main() {
     test(
         'Executes Evaluator text generation without narrative output sanitizer',
         () async {
-      runtime.textResponse = "Evaluator raw text response";
+      runtime.textResponse = 'Evaluator raw text response';
 
       final response = await bridge.generateText(
         modelId: 'mistralai/ministral-3-3b',
@@ -99,10 +99,12 @@ void main() {
     });
 
     test(
-        'Throws RuntimeFailureCode.modelMissing on unknown legacy model ID route',
-        () async {
-      expect(
-        () => bridge.generateText(
+        'Throws RuntimeFailureCode.modelMissing on unknown legacy model ID '
+        'route', () async {
+      // routeResolver.resolveRole throws synchronously before any await, so
+      // the Future is immediately rejected.  expectLater correctly awaits it.
+      await expectLater(
+        bridge.generateText(
           modelId: 'unknown/unregistered-model',
           messages: [
             {'role': 'user', 'content': 'Test'}
@@ -118,33 +120,107 @@ void main() {
       );
     });
 
-    test('Uses explicit RuntimeModelExecutionPlan in planResolver', () async {
-      final customBridge = RuntimeInferenceBridge(
+    test('Throws RuntimeFailureCode.invalidArgument on unknown message role',
+        () async {
+      await expectLater(
+        bridge.generateText(
+          modelId: 'qwen/qwen3.5-9b',
+          messages: [
+            {'role': 'unsupported_role', 'content': 'Hello'}
+          ],
+        ),
+        throwsA(
+          isA<RuntimeException>().having(
+            (e) => e.failure.code,
+            'code',
+            equals(RuntimeFailureCode.invalidArgument),
+          ),
+        ),
+      );
+    });
+
+    test('Validates execution plan and throws invalidState on role mismatch',
+        () async {
+      final mismatchedBridge = RuntimeInferenceBridge(
         runtime: runtime,
-        planResolver: (role) {
-          final handle =
-              (role == ModelRole.actor) ? actorHandle : evaluatorHandle;
-          return RuntimeModelExecutionPlan(
-            role: role,
-            logicalModelId: handle.logicalModelId,
-            handle: handle,
-          );
-        },
+        planResolver: (role) => RuntimeModelExecutionPlan(
+          role: ModelRole.evaluator, // mismatched when actor is requested
+          logicalModelId: 'aura.actor.primary',
+          handle: actorHandle,
+        ),
       );
 
-      runtime.textResponse = "<dialogo>Risposta attore</dialogo>";
-      final result = await customBridge.generateText(
-        modelId: 'aura.actor.primary',
+      await expectLater(
+        mismatchedBridge.generateText(
+          modelId: 'qwen/qwen3.5-9b',
+          messages: [
+            {'role': 'user', 'content': 'Hi'}
+          ],
+        ),
+        throwsA(
+          isA<RuntimeException>().having(
+            (e) => e.failure.code,
+            'code',
+            equals(RuntimeFailureCode.invalidState),
+          ),
+        ),
+      );
+    });
+
+    test('Maps thinking:true to ThinkingPolicy.enabled', () async {
+      runtime.textResponse = '<dialogo>Thought response</dialogo>';
+
+      await bridge.generateText(
+        modelId: 'qwen/qwen3.5-9b',
         messages: [
-          {'role': 'user', 'content': 'Hi'}
+          {'role': 'user', 'content': 'Test thinking'}
         ],
+        thinking: true,
       );
 
-      expect(result, equals('Risposta attore'));
+      expect(
+        runtime.textRequests.single.parameters.thinkingPolicy,
+        equals(ThinkingPolicy.enabled),
+      );
+    });
+
+    test('Maps thinking:false to ThinkingPolicy.disabled', () async {
+      runtime.textResponse = '<dialogo>Response</dialogo>';
+
+      await bridge.generateText(
+        modelId: 'qwen/qwen3.5-9b',
+        messages: [
+          {'role': 'user', 'content': 'Test no thinking'}
+        ],
+        thinking: false,
+      );
+
+      expect(
+        runtime.textRequests.single.parameters.thinkingPolicy,
+        equals(ThinkingPolicy.disabled),
+      );
+    });
+
+    test('Maps thinking:null to ThinkingPolicy.runtimeDefault', () async {
+      runtime.textResponse = '<dialogo>Default response</dialogo>';
+
+      await bridge.generateText(
+        modelId: 'qwen/qwen3.5-9b',
+        messages: [
+          {'role': 'user', 'content': 'Test default thinking'}
+        ],
+        // thinking: null is the default
+      );
+
+      expect(
+        runtime.textRequests.single.parameters.thinkingPolicy,
+        equals(ThinkingPolicy.runtimeDefault),
+      );
     });
 
     test(
-        'Handles timeout deterministically and captures cancellation unsupported status',
+        'Handles generation timeout deterministically using explicit '
+        'TimeoutTarget.generation — captures cancellationUnsupported status',
         () async {
       runtime.autoCompleteRequests = false;
       runtime.throwOnCancellation = true;
@@ -152,12 +228,15 @@ void main() {
       final timeoutBridge = RuntimeInferenceBridge.fromHandleResolver(
         runtime: runtime,
         handleResolver: (role) => actorHandle,
+        // FakeTimeoutScheduler with shouldTriggerTimeout: true fires the
+        // onTimeout handler when target == TimeoutTarget.generation.
+        // No duration heuristic is used.
         timeoutScheduler:
             const FakeTimeoutScheduler(shouldTriggerTimeout: true),
       );
 
-      expect(
-        () => timeoutBridge.generateText(
+      await expectLater(
+        timeoutBridge.generateText(
           modelId: 'qwen/qwen3.5-9b',
           messages: [
             {'role': 'user', 'content': 'Test timeout'}

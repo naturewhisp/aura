@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:aura_core/aura_offline.dart';
 import 'src/state_management/game_controller_notifier.dart';
@@ -53,8 +54,8 @@ void main() async {
 /// Widget radice dell'applicazione A.U.R.A.
 ///
 /// Configura il tema grafico in stile terminale retro (verde fosforo e ambra su nero)
-/// e gestisce lo switch tra le schermate principali (Menu di Boot e Terminale).
-class AuraApp extends StatelessWidget {
+/// e possiede il ciclo di vita dell'applicazione intercettando le richieste di uscita del sistema (didRequestAppExit).
+class AuraApp extends StatefulWidget {
   /// Notifier di gestione dello stato di gioco.
   final GameControllerNotifier notifier;
 
@@ -65,9 +66,38 @@ class AuraApp extends StatelessWidget {
   });
 
   @override
+  State<AuraApp> createState() => _AuraAppState();
+}
+
+class _AuraAppState extends State<AuraApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    widget.notifier.dispose();
+    super.dispose();
+  }
+
+  @override
+  Future<AppExitResponse> didRequestAppExit() async {
+    try {
+      await widget.notifier.shutdown();
+    } catch (e) {
+      debugPrint(
+          "[APP] Errore durante lo shutdown delle risorse al didRequestAppExit: $e");
+    }
+    return AppExitResponse.exit;
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GameControllerProvider(
-      notifier: notifier,
+      notifier: widget.notifier,
       child: MaterialApp(
         title: 'A.U.R.A.',
         debugShowCheckedModeBanner: false,
@@ -91,13 +121,13 @@ class AuraApp extends StatelessWidget {
           ),
         ),
         home: ListenableBuilder(
-          listenable: notifier,
+          listenable: widget.notifier,
           builder: (context, _) {
             // Switch dinamico della schermata in base allo stato attuale del notifier
-            if (notifier.currentScreen == "terminal") {
-              return TerminalScreen(notifier: notifier);
+            if (widget.notifier.currentScreen == "terminal") {
+              return TerminalScreen(notifier: widget.notifier);
             } else {
-              return BootMenuScreen(notifier: notifier);
+              return BootMenuScreen(notifier: widget.notifier);
             }
           },
         ),

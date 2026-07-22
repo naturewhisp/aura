@@ -117,6 +117,7 @@ export 'src/provisioning/domain/catalog_acquisition_exceptions.dart';
 export 'src/provisioning/domain/immutable_repository_revision_policy.dart';
 export 'src/provisioning/domain/catalog_compatibility_evaluator.dart';
 export 'src/provisioning/domain/validated_catalog_candidate.dart';
+export 'src/provisioning/domain/validated_catalog_candidate_factory.dart';
 export 'src/provisioning/domain/catalog_selection_policy.dart';
 export 'src/provisioning/validation/catalog_validation_service.dart';
 export 'src/provisioning/crypto/catalog_public_key.dart';

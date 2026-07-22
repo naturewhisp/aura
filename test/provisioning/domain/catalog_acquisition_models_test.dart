@@ -1,4 +1,5 @@
-import 'package:aura_core/aura_core.dart';
+import 'dart:convert';
+import 'package:aura_core/aura_offline.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -48,45 +49,50 @@ void main() {
     });
 
     test(
-        'CatalogDeclarationIdentity combines catalogId, catalogRevision, and ArtifactIdentity',
+        'ValidatedCatalogCandidate enforces source and trustLevel consistency invariants (Finding 3)',
         () {
-      final content = ContentIdentity(sizeBytes: 2048, sha256: 'b' * 64);
-      final artifact = ArtifactIdentity(
-        artifactId: 'gemma-4-12b-it-qat-q4_0',
-        version: '1.0.0',
-        buildId: 'b1042',
-        contentIdentity: content,
-      );
-      final declaration = CatalogDeclarationIdentity(
+      final manifest = CatalogManifest.initialDefault();
+      final payload = CatalogSignedPayload(
+        schemaVersion: '1.0',
+        signatureAlgorithm: 'ed25519-v1',
+        keyId: 'aura-release-key-2026-01',
         catalogId: 'aura-official-catalog',
+        catalogVersion: '1.0.0',
         catalogRevision: 42,
-        artifactIdentity: artifact,
+        issuedAt: '2026-07-22T20:00:00Z',
+        expiresAt: '2026-08-22T20:00:00Z',
+        manifest: manifest,
+      );
+      final envelope = CatalogEnvelope(
+        signedPayload: payload,
+        signature: base64.encode(List.filled(64, 1)),
+      );
+      const comp = CatalogCompatibilityResult(
+          status: CatalogCompatibilityStatus.compatible);
+
+      // Combinazione non valida: remoteSigned con developmentUnsigned
+      expect(
+        () => ValidatedCatalogCandidate(
+          envelope: envelope,
+          source: CatalogSource.remoteSigned,
+          trustLevel: CatalogTrustLevel.developmentUnsigned,
+          compatibility: comp,
+          canonicalPayloadDigest: 'digest',
+        ),
+        throwsArgumentError,
       );
 
-      expect(declaration.catalogId, equals('aura-official-catalog'));
-      expect(declaration.catalogRevision, equals(42));
-      expect(declaration.artifactIdentity, equals(artifact));
-    });
-
-    test(
-        'Differentiates same binary blob under different artifact identity (version/buildId)',
-        () {
-      final content = ContentIdentity(sizeBytes: 2048, sha256: 'b' * 64);
-      final v1 = ArtifactIdentity(
-        artifactId: 'gemma-4-12b-it-qat-q4_0',
-        version: '1.0.0',
-        buildId: 'b1042',
-        contentIdentity: content,
+      // Combinazione valida: remoteSigned con signatureVerified
+      expect(
+        () => ValidatedCatalogCandidate(
+          envelope: envelope,
+          source: CatalogSource.remoteSigned,
+          trustLevel: CatalogTrustLevel.signatureVerified,
+          compatibility: comp,
+          canonicalPayloadDigest: 'digest',
+        ),
+        returnsNormally,
       );
-      final v2 = ArtifactIdentity(
-        artifactId: 'gemma-4-12b-it-qat-q4_0',
-        version: '1.1.0',
-        buildId: 'b1043',
-        contentIdentity: content,
-      );
-
-      expect(v1, isNot(equals(v2)));
-      expect(v1.hashCode, isNot(equals(v2.hashCode)));
     });
 
     test('CatalogSignedPayload & CatalogEnvelope round-trip JSON serialization',

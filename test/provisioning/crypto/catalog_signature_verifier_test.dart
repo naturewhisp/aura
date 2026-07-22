@@ -155,6 +155,48 @@ void main() {
           equals(CatalogAcquisitionFailureReason.signatureVerificationFailed));
     });
 
+    test(
+        'Rejects signature when trusted key algorithm does not match signatureAlgorithm (Finding 1)',
+        () async {
+      final mismatchedPublicKey = CatalogPublicKey(
+        keyId: 'aura-release-key-2026-01',
+        algorithm: 'rsa-sha256', // Mismatch with ed25519-v1
+        rawKeyBytes: publicKeyBytes,
+      );
+      final mismatchedTrustStore =
+          InMemoryCatalogTrustStore.fromKeys([mismatchedPublicKey]);
+
+      final payload = CatalogSignedPayload(
+        schemaVersion: '1.0',
+        signatureAlgorithm: 'ed25519-v1',
+        keyId: 'aura-release-key-2026-01',
+        catalogId: 'aura-official-catalog',
+        catalogVersion: '1.0.0',
+        catalogRevision: 42,
+        issuedAt: '2026-07-22T20:00:00Z',
+        expiresAt: '2026-08-22T20:00:00Z',
+        manifest: CatalogManifest.initialDefault(),
+      );
+
+      final envelope = CatalogEnvelope(
+        signedPayload: payload,
+        signature: base64.encode(Uint8List(64)),
+      );
+
+      final verifier = Ed25519CatalogSignatureVerifier();
+      final result = await verifier.verify(
+        envelope: envelope,
+        canonicalSignedPayload: Uint8List.fromList([1, 2, 3]),
+        trustStore: mismatchedTrustStore,
+      );
+
+      expect(result.isValid, isFalse);
+      expect(
+          result.failureReason,
+          equals(
+              CatalogAcquisitionFailureReason.unsupportedSignatureAlgorithm));
+    });
+
     test('Rejects unsupported algorithm and unknown keyId', () async {
       final payload = CatalogSignedPayload(
         schemaVersion: '1.0',

@@ -90,14 +90,17 @@ abstract final class Rfc8785JcsCanonicalizer {
         buffer.write('0');
         return;
       }
-      // Se il double rappresenta esattamente un intero senza parte decimale
-      if (d == d.truncateToDouble() && d.abs() < 1e21) {
+      // Se il double rappresenta esattamente un intero senza parte decimale entro i limiti di int 64-bit
+      if (d == d.truncateToDouble() && d.abs() < 9e18) {
         buffer.write(d.toInt().toString());
       } else {
         // ECMAScript Number-to-String formatting rules
         var str = d.toString();
-        // Convert 'e' or 'E' in Dart to lowercase 'e' without leading zero in exponent
+        // Convert 'E' in Dart to lowercase 'e' without leading zero in exponent
         str = str.replaceAll('E', 'e');
+        if (str.endsWith('.0')) {
+          str = str.substring(0, str.length - 2);
+        }
         if (str.contains('e')) {
           final parts = str.split('e');
           var exp = int.parse(parts[1]);

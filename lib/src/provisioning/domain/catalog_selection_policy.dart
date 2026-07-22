@@ -40,16 +40,40 @@ final class CatalogSelectionResult {
 abstract final class CatalogSelectionPolicy {
   /// Seleziona il candidato ottimale dall'elenco dei [candidates] validati.
   ///
+  /// Se [targetCatalogId] è specificato, vengono presi in considerazione soltanto i candidati con quel `catalogId`.
+  /// Se [targetCatalogId] è `null` e i candidati appartengono a più `catalogId` distinti, la selezione restituisce
+  /// un conflitto per ambiguità di namespace.
   /// In modalità produzione ([isProduction] = true), le sorgenti `localDevelopment` vengono scartate.
   /// L'ordinamento dei candidati idonei privilegia:
-  /// 1. La massima `catalogRevision` del catalogo;
+  /// 1. La massima `catalogRevision` del catalogo (monotona nello stesso namespace);
   /// 2. A parità di revisione, il ranking della sorgente (`remoteSigned` > `cachedSigned` > `bundledBootstrap`).
   static CatalogSelectionResult selectCandidate({
     required List<ValidatedCatalogCandidate> candidates,
+    String? targetCatalogId,
     required bool isProduction,
   }) {
-    // 1. Filtraggio dei candidati compatibili e idonei al profilo di esecuzione
-    final eligible = candidates.where((c) {
+    // 1. Filtraggio per targetCatalogId (se specificato) o verifica di omogeneità di catalogId
+    var filtered = candidates.toList();
+    if (targetCatalogId != null && targetCatalogId.trim().isNotEmpty) {
+      filtered = filtered
+          .where((c) =>
+              c.envelope.signedPayload.catalogId == targetCatalogId.trim())
+          .toList();
+    } else {
+      final distinctCatalogIds =
+          filtered.map((c) => c.envelope.signedPayload.catalogId).toSet();
+      if (distinctCatalogIds.length > 1) {
+        return const CatalogSelectionResult.sameRevisionMismatch(
+          conflictReason:
+              CatalogAcquisitionFailureReason.catalogIdentityMismatch,
+          message:
+              'Trovati candidati con catalogId differenti senza un targetCatalogId esplicito.',
+        );
+      }
+    }
+
+    // 2. Filtraggio dei candidati compatibili e idonei al profilo di esecuzione
+    final eligible = filtered.where((c) {
       if (!c.compatibility.isCompatible) return false;
       if (isProduction && c.source == CatalogSource.localDevelopment)
         return false;
@@ -62,7 +86,7 @@ abstract final class CatalogSelectionPolicy {
       );
     }
 
-    // 2. Controllo di coerenza per pari revisione e catalogId ma digest differenti
+    // 3. Controllo di coerenza per pari revisione e catalogId ma digest differenti
     final candidatesByCatalogRevision =
         <String, Map<int, List<ValidatedCatalogCandidate>>>{};
     for (final c in eligible) {
@@ -92,16 +116,16 @@ abstract final class CatalogSelectionPolicy {
       }
     }
 
-    // 3. Ordinamento deterministico:
-    // Prima per catalogRevision decrescente (revisione più recente);
+    // 4. Ordinamento deterministico entro lo stesso namespace:
+    // Prima per catalogRevision decrescente;
     // A parità di revisione, per ranking della sorgente.
     eligible.sort((a, b) {
       final revA = a.envelope.signedPayload.catalogRevision;
       final revB = b.envelope.signedPayload.catalogRevision;
       if (revA != revB) {
-        return revB.compareTo(revA); // Decrescente
+        return revB.compareTo(revA);
       }
-      return b.source.rank.compareTo(a.source.rank); // Decrescente
+      return b.source.rank.compareTo(a.source.rank);
     });
 
     return CatalogSelectionResult.selected(eligible.first);

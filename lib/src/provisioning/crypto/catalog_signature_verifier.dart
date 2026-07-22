@@ -84,6 +84,14 @@ final class Ed25519CatalogSignatureVerifier
       );
     }
 
+    // 3b. Finding 1: Verifica che l'algoritmo dichiarato nella chiave fidata corrisponda a signatureAlgorithm
+    if (trustedKey.algorithm != payload.signatureAlgorithm) {
+      return CatalogSignatureVerificationResult.failure(
+        CatalogAcquisitionFailureReason.unsupportedSignatureAlgorithm,
+        keyId: payload.keyId,
+      );
+    }
+
     // 4. Decodifica della firma in Base64
     Uint8List signatureBytes;
     try {

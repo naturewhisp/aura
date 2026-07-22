@@ -758,12 +758,12 @@ Deliverable e Componenti Implementati:
 
 2. **Ingestione Fisica, Staging Atomico e Persistence:**
    - `ArtifactIngestionEngine` e `AtomicArtifactInstaller` con directory di staging temporanee `.installing-*` e rename atomico sullo stesso volume.
-   - Repositories `JsonInstallationRecordRepository` (`installation_records.json`) e `JsonActivationStateRepository` (`active_state.json`) per la persistenza JSON atomica con protezione da lock, transazioni read-modify-write e file di backup `.bak`.
+   - Repositories `JsonInstallationRecordRepository` (`installation_record.json`) e `JsonActivationStateRepository` (`active_state.json`) per la persistenza JSON atomica con protezione da lock, transazioni read-modify-write e file di backup `.bak`.
 
 3. **Stato Role-Aware, Service Boundary & CLI:**
    - Gestione disaccoppiata e role-aware dello stato di attivazione per Actor ed Evaluator.
-   - Application boundary `ModelProvisioningService` e `ProvisioningCoordinator` per l'orchestrazione delle operazioni di provisioning.
-   - CLI locale in `bin/aura_provisioning.dart` per l'ispezione, ingestione, registrazione ed attivazione offline degli artefatti.
+   - Application boundary `ModelProvisioningService` e `ProvisioningCoordinator` (con i metodi `provisionArtifact()` ed `activateInstallation()`) per l'orchestrazione delle operazioni di provisioning.
+   - Entry point CLI in `bin/aura_provisioning.dart` e `bin/aura_cli.dart` per l'ispezione, ingestione, registrazione ed attivazione offline degli artefatti.
 
 ---
 
@@ -775,7 +775,8 @@ Riferimento normativo dettagliato: [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md]
 Suddivisione in tranche implementative:
 
 1. **Tranche 6.4a — Catalog Acquisition Domain & Trust Model:**
-   - Modellazione pura dei contratti, canonicalizzazione RFC 8785 di `signedPayload`, firma `ed25519-v1` ed enum `CatalogTrustLevel`.
+   - Modellazione pura dei contratti, canonicalizzazione RFC 8785 (JCS) di `signedPayload`, firma `ed25519-v1` ed enum `CatalogTrustLevel`.
+   - Inclusione protetta di `signatureAlgorithm` e `keyId` all'interno di `signedPayload` contro algorithm substitution attack.
    - Tripartizione delle identità: Content Identity `(sizeBytes, sha256)`, Artifact Identity `(artifactId, version, buildId, contentIdentity)` e Catalog Declaration Identity `(catalogId, catalogRevision, artifactIdentity)`.
 
 2. **Tranche 6.4b — Catalog Providers, Signed Cache & Refresh:**
@@ -784,21 +785,22 @@ Suddivisione in tranche implementative:
 
 3. **Tranche 6.4c — Download Engine, Resume & Staging:**
    - Motore di download HTTPS streaming per grandi file `.part` in staging temporaneo (`%LOCALAPPDATA%\AURA\staging\`).
-   - Resume su status HTTP 206 e strong ETag immutato; invalidazione `.part` e reset al byte 0 su status 200 o ETag variato.
+   - Resume su status HTTP 206 e strong ETag immutato; recupero da HTTP 416 se il file `.part` locale ha già la dimensione attesa; reset al byte 0 altrimenti.
    - Checkpoint JSON persistenti, retry con backoff esponenziale, cancellation token e controllo preventivo dello spazio su disco.
    - Invariante di confine: $\text{download completed} \neq \text{artifact verified} \neq \text{artifact installed}$.
 
 4. **Tranche 6.4d — Verification, Import & Provisioning Integration:**
-   - Ingestione via `ModelProvisioningService` verso il path target `%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\` allocato da `ProvisioningPathResolver`.
-   - Calcolo streaming SHA-256 e verifica dimensioni. Registrazione via `JsonInstallationRecordRepository` con provenance completa camelCase.
-   - L'attivazione rimane una chiamata distinta ed opzionale via `ProvisioningCoordinator.activateModel(...)`.
+   - Ingestione via `ModelProvisioningService` verso il path target risolto da `ProvisioningPathResolver.resolveInstalledArtifactPath(artifact)` (`%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\` su Windows).
+   - Calcolo streaming SHA-256 e verifica dimensioni. Registrazione in `installation_record.json` via `JsonInstallationRecordRepository` con provenance completa camelCase.
+   - Estensione esplicita API: introduzione del metodo `ProvisioningCoordinator.registerVerifiedArtifact(...)`. L'attivazione rimane una chiamata distinta ed opzionale via `ProvisioningCoordinator.activateInstallation(...)`.
 
 5. **Tranche 6.4e — Model Lifecycle: Update, Repair & Rollback:**
    - Ciclo di update side-by-side in directory versionate distinte `<version>_<buildId>`, `InstallationHealthService` prima dell'attivazione, conservazione di `last-known-good` per ruolo e `RetentionPolicy`. Divieto assoluto di overwrite in-place.
 
 6. **Tranche 6.4f — Application Integration & Operational CLI:**
    - Integrazione nei composition root `DefaultApplicationBootstrap` e `PlatformServices`, configurazione del trust store (`AURA_TRUST_STORE_PATH`, `AURA_CATALOG_KEY_ID`).
-   - 12 forme di comando CLI in `bin/aura_cli.dart` e `bin/aura_provisioning.dart`, sanitizzazione dei log e disaccoppiamento totale della UI.
+   - Entry point CLI: `bin/aura_cli.dart` (entry point pubblico) e `bin/aura_provisioning.dart` (wrapper locale) condividono `CatalogCliController` ed esporranno le 12 forme di comando.
+   - Sanitizzazione dei log e disaccoppiamento totale della UI.
 
 > [!NOTE]
 > La pipeline CI/CD di pubblicazione e firma dei cataloghi appartiene alla **Fase 6.9** (Release Pipeline). La Fase 6.4 implementa ed esegue la verifica e il consumo lato client tramite la chiave pubblica configurata.

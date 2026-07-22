@@ -3900,8 +3900,8 @@ Obiettivi e Deliverable Consolidati:
 - **Modelli Predefiniti:** Actor predefinito `gemma-4-12b-it-qat-q4_0`, Evaluator predefinito variante Ministral configurata.
 - **Persistence & Filesystem:** Astrazione `LocalProvisioningFileSystem` per lo store dinamico in `%LOCALAPPDATA%\AURA\models` e la gestione atomica dei file/directory tramite `ProvisioningPathResolver`.
 - **Acquisizione e Ingestione Locale:** Supportata l'importazione ed ingestione fisica di artefatti GGUF locali tramite `ArtifactIngestionEngine` e `AtomicArtifactInstaller` con validazione SHA-256 e directory staging `.installing-*`.
-- **Registro ed Attivazione Role-Aware:** Registrazione atomica tramite `JsonInstallationRecordRepository` (`installation_records.json`) e gestione separata dello stato attivo via `JsonActivationStateRepository` (`active_state.json`) per Actor ed Evaluator.
-- **Resolver, Bootstrap, Fallback & CLI:** `ProvisioningCoordinator`, `RuntimeResolver`, composition root bootstrap, fallback rule-based offline e comandi CLI locali in `bin/aura_provisioning.dart`.
+- **Registro ed Attivazione Role-Aware:** Registrazione atomica tramite `JsonInstallationRecordRepository` (`installation_record.json`) e gestione separata dello stato attivo via `JsonActivationStateRepository` (`active_state.json`) per Actor ed Evaluator.
+- **Resolver, Bootstrap, Fallback & CLI:** `ProvisioningCoordinator`, `RuntimeResolver`, composition root bootstrap, fallback rule-based offline ed entry point CLI in `bin/aura_provisioning.dart` e `bin/aura_cli.dart`.
 
 #### 6.4 Model Acquisition, Download Engine & Lifecycle Automation (Tranche 6.4a–6.4f)
 
@@ -3913,9 +3913,10 @@ Scopo: Estendere il motore di provisioning locale con l'acquisizione remota dei 
 Tranche implementative sequenziali:
 
 ##### 6.4a — Catalog Acquisition Domain & Trust Model
-- Definizione dei contratti, della canonicalizzazione RFC 8785 di `signedPayload` e del trust model in assenza di networking reale.
-- Algoritmo normativo: `ed25519-v1` per la firma digitale dell'envelope.
+- Definizione dei contratti, della canonicalizzazione RFC 8785 (JCS) di `signedPayload` e del trust model in assenza di networking reale.
+- Algoritmo normativo: `ed25519-v1` (Ed25519 per RFC 8032 con 64 byte di firma e 32 byte di chiave pubblica).
 - Tripartizione delle identità: Content Identity `(sizeBytes, sha256)`, Artifact Identity `(artifactId, version, buildId, contentIdentity)` e Catalog Declaration Identity `(catalogId, catalogRevision, artifactIdentity)`.
+- Protezione crittografica avanzata: `signatureAlgorithm` e `keyId` integrati direttamente in `signedPayload` e protetti da firma JCS.
 - Introduzione di `CatalogSource`, `CatalogEnvelope`, `CatalogTrustLevel` (`bootstrapDeclared`, `signatureVerified`, `locallyImported`, `developmentUnsigned`), `CatalogSignatureVerifier`, `CatalogValidationService` e `CatalogSelectionPolicy`.
 - Divieto assoluto di revisioni mobili (`main`, `latest`).
 
@@ -3925,15 +3926,15 @@ Tranche implementative sequenziali:
 
 ##### 6.4c — Download Engine, Resume & Staging
 - Motore di download HTTPS streaming per grandi file `.part` in `%LOCALAPPDATA%\AURA\staging\`.
-- Policy di resume robusta: Range resume su status 206 e strong ETag immutato; invalidazione `.part` e reset al byte 0 su status 200 o ETag variato.
+- Policy di resume rigorosa basata su strong ETag: Range resume su status 206 e strong ETag immutato; recupero su HTTP 416 se la dimensione locale equivale a `expectedSizeBytes`; reset e troncamento a byte 0 altrimenti.
 - Checkpoint persistenti JSON, retry exponential backoff, cancellation token e pre-allocazione dello spazio su disco.
 - Regola di confine: $\text{download completed} \neq \text{artifact verified} \neq \text{artifact installed}$. La tranche termina con un file `StagingArtifact` non ancora fidato.
 
 ##### 6.4d — Verification, Import & Provisioning Integration
 - Integrazione dell'output di staging e degli import locali via `ModelProvisioningService` con `ArtifactIngestionEngine`, `ProvisioningPathResolver` ed `InstallationRecordRepository`.
-- Destinazione target: `%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\`.
-- Calcolo streaming SHA-256 e verifica dimensione. Generazione dell'`InstallationRecord` con provenance completa camelCase (`catalogId`, `catalogVersion`, `catalogRevision`, `artifactId`, `version`, `buildId`, `repository`, `repositoryRevision`, `fileName`, `sizeBytes`, `sha256`, `trustProvenance`, `acquiredAt`).
-- L'attivazione resta responsabilità esplicita e separata via `ProvisioningCoordinator.activateModel(...)`.
+- Destinazione target allocata da `ProvisioningPathResolver`: `%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\`.
+- Calcolo streaming SHA-256 e verifica dimensione. Generazione dell'`InstallationRecord` in `installation_record.json` con provenance completa camelCase.
+- Estensione del coordinator: introduzione del metodo `ProvisioningCoordinator.registerVerifiedArtifact(...)`. L'attivazione rimane un'operazione esplicita separata via `ProvisioningCoordinator.activateInstallation(...)`.
 
 ##### 6.4e — Model Lifecycle: Update, Repair & Rollback
 - Policy di update side-by-side: `download nuova build` $\rightarrow$ `verify` $\rightarrow$ `side-by-side install in <version>_<buildId>` $\rightarrow$ `health check` $\rightarrow$ `activate` $\rightarrow$ `previous active diventa last-known-good` $\rightarrow$ `deferred cleanup`.
@@ -3941,7 +3942,7 @@ Tranche implementative sequenziali:
 
 ##### 6.4f — Application Integration & Operational CLI
 - Integrazione dei servizi in `DefaultApplicationBootstrap` e configurazione delle chiavi/trust store (`AURA_TRUST_STORE_PATH`, `AURA_CATALOG_KEY_ID`).
-- 12 forme di comando CLI in `bin/aura_cli.dart` e `bin/aura_provisioning.dart`: `catalog status`, `catalog refresh`, `catalog show`, `download <artifactId>`, `download status`, `download cancel`, `import <path>`, `install <artifactId>`, `update check`, `update apply <artifactId>`, `repair <installationId>`, `rollback --role actor|evaluator|runtime`.
+- Entrypoint CLI: `bin/aura_cli.dart` (entrypoint applicativo principale) e `bin/aura_provisioning.dart` (wrapper locale) condividono `CatalogCliController` per esporre le 12 forme di comando operational.
 - Sanitizzazione dei log e disaccoppiamento totale della UI dai repository.
 
 #### 6.5 Deterministic and Real-Model Test Runtime

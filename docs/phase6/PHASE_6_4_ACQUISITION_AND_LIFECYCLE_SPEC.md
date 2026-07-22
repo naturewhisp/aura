@@ -2,7 +2,7 @@
 
 **Project:** A.U.R.A. — Artificial Unbound Reasoning Arena  
 **Target path:** `docs/phase6/PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md`  
-**Status:** Approved Specification & Implementation Roadmap (Revised Document Baseline)  
+**Status:** Approved Specification & Implementation Roadmap (Final Normative Baseline)  
 **Phase:** 6.4 — Model Acquisition, Download Engine & Lifecycle Automation  
 **Parent documents:**
 - [CROSS_PLATFORM_RUNTIME_ADR.md](CROSS_PLATFORM_RUNTIME_ADR.md)
@@ -21,7 +21,7 @@
 
 This specification defines the architecture, trust model, canonical signature representation, network protocols, resilient download engine, verification pipelines, and lifecycle automation for remote model and catalog acquisition in A.U.R.A.
 
-Phase 6.3 established the physical storage foundation, local JSON persistence (`JsonInstallationRecordRepository`, `JsonActivationStateRepository`), atomic directory installation via `LocalProvisioningFileSystem`, role-aware activation state, and offline/local GGUF acquisition. Phase 6.4 extends this foundation to remote distribution channels, enabling dynamic signed catalog acquisition, cryptographically verified integrity, HTTP Range resume streaming, side-by-side updates, and atomic rollbacks.
+Phase 6.3 established the physical storage foundation, local JSON persistence (`JsonInstallationRecordRepository` storing `installation_record.json`, `JsonActivationStateRepository` storing `active_state.json`), atomic directory installation via `LocalProvisioningFileSystem`, role-aware activation state, and offline/local GGUF acquisition. Phase 6.4 extends this foundation to remote distribution channels, enabling dynamic signed catalog acquisition, cryptographically verified integrity, HTTP Range resume streaming, side-by-side updates, and atomic rollbacks.
 
 ---
 
@@ -33,9 +33,9 @@ Phase 6.3 established the physical storage foundation, local JSON persistence (`
   - Core domain models & static bootstrap catalog (`CatalogManifest.initialDefault()`);
   - Physical store filesystem abstraction `LocalProvisioningFileSystem` & `ProvisioningPathResolver`;
   - Ingestion & installation components: `ArtifactIngestionEngine`, `AtomicArtifactInstaller`;
-  - Repositories: `JsonInstallationRecordRepository` (implementing `InstallationRecordRepository`) and `JsonActivationStateRepository` (implementing `ActivationStateRepository`);
-  - Role-aware activation state (`actor`, `evaluator`) and `ProvisioningCoordinator`;
-  - Operational CLI commands for local provisioning (`bin/aura_provisioning.dart`).
+  - Repositories: `JsonInstallationRecordRepository` (persisting `installation_record.json`) and `JsonActivationStateRepository` (persisting `active_state.json`);
+  - Role-aware activation state (`actor`, `evaluator`) and `ProvisioningCoordinator` (exposing `provisionArtifact()` and `activateInstallation()`);
+  - Entry points: `bin/aura_provisioning.dart` for local provisioning tasks, `bin/aura_cli.dart` for application-level execution.
 - **Baseline Default Roles:**
   - **Default Actor Target:** `gemma-4-12b-it-qat-q4_0`
   - **Default Evaluator Target:** Configured Ministral variant (`ministral-3-3b` or GGUF equivalent).
@@ -80,7 +80,7 @@ Phase 6.4 is split into six sequential, non-overlapping tranches.
 ```mermaid
 graph TD
     subgraph 6.4a [6.4a Domain & Trust Model]
-        A1[signedPayload Canonicalization] --> A2[ed25519-v1 Signature Verification]
+        A1[signedPayload RFC 8785 JCS] --> A2[ed25519-v1 Signature Verification]
         A2 --> A3[Tripartite Identity Models]
     end
     subgraph 6.4b [6.4b Providers & Signed Cache]
@@ -92,15 +92,15 @@ graph TD
         C2 --> C3[StagingArtifact Output]
     end
     subgraph 6.4d [6.4d Verification & Ingestion]
-        D1[SHA-256 Streaming Verification] --> D2[PathResolver Target Move]
-        D2 --> D3[InstallationRecord with Full Provenance]
+        D1[SHA-256 Streaming Verification] --> D2[ProvisioningPathResolver Target Move]
+        D2 --> D3[InstallationRecord in installation_record.json]
     end
     subgraph 6.4e [6.4e Automated Lifecycle]
         E1[Side-by-Side Update Planner] --> E2[InstallationHealthService Check]
         E2 --> E3[Last-Known-Good & Rollback]
     end
     subgraph 6.4f [6.4f App & CLI Integration]
-        F1[DefaultApplicationBootstrap Binding] --> F2[Operational CLI Commands]
+        F1[DefaultApplicationBootstrap Binding] --> F2[Unified CLI Command Forms]
     end
 
     6.4a --> 6.4b
@@ -117,37 +117,36 @@ graph TD
 #### 3.1.1 Objective
 Define domain contracts, data models, trust levels, signature verification interfaces, and selection policies for remote/local catalogs without performing real network I/O.
 
-#### 3.1.2 Canonical Envelope & Signature Representation
-To prevent recursive signature definition, the `CatalogEnvelope` separates the signature from the signed payload:
+#### 3.1.2 Canonical Envelope & Protected Payload Representation
+To guarantee cryptographic interoperability and prevent algorithm substitution attacks, `signatureAlgorithm` and `keyId` are included directly inside `signedPayload`:
 
 ```text
 CatalogEnvelope
 ├── signedPayload
 │   ├── schemaVersion ("1.0")
+│   ├── signatureAlgorithm ("ed25519-v1")
+│   ├── keyId ("aura-release-key-2026-01")
 │   ├── catalogId ("aura-official-catalog")
 │   ├── catalogVersion ("1.2.0")
 │   ├── catalogRevision (42)
 │   ├── issuedAt ("2026-07-22T21:30:00Z")
 │   ├── expiresAt ("2026-08-22T21:30:00Z")
 │   └── manifest (CatalogManifest DTO)
-├── signatureAlgorithm ("ed25519-v1")
-├── keyId ("aura-release-key-2026-01")
 └── signature ("<BASE64_ED25519_SIGNATURE>")
 ```
 
-#### 3.1.3 Canonicalization & Signature Rules
-1. **Signature Target:** Cryptographic verification is performed strictly on the canonical JSON byte representation of `signedPayload`. The `signature`, `signatureAlgorithm`, and `keyId` fields are outside `signedPayload` and are excluded from signature computation.
-2. **Canonical Encoding:** UTF-8 encoded RFC 8785 (JSON Canonicalization Scheme - JCS) or deterministic lexicographical key ordering without whitespace.
-3. **Normative Cryptographic Algorithm:** `ed25519-v1` (Ed25519 over Curve25519 with SHA-512 per RFC 8032).
-4. **Prohibition of Floating Revisions:** Revision specifiers like `main`, `master`, or `latest` are strictly forbidden in `signedPayload`.
+#### 3.1.3 Strict Canonicalization & Cryptographic Rules
+1. **Uniquely Defined Signature Input:** The signature input byte array is exclusively the UTF-8 encoded bytes of `signedPayload` canonicalized according to **RFC 8785 (JSON Canonicalization Scheme - JCS)**. No fallback to informal key sorting or whitespace stripping is permitted.
+2. **Normative Cryptographic Specification:** `ed25519-v1`: Ed25519 per RFC 8032, with 64-byte signatures and 32-byte public keys.
+3. **Prohibition of Floating Revisions:** Revision specifiers like `main`, `master`, or `latest` are strictly forbidden in `signedPayload`.
 
 #### 3.1.4 Planned Components & Data Contracts
 - `CatalogSource` (`enum`: `bundledBootstrap`, `remoteSigned`, `cachedSigned`, `localDevelopment`)
 - `CatalogTrustLevel` (`enum`: `bootstrapDeclared`, `signatureVerified`, `locallyImported`, `developmentUnsigned`)
-- `CatalogSignedPayload` (Immutable DTO containing catalog metadata and manifest)
-- `CatalogEnvelope` (Wrapper holding `signedPayload`, `signatureAlgorithm`, `keyId`, and `signature`)
-- `CatalogSignatureVerifier` (Abstract interface for verifying `CatalogEnvelope` signatures using trusted public keys)
-- `CatalogValidationService` (Structural and semantic manifest validation)
+- `CatalogSignedPayload` (Immutable DTO containing catalog metadata, protected header fields, and manifest)
+- `CatalogEnvelope` (Outer DTO holding `signedPayload` and `signature`)
+- `CatalogSignatureVerifier` (Abstract interface for verifying `CatalogEnvelope` signatures against trusted public keys)
+- `CatalogValidationService` (Structural and RFC 8785 validation)
 - `CatalogSelectionPolicy` (Evaluates effective catalog precedence)
 - `CatalogCompatibilityEvaluator` (Evaluates application version compatibility)
 
@@ -156,14 +155,14 @@ CatalogEnvelope
 - **Output:** `CatalogAcquisitionResult` with classified `CatalogTrustLevel` and validated `CatalogManifest`.
 
 #### 3.1.6 Failure Model
-- Structural or canonicalization invalidity $\rightarrow$ `CatalogValidationException`.
+- Non-conformance to RFC 8785 or structural invalidity $\rightarrow$ `CatalogValidationException`.
 - Signature mismatch or untrusted `keyId` $\rightarrow$ `CatalogSignatureException`.
 - Prohibited floating revision $\rightarrow$ `InvalidCatalogRevisionException`.
 
 #### 3.1.7 Required Tests
-- Deterministic unit tests for JCS canonicalization and `signedPayload` serialization.
+- Deterministic unit tests enforcing RFC 8785 / JCS canonicalization.
 - Unit tests asserting rejection of `main`/`latest` revisions.
-- `MockCatalogSignatureVerifier` and Ed25519 test vectors (`ed25519-v1`).
+- `MockCatalogSignatureVerifier` and Ed25519 test vectors (`ed25519-v1` RFC 8032).
 - Tripartite identity equality and hash code tests.
 
 #### 3.1.8 Gate Criteria & Deferred Work
@@ -188,7 +187,7 @@ A remote catalog payload MUST pass the following checks before replacing an exis
 2. **Schema Compatibility:** `remote.schemaVersion` is supported by current client.
 3. **Key Lineage:** `remote.keyId` exists in the local trusted key store.
 4. **Monotonic Revision Check:** `remote.catalogRevision >= cached.catalogRevision`.
-5. **Conflict Resolution:** If `remote.catalogRevision == cached.catalogRevision` but the payload hash differs, reject remote payload as `CatalogIntegrityMismatchException`.
+5. **Conflict Resolution:** If `remote.catalogRevision == cached.catalogRevision` but payload digest differs $\rightarrow$ reject remote payload as `CatalogIntegrityMismatchException`.
 6. **Expiration Check:** Rejection if `expiresAt < currentTime` (allowing 300s clock skew margin).
 
 #### 3.2.4 Planned Components
@@ -197,7 +196,7 @@ A remote catalog payload MUST pass the following checks before replacing an exis
 - `CachedCatalogProvider` (Reads/writes verified envelopes to local cache)
 - `CatalogCacheRepository` (Atomic JSON file write with `.bak` recovery via `LocalProvisioningFileSystem`)
 - `CatalogRefreshService` (Orchestrates catalog updates)
-- `Ed25519CatalogSignatureVerifier` (Concrete Ed25519 verifier)
+- `Ed25519CatalogSignatureVerifier` (Concrete Ed25519 verifier per RFC 8032)
 - `CatalogAcquisitionCoordinator` (Executes provider fallback chain)
 - `CatalogRefreshPolicy` (Controls refresh intervals and offline modes)
 
@@ -225,16 +224,23 @@ A remote catalog payload MUST pass the following checks before replacing an exis
 #### 3.3.1 Objective
 Build a resilient, high-performance HTTP Range download engine for large GGUF model files that operates strictly within temporary staging (`.part` files) without altering installation registries.
 
-#### 3.3.2 Robust Resume Policy
-Resume is permitted ONLY when the remote server explicitly confirms continuity of the exact same resource representation:
+#### 3.3.2 Strict Strong-ETag Resume Policy
+Persistent Range resume across sessions is permitted ONLY when validated by a strong HTTP `ETag`:
 - Server MUST respond with HTTP status `206 Partial Content`.
 - `Content-Range` header MUST match requested byte offset.
-- Strong `ETag` (or `Last-Modified`) MUST match `DownloadCheckpoint`.
+- Strong `ETag` MUST match the value stored in `DownloadCheckpoint`.
+- `Last-Modified` is captured purely as diagnostic metadata and MUST NOT be used as a primary validation key for Range resume.
 
-If the server responds with HTTP `200 OK`, `416 Range Not Satisfiable`, mismatched `ETag`, or missing Range headers:
+If the server returns HTTP `200 OK`, mismatched `ETag`, or missing Range headers:
 $$\rightarrow \text{Invalidate checkpoint} \rightarrow \text{Truncate } .part \text{ file} \rightarrow \text{Restart download from byte 0}$$
 
-#### 3.3.3 Planned Components
+#### 3.3.3 HTTP 416 Range Not Satisfiable Handling
+If the server returns HTTP status `416 Range Not Satisfiable` (or `Content-Range: bytes */<length>`):
+- **Recovery Check:** If local `.part` file size equals `expectedSizeBytes` and remote total length equals `expectedSizeBytes`:
+  $$\rightarrow \text{Complete session immediately as completed } StagingArtifact \text{ (integrity to be verified in 6.4d)}$$
+- **Otherwise:** Invalidate checkpoint, truncate `.part` file, and restart download from byte 0.
+
+#### 3.3.4 Planned Components
 - `ArtifactDownloadService` (Main download engine interface and implementation)
 - `DownloadRequest` (Target URL, destination path, expected size, expected SHA-256)
 - `DownloadSession` (Runtime state of an active download)
@@ -246,20 +252,20 @@ $$\rightarrow \text{Invalidate checkpoint} \rightarrow \text{Truncate } .part \t
 - `StagingArtifact` (File descriptor for completed `.part` staging file)
 - `DownloadConcurrencyController` (Concurrency throttle queue, default max 1 active)
 
-#### 3.3.4 Input / Output Contracts
+#### 3.3.5 Input / Output Contracts
 - **Input:** `DownloadRequest` with HTTPS URI and expected size/hash.
 - **Output:** `DownloadResult` with reference to unverified `StagingArtifact`.
 
-#### 3.3.5 Failure Model
+#### 3.3.6 Failure Model
 - Network disconnect $\rightarrow$ Saves `DownloadCheckpoint`, transitions state to `failedRetryable`.
 - Insufficient disk space $\rightarrow$ Throws `InsufficientStorageException`.
 
-#### 3.3.6 Required Tests
-- HTTP Range resume unit tests with 206 vs 200 server responses.
+#### 3.3.7 Required Tests
+- HTTP Range resume unit tests with 206 vs 200 server responses and strong ETag validation.
+- HTTP 416 completion vs reset tests.
 - Interruption, cancellation, and checkpoint persistence tests.
-- Invalid ETag reset tests.
 
-#### 3.3.7 Gate Criteria & Deferred Work
+#### 3.3.8 Gate Criteria & Deferred Work
 - **Gate Criteria:** Resilient download & resume proven over loopback HTTP server; zero orphaned `.part` file leaks on cancel.
 - **Deferred Work:** Streaming SHA-256 verification and move to managed store (deferred to 6.4d).
 
@@ -271,12 +277,13 @@ $$\rightarrow \text{Invalidate checkpoint} \rightarrow \text{Truncate } .part \t
 Bridge completed staging downloads and local user files with Phase 6.3 provisioning infrastructure (`ArtifactIngestionEngine`, `ProvisioningPathResolver`, `JsonInstallationRecordRepository`, and `ProvisioningCoordinator`), validating SHA-256 hashes and recording complete metadata provenance.
 
 #### 3.4.2 Target Installation Path & Provenance Schema
-The target installation directory is allocated strictly by `ProvisioningPathResolver`:
+The target installation directory is resolved strictly via `ProvisioningPathResolver`:
 ```text
-%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\
+ProvisioningPathResolver.resolveInstalledArtifactPath(artifact)
+// Evaluates on Windows to: %LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\
 ```
 
-The persisted `InstallationRecord` uses standard camelCase Dart JSON serialization:
+The persisted `InstallationRecord` is saved into `installation_record.json` using camelCase Dart JSON serialization:
 
 ```json
 {
@@ -296,15 +303,16 @@ The persisted `InstallationRecord` uses standard camelCase Dart JSON serializati
 }
 ```
 
-#### 3.4.3 Orchestration Flow
-`ModelProvisioningService` coordinates the sequence without event-driven notifications:
+#### 3.4.3 Application Service Boundary & Coordinator Integration
+`ModelProvisioningService` coordinates the pipeline using concrete Phase 6.3 primitives:
 ```text
-StagingArtifact / Local File -> Streaming SHA-256 Verification -> Atomic Move via LocalProvisioningFileSystem -> ProvisioningCoordinator.registerInstallation(...) -> ProvisioningResult
+StagingArtifact / Local File -> Streaming SHA-256 Verification -> Move via LocalProvisioningFileSystem -> ProvisioningCoordinator.registerVerifiedArtifact(...) -> ProvisioningResult
 ```
 
-Activation remains an explicit, separate application call:
+- Tranche 6.4d introduces the explicit method `ProvisioningCoordinator.registerVerifiedArtifact(...)` as a specialized extension to handle pre-verified staged artifacts alongside existing `provisionArtifact(...)`.
+- Role activation remains an explicit, separate call using the existing Phase 6.3 API:
 ```text
-ProvisioningCoordinator.activateModel(installationId, ModelActivationRole.actor)
+ProvisioningCoordinator.activateInstallation(installationId, ModelActivationRole.actor)
 ```
 
 #### 3.4.4 Planned Components
@@ -324,7 +332,7 @@ ProvisioningCoordinator.activateModel(installationId, ModelActivationRole.actor)
 - Local GGUF file import & classification tests.
 
 #### 3.4.7 Gate Criteria & Deferred Work
-- **Gate Criteria:** Complete remote & local import pipeline verified end-to-end; full provenance recorded.
+- **Gate Criteria:** Complete remote & local import pipeline verified end-to-end; full provenance recorded in `installation_record.json`.
 - **Deferred Work:** Side-by-side update planning and rollback (deferred to 6.4e).
 
 ---
@@ -374,17 +382,21 @@ Download New Build -> Verify SHA-256 -> Side-by-Side Install in <version>_<build
 ### 3.6 Tranche 6.4f — Application Integration & Operational CLI
 
 #### 3.6.1 Objective
-Wire the remote catalog acquisition, download engine, and lifecycle services into `DefaultApplicationBootstrap` and expose management tools via `bin/aura_cli.dart` and `bin/aura_provisioning.dart`.
+Wire the remote catalog acquisition, download engine, and lifecycle services into `DefaultApplicationBootstrap` and expose management tools via unified CLI controllers shared by `bin/aura_cli.dart` and `bin/aura_provisioning.dart`.
 
-#### 3.6.2 Configuration & Trust Store Parameters
-Environment override configuration parameters:
+#### 3.6.2 Entry Points & Shared Controller Architecture
+- `bin/aura_cli.dart`: Definitive public application entry point supporting both runtime execution and model acquisition/lifecycle commands.
+- `bin/aura_provisioning.dart`: Specialized local provisioning entry point wrapping shared `CatalogCliController` instances.
+
+#### 3.6.3 Configuration & Trust Store Parameters
+Environment override parameters:
 - `AURA_REMOTE_ACQUISITION_ENABLED` (`bool`, default: `true` in production, `false` in tests)
 - `AURA_CATALOG_URL` (`String`, default: official release endpoint)
 - `AURA_TRUST_STORE_PATH` (`String?`, override path for public keys)
 - `AURA_CATALOG_KEY_ID` (`String?`, explicit target public key ID)
 
-#### 3.6.3 Operational CLI Forms (12 Command Forms)
-`bin/aura_cli.dart` and `bin/aura_provisioning.dart` MUST support the following command forms:
+#### 3.6.4 Operational CLI Forms (12 Command Forms)
+The CLI interfaces MUST support the following 12 command forms:
 
 ```text
 aura catalog status                             # Display catalog source, revision, trust level, and model counts
@@ -401,12 +413,12 @@ aura repair <installationId>                    # Repair damaged installation
 aura rollback --role actor|evaluator|runtime    # Instant rollback of specified role to last-known-good
 ```
 
-#### 3.6.4 Planned Components
-- `CatalogCliController` (CLI command handlers)
+#### 3.6.5 Planned Components
+- `CatalogCliController` (Shared CLI command handlers)
 - Composition root wiring in `DefaultApplicationBootstrap`
 - Log & Diagnostic Sanitizer (Filters sensitive network/path details)
 
-#### 3.6.5 Gate Criteria
+#### 3.6.6 Gate Criteria
 - Verification script `tool/run_ci_tests.ps1` completes successfully across `aura` and `app`.
 - `dart analyze` and `flutter analyze` report zero errors, warnings, or info diagnostics.
 - All 12 CLI command forms tested and operational.
@@ -417,12 +429,12 @@ aura rollback --role actor|evaluator|runtime    # Instant rollback of specified 
 
 | Requirement / Component | Tranche | Primary Document | Validation Mechanism |
 | :--- | :---: | :--- | :--- |
-| `signedPayload` Canonicalization & `ed25519-v1` | **6.4a** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#31-tranche-64a--catalog-acquisition-domain--trust-model) | JCS & Signature unit tests |
+| `signedPayload` RFC 8785 JCS & `ed25519-v1` | **6.4a** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#31-tranche-64a--catalog-acquisition-domain--trust-model) | RFC 8785 & Ed25519 unit tests |
 | Namespace Anti-Downgrade & Signed Cache | **6.4b** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#32-tranche-64b--catalog-providers-signed-cache--refresh) | Offline HTTP Fake tests |
-| HTTPS 206 Resume & Checkpoint Reset | **6.4c** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#33-tranche-64c--download-engine-resume--staging) | Loopback server Range tests |
-| SHA-256 Streaming & `JsonInstallationRecordRepository` | **6.4d** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#34-tranche-64d--verification-import--provisioning-integration) | Ingestion pipeline tests |
+| HTTPS 206 Resume, Strong ETag & 416 Recovery | **6.4c** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#33-tranche-64c--download-engine-resume--staging) | Loopback Range & 416 tests |
+| `registerVerifiedArtifact(...)` & `installation_record.json` | **6.4d** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#34-tranche-64d--verification-import--provisioning-integration) | Ingestion & record repository tests |
 | Side-by-Side `<version>_<buildId>` Update & Rollback | **6.4e** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#35-tranche-64e--model-lifecycle-update-repair--rollback) | Lifecycle Integration tests |
-| Operational CLI Forms & Bootstrap | **6.4f** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#36-tranche-64f--application-integration--operational-cli) | Master CI script `tool/run_ci_tests.ps1` |
+| Shared `CatalogCliController` & Unified Entry Points | **6.4f** | [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md#36-tranche-64f--application-integration--operational-cli) | Master CI script `tool/run_ci_tests.ps1` |
 
 ---
 
@@ -430,13 +442,13 @@ aura rollback --role actor|evaluator|runtime    # Instant rollback of specified 
 
 To consider Phase 6.4 fully complete, the system MUST satisfy:
 
-1. **Canonical Signature Payload:** Signature protects RFC 8785 canonical `signedPayload`, not the outer `CatalogEnvelope`.
-2. **Tripartite Identity Model:** Explicit distinction between Content Identity `(sizeBytes, sha256)`, Artifact Identity `(artifactId, version, buildId, contentIdentity)`, and Catalog Declaration Identity `(catalogId, catalogRevision, artifactIdentity)`.
-3. **Exact 6.3 Baseline Symbol Alignment:** Uses `LocalProvisioningFileSystem`, `JsonInstallationRecordRepository`, `JsonActivationStateRepository`, `ProvisioningPathResolver`, and `bin/aura_provisioning.dart`.
-4. **Abstract Provenance Schema:** Uses camelCase JSON placeholders without empty-hash or developer-commit fallbacks.
+1. **RFC 8785 JCS Canonicalization:** Signature protects RFC 8785 canonical UTF-8 `signedPayload` without informal fallback.
+2. **Protected Header Scope:** `signatureAlgorithm` ("ed25519-v1") and `keyId` are embedded inside `signedPayload` and protected by signature.
+3. **Tripartite Identity Model:** Explicit distinction between Content Identity `(sizeBytes, sha256)`, Artifact Identity `(artifactId, version, buildId, contentIdentity)`, and Catalog Declaration Identity `(catalogId, catalogRevision, artifactIdentity)`.
+4. **Exact 6.3 Baseline Symbol Alignment:** Uses `LocalProvisioningFileSystem`, `JsonInstallationRecordRepository` (`installation_record.json`), `JsonActivationStateRepository` (`active_state.json`), `ProvisioningPathResolver`, and `bin/aura_provisioning.dart`.
 5. **Decoupled Verification vs Publication:** Phase 6.9 handles signature generation and publishing; Phase 6.4 handles client acquisition, envelope verification, and payload integrity checks.
-6. **Normative Cryptographic Algorithm:** `ed25519-v1` specified as the primary signature algorithm.
+6. **Normative Cryptographic Specification:** `ed25519-v1` per RFC 8032 (64-byte signature, 32-byte public key).
 7. **Namespace Anti-Downgrade:** Anti-downgrade enforces `catalogId` matching, monotonic revision checks, and integrity validation.
-8. **Robust Range Resume:** Resumes only on HTTP 206 with matching strong `ETag` and byte offsets; resets `.part` file on 200 OK or invalid headers.
-9. **Versioned Target Paths:** Target paths follow `%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\` via `ProvisioningPathResolver`.
-10. **Explicit Application Service Boundary:** `ModelProvisioningService` coordinates ingestion, verifier, and `ProvisioningCoordinator.registerInstallation(...)` without implicit event mechanisms.
+8. **Strong-ETag Resume & 416 Recovery:** Resumes only on HTTP 206 with strong `ETag`; completes 416 requests if local `.part` size equals expected size; resets `.part` file otherwise.
+9. **Resolver-Driven Target Paths:** Target paths follow `ProvisioningPathResolver.resolveInstalledArtifactPath(artifact)` (`%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\` on Windows).
+10. **Explicit Application Service Boundary:** `ModelProvisioningService` coordinates ingestion, verifier, and `ProvisioningCoordinator.registerVerifiedArtifact(...)` without implicit event mechanisms. Role activation uses `ProvisioningCoordinator.activateInstallation(...)`.

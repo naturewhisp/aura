@@ -52,8 +52,8 @@ final class ArtifactIngestionEngine {
 
     final sourceKind = _mapSourceKind(artifact.sourceKind);
 
-    // Validazione Piattaforma ed Architettura
-    if (!_equalsNormalized(artifact.platform, request.expectedPlatform)) {
+    // Validazione Piattaforma ed Architettura (con supporto wildcard 'all' e 'any')
+    if (!_isCompatibleValue(artifact.platform, request.expectedPlatform)) {
       return ProvisioningResult.failure(
         operationId: request.operationId,
         artifactId: artifact.artifactId,
@@ -64,7 +64,7 @@ final class ArtifactIngestionEngine {
       );
     }
 
-    if (!_equalsNormalized(
+    if (!_isCompatibleValue(
         artifact.architecture, request.expectedArchitecture)) {
       return ProvisioningResult.failure(
         operationId: request.operationId,
@@ -340,7 +340,11 @@ final class ArtifactIngestionEngine {
     };
   }
 
-  static bool _equalsNormalized(String a, String b) {
-    return a.trim().toLowerCase() == b.trim().toLowerCase();
+  static bool _isCompatibleValue(String artifactValue, String expectedValue) {
+    final normArtifact = artifactValue.trim().toLowerCase();
+    final normExpected = expectedValue.trim().toLowerCase();
+    return normArtifact == 'all' ||
+        normArtifact == 'any' ||
+        normArtifact == normExpected;
   }
 }

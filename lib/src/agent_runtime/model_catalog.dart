@@ -106,6 +106,14 @@ class ModelCatalogEntry {
   }
 }
 
+/// Identificatori logici stabili dei ruoli dei modelli in A.U.R.A.
+abstract final class LogicalModelIds {
+  static const String defaultActor = 'actor.default';
+  static const String defaultEvaluator = 'evaluator.default';
+  static const String primaryActorAlias = 'aura.actor.primary';
+  static const String primaryEvaluatorAlias = 'aura.evaluator.primary';
+}
+
 /// Gestisce un registro di modelli noti e supportati all'interno di A.U.R.A.
 class ModelCatalog {
   final List<ModelCatalogEntry> _models = [];
@@ -139,6 +147,21 @@ class ModelCatalog {
       registerEntry(
           ModelCatalogEntry.fromJson(Map<String, dynamic>.from(item)));
     }
+  }
+
+  /// Risolve un identificatore o alias logico (es. 'actor.default' o 'aura.actor.primary')
+  /// nel corrispondente artifact/modelId fisico caricato.
+  String resolveLogicalModelId(String logicalOrPhysicalId) {
+    final clean = logicalOrPhysicalId.trim();
+    if (clean == LogicalModelIds.defaultActor ||
+        clean == LogicalModelIds.primaryActorAlias) {
+      return "gemma-4-12b-it-qat-q4-0";
+    }
+    if (clean == LogicalModelIds.defaultEvaluator ||
+        clean == LogicalModelIds.primaryEvaluatorAlias) {
+      return "mistralai/ministral-3-3b";
+    }
+    return clean;
   }
 
   /// Costruttore factory per caricare il catalogo con i modelli predefiniti iniziali.
@@ -175,7 +198,7 @@ class ModelCatalog {
       minRamGb: 24,
       minVramGb: 10,
       recommendedAgents: ["actor"],
-      capabilities: ["generate_character_response", "high_logic_reasoning"],
+      capabilities: ["generate_character_response", "instruction_following"],
       supportsGrammar: true,
       supportsStructuredOutput: false,
       preferredBackend: "llama_cpp",
@@ -211,7 +234,7 @@ class ModelCatalog {
       minRamGb: 24,
       minVramGb: 10,
       recommendedAgents: [],
-      capabilities: ["generate_character_response", "high_logic_reasoning"],
+      capabilities: ["generate_character_response", "instruction_following"],
       supportsGrammar: true,
       supportsStructuredOutput: false,
       preferredBackend: "llama_cpp",

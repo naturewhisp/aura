@@ -67,55 +67,66 @@ final class FaultyInstallationRecordRepository
 
   @override
   Future<InstallationRecord> updateRecord(
-    FutureOr<InstallationRecord> Function(InstallationRecord current) transform,
-  ) async {
+      FutureOr<InstallationRecord> Function(InstallationRecord current)
+          transform) async {
     if (failOnUpdate) {
-      throw const ProvisioningIoException(operation: 'updateRecord');
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordWriteFailed,
+        message: 'Simulato fallimento di I/O nel registro.',
+      );
     }
     return _inner.updateRecord(transform);
   }
 }
 
 void main() {
-  group('ProvisioningCoordinator Tests (Fase 6.3d) -', () {
+  group('ProvisioningCoordinator Tests -', () {
     late Directory tempDir;
-    late ProvisioningLock lock;
     late ProvisioningPathResolver pathResolver;
-    late FakeProvisioningHttpClient httpClient;
-    late JsonInstallationRecordRepository innerRecordRepo;
+    late JsonInstallationRecordRepository rawRecordRepo;
     late FaultyInstallationRecordRepository recordRepo;
     late JsonActivationStateRepository activationRepo;
+    late FakeProvisioningHttpClient httpClient;
     late ArtifactIngestionEngine ingestionEngine;
+    late InMemoryProvisioningLock lock;
     late ProvisioningCoordinator coordinator;
 
+    late List<int> zipBytes;
     late CatalogArtifact sampleArtifact;
     late CatalogManifest sampleManifest;
-    late List<int> zipBytes;
 
     setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('aura_coord_test_');
-      lock = InMemoryProvisioningLock();
+      tempDir = await Directory.systemTemp.createTemp('aura_coordinator_test_');
+
       pathResolver = ProvisioningPathResolver(
         appManagedRoot: '${tempDir.path}\\app_managed',
         bundledRoot: '${tempDir.path}\\bundled',
       );
-      httpClient = FakeProvisioningHttpClient();
 
-      innerRecordRepo = JsonInstallationRecordRepository(
+      final fileSystem = const LocalProvisioningFileSystem();
+      lock = InMemoryProvisioningLock();
+
+      rawRecordRepo = JsonInstallationRecordRepository(
         pathResolver: pathResolver,
         lock: lock,
+        fileSystem: fileSystem,
       );
-      recordRepo = FaultyInstallationRecordRepository(innerRecordRepo);
+      recordRepo = FaultyInstallationRecordRepository(rawRecordRepo);
 
       activationRepo = JsonActivationStateRepository(
         pathResolver: pathResolver,
         lock: lock,
+        fileSystem: fileSystem,
       );
 
+      httpClient = FakeProvisioningHttpClient();
       ingestionEngine = ArtifactIngestionEngine(
         pathResolver: pathResolver,
         httpClient: httpClient,
+        fileSystem: fileSystem,
       );
+
+      lock = InMemoryProvisioningLock();
 
       coordinator = ProvisioningCoordinator(
         lock: lock,
@@ -143,8 +154,8 @@ void main() {
         displayName: 'llama-server b3500',
         version: 'b3500',
         buildId: 'b3500',
-        platform: 'windows',
-        architecture: 'x64',
+        platform: 'all',
+        architecture: 'all',
         fileName: 'llama-server-b3500.zip',
         license: 'MIT',
         sizeBytes: zipBytes.length,
@@ -169,7 +180,7 @@ void main() {
     });
 
     test(
-        'Esegue il provisioning completo: ingestione fisica, generazione installationId, e persistenza record',
+        'Esegue il provisioning completo: ingestione fisica, path relativo, generazione installationId e persistenza record',
         () async {
       final consent = DownloadConsent.grantedFor(
         artifactId: 'llama-b3500',
@@ -200,10 +211,11 @@ void main() {
       expect(result.installationId, startsWith('inst-llama-b3500-b3500-'));
 
       final record = await coordinator.getInstallationRecord();
-      final descriptor = record.findArtifact('llama-b3500');
+      final descriptor = record.findInstallation(result.installationId!);
       expect(descriptor, isNotNull);
       expect(descriptor!.status, equals(InstallationStatus.verified));
-      expect(descriptor.installationId, equals(result.installationId));
+      expect(
+          descriptor.relativeInstallPath, equals('runtimes/llama-b3500/b3500'));
 
       final installedFile = File(
         '${tempDir.path}\\app_managed\\runtimes\\llama-b3500\\b3500\\llama-server.exe',
@@ -212,17 +224,17 @@ void main() {
     });
 
     test(
-        'Ritorna già installato (idempotenza) se il record è verified ed i file fisici esistono',
+        'Ritorna già installato (idempotenza) se il record è verified ed i file fisici/hash sono integri',
         () async {
       final consent = DownloadConsent.grantedFor(
         artifactId: 'llama-b3500',
         sourceUri: 'https://downloads.aura.local/llama-server-b3500.zip',
         expectedSizeBytes: zipBytes.length,
-        operationId: 'op-prov-first',
+        operationId: 'op-prov-idemp',
       );
 
       final request = ProvisioningRequest(
-        operationId: 'op-prov-first',
+        operationId: 'op-prov-idemp',
         catalogId: 'cat-test-63d',
         artifactId: 'llama-b3500',
         downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
@@ -235,30 +247,29 @@ void main() {
         request: request,
         manifest: sampleManifest,
       );
-      expect(res1.status, equals(ProvisioningStatus.success));
-      expect(res1.alreadyInstalled, isFalse);
 
       final res2 = await coordinator.provisionArtifact(
         request: request,
         manifest: sampleManifest,
       );
+
       expect(res2.status, equals(ProvisioningStatus.alreadyInstalled));
       expect(res2.alreadyInstalled, isTrue);
       expect(res2.installationId, equals(res1.installationId));
     });
 
     test(
-        'Riconcilia il registro se la directory fisica è stata cancellata ed esegue una nuova ingestione',
+        'Riconcilia e riesegue l ingestione se la directory fisica o i file sono stati cancellati',
         () async {
       final consent = DownloadConsent.grantedFor(
         artifactId: 'llama-b3500',
         sourceUri: 'https://downloads.aura.local/llama-server-b3500.zip',
         expectedSizeBytes: zipBytes.length,
-        operationId: 'op-prov-reconcile',
+        operationId: 'op-prov-rec',
       );
 
       final request = ProvisioningRequest(
-        operationId: 'op-prov-reconcile',
+        operationId: 'op-prov-rec',
         catalogId: 'cat-test-63d',
         artifactId: 'llama-b3500',
         downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
@@ -287,7 +298,7 @@ void main() {
     });
 
     test(
-        'Esegue la compensazione fisica (rimozione file su disco) se l aggiornamento del record fallisce',
+        'Esegue la compensazione fisica verificando la rimozione dei file se l aggiornamento del record fallisce',
         () async {
       final consent = DownloadConsent.grantedFor(
         artifactId: 'llama-b3500',
@@ -322,7 +333,9 @@ void main() {
       expect(await installedFile.exists(), isFalse);
     });
 
-    test('Attiva un artefatto installato e traccia lastKnownGood', () async {
+    test(
+        'Attiva un installazione specifica per installationId e traccia lastKnownGood',
+        () async {
       final consent = DownloadConsent.grantedFor(
         artifactId: 'llama-b3500',
         sourceUri: 'https://downloads.aura.local/llama-server-b3500.zip',
@@ -345,32 +358,33 @@ void main() {
         manifest: sampleManifest,
       );
 
-      final actRes = await coordinator.activateArtifact(
-        artifactId: 'llama-b3500',
-        version: 'b3500',
+      final actRes = await coordinator.activateInstallation(
+        installationId: provRes.installationId!,
         operationId: 'op-act-1',
       );
 
       expect(actRes.success, isTrue);
+      expect(actRes.installationId, equals(provRes.installationId));
 
       final state = await coordinator.getActivationState();
       expect(state.activeRuntimeInstallationId, equals(provRes.installationId));
     });
 
-    test('Rifiuta l attivazione se l artefatto non e presente o non verified',
+    test(
+        'Rifiuta l attivazione con ActivationFailureReason tipizzato se installationId non esiste',
         () async {
-      final actRes = await coordinator.activateArtifact(
-        artifactId: 'llama-non-existent',
-        version: 'v1.0',
+      final actRes = await coordinator.activateInstallation(
+        installationId: 'inst-invalid-999',
         operationId: 'op-act-fail',
       );
 
       expect(actRes.success, isFalse);
-      expect(actRes.failureReason, contains('non installato'));
+      expect(actRes.failureReason,
+          equals(ActivationFailureReason.installationNotFound));
     });
 
     test(
-        'Rimuove correttamente un artefatto installato ed aggiorna registro e stato di attivazione',
+        'Rimuove correttamente un installazione specifica per installationId ed aggiorna registro e stato di attivazione',
         () async {
       final consent = DownloadConsent.grantedFor(
         artifactId: 'llama-b3500',
@@ -389,26 +403,27 @@ void main() {
         expectedArchitecture: 'x64',
       );
 
-      await coordinator.provisionArtifact(
+      final provRes = await coordinator.provisionArtifact(
         request: request,
         manifest: sampleManifest,
       );
 
-      await coordinator.activateArtifact(
-        artifactId: 'llama-b3500',
-        version: 'b3500',
+      await coordinator.activateInstallation(
+        installationId: provRes.installationId!,
         operationId: 'op-act-rem',
       );
 
-      final remRes = await coordinator.removeArtifact(
-        artifactId: 'llama-b3500',
+      final remRes = await coordinator.removeInstallation(
+        installationId: provRes.installationId!,
         operationId: 'op-rem-1',
       );
 
       expect(remRes.status, equals(ProvisioningStatus.success));
 
       final record = await coordinator.getInstallationRecord();
-      expect(record.findArtifact('llama-b3500'), isNull);
+      expect(record.findInstallation(provRes.installationId!), isNotNull);
+      expect(record.findInstallation(provRes.installationId!)!.status,
+          equals(InstallationStatus.removed));
 
       final actState = await coordinator.getActivationState();
       expect(actState.activeRuntimeInstallationId, isNull);

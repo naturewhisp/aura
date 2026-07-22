@@ -452,23 +452,41 @@ final class InstallationRecord {
     };
   }
 
-  InstalledArtifactDescriptor? findArtifact(String artifactId) {
+  InstalledArtifactDescriptor? findInstallation(String installationId) {
+    final cleanId = installationId.trim();
     for (final a in installedArtifacts) {
-      if (a.artifactId == artifactId &&
-          a.status != InstallationStatus.removed) {
+      if (a.installationId == cleanId) {
         return a;
       }
     }
     return null;
   }
 
-  InstalledArtifactDescriptor? findInstallation(String installationId) {
+  List<InstalledArtifactDescriptor> findInstallationsForArtifact(
+      String artifactId) {
+    final cleanId = artifactId.trim();
+    return installedArtifacts
+        .where((a) =>
+            a.artifactId == cleanId && a.status != InstallationStatus.removed)
+        .toList();
+  }
+
+  InstalledArtifactDescriptor? findLatestVerifiedInstallation(
+      String artifactId) {
+    final cleanId = artifactId.trim();
+    InstalledArtifactDescriptor? latest;
     for (final a in installedArtifacts) {
-      if (a.installationId == installationId) {
-        return a;
+      if (a.artifactId == cleanId && a.status == InstallationStatus.verified) {
+        if (latest == null || a.installedAt.compareTo(latest.installedAt) > 0) {
+          latest = a;
+        }
       }
     }
-    return null;
+    return latest;
+  }
+
+  InstalledArtifactDescriptor? findArtifact(String artifactId) {
+    return findLatestVerifiedInstallation(artifactId);
   }
 
   InstallationRecord upsertArtifact(InstalledArtifactDescriptor descriptor) {
@@ -476,8 +494,7 @@ final class InstallationRecord {
     bool replaced = false;
 
     for (final a in installedArtifacts) {
-      if (a.artifactId == descriptor.artifactId ||
-          a.installationId == descriptor.installationId) {
+      if (a.installationId == descriptor.installationId) {
         updatedList.add(descriptor);
         replaced = true;
       } else {
@@ -492,10 +509,28 @@ final class InstallationRecord {
     return copyWith(installedArtifacts: updatedList);
   }
 
-  InstallationRecord removeArtifact(String artifactId) {
+  InstallationRecord removeInstallation(String installationId) {
+    final cleanId = installationId.trim();
     final updatedList = <InstalledArtifactDescriptor>[];
     for (final a in installedArtifacts) {
-      if (a.artifactId == artifactId) {
+      if (a.installationId == cleanId) {
+        updatedList.add(a.copyWith(
+          status: InstallationStatus.removed,
+          verifiedAt: null,
+          retained: false,
+        ));
+      } else {
+        updatedList.add(a);
+      }
+    }
+    return copyWith(installedArtifacts: updatedList);
+  }
+
+  InstallationRecord removeArtifact(String artifactId) {
+    final cleanId = artifactId.trim();
+    final updatedList = <InstalledArtifactDescriptor>[];
+    for (final a in installedArtifacts) {
+      if (a.artifactId == cleanId) {
         updatedList.add(a.copyWith(
           status: InstallationStatus.removed,
           verifiedAt: null,

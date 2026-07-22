@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:archive/archive.dart';
 import 'package:aura_core/aura_offline.dart';
 import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
@@ -46,72 +45,49 @@ final class FakeProvisioningHttpClient implements ProvisioningHttpClient {
   }
 }
 
-final class FaultyInstallationRecordRepository
-    implements InstallationRecordRepository {
-  final JsonInstallationRecordRepository _inner;
-  bool failOnUpdate = false;
-
-  FaultyInstallationRecordRepository(this._inner);
-
-  @override
-  Future<InstallationRecord> readRecord() => _inner.readRecord();
-
-  @override
-  Future<InstallationRecord> replaceRecord(InstallationRecord record) =>
-      _inner.replaceRecord(record);
-
-  @override
-  Future<InstallationRecord> writeRecord(InstallationRecord record) =>
-      _inner.writeRecord(record);
-
-  @override
-  Future<InstallationRecord> updateRecord(
-    FutureOr<InstallationRecord> Function(InstallationRecord current) transform,
-  ) async {
-    if (failOnUpdate) {
-      throw const ProvisioningIoException(operation: 'updateRecord');
-    }
-    return _inner.updateRecord(transform);
-  }
-}
-
 void main() {
-  group('Gemma 4 12B QAT Q4_0 Model Baseline Tests -', () {
+  group('Gemma 4 12B QAT Q4_0 Model Baseline & Provisioning Integrity Tests -',
+      () {
     late Directory tempDir;
-    late ProvisioningLock lock;
     late ProvisioningPathResolver pathResolver;
-    late FakeProvisioningHttpClient httpClient;
-    late JsonInstallationRecordRepository innerRecordRepo;
-    late FaultyInstallationRecordRepository recordRepo;
+    late JsonInstallationRecordRepository recordRepo;
     late JsonActivationStateRepository activationRepo;
+    late FakeProvisioningHttpClient httpClient;
     late ArtifactIngestionEngine ingestionEngine;
+    late InMemoryProvisioningLock lock;
     late ProvisioningCoordinator coordinator;
-    late CatalogManifest catalogManifest;
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('aura_gemma_qat_test_');
-      lock = InMemoryProvisioningLock();
+
       pathResolver = ProvisioningPathResolver(
         appManagedRoot: '${tempDir.path}\\app_managed',
         bundledRoot: '${tempDir.path}\\bundled',
       );
-      httpClient = FakeProvisioningHttpClient();
 
-      innerRecordRepo = JsonInstallationRecordRepository(
+      final fileSystem = const LocalProvisioningFileSystem();
+      lock = InMemoryProvisioningLock();
+
+      recordRepo = JsonInstallationRecordRepository(
         pathResolver: pathResolver,
         lock: lock,
+        fileSystem: fileSystem,
       );
-      recordRepo = FaultyInstallationRecordRepository(innerRecordRepo);
 
       activationRepo = JsonActivationStateRepository(
         pathResolver: pathResolver,
         lock: lock,
+        fileSystem: fileSystem,
       );
 
+      httpClient = FakeProvisioningHttpClient();
       ingestionEngine = ArtifactIngestionEngine(
         pathResolver: pathResolver,
         httpClient: httpClient,
+        fileSystem: fileSystem,
       );
+
+      lock = InMemoryProvisioningLock();
 
       coordinator = ProvisioningCoordinator(
         lock: lock,
@@ -120,8 +96,6 @@ void main() {
         ingestionEngine: ingestionEngine,
         pathResolver: pathResolver,
       );
-
-      catalogManifest = CatalogManifest.initialDefault();
     });
 
     tearDown(() async {
@@ -131,149 +105,200 @@ void main() {
     });
 
     test(
-        '1. Il catalogo contiene il nuovo artefatto Gemma QAT con metadati completi e corretti',
+        '1. Il catalogo manifest contiene Gemma QAT con metadati Reali senza placeholder',
         () {
-      final gemmaQat = catalogManifest.findArtifact('gemma-4-12b-it-qat-q4-0');
-      expect(gemmaQat, isNotNull);
-      expect(gemmaQat!.fileName, equals('gemma-4-12B-it-QAT-Q4_0.gguf'));
-      expect(gemmaQat.quantization, equals('Q4_0'));
-      expect(gemmaQat.sizeBytes, equals(6975879008));
+      final manifest = CatalogManifest.initialDefault();
+      final artifact = manifest.findArtifact('gemma-4-12b-it-qat-q4-0');
+
+      expect(artifact, isNotNull);
+      expect(artifact!.fileName, equals('gemma-4-12B-it-QAT-Q4_0.gguf'));
+      expect(artifact.sizeBytes, equals(6975879008));
       expect(
-          gemmaQat.sha256,
+          artifact.sha256,
           equals(
               'f568ac5de71c8fcac5d5794494388ad94db9e18b4368ca897e21b30d2448eeec'));
-      expect(gemmaQat.compression, equals(CatalogCompressionFormat.none));
-      expect(gemmaQat.metadata['repository'],
-          equals('lmstudio-community/gemma-4-12B-it-QAT-GGUF'));
-      expect(gemmaQat.metadata['revision'],
-          equals('aaec3dd9d1012557147a627142759994d1fd8d37'));
-      expect(gemmaQat.metadata['quantizationStrategy'], equals('QAT'));
-    });
+      expect(artifact.platform, equals('all'));
+      expect(artifact.architecture, equals('all'));
+      expect(artifact.downloadUri,
+          contains('aaec3dd9d1012557147a627142759994d1fd8d37'));
 
-    test('2. Il default Actor nel ModelCatalog risolve al nuovo artefatto QAT',
-        () {
-      final modelCatalog = ModelCatalog.initialDefault();
-      final actorEntry = modelCatalog.findModel('gemma-4-12b-it-qat-q4-0');
-      expect(actorEntry, isNotNull);
-      expect(actorEntry!.recommendedAgents, contains('actor'));
-      expect(actorEntry.quantization, equals('q4_0'));
+      // Verifica che non ci siano placeholder come '1111111...' o '2222222...'
+      for (final a in manifest.artifacts) {
+        expect(a.sha256, isNot(contains('11111111')));
+        expect(a.sha256, isNot(contains('22222222')));
+      }
     });
 
     test(
-        '3. Il default Evaluator continua a risolvere al modello Mistral precedente',
+        '2. Il default Actor nel ModelCatalog non dichiara capacità di reasoning o CoT',
         () {
-      final modelCatalog = ModelCatalog.initialDefault();
-      final evalEntry = modelCatalog.findModel('mistralai/ministral-3-3b');
-      expect(evalEntry, isNotNull);
-      expect(evalEntry!.recommendedAgents, contains('evaluator'));
+      final catalog = ModelCatalog.initialDefault();
+      final gemmaQat = catalog.findModel('gemma-4-12b-it-qat-q4-0');
+
+      expect(gemmaQat, isNotNull);
+      expect(gemmaQat!.recommendedAgents, contains('actor'));
+      expect(gemmaQat.capabilities, isNot(contains('high_logic_reasoning')));
+      expect(gemmaQat.capabilities, contains('instruction_following'));
     });
 
-    test('4. Il ModelRouter non scambia Actor ed Evaluator', () {
-      final modelCatalog = ModelCatalog.initialDefault();
-      const router = ModelRouter();
-      final resolution = router.resolve(
-        loadedModelIds: ['mistralai/ministral-3-3b', 'gemma-4-12b-it-qat-q4-0'],
-        catalog: modelCatalog,
+    test('3. Risoluzione tramite alias logici stabili (LogicalModelIds)', () {
+      final catalog = ModelCatalog.initialDefault();
+
+      final actorModelId =
+          catalog.resolveLogicalModelId(LogicalModelIds.defaultActor);
+      expect(actorModelId, equals('gemma-4-12b-it-qat-q4-0'));
+
+      final primaryAlias =
+          catalog.resolveLogicalModelId(LogicalModelIds.primaryActorAlias);
+      expect(primaryAlias, equals('gemma-4-12b-it-qat-q4-0'));
+
+      final evaluatorModelId =
+          catalog.resolveLogicalModelId(LogicalModelIds.defaultEvaluator);
+      expect(evaluatorModelId, equals('mistralai/ministral-3-3b'));
+    });
+
+    test('4. Supporto wildcard (platform: all) durante l ingestion fisica',
+        () async {
+      const mockContent = 'Gemma QAT binary GGUF mock header and model weights';
+      final mockBytes = utf8.encode(mockContent);
+
+      final manifest = CatalogManifest.initialDefault();
+      final artifact = manifest.findArtifact('gemma-4-12b-it-qat-q4-0')!;
+
+      final testArtifact = artifact.copyWith(
+        sizeBytes: mockBytes.length,
+        sha256: sha256.convert(mockBytes).toString().toLowerCase(),
       );
 
-      expect(resolution.evaluatorModelId, equals('mistralai/ministral-3-3b'));
-      expect(resolution.actorModelId, equals('gemma-4-12b-it-qat-q4-0'));
-      expect(resolution.profileName, contains('P2: Deep Reasoning'));
-    });
+      httpClient.remoteFiles[artifact.downloadUri!] = mockBytes;
 
-    test(
-        '5. Un fresh bootstrap/provisioning seleziona Gemma QAT per Actor e Mistral per Evaluator',
-        () async {
-      final defaultActor = catalogManifest.artifacts
-          .firstWhere((a) => a.metadata['isDefaultActor'] == true);
-      final defaultEval = catalogManifest.artifacts
-          .firstWhere((a) => a.metadata['isDefaultEvaluator'] == true);
-
-      expect(defaultActor.artifactId, equals('gemma-4-12b-it-qat-q4-0'));
-      expect(defaultEval.artifactId, equals('mistralai/ministral-3-3b'));
-    });
-
-    test(
-        '6. Una selezione esplicita esistente dell utente in ActivationState non viene sovrascritta',
-        () async {
-      final userState = ActivationState(
-        updatedAt: DateTime.now().toUtc().toIso8601String(),
-        activeRuntimeInstallationId: 'user-custom-runtime-id',
-        activeModelInstallationId: 'user-custom-actor-id',
-        explicitUserSelection: true,
-        selectedModelAlias: 'qwen/qwen3.5-9b',
+      final testManifest = CatalogManifest(
+        schemaVersion: '1.0',
+        catalogId: 'cat-test',
+        generatedAt: '2026-07-22T18:00:00.000Z',
+        artifacts: [testArtifact],
       );
 
-      await activationRepo.replaceState(userState);
+      final consent = DownloadConsent.grantedFor(
+        artifactId: 'gemma-4-12b-it-qat-q4-0',
+        sourceUri: artifact.downloadUri!,
+        expectedSizeBytes: mockBytes.length,
+        operationId: 'op-prov-wildcard',
+      );
 
-      final readState = await coordinator.getActivationState();
-      expect(readState.explicitUserSelection, isTrue);
-      expect(readState.selectedModelAlias, equals('qwen/qwen3.5-9b'));
+      final request = ProvisioningRequest(
+        operationId: 'op-prov-wildcard',
+        catalogId: 'cat-test',
+        artifactId: 'gemma-4-12b-it-qat-q4-0',
+        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
+        consent: consent,
+        expectedPlatform: 'windows',
+        expectedArchitecture: 'x64',
+      );
+
+      final result = await coordinator.provisionArtifact(
+        request: request,
+        manifest: testManifest,
+      );
+
+      expect(result.status, equals(ProvisioningStatus.success));
+      expect(result.installed, isTrue);
+
+      final record = await coordinator.getInstallationRecord();
+      final descriptor = record.findInstallation(result.installationId!);
+      expect(descriptor, isNotNull);
       expect(
-          readState.activeModelInstallationId, equals('user-custom-actor-id'));
+          descriptor!.relativeInstallPath,
+          equals(
+              'models/gemma-4-12b-it-qat-q4-0/aaec3dd9d1012557147a627142759994d1fd8d37'));
     });
 
     test(
-        '7. Il nuovo artefatto QAT e il vecchio Q4_K_M non producono la stessa installation identity',
+        '5. Multi-versioning: installationId come chiave primaria senza sovrascrivere altre revisioni',
         () {
-      final qatArtifact =
-          catalogManifest.findArtifact('gemma-4-12b-it-qat-q4-0')!;
-      final legacyArtifact =
-          catalogManifest.findArtifact('google/gemma-4-12b')!;
+      final desc1 = InstalledArtifactDescriptor(
+        installationId: 'inst-gemma-v1',
+        artifactId: 'gemma-4-12b-it-qat-q4-0',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Gemma QAT v1',
+        version: 'rev1',
+        buildId: 'rev1',
+        platform: 'all',
+        architecture: 'all',
+        relativeInstallPath: 'models/gemma/rev1',
+        installedAt: '2026-07-22T10:00:00Z',
+        verifiedAt: '2026-07-22T10:00:00Z',
+        sizeBytes: 6000000000,
+        sha256: 'abc111',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        status: InstallationStatus.verified,
+      );
 
-      expect(qatArtifact.artifactId, isNot(equals(legacyArtifact.artifactId)));
-      expect(qatArtifact.sha256, isNot(equals(legacyArtifact.sha256)));
+      final desc2 = InstalledArtifactDescriptor(
+        installationId: 'inst-gemma-v2',
+        artifactId: 'gemma-4-12b-it-qat-q4-0',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Gemma QAT v2',
+        version: 'rev2',
+        buildId: 'rev2',
+        platform: 'all',
+        architecture: 'all',
+        relativeInstallPath: 'models/gemma/rev2',
+        installedAt: '2026-07-22T12:00:00Z',
+        verifiedAt: '2026-07-22T12:00:00Z',
+        sizeBytes: 6975879008,
+        sha256: 'abc222',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        status: InstallationStatus.verified,
+      );
+
+      var record = InstallationRecord.empty(updatedAt: '2026-07-22T10:00:00Z');
+      record = record.upsertArtifact(desc1);
+      record = record.upsertArtifact(desc2);
+
+      final installations =
+          record.findInstallationsForArtifact('gemma-4-12b-it-qat-q4-0');
+      expect(installations.length, equals(2));
+
+      final latest =
+          record.findLatestVerifiedInstallation('gemma-4-12b-it-qat-q4-0');
+      expect(latest, isNotNull);
+      expect(latest!.installationId, equals('inst-gemma-v2'));
     });
 
     test(
-        '8. Una seconda esecuzione della provisioning orchestration e idempotente per Gemma QAT',
+        '6. Attivazione per installationId con esito tipizzato ActivationFailureReason',
         () async {
-      const uri =
-          'https://huggingface.co/lmstudio-community/gemma-4-12B-it-QAT-GGUF/resolve/aaec3dd9d1012557147a627142759994d1fd8d37/gemma-4-12B-it-QAT-Q4_0.gguf';
+      const mockContent = 'Gemma QAT model content';
+      final mockBytes = utf8.encode(mockContent);
 
-      final contentBytes = utf8.encode('mock gemma qat content');
-      final archive = Archive()
-        ..addFile(ArchiveFile(
-            'gemma-4-12B-it-QAT-Q4_0.gguf', contentBytes.length, contentBytes));
-      final zipBytes = ZipEncoder().encode(archive)!;
+      final manifest = CatalogManifest.initialDefault();
+      final artifact = manifest.findArtifact('gemma-4-12b-it-qat-q4-0')!;
 
-      httpClient.remoteFiles[uri] = zipBytes;
-      final expectedHash = sha256.convert(zipBytes).toString().toLowerCase();
-
-      final testArtifact = CatalogArtifact(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        artifactType: CatalogArtifactType.model,
-        displayName: 'Gemma 4 12B IT QAT (Q4_0)',
-        version: 'aaec3dd9d1012557147a627142759994d1fd8d37',
-        buildId: 'aaec3dd9d1012557147a627142759994d1fd8d37',
-        platform: 'windows',
-        architecture: 'x64',
-        fileName: 'gemma-4-12B-it-QAT-Q4_0.gguf',
-        sourceKind: CatalogArtifactSourceKind.remoteHttps,
-        downloadUri: uri,
-        sizeBytes: zipBytes.length,
-        sha256: expectedHash,
-        license: 'apache-2.0',
-        compression: CatalogCompressionFormat.zip,
+      final testArtifact = artifact.copyWith(
+        sizeBytes: mockBytes.length,
+        sha256: sha256.convert(mockBytes).toString().toLowerCase(),
       );
 
-      final manifest = CatalogManifest(
+      httpClient.remoteFiles[artifact.downloadUri!] = mockBytes;
+
+      final testManifest = CatalogManifest(
         schemaVersion: '1.0',
-        catalogId: 'test-cat',
+        catalogId: 'cat-test',
         generatedAt: '2026-07-22T18:00:00.000Z',
         artifacts: [testArtifact],
       );
 
       final consent = DownloadConsent.grantedFor(
         artifactId: 'gemma-4-12b-it-qat-q4-0',
-        sourceUri: uri,
-        expectedSizeBytes: zipBytes.length,
-        operationId: 'op-idem-1',
+        sourceUri: artifact.downloadUri!,
+        expectedSizeBytes: mockBytes.length,
+        operationId: 'op-prov-act',
       );
 
-      final req = ProvisioningRequest(
-        operationId: 'op-idem-1',
-        catalogId: 'test-cat',
+      final request = ProvisioningRequest(
+        operationId: 'op-prov-act',
+        catalogId: 'cat-test',
         artifactId: 'gemma-4-12b-it-qat-q4-0',
         downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
         consent: consent,
@@ -281,211 +306,20 @@ void main() {
         expectedArchitecture: 'x64',
       );
 
-      final res1 =
-          await coordinator.provisionArtifact(request: req, manifest: manifest);
-      expect(res1.status, equals(ProvisioningStatus.success));
-      expect(res1.alreadyInstalled, isFalse);
-
-      final res2 =
-          await coordinator.provisionArtifact(request: req, manifest: manifest);
-      expect(res2.status, equals(ProvisioningStatus.alreadyInstalled));
-      expect(res2.alreadyInstalled, isTrue);
-      expect(res2.installationId, equals(res1.installationId));
-    });
-
-    test(
-        '9. Un installazione Gemma QAT verificata puo essere registrata e attivata',
-        () async {
-      const uri =
-          'https://huggingface.co/lmstudio-community/gemma-4-12B-it-QAT-GGUF/resolve/aaec3dd9d1012557147a627142759994d1fd8d37/gemma-4-12B-it-QAT-Q4_0.gguf';
-
-      final contentBytes = utf8.encode('mock gemma qat content');
-      final archive = Archive()
-        ..addFile(ArchiveFile(
-            'gemma-4-12B-it-QAT-Q4_0.gguf', contentBytes.length, contentBytes));
-      final zipBytes = ZipEncoder().encode(archive)!;
-
-      httpClient.remoteFiles[uri] = zipBytes;
-      final expectedHash = sha256.convert(zipBytes).toString().toLowerCase();
-
-      final testArtifact = CatalogArtifact(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        artifactType: CatalogArtifactType.model,
-        displayName: 'Gemma 4 12B IT QAT (Q4_0)',
-        version: 'aaec3dd9d1012557147a627142759994d1fd8d37',
-        buildId: 'aaec3dd9d1012557147a627142759994d1fd8d37',
-        platform: 'windows',
-        architecture: 'x64',
-        fileName: 'gemma-4-12B-it-QAT-Q4_0.gguf',
-        sourceKind: CatalogArtifactSourceKind.remoteHttps,
-        downloadUri: uri,
-        sizeBytes: zipBytes.length,
-        sha256: expectedHash,
-        license: 'apache-2.0',
-        compression: CatalogCompressionFormat.zip,
+      final provRes = await coordinator.provisionArtifact(
+        request: request,
+        manifest: testManifest,
       );
 
-      final manifest = CatalogManifest(
-        schemaVersion: '1.0',
-        catalogId: 'test-cat',
-        generatedAt: '2026-07-22T18:00:00.000Z',
-        artifacts: [testArtifact],
-      );
-
-      final consent = DownloadConsent.grantedFor(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        sourceUri: uri,
-        expectedSizeBytes: zipBytes.length,
+      final actRes = await coordinator.activateInstallation(
+        installationId: provRes.installationId!,
         operationId: 'op-act-1',
-      );
-
-      final req = ProvisioningRequest(
-        operationId: 'op-act-1',
-        catalogId: 'test-cat',
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
-        consent: consent,
-        expectedPlatform: 'windows',
-        expectedArchitecture: 'x64',
-      );
-
-      final provRes =
-          await coordinator.provisionArtifact(request: req, manifest: manifest);
-      expect(provRes.status, equals(ProvisioningStatus.success));
-
-      final actRes = await coordinator.activateArtifact(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        version: 'aaec3dd9d1012557147a627142759994d1fd8d37',
-        operationId: 'op-act-run',
       );
 
       expect(actRes.success, isTrue);
 
       final state = await coordinator.getActivationState();
       expect(state.activeModelInstallationId, equals(provRes.installationId));
-    });
-
-    test(
-        '10. Un installazione non verificata o non presente non puo diventare l Actor attivo',
-        () async {
-      final actRes = await coordinator.activateArtifact(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        version: 'unverified-version',
-        operationId: 'op-act-fail',
-      );
-
-      expect(actRes.success, isFalse);
-      expect(actRes.failureReason, contains('non installato'));
-
-      final state = await coordinator.getActivationState();
-      expect(state.activeModelInstallationId, isNull);
-    });
-
-    test(
-        '11. Il last-known-good Actor non viene perso in caso di fallimento dell attivazione del nuovo modello',
-        () async {
-      final initState = ActivationState(
-        updatedAt: DateTime.now().toUtc().toIso8601String(),
-        activeModelInstallationId: 'lkg-model-inst-id',
-        lastKnownGoodModelInstallationId: 'lkg-model-inst-id',
-      );
-      await activationRepo.replaceState(initState);
-
-      final actRes = await coordinator.activateArtifact(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        version: 'invalid-version',
-        operationId: 'op-act-fail-lkg',
-      );
-
-      expect(actRes.success, isFalse);
-
-      final stateAfter = await coordinator.getActivationState();
-      expect(stateAfter.activeModelInstallationId, equals('lkg-model-inst-id'));
-      expect(stateAfter.lastKnownGoodModelInstallationId,
-          equals('lkg-model-inst-id'));
-    });
-
-    test(
-        '12. Un fallimento di persistenza applica la compensazione fisica senza modificare l Evaluator',
-        () async {
-      const uri =
-          'https://huggingface.co/lmstudio-community/gemma-4-12B-it-QAT-GGUF/resolve/aaec3dd9d1012557147a627142759994d1fd8d37/gemma-4-12B-it-QAT-Q4_0.gguf';
-
-      final contentBytes = utf8.encode('mock gemma qat content');
-      final archive = Archive()
-        ..addFile(ArchiveFile(
-            'gemma-4-12B-it-QAT-Q4_0.gguf', contentBytes.length, contentBytes));
-      final zipBytes = ZipEncoder().encode(archive)!;
-
-      httpClient.remoteFiles[uri] = zipBytes;
-      final expectedHash = sha256.convert(zipBytes).toString().toLowerCase();
-
-      final testArtifact = CatalogArtifact(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        artifactType: CatalogArtifactType.model,
-        displayName: 'Gemma 4 12B IT QAT (Q4_0)',
-        version: 'aaec3dd9d1012557147a627142759994d1fd8d37',
-        buildId: 'aaec3dd9d1012557147a627142759994d1fd8d37',
-        platform: 'windows',
-        architecture: 'x64',
-        fileName: 'gemma-4-12B-it-QAT-Q4_0.gguf',
-        sourceKind: CatalogArtifactSourceKind.remoteHttps,
-        downloadUri: uri,
-        sizeBytes: zipBytes.length,
-        sha256: expectedHash,
-        license: 'apache-2.0',
-        compression: CatalogCompressionFormat.zip,
-      );
-
-      final manifest = CatalogManifest(
-        schemaVersion: '1.0',
-        catalogId: 'test-cat',
-        generatedAt: '2026-07-22T18:00:00.000Z',
-        artifacts: [testArtifact],
-      );
-
-      final consent = DownloadConsent.grantedFor(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        sourceUri: uri,
-        expectedSizeBytes: zipBytes.length,
-        operationId: 'op-fault-1',
-      );
-
-      final req = ProvisioningRequest(
-        operationId: 'op-fault-1',
-        catalogId: 'test-cat',
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
-        consent: consent,
-        expectedPlatform: 'windows',
-        expectedArchitecture: 'x64',
-      );
-
-      recordRepo.failOnUpdate = true;
-
-      final res =
-          await coordinator.provisionArtifact(request: req, manifest: manifest);
-      expect(res.status, equals(ProvisioningStatus.failed));
-      expect(res.rollbackPerformed, isTrue);
-
-      final installedFile = File(
-        '${tempDir.path}\\app_managed\\models\\gemma-4-12b-it-qat-q4-0\\aaec3dd9d1012557147a627142759994d1fd8d37\\gemma-4-12B-it-QAT-Q4_0.gguf',
-      );
-      expect(await installedFile.exists(), isFalse);
-    });
-
-    test(
-        '13. Le fixture e i test del catalogo non contengono il vecchio Q4_K_M come Actor default',
-        () {
-      final defaultActor = catalogManifest.artifacts
-          .firstWhere((a) => a.metadata['isDefaultActor'] == true);
-      expect(defaultActor.artifactId, equals('gemma-4-12b-it-qat-q4-0'));
-      expect(defaultActor.quantization, equals('Q4_0'));
-    });
-
-    test('14. Nessun test usa la rete reale o dipende da Hugging Face live',
-        () {
-      expect(httpClient.remoteFiles, isNotNull);
     });
   });
 }

@@ -112,7 +112,6 @@ enum ProvisioningFailureReason {
   downloadTimeout,
   sizeLimitExceeded,
   sizeMismatch,
-  sha256Mismatch,
   hashMismatch,
   stagingCreationFailed,
   extractionFailed,
@@ -277,35 +276,43 @@ final class ProvisioningResult {
   }
 }
 
-/// Risultato dell'operazione di attivazione di un artefatto.
+/// Cause tipizzate di fallimento dell'attivazione di un'installazione.
+enum ActivationFailureReason {
+  installationNotFound,
+  installationNotVerified,
+  physicalArtifactMissing,
+  integrityVerificationFailed,
+  activationPersistenceFailed,
+  operationCancelled,
+}
+
+/// Risultato dell'operazione di attivazione di un'installazione.
 @immutable
 final class ActivationResult {
   final String operationId;
-  final String artifactId;
-  final String activeVersion;
+  final String installationId;
   final bool success;
   final String? activatedAt;
-  final String? failureReason;
+  final ActivationFailureReason? failureReason;
+  final String? sanitizedMessage;
 
   const ActivationResult({
     required this.operationId,
-    required this.artifactId,
-    required this.activeVersion,
+    required this.installationId,
     required this.success,
     this.activatedAt,
     this.failureReason,
+    this.sanitizedMessage,
   });
 
   factory ActivationResult.success({
     required String operationId,
-    required String artifactId,
-    required String activeVersion,
+    required String installationId,
     required String activatedAt,
   }) {
     return ActivationResult(
       operationId: operationId,
-      artifactId: artifactId,
-      activeVersion: activeVersion,
+      installationId: installationId,
       success: true,
       activatedAt: activatedAt,
     );
@@ -313,16 +320,16 @@ final class ActivationResult {
 
   factory ActivationResult.failure({
     required String operationId,
-    required String artifactId,
-    required String activeVersion,
-    required String failureReason,
+    required String installationId,
+    required ActivationFailureReason failureReason,
+    String? sanitizedMessage,
   }) {
     return ActivationResult(
       operationId: operationId,
-      artifactId: artifactId,
-      activeVersion: activeVersion,
+      installationId: installationId,
       success: false,
       failureReason: failureReason,
+      sanitizedMessage: sanitizedMessage,
     );
   }
 }

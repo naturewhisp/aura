@@ -93,6 +93,7 @@ export 'src/provisioning/domain/installation_record.dart';
 export 'src/provisioning/domain/activation_state.dart';
 export 'src/provisioning/validation/catalog_manifest_parser.dart';
 export 'src/provisioning/validation/catalog_manifest_validator.dart';
+export 'src/provisioning/validation/installed_artifact_verifier.dart';
 export 'src/provisioning/infrastructure/provisioning_path_resolver.dart';
 export 'src/provisioning/infrastructure/provisioning_file_system.dart';
 export 'src/provisioning/infrastructure/provisioning_io_exception.dart';

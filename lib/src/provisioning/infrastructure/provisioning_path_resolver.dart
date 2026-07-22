@@ -149,6 +149,15 @@ final class ProvisioningPathResolver {
     return '$folder/$cleanId/$cleanVersion';
   }
 
+  /// Risolve un path relativo (es. `models/gemma-4-12b-it-qat-q4-0/aaec...`) in un path assoluto sotto `appManagedRoot`.
+  String resolveAbsolutePath(String relativePath) {
+    final cleanRel = relativePath.trim().replaceAll('/', r'\');
+    if (_absolutePathRegex.hasMatch(cleanRel)) {
+      return cleanRel;
+    }
+    return _join(appManagedRoot, cleanRel);
+  }
+
   /// Calcola il path assoluto di installazione finale sotto la root app-managed.
   String resolveAbsoluteInstallPath({
     required CatalogArtifactType artifactType,

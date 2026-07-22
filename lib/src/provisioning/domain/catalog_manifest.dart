@@ -534,7 +534,7 @@ final class CatalogManifest {
           minimumRuntimeBuild: 'b3500',
           capabilities: const [
             'generate_character_response',
-            'high_logic_reasoning'
+            'instruction_following'
           ],
           metadata: const {
             'repository': 'lmstudio-community/gemma-4-12B-it-QAT-GGUF',
@@ -542,60 +542,8 @@ final class CatalogManifest {
             'sourceCheckpoint': 'google/gemma-4-12B-it-qat-q4_0-unquantized',
             'quantizationStrategy': 'QAT',
             'role': 'actor',
+            'logicalModelAlias': 'actor.default',
             'isDefaultActor': true,
-          },
-        ),
-        CatalogArtifact(
-          artifactId: 'mistralai/ministral-3-3b',
-          artifactType: CatalogArtifactType.model,
-          displayName: 'Ministral 3B Instruct (Q4_K_M)',
-          version: 'b1029',
-          buildId: 'b1029',
-          platform: 'all',
-          architecture: 'all',
-          fileName: 'ministral-3b-instruct-q4_k_m.gguf',
-          sourceKind: CatalogArtifactSourceKind.remoteHttps,
-          downloadUri:
-              'https://huggingface.co/lmstudio-community/Ministral-3B-Instruct-GGUF/resolve/main/ministral-3b-instruct-q4_k_m.gguf',
-          sizeBytes: 2420000000,
-          sha256:
-              '1111111111111111111111111111111111111111111111111111111111111111',
-          compression: CatalogCompressionFormat.none,
-          license: 'apache-2.0',
-          modelArchitecture: 'mistral',
-          quantization: 'Q4_K_M',
-          minimumRuntimeBuild: 'b3500',
-          capabilities: const ['score_user_input', 'produce_json_delta'],
-          metadata: const {
-            'role': 'evaluator',
-            'isDefaultEvaluator': true,
-          },
-        ),
-        CatalogArtifact(
-          artifactId: 'google/gemma-4-12b',
-          artifactType: CatalogArtifactType.model,
-          displayName: 'Gemma 4 12B (Q4_K_M Legacy)',
-          version: 'legacy-q4km',
-          buildId: 'legacy-q4km',
-          platform: 'all',
-          architecture: 'all',
-          fileName: 'gemma-4-12b-q4_k_m.gguf',
-          sourceKind: CatalogArtifactSourceKind.remoteHttps,
-          downloadUri:
-              'https://huggingface.co/lmstudio-community/gemma-4-12b-GGUF/resolve/main/gemma-4-12b-q4_k_m.gguf',
-          sizeBytes: 7400000000,
-          sha256:
-              '2222222222222222222222222222222222222222222222222222222222222222',
-          compression: CatalogCompressionFormat.none,
-          license: 'apache-2.0',
-          modelArchitecture: 'gemma4',
-          quantization: 'Q4_K_M',
-          minimumRuntimeBuild: 'b3500',
-          capabilities: const ['generate_character_response'],
-          metadata: const {
-            'role': 'actor',
-            'isDefaultActor': false,
-            'legacy': true,
           },
         ),
       ],

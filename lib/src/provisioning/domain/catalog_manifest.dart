@@ -547,6 +547,12 @@ final class CatalogManifest {
           },
         ),
       ],
+      metadata: const {
+        'integritySource': 'bundled-bootstrap-catalog',
+        'integrityAlgorithm': 'sha256',
+        'fingerprintStatus': 'prevalidated',
+        'catalogVersion': 'bootstrap-v1',
+      },
     );
   }
 }

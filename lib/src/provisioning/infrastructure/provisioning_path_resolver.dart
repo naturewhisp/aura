@@ -202,6 +202,32 @@ final class ProvisioningPathResolver {
     return resolvedAbsolute;
   }
 
+  /// Risolve il path assoluto confinato di un file di payload (`entryFileName`) all'interno della directory dell'installazione.
+  /// Rifiuta tassativamente separatori, segmenti traversal ("..") e garantisce il boundary isolato sotto la directory dell'installazione.
+  String resolveEntryFilePath({
+    required String relativeInstallPath,
+    required String entryFileName,
+  }) {
+    final cleanEntryName = sanitizeSegment(entryFileName);
+    final installDirAbsolute =
+        resolveAppManagedRelativePath(relativeInstallPath);
+    final resolvedFilePath =
+        canonicalizeRoot(_join(installDirAbsolute, cleanEntryName));
+
+    final normDir = _canonicalizeKey(installDirAbsolute);
+    final normFile = _canonicalizeKey(resolvedFilePath);
+
+    if (!normFile.startsWith(normDir)) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Path traversal o escape dalla directory di installazione tramite entryFileName: "$entryFileName".',
+      );
+    }
+
+    return resolvedFilePath;
+  }
+
   /// Alias per la risoluzione dei path relativi app-managed.
   String resolveAbsolutePath(String relativePath) =>
       resolveAppManagedRelativePath(relativePath);
@@ -225,10 +251,13 @@ final class ProvisioningPathResolver {
 
   /// Calcola il path assoluto di installazione finale per un [CatalogArtifact].
   String resolveInstalledArtifactPath(CatalogArtifact artifact) {
+    final buildPathSegment = artifact.version == artifact.buildId
+        ? artifact.version
+        : '${artifact.version}_${artifact.buildId}';
     return resolveAbsoluteInstallPath(
       artifactType: artifact.artifactType,
       artifactId: artifact.artifactId,
-      buildOrVersionId: artifact.version,
+      buildOrVersionId: buildPathSegment,
     );
   }
 

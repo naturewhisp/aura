@@ -4,7 +4,14 @@ import '../infrastructure/provisioning_file_system.dart';
 import '../infrastructure/provisioning_path_resolver.dart';
 import '../infrastructure/sha256_verifier.dart';
 
-/// Contratto astratto per la verifica dell'integrità fisica e crittografica di un artefatto installato.
+/// Contratto per la verifica dell'integrità fisica e crittografica di un artefatto installato.
+///
+/// Nota Architetturale (InstalledArtifactVerifier v1):
+/// - Per payload a file singolo (es. modelli GGUF uncompressed con `entryFileName` non nullo):
+///   esegue la verifica crittografica e dimensionale completa (`sizeBytes` e `sha256`).
+/// - Per archivi multiline/runtime estratti in directory:
+///   esegue la verifica strutturale e di presenza. La gestione del manifest dei file estratti
+///   è demandata alle tranche successive di acquisition/download.
 abstract interface class InstalledArtifactVerifier {
   /// Verifica che l'artefatto descritto esista fisicamente su disco e ne attesta la dimensione ed il checksum SHA-256.
   Future<bool> verifyPhysicalIntegrity(
@@ -40,10 +47,22 @@ final class LocalInstalledArtifactVerifier
       return false;
     }
 
-    // Se l'installazione specifica un file di payload principale (es. per modelli GGUF o runtime binari)
-    final targetFilePath = isDirectory && descriptor.entryFileName != null
-        ? pathResolver.join(absolutePath, descriptor.entryFileName!)
-        : (isFile ? absolutePath : null);
+    // Se l'installazione specifica un file di payload principale (es. per modelli GGUF)
+    String? targetFilePath;
+    if (isDirectory &&
+        descriptor.entryFileName != null &&
+        descriptor.entryFileName!.trim().isNotEmpty) {
+      try {
+        targetFilePath = pathResolver.resolveEntryFilePath(
+          relativeInstallPath: descriptor.relativeInstallPath,
+          entryFileName: descriptor.entryFileName!,
+        );
+      } catch (_) {
+        return false;
+      }
+    } else if (isFile) {
+      targetFilePath = absolutePath;
+    }
 
     if (targetFilePath != null) {
       if (!await _fileSystem.fileExists(targetFilePath)) {

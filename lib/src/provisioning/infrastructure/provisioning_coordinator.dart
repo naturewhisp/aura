@@ -78,18 +78,37 @@ final class ProvisioningCoordinator {
           ProvisioningSourceKind.localImport,
       };
 
+      final targetInstallPath =
+          _pathResolver.resolveInstalledArtifactPath(artifact);
       final relativeInstallPath = _pathResolver.resolveRelativeInstallPath(
         artifactType: artifact.artifactType,
         artifactId: artifact.artifactId,
-        buildOrVersionId: artifact.version,
+        buildOrVersionId: artifact.version == artifact.buildId
+            ? artifact.version
+            : '${artifact.version}_${artifact.buildId}',
       );
-      final targetInstallPath =
-          _pathResolver.resolveAppManagedRelativePath(relativeInstallPath);
 
       // 2. Controllo idempotenza congiunto: fingerprint completo (artifactId, version, buildId, sha256, sizeBytes) e verifica fisica
       final currentRecord = await _recordRepository.readRecord();
       final latestDescriptor =
           currentRecord.findLatestVerifiedInstallation(artifact.artifactId);
+
+      if (latestDescriptor != null &&
+          latestDescriptor.version == artifact.version &&
+          !latestDescriptor.matchesArtifact(artifact)) {
+        // Conflitto di fingerprint per la stessa versione: rifiuta invece di tentare l'ingestione su target occupato
+        if (await _fileSystem.directoryExists(targetInstallPath) ||
+            await _fileSystem.fileExists(targetInstallPath)) {
+          return ProvisioningResult.failure(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.installationConflict,
+            sanitizedMessage:
+                'Conflitto di identità nel catalogo: esiste già un\'installazione della stessa versione ma con fingerprint differente.',
+          );
+        }
+      }
 
       if (latestDescriptor != null &&
           latestDescriptor.matchesArtifact(artifact) &&
@@ -376,9 +395,23 @@ final class ProvisioningCoordinator {
       }
 
       // 3. Aggiornamento del registro di installazione marcando lo stato removed
-      await _recordRepository.updateRecord(
-        (rec) => rec.removeInstallation(installationId),
-      );
+      try {
+        await _recordRepository.updateRecord(
+          (rec) => rec.removeInstallation(installationId),
+        );
+      } catch (e) {
+        return ProvisioningResult.failure(
+          operationId: operationId,
+          artifactId: descriptor.artifactId,
+          sourceKind: ProvisioningSourceKind.bundled,
+          failureReason:
+              ProvisioningFailureReason.installationRecordWriteFailed,
+          sanitizedMessage:
+              'Cancellazione fisica completata ma aggiornamento del registro di installazione fallito.',
+          cleanupSucceeded: true,
+          rollbackPerformed: true,
+        );
+      }
 
       // 4. Riconciliazione di ActivationState (pulizia di lastKnownGood se puntava all'installazione rimossa)
       final needsLkgRuntimeClean =
@@ -398,7 +431,20 @@ final class ProvisioningCoordinator {
               : currentState.lastKnownGoodModelInstallationId,
           updatedAt: _clock.nowUtc().toUtc().toIso8601String(),
         );
-        await _activationRepository.replaceState(reconciledState);
+        try {
+          await _activationRepository.replaceState(reconciledState);
+        } catch (e) {
+          return ProvisioningResult.failure(
+            operationId: operationId,
+            artifactId: descriptor.artifactId,
+            sourceKind: ProvisioningSourceKind.bundled,
+            failureReason: ProvisioningFailureReason.activationStateWriteFailed,
+            sanitizedMessage:
+                'Registro aggiornato ma pulizia dello stato di attivazione last-known-good fallita.',
+            cleanupSucceeded: true,
+            rollbackPerformed: true,
+          );
+        }
       }
 
       return ProvisioningResult(

@@ -128,6 +128,7 @@ enum ProvisioningFailureReason {
   cleanupFailed,
   operationCancelled,
   unexpectedState,
+  installationNotFound;
 }
 
 /// Richiesta formale di provisioning inviata dal chiamante applicativo.
@@ -274,6 +275,29 @@ final class ProvisioningResult {
       sanitizedDiagnostics: sanitizedDiagnostics ?? this.sanitizedDiagnostics,
     );
   }
+
+  bool get isSuccess =>
+      status == ProvisioningStatus.success ||
+      status == ProvisioningStatus.alreadyInstalled;
+
+  String? get sanitizedMessage => sanitizedDiagnostics['message'] as String?;
+
+  Map<String, dynamic> toJson() => {
+        'operationId': operationId,
+        'artifactId': artifactId,
+        'status': status.name,
+        if (installationId != null) 'installationId': installationId,
+        'installed': installed,
+        'alreadyInstalled': alreadyInstalled,
+        'activated': activated,
+        'verified': verified,
+        'bytesProcessed': bytesProcessed,
+        'sourceKind': sourceKind.name,
+        'rollbackPerformed': rollbackPerformed,
+        'cleanupSucceeded': cleanupSucceeded,
+        if (failureReason != null) 'failureReason': failureReason!.name,
+        'sanitizedDiagnostics': sanitizedDiagnostics,
+      };
 }
 
 /// Cause tipizzate di fallimento dell'attivazione di un'installazione.
@@ -305,6 +329,8 @@ final class ActivationResult {
     this.sanitizedMessage,
   });
 
+  bool get isSuccess => success;
+
   factory ActivationResult.success({
     required String operationId,
     required String installationId,
@@ -332,6 +358,15 @@ final class ActivationResult {
       sanitizedMessage: sanitizedMessage,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'operationId': operationId,
+        'installationId': installationId,
+        'success': success,
+        if (activatedAt != null) 'activatedAt': activatedAt,
+        if (failureReason != null) 'failureReason': failureReason!.name,
+        if (sanitizedMessage != null) 'sanitizedMessage': sanitizedMessage,
+      };
 }
 
 /// Eccezione tipizzata del dominio di provisioning.

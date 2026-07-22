@@ -1,0 +1,191 @@
+import 'package:meta/meta.dart';
+import '../../agent_runtime/model_catalog.dart';
+import '../domain/catalog_manifest.dart';
+import '../domain/installation_record.dart';
+import '../domain/provisioning_options.dart';
+import '../infrastructure/activation_state_repository.dart';
+import '../infrastructure/installation_record_repository.dart';
+import '../infrastructure/provisioning_path_resolver.dart';
+import '../validation/installed_artifact_verifier.dart';
+
+/// DTO immutabile contenente il payload del modello risolto pronto per l'inferenza.
+@immutable
+final class ResolvedModelPayload {
+  final String installationId;
+  final String modelId;
+  final String absoluteModelPath;
+  final InstalledArtifactDescriptor descriptor;
+  final bool isFallbackUsed;
+  final String? fallbackSource;
+
+  const ResolvedModelPayload({
+    required this.installationId,
+    required this.modelId,
+    required this.absoluteModelPath,
+    required this.descriptor,
+    this.isFallbackUsed = false,
+    this.fallbackSource,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'installationId': installationId,
+        'modelId': modelId,
+        'absoluteModelPath': absoluteModelPath,
+        'descriptor': descriptor.toJson(),
+        'isFallbackUsed': isFallbackUsed,
+        if (fallbackSource != null) 'fallbackSource': fallbackSource,
+      };
+}
+
+/// DTO immutabile per l'esito della risoluzione del modello.
+@immutable
+final class ModelResolutionResult {
+  final ProvisioningStatus status;
+  final ResolvedModelPayload? payload;
+  final ProvisioningFailureReason? failureReason;
+  final String? sanitizedMessage;
+
+  const ModelResolutionResult.success(this.payload)
+      : status = ProvisioningStatus.success,
+        failureReason = null,
+        sanitizedMessage = null;
+
+  const ModelResolutionResult.failure({
+    required this.failureReason,
+    required this.sanitizedMessage,
+  })  : status = ProvisioningStatus.failed,
+        payload = null;
+
+  bool get isSuccess => status == ProvisioningStatus.success && payload != null;
+}
+
+/// Servizio ad alto livello per la risoluzione del modello attivo o di fallback per alias logici/fisici.
+final class ModelResolver {
+  final ModelCatalog _catalog;
+  final InstallationRecordRepository _recordRepository;
+  final ActivationStateRepository _activationRepository;
+  final ProvisioningPathResolver _pathResolver;
+  final InstalledArtifactVerifier _verifier;
+
+  ModelResolver({
+    required ModelCatalog catalog,
+    required InstallationRecordRepository recordRepository,
+    required ActivationStateRepository activationRepository,
+    required ProvisioningPathResolver pathResolver,
+    required InstalledArtifactVerifier verifier,
+  })  : _catalog = catalog,
+        _recordRepository = recordRepository,
+        _activationRepository = activationRepository,
+        _pathResolver = pathResolver,
+        _verifier = verifier;
+
+  /// Risolve un identificatore di modello (alias logico o modelId fisico) nel corrispondente [ResolvedModelPayload].
+  ///
+  /// Strategia di Risoluzione:
+  /// 1. Mappa l'alias logico (es. `actor.default`, `evaluator.default`) nel `modelId` tramite [ModelCatalog].
+  /// 2. Tenta l'installazione attiva referenziata in [ActivationState.activeModelInstallationId].
+  /// 3. Se l'installazione attiva è mancante o non integra, tenta `lastKnownGoodModelInstallationId`.
+  /// 4. Se anche `lastKnownGood` è mancante o invalido, tenta l'ultima installazione `verified` disponibile nel registro per quel modello.
+  /// 5. Se nessuna installazione integra è reperibile, restituisce un fallimento tipizzato.
+  Future<ModelResolutionResult> resolveModel(String logicalOrPhysicalId) async {
+    final physicalModelId = _catalog.resolveLogicalModelId(logicalOrPhysicalId);
+
+    final record = await _recordRepository.readRecord();
+    final state = await _activationRepository.readState();
+
+    // 1. Prova l'installazione attiva corrente se presente
+    final activeId = state.activeModelInstallationId;
+    if (activeId != null) {
+      final activeDescriptor = record.findInstallation(activeId);
+      if (activeDescriptor != null &&
+          activeDescriptor.artifactType == CatalogArtifactType.model &&
+          activeDescriptor.status == InstallationStatus.verified) {
+        final isValid = await _verifier.verifyPhysicalIntegrity(
+          activeDescriptor,
+          pathResolver: _pathResolver,
+        );
+        if (isValid) {
+          final absolutePath = _resolvePayloadAbsolutePath(activeDescriptor);
+          return ModelResolutionResult.success(
+            ResolvedModelPayload(
+              installationId: activeDescriptor.installationId,
+              modelId: activeDescriptor.artifactId,
+              absoluteModelPath: absolutePath,
+              descriptor: activeDescriptor,
+              isFallbackUsed: false,
+            ),
+          );
+        }
+      }
+    }
+
+    // 2. Prova lastKnownGoodModelInstallationId se l'attiva ha fallito o non è impostata
+    final lkgId = state.lastKnownGoodModelInstallationId;
+    if (lkgId != null && lkgId != activeId) {
+      final lkgDescriptor = record.findInstallation(lkgId);
+      if (lkgDescriptor != null &&
+          lkgDescriptor.artifactType == CatalogArtifactType.model &&
+          lkgDescriptor.status == InstallationStatus.verified) {
+        final isValid = await _verifier.verifyPhysicalIntegrity(
+          lkgDescriptor,
+          pathResolver: _pathResolver,
+        );
+        if (isValid) {
+          final absolutePath = _resolvePayloadAbsolutePath(lkgDescriptor);
+          return ModelResolutionResult.success(
+            ResolvedModelPayload(
+              installationId: lkgDescriptor.installationId,
+              modelId: lkgDescriptor.artifactId,
+              absoluteModelPath: absolutePath,
+              descriptor: lkgDescriptor,
+              isFallbackUsed: true,
+              fallbackSource: 'lastKnownGood',
+            ),
+          );
+        }
+      }
+    }
+
+    // 3. Fallback sull'ultima installazione verificata del modello specifico nel registro
+    final latestVerified =
+        record.findLatestVerifiedInstallation(physicalModelId);
+    if (latestVerified != null &&
+        latestVerified.artifactType == CatalogArtifactType.model) {
+      final isValid = await _verifier.verifyPhysicalIntegrity(
+        latestVerified,
+        pathResolver: _pathResolver,
+      );
+      if (isValid) {
+        final absolutePath = _resolvePayloadAbsolutePath(latestVerified);
+        return ModelResolutionResult.success(
+          ResolvedModelPayload(
+            installationId: latestVerified.installationId,
+            modelId: latestVerified.artifactId,
+            absoluteModelPath: absolutePath,
+            descriptor: latestVerified,
+            isFallbackUsed: true,
+            fallbackSource: 'latestVerified',
+          ),
+        );
+      }
+    }
+
+    return ModelResolutionResult.failure(
+      failureReason: ProvisioningFailureReason.installationNotFound,
+      sanitizedMessage:
+          'Impossibile risolvere un\'installazione integra e verificata per il modello "$logicalOrPhysicalId" ($physicalModelId).',
+    );
+  }
+
+  String _resolvePayloadAbsolutePath(InstalledArtifactDescriptor descriptor) {
+    if (descriptor.entryFileName != null &&
+        descriptor.entryFileName!.trim().isNotEmpty) {
+      return _pathResolver.resolveEntryFilePath(
+        relativeInstallPath: descriptor.relativeInstallPath,
+        entryFileName: descriptor.entryFileName!,
+      );
+    }
+    return _pathResolver
+        .resolveAppManagedRelativePath(descriptor.relativeInstallPath);
+  }
+}

@@ -341,6 +341,9 @@ final class InstalledArtifactDescriptor {
     );
   }
 
+  /// Restituisce true se l'installazione e nello stato verified.
+  bool get isVerified => status == InstallationStatus.verified;
+
   /// Confronta il descrittore dell'installazione con un artefatto del catalogo per determinare se la build e identica.
   bool matchesArtifact(CatalogArtifact artifact) {
     return artifactId == artifact.artifactId &&

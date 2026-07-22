@@ -106,3 +106,9 @@ export 'src/provisioning/infrastructure/artifact_ingestion_engine.dart';
 export 'src/provisioning/infrastructure/installation_record_repository.dart';
 export 'src/provisioning/infrastructure/activation_state_repository.dart';
 export 'src/provisioning/infrastructure/provisioning_coordinator.dart';
+
+// Provisioning Resolvers, Bootstrap & CLI (Phase 6.3e)
+export 'src/provisioning/resolvers/model_resolver.dart';
+export 'src/provisioning/resolvers/runtime_resolver.dart';
+export 'src/provisioning/bootstrap/provisioning_bootstrap_service.dart';
+export 'src/provisioning/cli/provisioning_cli_runner.dart';

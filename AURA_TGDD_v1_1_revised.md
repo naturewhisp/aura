@@ -3890,28 +3890,57 @@ L'avvio delle sottofasi della Fase 6 è regolato da **design gate progressivi** 
 - Gestire l'avvio del processo, l'allocazione dinamica delle porte loopback, l'health check con timeout ed il crash recovery di `llama-server.exe`.
 - Configurare il bootstrap per selezionare `ManagedLlamaServerRuntime` come default produttivo per sistemi Windows.
 
-#### 6.3 Model Provisioning, Lifecycle Manager & Store Management
+#### 6.3 Model Provisioning Foundation & Local Physical Lifecycle
 
-Obiettivi e Principi Normativi:
+Stato: **completata (baseline commit `72ca550021d6aceda98eb999f35b3407bce75383`)**.
 
-- **Provisioning Hardware-Aware Iniziale:** L'installer ed il primo setup dell'applicazione eseguono il rilevamento hardware con `HardwareProbe` e propongono un piano di provisioning raccomandato e spiegabile (backend, modelli, varianti, quantizzazione, context size, stima RAM/VRAM/disco).
-- **Proposta Modificabile:** L'utente può confermare, personalizzare o modificare la raccomandazione proposta (profili `automatic`, `memorySaver`, `quality`, `manual`).
-- **Scelta e Migrazione del Model Store:** L'utente può scegliere la directory del managed model store sia durante il provisioning sia successivamente dalle impostazioni dell'app. La migrazione della directory avviene con preflight dello spazio, copia tramite staging, verifica SHA-256 e switch atomico con rollback automatico in caso di errore.
-- **Adozione ed Importazione di Modelli GGUF Locali:** Scansione opzionale di cartelle locali. Distinzione rigorosa tra importazione nel managed store (`importedManaged`, previa verifica SHA-256/header GGUF) ed associazione esterna non modificabile (`externalLocal`). La verifica non si basa mai solo sul nome file.
-- **Consenso Esplicito ed Assenza di Download Impliciti:** Nessun download avviene mai implicitamente. I download da Hugging Face richiedono consenso esplicito previa presentazione di dimensioni, spazio richiesto, licenze e percorso di destinazione. `ModelAvailabilityPolicy` ha default `neverDownload`.
-- **Application Service Condiviso (`ModelProvisioningService`):** Installer e schermata delle impostazioni dell'app condividono lo stesso strato applicativo (`ModelProvisioningService`) e lo stesso `ModelLifecycleManager`, senza duplicare logica di lifecycle, download o registry.
-- **Integrazione della famiglia dei componenti:** `ModelResolver`, `ModelLifecycleManager`, `ModelStore`, `ArtifactDownloader`, `IntegrityVerifier`, `ModelInspector`, `InstalledModelRegistry`, `ModelLifecycleJournal`, `HardwareProbe`, `HardwareProfileBuilder`, `ModelExecutionPlanResolver`.
+Obiettivi e Deliverable Consolidati:
 
-Il primo manifest produttivo deve includere almeno:
+- **Dominio e Catalogo Bootstrap Statico:** Dichiarato `CatalogManifest.initialDefault()` con hash e dimensioni `bootstrapDeclared`.
+- **Modelli Predefiniti:** Actor predefinito `gemma-4-12b-it-qat-q4_0`, Evaluator predefinito variante Ministral configurata.
+- **Persistence & Filesystem:** Implementato lo store dinamico in `%LOCALAPPDATA%\AURA\models` e la gestione atomica dei file/directory.
+- **Acquisizione e Ingestione Locale:** Supportata l'importazione ed ingestione fisica di artefatti GGUF locali con validazione SHA-256 e directory staging `.installing-*`.
+- **Registro ed Attivazione Role-Aware:** Registrazione atomica in `installed_models.json` e gestione separata dello stato attivo `active_state.json` per Actor ed Evaluator.
+- **Resolver, Bootstrap, Fallback & CLI:** Model resolver, composition root bootstrap, fallback rule-based offline e comandi CLI locali in `bin/aura_cli.dart`.
 
-```text
-aura.evaluator.primary → variante Ministral GGUF fissata
-aura.actor.primary     → variante Actor GGUF fissata
-```
+#### 6.4 Model Acquisition, Download Engine & Lifecycle Automation (Tranche 6.4a–6.4f)
 
-*(Vedi specifiche dettagliate in [docs/phase6/MODEL_LIFECYCLE_SPEC.md](docs/phase6/MODEL_LIFECYCLE_SPEC.md), [docs/phase6/HARDWARE_PROFILE_SPEC.md](docs/phase6/HARDWARE_PROFILE_SPEC.md), [docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md](docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md) e [docs/phase6/WINDOWS_DESKTOP_SHELL_SPEC.md](docs/phase6/WINDOWS_DESKTOP_SHELL_SPEC.md))*
+Stato: **in corso / specificata normativamente**.  
+Riferimento normativo: [docs/phase6/PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](docs/phase6/PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md)
 
-#### 6.4 Deterministic and Real-Model Test Runtime
+Scopo: Estendere il motore di provisioning locale con l'acquisizione remota dei cataloghi firmati, il download HTTPS resiliente con resume Range, la verifica crittografica prima dell'installazione, gli aggiornamenti side-by-side ed il rollback atomico a `last-known-good`.
+
+Tranche implementative sequenziali:
+
+##### 6.4a — Catalog Acquisition Domain & Trust Model
+- Definizione dei contratti e del trust model in assenza di networking reale.
+- Introduzione di `CatalogSource`, `CatalogEnvelope`, `CatalogTrustLevel` (`bootstrapDeclared`, `signatureVerified`, `locallyImported`, `developmentUnsigned`), `CatalogSignatureVerifier`, `CatalogValidationService` e `CatalogSelectionPolicy`.
+- Divieto assoluto di revisioni mobili (`main`, `latest`); l'identità dell'artefatto è definita da `(sizeBytes, sha256)`.
+
+##### 6.4b — Catalog Providers, Signed Cache & Refresh
+- Catena dei provider: `bundled bootstrap` $\rightarrow$ `cached verified` $\rightarrow$ `remote fetch` $\rightarrow$ `signature verification` $\rightarrow$ `semantic validation` $\rightarrow$ `atomic cache write` $\rightarrow$ `effective catalog selection`.
+- Supporto offline, protezione anti-downgrade e scrittura atomica della cache in `%LOCALAPPDATA%\AURA\cache\catalog\`. Fallback finale al catalogo bootstrap statico.
+
+##### 6.4c — Download Engine, Resume & Staging
+- Motore di download HTTPS streaming per grandi file `.part` in `%LOCALAPPDATA%\AURA\staging\`.
+- Supporto a Range resume, checkpoint persistenti JSON, retry exponential backoff, cancellation token e pre-allocazione dello spazio su disco.
+- Regola di confine: $\text{download completed} \neq \text{artifact verified} \neq \text{artifact installed}$. La tranche termina con un file `StagingArtifact` non ancora fidato.
+
+##### 6.4d — Verification, Import & Provisioning Integration
+- Integrazione dell'output di staging e degli import locali con `ArtifactIngestionEngine` e `ProvisioningCoordinator` della Fase 6.3.
+- Calcolo streaming SHA-256 e verifica dimensione. Collocamento atomico nel managed store.
+- Generazione dell'`InstallationRecord` con provenance completa (`catalogId`, `catalogVersion`, `catalogRevision`, `artifactId`, `repository`, `sha256`, `trust_provenance`, `acquiredAt`). L'attivazione resta responsabilità esplicita del coordinator.
+
+##### 6.4e — Model Lifecycle: Update, Repair & Rollback
+- Policy di update side-by-side: `download nuova build` $\rightarrow$ `verify` $\rightarrow$ `side-by-side install` $\rightarrow$ `health check` $\rightarrow$ `activate` $\rightarrow$ `previous active diventa last-known-good` $\rightarrow$ `deferred cleanup`.
+- Divieto di overwrite in-place. `ArtifactRepairService` per il ripristino di installazioni danneggiate. `ArtifactRollbackService` per il ripristino istantaneo al `last-known-good`. `RetentionPolicy` protegge le versioni attive e `last-known-good`.
+
+##### 6.4f — Application Integration & Operational CLI
+- Integrazione dei servizi in `DefaultApplicationBootstrap` e configurazione delle chiavi pubbliche.
+- Comandi CLI in `bin/aura_cli.dart`: `catalog status`, `catalog refresh`, `catalog show`, `download <artifactId>`, `download status`, `download cancel`, `import <path>`, `install <artifactId>`, `update check`, `update apply <artifactId>`, `repair <installationId>`, `rollback --role actor|evaluator|runtime`.
+- Sanitizzazione dei log e disaccoppiamento totale della UI dai repository.
+
+#### 6.5 Deterministic and Real-Model Test Runtime
 
 Obiettivi:
 
@@ -3938,7 +3967,7 @@ Regola:
 Ministral non viene mai scaricato o caricato automaticamente da una suite standard.
 ```
 
-#### 6.5 Windows Desktop Shell, Branding & Window Modes
+#### 6.6 Windows Desktop Shell, Branding & Window Modes
 
 Obiettivi:
 
@@ -3954,7 +3983,7 @@ Obiettivi:
 
 La modifica del nome fisico dell'eseguibile può essere effettuata in questa sottofase o rinviata al packaging, ma deve essere atomica con metadati, installer, collegamenti e updater.
 
-#### 6.6 Definitive WAV Import, Manifest & Packaging
+#### 6.7 Definitive WAV Import, Manifest & Packaging
 
 Scopo: trasformare i WAV definitivi attualmente presenti in:
 
@@ -4017,7 +4046,7 @@ Struttura minima del manifest:
 }
 ```
 
-#### 6.7 Windows Installer, Upgrade & Uninstall
+#### 6.8 Windows Installer, Upgrade & Uninstall
 
 Obiettivi:
 
@@ -4045,7 +4074,7 @@ Layout consigliato:
 
 Il flusso di upgrade deve usare staging, validazione, switch atomico e rollback. Prima di sostituire un WAV gestito modificato, crea un backup e registra la decisione nel log dell'installer.
 
-#### 6.8 GitHub Actions & Release Pipeline
+#### 6.9 GitHub Actions & Release Pipeline (Pubblicazione e Firma Cataloghi)
 
 Workflow PR:
 
@@ -4075,7 +4104,7 @@ SBOM
 THIRD_PARTY_NOTICES.txt
 ```
 
-I modelli restano su Hugging Face o altra sorgente dichiarata dal manifest e non vengono allegati obbligatoriamente alla release dell'applicazione. I WAV definitivi sono invece inclusi nell'installer/portable oppure distribuiti come audio pack versionato esplicitamente referenziato dalla release.
+La Fase 6.9 possiede l'infrastruttura di firma e pubblicazione dei cataloghi remoti (`model-manifest.json` firmati) ed i segreti di release. La Fase 6.4 consuma e verifica tali cataloghi firmati sul client.
 
 Canali previsti:
 
@@ -4085,7 +4114,7 @@ beta
 dev
 ```
 
-#### 6.9 Windows Production Hardening
+#### 6.10 Windows Production Hardening
 
 Obiettivi:
 

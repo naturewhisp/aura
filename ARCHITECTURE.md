@@ -745,29 +745,65 @@ Deliverable ed Esiti:
 5. **Divieto di Link Assoluti nei Documenti:**
    - Enforzato l'uso esclusivo di link relativi per tutti i documenti del repository (divieto assoluto di `file:///` e path assoluti specifici dello sviluppatore).
 
-### 11.7 Planned Model Provisioning Boundary (Fase 6.3)
+### 11.7 Fase 6.3 — Model Provisioning Foundation & Local Physical Lifecycle
 
-Stato: **Pianificato / Specificato Normativamente** *(Pronto per l'implementazione dopo la 6.2c)*.
+Stato: **completata (baseline commit `72ca550021d6aceda98eb999f35b3407bce75383`)**.
 
-Specifiche e Principi Architetturali:
+Deliverable e Componenti Implementati:
 
-1. **Service Boundary Condiviso (`ModelProvisioningService`)**:
-   - `ModelProvisioningService` è il boundary dell'application layer che orchestrerà l'acquisizione degli artefatti, la verifica SHA-256, lo staging atomico, la scansione/classificazione dei GGUF locali ed il passaggio a `ManagedLlamaServerConfiguration`.
-   - Sarà consumato sia dal **Windows Installer Wizard** sia dalla schermata **Runtime & Models Settings** dell'applicazione Flutter. L'installer non possederà una seconda implementazione indipendente del lifecycle dei modelli.
-   - *Nota:* L'hardware auto-profiling e recommendation engine è differito ad una fase dedicata post-6.3.
+1. **Dominio, Astrazioni Filesystem e Catalogo Statico:**
+   - Catalogo statico di bootstrap `CatalogManifest.initialDefault()` con modelli di default `gemma-4-12b-it-qat-q4_0` (Actor) e Ministral (Evaluator) recanti lo stato `bootstrapDeclared`.
+   - Astrazione di I/O platform-neutral `ProvisioningFileSystem` con implementazione concreta `DartIoProvisioningFileSystem`.
+   - Resolver di percorsi di sistema `ProvisioningPathResolver` con normalizzazione rigida e prevenzione di path traversal.
 
-2. **Proprietà Permanente dell'Applicazione**:
-   - L'installer eseguirà soltanto l'eventuale installazione iniziale del runtime baseline sotto `Program Files`; l'applicazione manterrà il controllo permanente su model store, runtime acquisiti in `%LOCALAPPDATA%\AURA\runtimes`, modelli installati, aggiornamenti, repair e rollback.
+2. **Ingestione Fisica, Staging Atomico e Persistence:**
+   - `ArtifactIngestionEngine` e `AtomicArtifactInstaller` con directory di staging temporanee `.installing-*` e rename atomico sul medesimo volume.
+   - `InstalledModelRegistryRepository` e `ActivationStateRepository` per la persistenza JSON atomica con protezione da lock, transazioni read-modify-write e file di backup `.bak`.
 
-3. **Staging Atomico e Precedenza Runtime**:
-   - I download ed estrazioni avvengono in `%LOCALAPPDATA%\AURA\staging\<uuid>\`. Dopo la verifica dell'hash SHA-256, la directory viene spostata atomicamente nella destinazione finale.
-   - Il bootstrap risolve la precedenza: runtime attivo in `LocalAppData` (se valido e compatibile) prevale sul runtime bundled sotto `Program Files`.
+3. **Stato Role-Aware, Service Boundary & CLI:**
+   - Gestione disaccoppiata e role-aware dello stato di attivazione per Actor ed Evaluator.
+   - Application boundary `ModelProvisioningService` e `ProvisioningCoordinator` per l'orchestrazione delle operazioni di provisioning.
+   - CLI locale in `bin/aura_cli.dart` per l'ispezione, ingestione, registrazione ed attivazione offline degli artefatti.
 
-4. **Consenso ed Assenza di Download Impliciti**:
-   - Tutti i download da repository di terze parti (es. Hugging Face) richiedono il consenso esplicito dell'utente previa presentazione di un riepilogo dettagliato (spazio richiesto, dimensione download, licenze, percorso). La policy predefinita è `neverDownload`.
+---
+
+### 11.8 Fase 6.4 — Model Acquisition, Download Engine & Lifecycle Automation (Tranche 6.4a–6.4f)
+
+Stato: **in corso / specificata normativamente**.  
+Riferimento normativo dettagliato: [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](docs/phase6/PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md).
+
+Suddivisione in tranche implementative:
+
+1. **Tranche 6.4a — Catalog Acquisition Domain & Trust Model:**
+   - Modellazione pura dei contratti e del trust model (`CatalogEnvelope`, `CatalogTrustLevel`, `CatalogSignatureVerifier`, `CatalogValidationService`).
+   - Distinzione rigorosa tra hash dichiarati da bootstrap e fingerprint certificati da firma digitale. Divieto di revisioni mobili (`main`, `latest`).
+
+2. **Tranche 6.4b — Catalog Providers, Signed Cache & Refresh:**
+   - Provider chain: `bundled bootstrap` $\rightarrow$ `cached verified` $\rightarrow$ `remote fetch` $\rightarrow$ `signature verification` $\rightarrow$ `semantic validation` $\rightarrow$ `atomic cache write` $\rightarrow$ `effective catalog selection`.
+   - Caching locale firmato in `%LOCALAPPDATA%\AURA\cache\catalog\`, supporto offline, fallback trasparente e protezione anti-downgrade.
+
+3. **Tranche 6.4c — Download Engine, Resume & Staging:**
+   - Motore di download HTTPS streaming per grandi file `.part` in staging temporaneo (`%LOCALAPPDATA%\AURA\staging\`).
+   - Supporto a Range header per resume tra riavvii dell'app, checkpoint JSON persistenti, retry con backoff esponenziale, cancellation token e controllo preventivo dello spazio su disco.
+   - Invariante di confine: $\text{download completed} \neq \text{artifact verified} \neq \text{artifact installed}$.
+
+4. **Tranche 6.4d — Verification, Import & Provisioning Integration:**
+   - Calcolo streaming SHA-256 e verifica dimensioni per file staged ed importati localmente prima dell'installazione atomica nel managed store.
+   - Creazione dell'`InstallationRecord` con provenance completa (`catalogId`, `catalogVersion`, `catalogRevision`, `artifactId`, `repository`, `sha256`, `trust_provenance`, `acquiredAt`).
+   - Integrazione con `ArtifactIngestionEngine` e `ProvisioningCoordinator` della Fase 6.3.
+
+5. **Tranche 6.4e — Model Lifecycle: Update, Repair & Rollback:**
+   - Ciclo di update side-by-side: `download` $\rightarrow$ `verify` $\rightarrow$ `side-by-side install` $\rightarrow$ `health check` $\rightarrow$ `activate` $\rightarrow$ `previous active diventa last-known-good` $\rightarrow$ `deferred cleanup`.
+   - Divieto assoluto di overwrite in-place. Servizi dedicati per riparazione (`ArtifactRepairService`) e rollback atomico (`ArtifactRollbackService`). Enforcing di `RetentionPolicy`.
+
+6. **Tranche 6.4f — Application Integration & Operational CLI:**
+   - Integrazione dei servizi nel composition root `DefaultApplicationBootstrap` e `PlatformServices`.
+   - Comandi CLI in `bin/aura_cli.dart`: `catalog status`, `refresh`, `show`, `download`, `import`, `install`, `update check`, `update apply`, `repair`, `rollback`.
+   - Sanitizzazione dei log e disaccoppiamento totale della UI dai repository.
 
 > [!NOTE]
-> L'implementazione di `ModelProvisioningService`, `ArtifactDownloader`, `ModelStore` e delle relative UI appartiene alla Fase **6.3**. Le Fasi 6.2b e 6.2c hanno completato la supervisione out-of-process, la state machine del processo ed il consolidamento normativo.
+> La pipeline CI/CD di pubblicazione e firma dei cataloghi appartiene alla **Fase 6.9** (Release Pipeline). La Fase 6.4 implementa ed esegue la verifica e il consumo lato client tramite la chiave pubblica configurata.
+
 
 
 

@@ -8,6 +8,7 @@
 - `docs/phase6/CROSS_PLATFORM_RUNTIME_ADR.md`
 - `docs/phase6/INFERENCE_RUNTIME_CONTRACT.md`
 - `docs/phase6/MODEL_MANIFEST_SPEC.md`
+- `docs/phase6/PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md`
 
 **Repository baseline:** `5d5f32533a520e5a224a53462a711f52410055ed`  
 **Lifecycle specification version:** 1.0  

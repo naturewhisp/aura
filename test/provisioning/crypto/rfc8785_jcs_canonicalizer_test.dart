@@ -3,7 +3,7 @@ import 'package:aura_core/aura_offline.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('RFC 8785 Official Test Vectors & IEEE-754 JCS Canonicalization Suite',
+  group('RFC 8785 Appendix B & IEEE-754 Official JCS Canonicalization Suite',
       () {
     test(
         'RFC 8785 Property Sorting Vector: UTF-16 Code Unit Lexicographical Order',
@@ -29,33 +29,68 @@ void main() {
           equals('{"val":0}'));
     });
 
-    test('RFC 8785 Numeric Vectors: Integers within Safe Bounds', () {
+    test(
+        'RFC 8785 Numeric Vectors: I-JSON / IEEE-754 Safe Integer Range Boundaries (2^53 - 1)',
+        () {
+      final maxSafe = 9007199254740991;
+      final minSafe = -9007199254740991;
+
+      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'max': maxSafe}),
+          equals('{"max":9007199254740991}'));
+      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'min': minSafe}),
+          equals('{"min":-9007199254740991}'));
+
+      // Reiezione di interi oltre il limite interoperabile I-JSON
       expect(
-          Rfc8785JcsCanonicalizer.canonicalizeString(
-              {'bigInt': 9007199254740991}),
-          equals('{"bigInt":9007199254740991}'));
+          () => Rfc8785JcsCanonicalizer.canonicalizeString(
+              {'unsafe': 9007199254740992}),
+          throwsArgumentError);
       expect(
-          Rfc8785JcsCanonicalizer.canonicalizeString(
-              {'negInt': -9007199254740991}),
-          equals('{"negInt":-9007199254740991}'));
+          () => Rfc8785JcsCanonicalizer.canonicalizeString(
+              {'unsafe': -9007199254740992}),
+          throwsArgumentError);
     });
 
     test(
-        'RFC 8785 Numeric Vectors: Floating Point and Exponential Notation Boundaries',
+        'RFC 8785 Numeric Vectors: Floating Point, Subnormal and Exponential Notation Boundaries',
         () {
-      // Numbers in range [1e-6, 1e21) serialized without exponent
+      // Minimum positive double in IEEE-754
+      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'subnormal': 5e-324}),
+          equals('{"subnormal":5e-324}'));
+
+      // Exponential thresholds [1e-6, 1e21)
       expect(Rfc8785JcsCanonicalizer.canonicalizeString({'num': 0.000001}),
           equals('{"num":0.000001}'));
       expect(Rfc8785JcsCanonicalizer.canonicalizeString({'num': 1e20}),
           equals('{"num":100000000000000000000}'));
-
-      // Numbers < 1e-6 use exponential notation 'e-'
       expect(Rfc8785JcsCanonicalizer.canonicalizeString({'small': 0.0000001}),
           equals('{"small":1e-7}'));
-
-      // Numbers >= 1e21 use exponential notation 'e+'
       expect(Rfc8785JcsCanonicalizer.canonicalizeString({'large': 1e21}),
           equals('{"large":1e+21}'));
+    });
+
+    test(
+        'RFC 8785 Unicode Vectors: Valid Surrogate Pairs and Lone Surrogates Rejection',
+        () {
+      // Valid UTF-16 surrogate pair (emoji 😀 U+1F600: \uD83D\uDE00)
+      final validEmoji = {'emoji': '😀'};
+      expect(Rfc8785JcsCanonicalizer.canonicalizeString(validEmoji),
+          equals('{"emoji":"😀"}'));
+
+      // High surrogate isolato (lone high surrogate)
+      final loneHigh = {'invalid': '\uD83D'};
+      expect(() => Rfc8785JcsCanonicalizer.canonicalizeString(loneHigh),
+          throwsArgumentError);
+
+      // Low surrogate isolato (lone low surrogate)
+      final loneLow = {'invalid': '\uDE00'};
+      expect(() => Rfc8785JcsCanonicalizer.canonicalizeString(loneLow),
+          throwsArgumentError);
+
+      // High surrogate seguito da carattere non-low surrogate
+      final malformedPair = {'invalid': '\uD83DA'};
+      expect(() => Rfc8785JcsCanonicalizer.canonicalizeString(malformedPair),
+          throwsArgumentError);
     });
 
     test('RFC 8785 Rejection Vectors: NaN, Infinity, -Infinity', () {

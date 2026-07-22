@@ -3,6 +3,10 @@ import 'dart:typed_data';
 
 /// Utility per la canonicalizzazione deterministica dei dati JSON secondo lo standard **RFC 8785 (JSON Canonicalization Scheme - JCS)**.
 abstract final class Rfc8785JcsCanonicalizer {
+  /// Limite massimo e minimo per gli interi interoperabili IEEE-754 / I-JSON (2^53 - 1).
+  static const int _maxSafeInteger = 9007199254740991;
+  static const int _minSafeInteger = -9007199254740991;
+
   /// Converte un oggetto JSON-safe [value] nella sua stringa JSON canonicalizzata secondo RFC 8785.
   static String canonicalizeString(Object? value) {
     final buffer = StringBuffer();
@@ -38,8 +42,36 @@ abstract final class Rfc8785JcsCanonicalizer {
 
   static void _serializeString(String str, StringBuffer buffer) {
     buffer.write('"');
-    for (var i = 0; i < str.length; i++) {
+    final len = str.length;
+    for (var i = 0; i < len; i++) {
       final codeUnit = str.codeUnitAt(i);
+
+      // Validazione e reiezione delle sequenze surrogate Unicode non accoppiate (Unicode Lone Surrogates)
+      if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF) {
+        // High surrogate: deve essere seguito da un Low surrogate (0xDC00..0xDFFF)
+        if (i + 1 >= len) {
+          throw ArgumentError(
+            'Sequenza Unicode malformata: High Surrogate non accoppiato a fine stringa (indice $i).',
+          );
+        }
+        final nextCodeUnit = str.codeUnitAt(i + 1);
+        if (nextCodeUnit < 0xDC00 || nextCodeUnit > 0xDFFF) {
+          throw ArgumentError(
+            'Sequenza Unicode malformata: High Surrogate non seguito da Low Surrogate all\'indice $i.',
+          );
+        }
+        // Coppia di surrogate valida
+        buffer.writeCharCode(codeUnit);
+        buffer.writeCharCode(nextCodeUnit);
+        i++;
+        continue;
+      } else if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) {
+        // Low surrogate isolato non preceduto da High surrogate
+        throw ArgumentError(
+          'Sequenza Unicode malformata: Low Surrogate non accoppiato all\'indice $i.',
+        );
+      }
+
       switch (codeUnit) {
         case 0x22:
           buffer.write(r'\"');
@@ -82,6 +114,12 @@ abstract final class Rfc8785JcsCanonicalizer {
       );
     }
     if (number is int) {
+      // Reiezione degli interi fuori dal range di interoperabilità IEEE-754 / I-JSON (RFC 7493) [-2^53 + 1, 2^53 - 1]
+      if (number < _minSafeInteger || number > _maxSafeInteger) {
+        throw ArgumentError(
+          'Intero $number fuori dall\'intervallo interoperabile I-JSON / IEEE-754 [$_minSafeInteger, $_maxSafeInteger].',
+        );
+      }
       buffer.write(number.toString());
     } else {
       final d = number.toDouble();
@@ -90,25 +128,28 @@ abstract final class Rfc8785JcsCanonicalizer {
         buffer.write('0');
         return;
       }
-      // Se il double rappresenta esattamente un intero senza parte decimale entro i limiti di int 64-bit
-      if (d == d.truncateToDouble() && d.abs() < 9e18) {
+
+      // Se il double rappresenta un intero safe esatto
+      if (d == d.truncateToDouble() && d.abs() <= _maxSafeInteger) {
         buffer.write(d.toInt().toString());
-      } else {
-        // ECMAScript Number-to-String formatting rules
-        var str = d.toString();
-        // Convert 'E' in Dart to lowercase 'e' without leading zero in exponent
-        str = str.replaceAll('E', 'e');
-        if (str.endsWith('.0')) {
-          str = str.substring(0, str.length - 2);
-        }
-        if (str.contains('e')) {
-          final parts = str.split('e');
-          var exp = int.parse(parts[1]);
-          final sign = exp >= 0 ? '+' : '-';
-          str = '${parts[0]}e$sign${exp.abs()}';
-        }
-        buffer.write(str);
+        return;
       }
+
+      // Applicazione dell'algoritmo ECMAScript Number-to-String per numeri IEEE-754
+      var str = d.toString();
+      str = str.replaceAll('E', 'e');
+
+      if (str.endsWith('.0')) {
+        str = str.substring(0, str.length - 2);
+      }
+
+      if (str.contains('e')) {
+        final parts = str.split('e');
+        var exp = int.parse(parts[1]);
+        final sign = exp >= 0 ? '+' : '-';
+        str = '${parts[0]}e$sign${exp.abs()}';
+      }
+      buffer.write(str);
     }
   }
 

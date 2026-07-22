@@ -61,6 +61,7 @@ final class InstalledArtifactDescriptor {
   final String platform;
   final String architecture;
   final String relativeInstallPath;
+  final String? entryFileName;
   final String installedAt;
   final int sizeBytes;
   final String sha256;
@@ -83,6 +84,7 @@ final class InstalledArtifactDescriptor {
     required this.platform,
     required this.architecture,
     required this.relativeInstallPath,
+    this.entryFileName,
     required this.installedAt,
     required this.sizeBytes,
     required this.sha256,
@@ -223,6 +225,7 @@ final class InstalledArtifactDescriptor {
               message: 'Campo obbligatorio mancante: architecture.',
             )),
         relativeInstallPath: relativePath,
+        entryFileName: json['entryFileName'] as String?,
         installedAt: json['installedAt'] as String? ??
             (throw const ProvisioningException(
               reason: ProvisioningFailureReason.installationRecordReadFailed,
@@ -266,6 +269,7 @@ final class InstalledArtifactDescriptor {
       'platform': platform,
       'architecture': architecture,
       'relativeInstallPath': relativeInstallPath,
+      if (entryFileName != null) 'entryFileName': entryFileName,
       'installedAt': installedAt,
       'sizeBytes': sizeBytes,
       'sha256': sha256,
@@ -291,6 +295,7 @@ final class InstalledArtifactDescriptor {
     String? platform,
     String? architecture,
     String? relativeInstallPath,
+    Object? entryFileName = _unset,
     String? installedAt,
     int? sizeBytes,
     String? sha256,
@@ -313,6 +318,9 @@ final class InstalledArtifactDescriptor {
       platform: platform ?? this.platform,
       architecture: architecture ?? this.architecture,
       relativeInstallPath: relativeInstallPath ?? this.relativeInstallPath,
+      entryFileName: identical(entryFileName, _unset)
+          ? this.entryFileName
+          : entryFileName as String?,
       installedAt: installedAt ?? this.installedAt,
       sizeBytes: sizeBytes ?? this.sizeBytes,
       sha256: sha256 ?? this.sha256,
@@ -331,6 +339,15 @@ final class InstalledArtifactDescriptor {
       retained: retained ?? this.retained,
       metadata: metadata ?? this.metadata,
     );
+  }
+
+  /// Confronta il descrittore dell'installazione con un artefatto del catalogo per determinare se la build e identica.
+  bool matchesArtifact(CatalogArtifact artifact) {
+    return artifactId == artifact.artifactId &&
+        version == artifact.version &&
+        buildId == artifact.buildId &&
+        sha256.trim().toLowerCase() == artifact.sha256.trim().toLowerCase() &&
+        sizeBytes == artifact.sizeBytes;
   }
 }
 

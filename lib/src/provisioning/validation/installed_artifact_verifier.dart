@@ -30,8 +30,8 @@ final class LocalInstalledArtifactVerifier
     InstalledArtifactDescriptor descriptor, {
     required ProvisioningPathResolver pathResolver,
   }) async {
-    final absolutePath =
-        pathResolver.resolveAbsolutePath(descriptor.relativeInstallPath);
+    final absolutePath = pathResolver
+        .resolveAppManagedRelativePath(descriptor.relativeInstallPath);
 
     final isDirectory = await _fileSystem.directoryExists(absolutePath);
     final isFile = await _fileSystem.fileExists(absolutePath);
@@ -40,8 +40,17 @@ final class LocalInstalledArtifactVerifier
       return false;
     }
 
-    if (isFile) {
-      final actualSize = await _fileSystem.getFileSize(absolutePath);
+    // Se l'installazione specifica un file di payload principale (es. per modelli GGUF o runtime binari)
+    final targetFilePath = isDirectory && descriptor.entryFileName != null
+        ? pathResolver.join(absolutePath, descriptor.entryFileName!)
+        : (isFile ? absolutePath : null);
+
+    if (targetFilePath != null) {
+      if (!await _fileSystem.fileExists(targetFilePath)) {
+        return false;
+      }
+
+      final actualSize = await _fileSystem.getFileSize(targetFilePath);
       if (actualSize != descriptor.sizeBytes) {
         return false;
       }
@@ -49,7 +58,7 @@ final class LocalInstalledArtifactVerifier
       if (descriptor.sha256.trim().isNotEmpty) {
         try {
           await _sha256Verifier.verifySha256(
-            filePath: absolutePath,
+            filePath: targetFilePath,
             expectedSha256: descriptor.sha256,
             fileSystem: _fileSystem,
           );
@@ -61,7 +70,7 @@ final class LocalInstalledArtifactVerifier
     }
 
     if (isDirectory) {
-      // Per una directory di runtime estratta, attesta la presenza e non-vacuità
+      // Per una directory di runtime estratta senza entry file dedicato, attesta la presenza di elementi
       final list = await _fileSystem.listDirectory(absolutePath);
       return list.isNotEmpty;
     }

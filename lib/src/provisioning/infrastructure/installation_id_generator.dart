@@ -1,11 +1,22 @@
 import '../domain/catalog_manifest.dart';
 
-/// Generatore deterministico e monotono di identificatori di installazione (`installationId`).
-abstract final class InstallationIdGenerator {
-  static int _sequence = 0;
+/// Contratto astratto per la generazione di identificatori di installazione (`installationId`).
+abstract interface class InstallationIdGenerator {
+  String generateId({
+    required CatalogArtifact artifact,
+    required DateTime timestampUtc,
+  });
+}
 
-  /// Genera un [installationId] univoco basato sulla lettura singola del timestamp e su un contatore monotono.
-  static String generateId({
+/// Implementazione concreta deterministica e monotona basata su sequenza atomica per istanza.
+final class MonotonicInstallationIdGenerator
+    implements InstallationIdGenerator {
+  int _sequence = 0;
+
+  MonotonicInstallationIdGenerator();
+
+  @override
+  String generateId({
     required CatalogArtifact artifact,
     required DateTime timestampUtc,
   }) {

@@ -150,15 +150,25 @@ class ModelCatalog {
   }
 
   /// Risolve un identificatore o alias logico (es. 'actor.default' o 'aura.actor.primary')
-  /// nel corrispondente artifact/modelId fisico caricato.
+  /// nel corrispondente artifact/modelId fisico interrogando le voci ed i ruoli registrati nel catalogo.
   String resolveLogicalModelId(String logicalOrPhysicalId) {
     final clean = logicalOrPhysicalId.trim();
     if (clean == LogicalModelIds.defaultActor ||
         clean == LogicalModelIds.primaryActorAlias) {
+      for (final model in _models) {
+        if (model.recommendedAgents.contains("actor")) {
+          return model.modelId;
+        }
+      }
       return "gemma-4-12b-it-qat-q4-0";
     }
     if (clean == LogicalModelIds.defaultEvaluator ||
         clean == LogicalModelIds.primaryEvaluatorAlias) {
+      for (final model in _models) {
+        if (model.recommendedAgents.contains("evaluator")) {
+          return model.modelId;
+        }
+      }
       return "mistralai/ministral-3-3b";
     }
     return clean;

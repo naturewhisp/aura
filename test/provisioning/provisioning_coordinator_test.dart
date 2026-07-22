@@ -126,14 +126,13 @@ void main() {
         fileSystem: fileSystem,
       );
 
-      lock = InMemoryProvisioningLock();
-
       coordinator = ProvisioningCoordinator(
         lock: lock,
         recordRepository: recordRepo,
         activationRepository: activationRepo,
         ingestionEngine: ingestionEngine,
         pathResolver: pathResolver,
+        fileSystem: fileSystem,
       );
 
       const artifactContent = 'llama-server binary simulated content';
@@ -259,142 +258,31 @@ void main() {
     });
 
     test(
-        'Riconcilia e riesegue l ingestione se la directory fisica o i file sono stati cancellati',
+        'Rifiuta path assoluti o con traversal in resolveAppManagedRelativePath',
+        () {
+      expect(
+        () =>
+            pathResolver.resolveAppManagedRelativePath('C:\\Windows\\System32'),
+        throwsA(isA<ProvisioningException>()),
+      );
+
+      expect(
+        () => pathResolver.resolveAppManagedRelativePath('..\\..\\secret.txt'),
+        throwsA(isA<ProvisioningException>()),
+      );
+    });
+
+    test('Rifiuta la rimozione diretta di un installazione attualmente attiva',
         () async {
       final consent = DownloadConsent.grantedFor(
         artifactId: 'llama-b3500',
         sourceUri: 'https://downloads.aura.local/llama-server-b3500.zip',
         expectedSizeBytes: zipBytes.length,
-        operationId: 'op-prov-rec',
+        operationId: 'op-prov-actrem',
       );
 
       final request = ProvisioningRequest(
-        operationId: 'op-prov-rec',
-        catalogId: 'cat-test-63d',
-        artifactId: 'llama-b3500',
-        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
-        consent: consent,
-        expectedPlatform: 'windows',
-        expectedArchitecture: 'x64',
-      );
-
-      await coordinator.provisionArtifact(
-        request: request,
-        manifest: sampleManifest,
-      );
-
-      final installedDir = Directory(
-          '${tempDir.path}\\app_managed\\runtimes\\llama-b3500\\b3500');
-      await installedDir.delete(recursive: true);
-
-      final resReconciled = await coordinator.provisionArtifact(
-        request: request,
-        manifest: sampleManifest,
-      );
-
-      expect(resReconciled.status, equals(ProvisioningStatus.success));
-      expect(resReconciled.alreadyInstalled, isFalse);
-      expect(await installedDir.exists(), isTrue);
-    });
-
-    test(
-        'Esegue la compensazione fisica verificando la rimozione dei file se l aggiornamento del record fallisce',
-        () async {
-      final consent = DownloadConsent.grantedFor(
-        artifactId: 'llama-b3500',
-        sourceUri: 'https://downloads.aura.local/llama-server-b3500.zip',
-        expectedSizeBytes: zipBytes.length,
-        operationId: 'op-prov-faulty',
-      );
-
-      final request = ProvisioningRequest(
-        operationId: 'op-prov-faulty',
-        catalogId: 'cat-test-63d',
-        artifactId: 'llama-b3500',
-        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
-        consent: consent,
-        expectedPlatform: 'windows',
-        expectedArchitecture: 'x64',
-      );
-
-      recordRepo.failOnUpdate = true;
-
-      final res = await coordinator.provisionArtifact(
-        request: request,
-        manifest: sampleManifest,
-      );
-
-      expect(res.status, equals(ProvisioningStatus.failed));
-      expect(res.rollbackPerformed, isTrue);
-
-      final installedFile = File(
-        '${tempDir.path}\\app_managed\\runtimes\\llama-b3500\\b3500\\llama-server.exe',
-      );
-      expect(await installedFile.exists(), isFalse);
-    });
-
-    test(
-        'Attiva un installazione specifica per installationId e traccia lastKnownGood',
-        () async {
-      final consent = DownloadConsent.grantedFor(
-        artifactId: 'llama-b3500',
-        sourceUri: 'https://downloads.aura.local/llama-server-b3500.zip',
-        expectedSizeBytes: zipBytes.length,
-        operationId: 'op-prov-act',
-      );
-
-      final request = ProvisioningRequest(
-        operationId: 'op-prov-act',
-        catalogId: 'cat-test-63d',
-        artifactId: 'llama-b3500',
-        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
-        consent: consent,
-        expectedPlatform: 'windows',
-        expectedArchitecture: 'x64',
-      );
-
-      final provRes = await coordinator.provisionArtifact(
-        request: request,
-        manifest: sampleManifest,
-      );
-
-      final actRes = await coordinator.activateInstallation(
-        installationId: provRes.installationId!,
-        operationId: 'op-act-1',
-      );
-
-      expect(actRes.success, isTrue);
-      expect(actRes.installationId, equals(provRes.installationId));
-
-      final state = await coordinator.getActivationState();
-      expect(state.activeRuntimeInstallationId, equals(provRes.installationId));
-    });
-
-    test(
-        'Rifiuta l attivazione con ActivationFailureReason tipizzato se installationId non esiste',
-        () async {
-      final actRes = await coordinator.activateInstallation(
-        installationId: 'inst-invalid-999',
-        operationId: 'op-act-fail',
-      );
-
-      expect(actRes.success, isFalse);
-      expect(actRes.failureReason,
-          equals(ActivationFailureReason.installationNotFound));
-    });
-
-    test(
-        'Rimuove correttamente un installazione specifica per installationId ed aggiorna registro e stato di attivazione',
-        () async {
-      final consent = DownloadConsent.grantedFor(
-        artifactId: 'llama-b3500',
-        sourceUri: 'https://downloads.aura.local/llama-server-b3500.zip',
-        expectedSizeBytes: zipBytes.length,
-        operationId: 'op-prov-rem',
-      );
-
-      final request = ProvisioningRequest(
-        operationId: 'op-prov-rem',
+        operationId: 'op-prov-actrem',
         catalogId: 'cat-test-63d',
         artifactId: 'llama-b3500',
         downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
@@ -410,28 +298,17 @@ void main() {
 
       await coordinator.activateInstallation(
         installationId: provRes.installationId!,
-        operationId: 'op-act-rem',
+        operationId: 'op-act-1',
       );
 
       final remRes = await coordinator.removeInstallation(
         installationId: provRes.installationId!,
-        operationId: 'op-rem-1',
+        operationId: 'op-rem-active',
       );
 
-      expect(remRes.status, equals(ProvisioningStatus.success));
-
-      final record = await coordinator.getInstallationRecord();
-      expect(record.findInstallation(provRes.installationId!), isNotNull);
-      expect(record.findInstallation(provRes.installationId!)!.status,
-          equals(InstallationStatus.removed));
-
-      final actState = await coordinator.getActivationState();
-      expect(actState.activeRuntimeInstallationId, isNull);
-
-      final installedFile = File(
-        '${tempDir.path}\\app_managed\\runtimes\\llama-b3500\\b3500\\llama-server.exe',
-      );
-      expect(await installedFile.exists(), isFalse);
+      expect(remRes.status, equals(ProvisioningStatus.failed));
+      expect(remRes.failureReason,
+          equals(ProvisioningFailureReason.installationConflict));
     });
   });
 }

@@ -26,6 +26,7 @@ final class ProvisioningCoordinator {
   final ProvisioningFileSystem _fileSystem;
   final ProvisioningClock _clock;
   final InstalledArtifactVerifier _verifier;
+  final InstallationIdGenerator _idGenerator;
 
   ProvisioningCoordinator({
     required ProvisioningLock lock,
@@ -35,7 +36,8 @@ final class ProvisioningCoordinator {
     required ProvisioningPathResolver pathResolver,
     ProvisioningFileSystem fileSystem = const LocalProvisioningFileSystem(),
     ProvisioningClock clock = const SystemProvisioningClock(),
-    InstalledArtifactVerifier verifier = const LocalInstalledArtifactVerifier(),
+    InstalledArtifactVerifier? verifier,
+    InstallationIdGenerator? idGenerator,
   })  : _lock = lock,
         _recordRepository = recordRepository,
         _activationRepository = activationRepository,
@@ -43,7 +45,9 @@ final class ProvisioningCoordinator {
         _pathResolver = pathResolver,
         _fileSystem = fileSystem,
         _clock = clock,
-        _verifier = verifier;
+        _verifier =
+            verifier ?? LocalInstalledArtifactVerifier(fileSystem: fileSystem),
+        _idGenerator = idGenerator ?? MonotonicInstallationIdGenerator();
 
   /// Acquisisce ed installa un artefatto da catalogo, riconcilia lo stato fisico/registro ed aggiorna atomicamente il registro sotto lock.
   Future<ProvisioningResult> provisionArtifact({
@@ -80,15 +84,15 @@ final class ProvisioningCoordinator {
         buildOrVersionId: artifact.version,
       );
       final targetInstallPath =
-          _pathResolver.resolveAbsolutePath(relativeInstallPath);
+          _pathResolver.resolveAppManagedRelativePath(relativeInstallPath);
 
-      // 2. Controllo idempotenza congiunto: verifica record e verifica fisica/hash reale
+      // 2. Controllo idempotenza congiunto: fingerprint completo (artifactId, version, buildId, sha256, sizeBytes) e verifica fisica
       final currentRecord = await _recordRepository.readRecord();
       final latestDescriptor =
           currentRecord.findLatestVerifiedInstallation(artifact.artifactId);
 
       if (latestDescriptor != null &&
-          latestDescriptor.version == artifact.version &&
+          latestDescriptor.matchesArtifact(artifact) &&
           latestDescriptor.status == InstallationStatus.verified) {
         final isIntegrityValid = await _verifier.verifyPhysicalIntegrity(
           latestDescriptor,
@@ -105,7 +109,26 @@ final class ProvisioningCoordinator {
             alreadyInstalled: true,
           );
         } else {
-          // File fisici o hash corrotti/assenti -> Riconciliazione transazionale rimuovendo l'installazione non valida
+          // File fisici o hash corrotti/assenti -> Pulizia fisica sicura prima della reinstallazione
+          await _fileSystem.deleteDirectoryBestEffort(targetInstallPath);
+          await _fileSystem.deleteFileBestEffort(targetInstallPath);
+
+          final isPhysicallyClean =
+              !await _fileSystem.directoryExists(targetInstallPath) &&
+                  !await _fileSystem.fileExists(targetInstallPath);
+
+          if (!isPhysicallyClean) {
+            return ProvisioningResult.failure(
+              operationId: request.operationId,
+              artifactId: artifact.artifactId,
+              sourceKind: sourceKind,
+              failureReason: ProvisioningFailureReason.cleanupFailed,
+              sanitizedMessage:
+                  'Impossibile rimuovere l\'installazione fisica corrotta preesistente prima della reinstallazione.',
+            );
+          }
+
+          // Riconciliazione nel registro marcando il vecchio descriptor come removed
           await _recordRepository.updateRecord(
             (record) =>
                 record.removeInstallation(latestDescriptor.installationId),
@@ -128,10 +151,10 @@ final class ProvisioningCoordinator {
 
       cancellationToken?.throwIfCancelled();
 
-      // 4. Generazione monotona dell'installationId con clock letto una sola volta
+      // 4. Generazione monotona dell'installationId con clock letto una sola volta tramite _idGenerator
       final nowUtc = _clock.nowUtc().toUtc();
       final nowIso = nowUtc.toIso8601String();
-      final installationId = InstallationIdGenerator.generateId(
+      final installationId = _idGenerator.generateId(
         artifact: artifact,
         timestampUtc: nowUtc,
       );
@@ -146,9 +169,12 @@ final class ProvisioningCoordinator {
         platform: artifact.platform,
         architecture: artifact.architecture,
         relativeInstallPath: relativeInstallPath,
+        entryFileName: artifact.compression == CatalogCompressionFormat.none
+            ? artifact.fileName
+            : null,
         installedAt: nowIso,
         verifiedAt: nowIso,
-        sizeBytes: ingestionResult.bytesProcessed,
+        sizeBytes: artifact.sizeBytes,
         sha256: artifact.sha256,
         sourceKind: artifact.sourceKind,
         status: InstallationStatus.verified,
@@ -169,15 +195,20 @@ final class ProvisioningCoordinator {
             !await _fileSystem.directoryExists(targetInstallPath) &&
                 !await _fileSystem.fileExists(targetInstallPath);
 
+        final String message = isPhysicallyRemoved
+            ? ((deletedDir || deletedFile)
+                ? 'Aggiornamento del registro fallito. Compensazione fisica completata con successo.'
+                : 'Aggiornamento del registro fallito. Destinazione già priva di file fisici.')
+            : 'Aggiornamento del registro fallito. Tentativo di compensazione fisica fallito; file orfani presenti su disco.';
+
         return ProvisioningResult.failure(
           operationId: request.operationId,
           artifactId: artifact.artifactId,
           sourceKind: sourceKind,
           failureReason: ProvisioningFailureReason.unexpectedState,
-          sanitizedMessage:
-              'Aggiornamento del registro di installazione fallito. Compensazione fisica eseguita.',
+          sanitizedMessage: message,
           rollbackPerformed: isPhysicallyRemoved,
-          cleanupSucceeded: (deletedDir || deletedFile) && isPhysicallyRemoved,
+          cleanupSucceeded: isPhysicallyRemoved,
         );
       }
 
@@ -199,7 +230,14 @@ final class ProvisioningCoordinator {
     ProvisioningCancellationToken? cancellationToken,
   }) async {
     return _lock.synchronized(_lockKey, () async {
-      cancellationToken?.throwIfCancelled();
+      if (cancellationToken?.isCancellationRequested == true) {
+        return ActivationResult.failure(
+          operationId: operationId,
+          installationId: installationId,
+          failureReason: ActivationFailureReason.operationCancelled,
+          sanitizedMessage: 'Operazione di attivazione annullata.',
+        );
+      }
 
       final record = await _recordRepository.readRecord();
       final descriptor = record.findInstallation(installationId);
@@ -234,7 +272,7 @@ final class ProvisioningCoordinator {
           installationId: installationId,
           failureReason: ActivationFailureReason.integrityVerificationFailed,
           sanitizedMessage:
-              'Verifica dell\'integrità fisica o dell\'hash fallita.',
+              'Verifica dell\'integrità fisica o dell\'hash fallita per il payload.',
         );
       }
 
@@ -281,6 +319,7 @@ final class ProvisioningCoordinator {
   }
 
   /// Rimuove un'installazione specifica dal filesystem e dal registro di installazione sotto lock.
+  /// Rifiuta tassativamente la rimozione diretta di un'installazione attualmente attiva.
   Future<ProvisioningResult> removeInstallation({
     required String installationId,
     required String operationId,
@@ -299,32 +338,68 @@ final class ProvisioningCoordinator {
         );
       }
 
-      final absolutePath =
-          _pathResolver.resolveAbsolutePath(descriptor.relativeInstallPath);
-
+      // 1. Rifiuta la rimozione se l'installazione è attualmente attiva
       final currentState = await _activationRepository.readState();
       if (currentState.activeRuntimeInstallationId ==
               descriptor.installationId ||
           currentState.activeModelInstallationId == descriptor.installationId) {
-        final isRuntime =
-            descriptor.artifactType == CatalogArtifactType.runtime;
-        final newState = currentState.copyWith(
-          activeRuntimeInstallationId:
-              isRuntime ? null : currentState.activeRuntimeInstallationId,
-          activeModelInstallationId:
-              !isRuntime ? null : currentState.activeModelInstallationId,
-          updatedAt: _clock.nowUtc().toUtc().toIso8601String(),
+        return ProvisioningResult.failure(
+          operationId: operationId,
+          artifactId: descriptor.artifactId,
+          sourceKind: ProvisioningSourceKind.bundled,
+          failureReason: ProvisioningFailureReason.installationConflict,
+          sanitizedMessage:
+              'Impossibile rimuovere un\'installazione attualmente attiva. Disattivarla o selezionare un altro modello prima di rimuoverla.',
         );
-        await _activationRepository.replaceState(newState);
       }
 
-      final deletedDir =
-          await _fileSystem.deleteDirectoryBestEffort(absolutePath);
-      final deletedFile = await _fileSystem.deleteFileBestEffort(absolutePath);
+      final absolutePath = _pathResolver
+          .resolveAppManagedRelativePath(descriptor.relativeInstallPath);
 
+      // 2. Cancellazione fisica e verifica dell'effettiva assenza
+      await _fileSystem.deleteDirectoryBestEffort(absolutePath);
+      await _fileSystem.deleteFileBestEffort(absolutePath);
+
+      final isPhysicallyRemoved =
+          !await _fileSystem.directoryExists(absolutePath) &&
+              !await _fileSystem.fileExists(absolutePath);
+
+      if (!isPhysicallyRemoved) {
+        return ProvisioningResult.failure(
+          operationId: operationId,
+          artifactId: descriptor.artifactId,
+          sourceKind: ProvisioningSourceKind.bundled,
+          failureReason: ProvisioningFailureReason.cleanupFailed,
+          sanitizedMessage:
+              'Impossibile rimuovere fisicamente i file dell\'installazione dal disco.',
+        );
+      }
+
+      // 3. Aggiornamento del registro di installazione marcando lo stato removed
       await _recordRepository.updateRecord(
         (rec) => rec.removeInstallation(installationId),
       );
+
+      // 4. Riconciliazione di ActivationState (pulizia di lastKnownGood se puntava all'installazione rimossa)
+      final needsLkgRuntimeClean =
+          currentState.lastKnownGoodRuntimeInstallationId ==
+              descriptor.installationId;
+      final needsLkgModelClean =
+          currentState.lastKnownGoodModelInstallationId ==
+              descriptor.installationId;
+
+      if (needsLkgRuntimeClean || needsLkgModelClean) {
+        final reconciledState = currentState.copyWith(
+          lastKnownGoodRuntimeInstallationId: needsLkgRuntimeClean
+              ? null
+              : currentState.lastKnownGoodRuntimeInstallationId,
+          lastKnownGoodModelInstallationId: needsLkgModelClean
+              ? null
+              : currentState.lastKnownGoodModelInstallationId,
+          updatedAt: _clock.nowUtc().toUtc().toIso8601String(),
+        );
+        await _activationRepository.replaceState(reconciledState);
+      }
 
       return ProvisioningResult(
         operationId: operationId,
@@ -333,7 +408,7 @@ final class ProvisioningCoordinator {
         status: ProvisioningStatus.success,
         sourceKind: ProvisioningSourceKind.bundled,
         installed: false,
-        cleanupSucceeded: deletedDir || deletedFile,
+        cleanupSucceeded: true,
       );
     });
   }

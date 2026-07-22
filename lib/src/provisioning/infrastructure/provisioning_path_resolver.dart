@@ -150,13 +150,64 @@ final class ProvisioningPathResolver {
   }
 
   /// Risolve un path relativo (es. `models/gemma-4-12b-it-qat-q4-0/aaec...`) in un path assoluto sotto `appManagedRoot`.
-  String resolveAbsolutePath(String relativePath) {
-    final cleanRel = relativePath.trim().replaceAll('/', r'\');
-    if (_absolutePathRegex.hasMatch(cleanRel)) {
-      return cleanRel;
+  /// Rifiuta tassativamente path assoluti, prefissi UNC, lettere di unita e path traversal ("..").
+  String resolveAppManagedRelativePath(String relativePath) {
+    final trimmed = relativePath.trim();
+    if (trimmed.isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Il path relativo non puo essere vuoto.',
+      );
     }
-    return _join(appManagedRoot, cleanRel);
+
+    if (_absolutePathRegex.hasMatch(trimmed) ||
+        trimmed.startsWith('/') ||
+        trimmed.startsWith('\\')) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Rifiutato path non relativo o assoluto: "$relativePath".',
+      );
+    }
+
+    final rawSegments = trimmed.replaceAll('/', '\\').split('\\');
+    final cleanSegments = <String>[];
+    for (final seg in rawSegments) {
+      final s = seg.trim();
+      if (s.isEmpty) continue;
+      cleanSegments.add(sanitizeSegment(s));
+    }
+
+    if (cleanSegments.isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'Path relativo privo di segmenti validi.',
+      );
+    }
+
+    final relJoined = cleanSegments.join('\\');
+    final resolvedAbsolute = canonicalizeRoot(_join(appManagedRoot, relJoined));
+
+    // Boundary Check: assicura che il percorso risolto si trovi rigorosamente all'interno di appManagedRoot
+    final normRoot = _canonicalizeKey(appManagedRoot);
+    final normResolved = _canonicalizeKey(resolvedAbsolute);
+
+    if (!normResolved.startsWith(normRoot)) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Path traversal o escape da appManagedRoot rilevato: "$relativePath".',
+      );
+    }
+
+    return resolvedAbsolute;
   }
+
+  /// Alias per la risoluzione dei path relativi app-managed.
+  String resolveAbsolutePath(String relativePath) =>
+      resolveAppManagedRelativePath(relativePath);
+
+  /// Helper pubblico per unire due componenti di path in stile Windows.
+  String join(String part1, String part2) => _join(part1, part2);
 
   /// Calcola il path assoluto di installazione finale sotto la root app-managed.
   String resolveAbsoluteInstallPath({

@@ -104,3 +104,4 @@ export 'src/provisioning/infrastructure/atomic_artifact_installer.dart';
 export 'src/provisioning/infrastructure/artifact_ingestion_engine.dart';
 export 'src/provisioning/infrastructure/installation_record_repository.dart';
 export 'src/provisioning/infrastructure/activation_state_repository.dart';
+export 'src/provisioning/infrastructure/provisioning_coordinator.dart';

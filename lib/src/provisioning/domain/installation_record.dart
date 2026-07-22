@@ -452,6 +452,62 @@ final class InstallationRecord {
     };
   }
 
+  InstalledArtifactDescriptor? findArtifact(String artifactId) {
+    for (final a in installedArtifacts) {
+      if (a.artifactId == artifactId &&
+          a.status != InstallationStatus.removed) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  InstalledArtifactDescriptor? findInstallation(String installationId) {
+    for (final a in installedArtifacts) {
+      if (a.installationId == installationId) {
+        return a;
+      }
+    }
+    return null;
+  }
+
+  InstallationRecord upsertArtifact(InstalledArtifactDescriptor descriptor) {
+    final updatedList = <InstalledArtifactDescriptor>[];
+    bool replaced = false;
+
+    for (final a in installedArtifacts) {
+      if (a.artifactId == descriptor.artifactId ||
+          a.installationId == descriptor.installationId) {
+        updatedList.add(descriptor);
+        replaced = true;
+      } else {
+        updatedList.add(a);
+      }
+    }
+
+    if (!replaced) {
+      updatedList.add(descriptor);
+    }
+
+    return copyWith(installedArtifacts: updatedList);
+  }
+
+  InstallationRecord removeArtifact(String artifactId) {
+    final updatedList = <InstalledArtifactDescriptor>[];
+    for (final a in installedArtifacts) {
+      if (a.artifactId == artifactId) {
+        updatedList.add(a.copyWith(
+          status: InstallationStatus.removed,
+          verifiedAt: null,
+          retained: false,
+        ));
+      } else {
+        updatedList.add(a);
+      }
+    }
+    return copyWith(installedArtifacts: updatedList);
+  }
+
   InstallationRecord copyWith({
     String? schemaVersion,
     String? updatedAt,

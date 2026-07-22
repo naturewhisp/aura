@@ -112,6 +112,7 @@ enum ProvisioningFailureReason {
   downloadTimeout,
   sizeLimitExceeded,
   sizeMismatch,
+  sha256Mismatch,
   hashMismatch,
   stagingCreationFailed,
   extractionFailed,
@@ -130,7 +131,7 @@ enum ProvisioningFailureReason {
   unexpectedState,
 }
 
-/// Richiesta strutturata per l'esecuzione di un'operazione di provisioning.
+/// Richiesta formale di provisioning inviata dal chiamante applicativo.
 @immutable
 final class ProvisioningRequest {
   final String operationId;
@@ -138,12 +139,10 @@ final class ProvisioningRequest {
   final String artifactId;
   final ProvisioningDownloadPolicy downloadPolicy;
   final DownloadConsent? consent;
-  final bool activateAfterInstall;
   final String expectedPlatform;
   final String expectedArchitecture;
   final String? customSourcePath;
   final ProvisioningConflictPolicy conflictPolicy;
-  final bool diagnosticMode;
 
   const ProvisioningRequest({
     required this.operationId,
@@ -151,16 +150,14 @@ final class ProvisioningRequest {
     required this.artifactId,
     this.downloadPolicy = ProvisioningDownloadPolicy.neverDownload,
     this.consent,
-    this.activateAfterInstall = false,
-    this.expectedPlatform = 'windows',
-    this.expectedArchitecture = 'x64',
+    required this.expectedPlatform,
+    required this.expectedArchitecture,
     this.customSourcePath,
     this.conflictPolicy = ProvisioningConflictPolicy.fail,
-    this.diagnosticMode = false,
   });
 }
 
-/// Risultato tipizzato restituito al termine del provisioning.
+/// Risultato sintetico restituto da un'operazione di provisioning.
 @immutable
 final class ProvisioningResult {
   final String operationId;
@@ -276,6 +273,56 @@ final class ProvisioningResult {
       cleanupSucceeded: cleanupSucceeded ?? this.cleanupSucceeded,
       failureReason: failureReason ?? this.failureReason,
       sanitizedDiagnostics: sanitizedDiagnostics ?? this.sanitizedDiagnostics,
+    );
+  }
+}
+
+/// Risultato dell'operazione di attivazione di un artefatto.
+@immutable
+final class ActivationResult {
+  final String operationId;
+  final String artifactId;
+  final String activeVersion;
+  final bool success;
+  final String? activatedAt;
+  final String? failureReason;
+
+  const ActivationResult({
+    required this.operationId,
+    required this.artifactId,
+    required this.activeVersion,
+    required this.success,
+    this.activatedAt,
+    this.failureReason,
+  });
+
+  factory ActivationResult.success({
+    required String operationId,
+    required String artifactId,
+    required String activeVersion,
+    required String activatedAt,
+  }) {
+    return ActivationResult(
+      operationId: operationId,
+      artifactId: artifactId,
+      activeVersion: activeVersion,
+      success: true,
+      activatedAt: activatedAt,
+    );
+  }
+
+  factory ActivationResult.failure({
+    required String operationId,
+    required String artifactId,
+    required String activeVersion,
+    required String failureReason,
+  }) {
+    return ActivationResult(
+      operationId: operationId,
+      artifactId: artifactId,
+      activeVersion: activeVersion,
+      success: false,
+      failureReason: failureReason,
     );
   }
 }

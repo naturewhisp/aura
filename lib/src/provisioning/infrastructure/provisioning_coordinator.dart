@@ -1,0 +1,315 @@
+import 'dart:async';
+import '../domain/activation_state.dart';
+import '../domain/catalog_manifest.dart';
+import '../domain/installation_record.dart';
+import '../domain/provisioning_cancellation_token.dart';
+import '../domain/provisioning_clock.dart';
+import '../domain/provisioning_options.dart';
+import 'activation_state_repository.dart';
+import 'artifact_ingestion_engine.dart';
+import 'installation_record_repository.dart';
+import 'provisioning_file_system.dart';
+import 'provisioning_lock.dart';
+import 'provisioning_path_resolver.dart';
+
+/// Coordinatore centrale per il ciclo di vita degli artefatti, l'idempotenza, la persistenza transazionale del registro, l'attivazione ed i rollback.
+final class ProvisioningCoordinator {
+  static const String _lockKey = 'provisioning_lifecycle';
+
+  final ProvisioningLock _lock;
+  final InstallationRecordRepository _recordRepository;
+  final ActivationStateRepository _activationRepository;
+  final ArtifactIngestionEngine _ingestionEngine;
+  final ProvisioningPathResolver _pathResolver;
+  final ProvisioningFileSystem _fileSystem;
+  final ProvisioningClock _clock;
+
+  ProvisioningCoordinator({
+    required ProvisioningLock lock,
+    required InstallationRecordRepository recordRepository,
+    required ActivationStateRepository activationRepository,
+    required ArtifactIngestionEngine ingestionEngine,
+    required ProvisioningPathResolver pathResolver,
+    ProvisioningFileSystem fileSystem = const LocalProvisioningFileSystem(),
+    ProvisioningClock clock = const SystemProvisioningClock(),
+  })  : _lock = lock,
+        _recordRepository = recordRepository,
+        _activationRepository = activationRepository,
+        _ingestionEngine = ingestionEngine,
+        _pathResolver = pathResolver,
+        _fileSystem = fileSystem,
+        _clock = clock;
+
+  /// Acquisisce ed installa un artefatto da catalogo, riconcilia lo stato fisico/registro, ed aggiorna atomicamente il registro sotto lock.
+  Future<ProvisioningResult> provisionArtifact({
+    required ProvisioningRequest request,
+    required CatalogManifest manifest,
+    ProvisioningCancellationToken? cancellationToken,
+  }) async {
+    return _lock.synchronized(_lockKey, () async {
+      cancellationToken?.throwIfCancelled();
+
+      // 1. Risoluzione dell'artefatto nel catalogo
+      final artifact = manifest.findArtifact(request.artifactId);
+      if (artifact == null) {
+        return ProvisioningResult.failure(
+          operationId: request.operationId,
+          artifactId: request.artifactId,
+          sourceKind: ProvisioningSourceKind.bundled,
+          failureReason: ProvisioningFailureReason.artifactIdNotFound,
+          sanitizedMessage: 'Artefatto non trovato nel catalogo.',
+        );
+      }
+
+      final sourceKind = switch (artifact.sourceKind) {
+        CatalogArtifactSourceKind.bundled => ProvisioningSourceKind.bundled,
+        CatalogArtifactSourceKind.remoteHttps =>
+          ProvisioningSourceKind.remoteHttps,
+        CatalogArtifactSourceKind.localImport =>
+          ProvisioningSourceKind.localImport,
+      };
+
+      final targetInstallPath =
+          _pathResolver.resolveInstalledArtifactPath(artifact);
+
+      // 2. Controllo idempotenza congiunto: registro persistito + esistenza fisica sul disco
+      final currentRecord = await _recordRepository.readRecord();
+      final existingDescriptor =
+          currentRecord.findArtifact(artifact.artifactId);
+
+      if (existingDescriptor != null &&
+          existingDescriptor.version == artifact.version &&
+          existingDescriptor.status == InstallationStatus.verified) {
+        final isPhysicallyPresent =
+            await _fileSystem.directoryExists(targetInstallPath) ||
+                await _fileSystem.fileExists(targetInstallPath);
+
+        if (isPhysicallyPresent) {
+          return ProvisioningResult.success(
+            operationId: request.operationId,
+            artifactId: artifact.artifactId,
+            installationId: existingDescriptor.installationId,
+            sourceKind: sourceKind,
+            bytesProcessed: existingDescriptor.sizeBytes,
+            alreadyInstalled: true,
+          );
+        } else {
+          // File fisici assenti o corrotti sul disco -> Pulizia transazionale del record obsoleto
+          await _recordRepository.updateRecord(
+            (record) => record.removeArtifact(artifact.artifactId),
+          );
+        }
+      }
+
+      cancellationToken?.throwIfCancelled();
+
+      // 3. Esecuzione dell'ingestione fisica tramite ArtifactIngestionEngine
+      final ingestionResult = await _ingestionEngine.ingestArtifact(
+        request: request,
+        manifest: manifest,
+        cancellationToken: cancellationToken,
+      );
+
+      if (ingestionResult.status == ProvisioningStatus.failed) {
+        return ingestionResult;
+      }
+
+      cancellationToken?.throwIfCancelled();
+
+      // 4. Generazione univoca e monotona di installationId e costruzione dell'InstalledArtifactDescriptor
+      final nowIso = _clock.nowUtc().toUtc().toIso8601String();
+      final installationId =
+          'inst-${artifact.artifactId}-${artifact.version}-${_clock.nowUtc().millisecondsSinceEpoch}';
+
+      final newDescriptor = InstalledArtifactDescriptor(
+        installationId: installationId,
+        artifactId: artifact.artifactId,
+        artifactType: artifact.artifactType,
+        displayName: artifact.displayName,
+        version: artifact.version,
+        buildId: artifact.buildId,
+        platform: artifact.platform,
+        architecture: artifact.architecture,
+        relativeInstallPath: targetInstallPath,
+        installedAt: nowIso,
+        verifiedAt: nowIso,
+        sizeBytes: ingestionResult.bytesProcessed,
+        sha256: artifact.sha256,
+        sourceKind: artifact.sourceKind,
+        status: InstallationStatus.verified,
+      );
+
+      // 5. Scrittura transazionale nel registro sotto lock con compensazione fisica su fallimento
+      try {
+        await _recordRepository.updateRecord(
+          (record) => record.upsertArtifact(newDescriptor),
+        );
+      } catch (e) {
+        // Compensazione fisica: cancellazione immediata dei file fisici per prevenire orfani non tracciati
+        await _fileSystem.deleteDirectoryBestEffort(targetInstallPath);
+        await _fileSystem.deleteFileBestEffort(targetInstallPath);
+
+        return ProvisioningResult.failure(
+          operationId: request.operationId,
+          artifactId: artifact.artifactId,
+          sourceKind: sourceKind,
+          failureReason: ProvisioningFailureReason.unexpectedState,
+          sanitizedMessage:
+              'Aggiornamento del registro di installazione fallito. Compensazione fisica eseguita.',
+          rollbackPerformed: true,
+          cleanupSucceeded: ingestionResult.cleanupSucceeded,
+        );
+      }
+
+      return ProvisioningResult.success(
+        operationId: request.operationId,
+        artifactId: artifact.artifactId,
+        installationId: installationId,
+        sourceKind: sourceKind,
+        bytesProcessed: ingestionResult.bytesProcessed,
+        alreadyInstalled: false,
+      );
+    });
+  }
+
+  /// Attiva un artefatto installato e verificato, gestendo il tracciamento di `lastKnownGood`.
+  Future<ActivationResult> activateArtifact({
+    required String artifactId,
+    required String version,
+    required String operationId,
+    ProvisioningCancellationToken? cancellationToken,
+  }) async {
+    return _lock.synchronized(_lockKey, () async {
+      cancellationToken?.throwIfCancelled();
+
+      final record = await _recordRepository.readRecord();
+      final descriptor = record.findArtifact(artifactId);
+
+      if (descriptor == null ||
+          descriptor.version != version ||
+          descriptor.status != InstallationStatus.verified) {
+        return ActivationResult.failure(
+          operationId: operationId,
+          artifactId: artifactId,
+          activeVersion: version,
+          failureReason: 'Artefatto non installato o non in stato verified.',
+        );
+      }
+
+      final isPhysicallyPresent =
+          await _fileSystem.directoryExists(descriptor.relativeInstallPath) ||
+              await _fileSystem.fileExists(descriptor.relativeInstallPath);
+
+      if (!isPhysicallyPresent) {
+        return ActivationResult.failure(
+          operationId: operationId,
+          artifactId: artifactId,
+          activeVersion: version,
+          failureReason: 'File fisici dell\'artefatto non trovati sul disco.',
+        );
+      }
+
+      final nowIso = _clock.nowUtc().toUtc().toIso8601String();
+      final currentState = await _activationRepository.readState();
+
+      final isRuntime = descriptor.artifactType == CatalogArtifactType.runtime;
+
+      final updatedState = currentState.copyWith(
+        activeRuntimeInstallationId: isRuntime
+            ? descriptor.installationId
+            : currentState.activeRuntimeInstallationId,
+        activeModelInstallationId: !isRuntime
+            ? descriptor.installationId
+            : currentState.activeModelInstallationId,
+        lastKnownGoodRuntimeInstallationId: isRuntime
+            ? (currentState.activeRuntimeInstallationId ??
+                currentState.lastKnownGoodRuntimeInstallationId)
+            : currentState.lastKnownGoodRuntimeInstallationId,
+        lastKnownGoodModelInstallationId: !isRuntime
+            ? (currentState.activeModelInstallationId ??
+                currentState.lastKnownGoodModelInstallationId)
+            : currentState.lastKnownGoodModelInstallationId,
+        updatedAt: nowIso,
+      );
+
+      await _activationRepository.replaceState(updatedState);
+
+      return ActivationResult.success(
+        operationId: operationId,
+        artifactId: artifactId,
+        activeVersion: version,
+        activatedAt: nowIso,
+      );
+    });
+  }
+
+  /// Rimuove un artefatto dal filesystem e dal registro di installazione sotto lock.
+  Future<ProvisioningResult> removeArtifact({
+    required String artifactId,
+    required String operationId,
+  }) async {
+    return _lock.synchronized(_lockKey, () async {
+      final record = await _recordRepository.readRecord();
+      final descriptor = record.findArtifact(artifactId);
+
+      if (descriptor == null) {
+        return ProvisioningResult.failure(
+          operationId: operationId,
+          artifactId: artifactId,
+          sourceKind: ProvisioningSourceKind.bundled,
+          failureReason: ProvisioningFailureReason.artifactIdNotFound,
+          sanitizedMessage:
+              'Artefatto non presente nel registro di installazione.',
+        );
+      }
+
+      final currentState = await _activationRepository.readState();
+      if (currentState.activeRuntimeInstallationId ==
+              descriptor.installationId ||
+          currentState.activeModelInstallationId == descriptor.installationId) {
+        final isRuntime =
+            descriptor.artifactType == CatalogArtifactType.runtime;
+        final newState = currentState.copyWith(
+          activeRuntimeInstallationId:
+              isRuntime ? null : currentState.activeRuntimeInstallationId,
+          activeModelInstallationId:
+              !isRuntime ? null : currentState.activeModelInstallationId,
+          updatedAt: _clock.nowUtc().toUtc().toIso8601String(),
+        );
+        await _activationRepository.replaceState(newState);
+      }
+
+      final deletedDir = await _fileSystem
+          .deleteDirectoryBestEffort(descriptor.relativeInstallPath);
+      final deletedFile = await _fileSystem
+          .deleteFileBestEffort(descriptor.relativeInstallPath);
+
+      await _recordRepository.updateRecord(
+        (rec) => rec.removeArtifact(artifactId),
+      );
+
+      return ProvisioningResult(
+        operationId: operationId,
+        artifactId: artifactId,
+        status: ProvisioningStatus.success,
+        sourceKind: ProvisioningSourceKind.bundled,
+        installed: false,
+        cleanupSucceeded: deletedDir || deletedFile,
+      );
+    });
+  }
+
+  /// Restituisce lo stato attuale del registro di installazione sotto lock.
+  Future<InstallationRecord> getInstallationRecord() async {
+    return _lock.synchronized(_lockKey, () async {
+      return _recordRepository.readRecord();
+    });
+  }
+
+  /// Restituisce lo stato attuale di attivazione sotto lock.
+  Future<ActivationState> getActivationState() async {
+    return _lock.synchronized(_lockKey, () async {
+      return _activationRepository.readState();
+    });
+  }
+}

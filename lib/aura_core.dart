@@ -110,5 +110,16 @@ export 'src/provisioning/infrastructure/provisioning_coordinator.dart';
 // Provisioning Resolvers, Bootstrap & CLI (Phase 6.3e)
 export 'src/provisioning/resolvers/model_resolver.dart';
 export 'src/provisioning/resolvers/runtime_resolver.dart';
+
+// Provisioning Acquisition Domain & Trust Model (Phase 6.4a)
+export 'src/provisioning/domain/catalog_acquisition_models.dart';
+export 'src/provisioning/domain/catalog_acquisition_exceptions.dart';
+export 'src/provisioning/domain/immutable_repository_revision_policy.dart';
+export 'src/provisioning/domain/catalog_compatibility_evaluator.dart';
+export 'src/provisioning/domain/validated_catalog_candidate.dart';
+export 'src/provisioning/domain/catalog_selection_policy.dart';
+export 'src/provisioning/validation/catalog_validation_service.dart';
+export 'src/provisioning/crypto/catalog_public_key.dart';
+
 export 'src/provisioning/bootstrap/provisioning_bootstrap_service.dart';
 export 'src/provisioning/cli/provisioning_cli_runner.dart';

@@ -39,3 +39,8 @@ export 'src/agent_runtime/output/reasoning_content_policy.dart';
 // Application Composition Root Factory & Implementations (Phase 6.2a)
 export 'src/bootstrap/application_bootstrap_factory.dart';
 export 'src/bootstrap/default_application_bootstrap.dart';
+
+// Provisioning Acquisition Cryptography & Trust Store (Phase 6.4a)
+export 'src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart';
+export 'src/provisioning/crypto/catalog_trust_store.dart';
+export 'src/provisioning/crypto/catalog_signature_verifier.dart';

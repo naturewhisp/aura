@@ -14,3 +14,7 @@ export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_clien
 
 // Managed llama-server Testing Fakes (Phase 6.2b)
 export 'src/testing/fake_llama_server_environment.dart';
+
+// Provisioning Acquisition Mocks (Phase 6.4a)
+export 'src/provisioning/crypto/catalog_trust_store.dart';
+export 'src/provisioning/crypto/catalog_signature_verifier.dart';

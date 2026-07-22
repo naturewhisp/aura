@@ -3,10 +3,6 @@ import 'dart:typed_data';
 
 /// Utility per la canonicalizzazione deterministica dei dati JSON secondo lo standard **RFC 8785 (JSON Canonicalization Scheme - JCS)**.
 abstract final class Rfc8785JcsCanonicalizer {
-  /// Limite massimo e minimo per gli interi interoperabili IEEE-754 / I-JSON (2^53 - 1).
-  static const int _maxSafeInteger = 9007199254740991;
-  static const int _minSafeInteger = -9007199254740991;
-
   /// Converte un oggetto JSON-safe [value] nella sua stringa JSON canonicalizzata secondo RFC 8785.
   static String canonicalizeString(Object? value) {
     final buffer = StringBuffer();
@@ -113,44 +109,63 @@ abstract final class Rfc8785JcsCanonicalizer {
         'I valori numerici non finiti (NaN, Infinity) sono vietati da RFC 8785: $number',
       );
     }
+
+    final d = number.toDouble();
+    if (!d.isFinite) {
+      throw ArgumentError(
+          'Valore numerico non rappresentabile in IEEE-754 double: $number');
+    }
+
+    // Se l'input era un int, verifichiamo che sia esattamente rappresentabile come IEEE-754 double
     if (number is int) {
-      // Reiezione degli interi fuori dal range di interoperabilità IEEE-754 / I-JSON (RFC 7493) [-2^53 + 1, 2^53 - 1]
-      if (number < _minSafeInteger || number > _maxSafeInteger) {
+      try {
+        final doubleAsBigInt = BigInt.from(d);
+        final originalBigInt = BigInt.from(number);
+        if (doubleAsBigInt != originalBigInt) {
+          throw ArgumentError(
+            'Intero $number non esattamente rappresentabile come IEEE-754 double.',
+          );
+        }
+      } catch (_) {
         throw ArgumentError(
-          'Intero $number fuori dall\'intervallo interoperabile I-JSON / IEEE-754 [$_minSafeInteger, $_maxSafeInteger].',
+          'Intero $number fuori dall\'intervallo rappresentabile come IEEE-754 double.',
         );
       }
-      buffer.write(number.toString());
-    } else {
-      final d = number.toDouble();
-      if (d == 0.0) {
-        // In JCS (ECMAScript Number-to-String), sia 0.0 che -0.0 devono essere serializzati come "0"
-        buffer.write('0');
-        return;
-      }
-
-      // Se il double rappresenta un intero safe esatto
-      if (d == d.truncateToDouble() && d.abs() <= _maxSafeInteger) {
-        buffer.write(d.toInt().toString());
-        return;
-      }
-
-      // Applicazione dell'algoritmo ECMAScript Number-to-String per numeri IEEE-754
-      var str = d.toString();
-      str = str.replaceAll('E', 'e');
-
-      if (str.endsWith('.0')) {
-        str = str.substring(0, str.length - 2);
-      }
-
-      if (str.contains('e')) {
-        final parts = str.split('e');
-        var exp = int.parse(parts[1]);
-        final sign = exp >= 0 ? '+' : '-';
-        str = '${parts[0]}e$sign${exp.abs()}';
-      }
-      buffer.write(str);
     }
+
+    // RFC 8785: sia 0.0 che -0.0 sono serializzati come "0"
+    if (d == 0.0) {
+      buffer.write('0');
+      return;
+    }
+
+    // Se il double rappresenta un intero esatto ed il suo valore assoluto è < 1e21
+    final absD = d.abs();
+    if (d == d.truncateToDouble() && absD < 1e21) {
+      try {
+        buffer.write(BigInt.from(d).toString());
+        return;
+      } catch (_) {
+        // Fallthrough alla formattazione ECMAScript standard
+      }
+    }
+
+    // Formattazione ECMAScript Number-to-String per numeri IEEE-754 double
+    var str = d.toString();
+    str = str.replaceAll('E', 'e');
+
+    if (str.endsWith('.0')) {
+      str = str.substring(0, str.length - 2);
+    }
+
+    if (str.contains('e')) {
+      final parts = str.split('e');
+      var exp = int.parse(parts[1]);
+      final sign = exp >= 0 ? '+' : '-';
+      str = '${parts[0]}e$sign${exp.abs()}';
+    }
+
+    buffer.write(str);
   }
 
   static void _serializeList(List list, StringBuffer buffer) {

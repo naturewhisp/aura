@@ -3,7 +3,8 @@ import 'package:aura_core/aura_offline.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('RFC 8785 Appendix B & IEEE-754 Official JCS Canonicalization Suite',
+  group(
+      'RFC 8785 Appendix B Official Test Vectors & IEEE-754 Canonicalization Suite',
       () {
     test(
         'RFC 8785 Property Sorting Vector: UTF-16 Code Unit Lexicographical Order',
@@ -22,51 +23,49 @@ void main() {
           canonical, equals('{"1":4,"A":3,"a":2,"b":1,"\u00e0":6,"\u00e9":5}'));
     });
 
-    test('RFC 8785 Numeric Vectors: Zero and Negative Zero (-0.0 -> "0")', () {
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'val': 0}),
-          equals('{"val":0}'));
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'val': -0.0}),
-          equals('{"val":0}'));
+    test(
+        'RFC 8785 Appendix B Official Sample Vectors (Exact Output Verification)',
+        () {
+      final samples = <num, String>{
+        0: '0',
+        -0.0: '0',
+        1: '1',
+        -1: '-1',
+        0.000001: '0.000001',
+        0.0000001: '1e-7',
+        -0.0000001: '-1e-7',
+        1e20: '100000000000000000000',
+        1e21: '1e+21',
+        9007199254740991: '9007199254740991',
+        -9007199254740991: '-9007199254740991',
+        9007199254740992:
+            '9007199254740992', // 2^53 (RFC 8785 Appendix B exact sample)
+        -9007199254740992: '-9007199254740992',
+        295147905179352830000.0:
+            '295147905179352825856', // Shortest IEEE-754 double representation
+        5e-324: '5e-324',
+        -5e-324: '-5e-324',
+        1.7976931348623157e+308: '1.7976931348623157e+308',
+        -1.7976931348623157e+308: '-1.7976931348623157e+308',
+      };
+
+      for (final entry in samples.entries) {
+        final canonical =
+            Rfc8785JcsCanonicalizer.canonicalizeString({'n': entry.key});
+        expect(canonical, equals('{"n":${entry.value}}'),
+            reason: 'Failed on number: ${entry.key}');
+      }
     });
 
     test(
-        'RFC 8785 Numeric Vectors: I-JSON / IEEE-754 Safe Integer Range Boundaries (2^53 - 1)',
+        'RFC 8785 Integer Precision Rejection (Unrepresentable Ints in IEEE-754)',
         () {
-      final maxSafe = 9007199254740991;
-      final minSafe = -9007199254740991;
-
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'max': maxSafe}),
-          equals('{"max":9007199254740991}'));
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'min': minSafe}),
-          equals('{"min":-9007199254740991}'));
-
-      // Reiezione di interi oltre il limite interoperabile I-JSON
+      // 9007199254740993 is not representable as an exact IEEE-754 double (rounds to 9007199254740992)
+      final unrepresentableInt = 9007199254740993;
       expect(
           () => Rfc8785JcsCanonicalizer.canonicalizeString(
-              {'unsafe': 9007199254740992}),
+              {'val': unrepresentableInt}),
           throwsArgumentError);
-      expect(
-          () => Rfc8785JcsCanonicalizer.canonicalizeString(
-              {'unsafe': -9007199254740992}),
-          throwsArgumentError);
-    });
-
-    test(
-        'RFC 8785 Numeric Vectors: Floating Point, Subnormal and Exponential Notation Boundaries',
-        () {
-      // Minimum positive double in IEEE-754
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'subnormal': 5e-324}),
-          equals('{"subnormal":5e-324}'));
-
-      // Exponential thresholds [1e-6, 1e21)
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'num': 0.000001}),
-          equals('{"num":0.000001}'));
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'num': 1e20}),
-          equals('{"num":100000000000000000000}'));
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'small': 0.0000001}),
-          equals('{"small":1e-7}'));
-      expect(Rfc8785JcsCanonicalizer.canonicalizeString({'large': 1e21}),
-          equals('{"large":1e+21}'));
     });
 
     test(

@@ -80,16 +80,26 @@ final class CatalogValidationService {
       );
     }
 
-    if (expiresAt.isBefore(issuedAt)) {
+    // Finding 4: expiresAt deve essere STRETTAMENTE successivo a issuedAt
+    if (!expiresAt.isAfter(issuedAt)) {
       return const CatalogValidationResult.invalid(
         reason: CatalogAcquisitionFailureReason.invalidExpiresAt,
         message:
-            'La data di scadenza expiresAt non può precedere la data di emissione issuedAt.',
+            'La data di scadenza expiresAt deve essere strettamente successiva alla data di emissione issuedAt.',
       );
     }
 
-    // 5. Verificare la scadenza temporale con margine di clock skew
+    // Finding 6: Validazione che issuedAt non sia troppo nel futuro oltre il clock skew
     final effectiveNow = nowUtc.toUtc();
+    if (issuedAt.isAfter(effectiveNow.add(allowedClockSkew))) {
+      return CatalogValidationResult.invalid(
+        reason: CatalogAcquisitionFailureReason.invalidIssuedAt,
+        message:
+            'La data di emissione issuedAt è nel futuro oltre il margine di clock skew: $issuedAt',
+      );
+    }
+
+    // Verificare la scadenza temporale con margine di clock skew
     if (expiresAt.isBefore(effectiveNow.subtract(allowedClockSkew))) {
       return CatalogValidationResult.invalid(
         reason: CatalogAcquisitionFailureReason.catalogExpired,
@@ -98,19 +108,29 @@ final class CatalogValidationService {
       );
     }
 
-    // 6. Validazione dei modelli e degli artefatti nel manifest
+    // 5. Validazione dei modelli e degli artefatti nel manifest
     final manifest = payload.manifest;
     final seenArtifactIdentities = <ArtifactIdentity>{};
 
     for (final artifact in manifest.artifacts) {
-      final repoRevision =
-          (artifact.metadata['repositoryRevision'] as String?) ??
-              artifact.version;
+      // Finding 5: Per cataloghi firmati remoti o cached, repositoryRevision DEVE essere esplicitata
+      final repoRevision = artifact.metadata['repositoryRevision'] as String?;
+      if ((source == CatalogSource.remoteSigned ||
+              source == CatalogSource.cachedSigned) &&
+          (repoRevision == null || repoRevision.trim().isEmpty)) {
+        return CatalogValidationResult.invalid(
+          reason: CatalogAcquisitionFailureReason.floatingRepositoryRevision,
+          message:
+              'Campo repositoryRevision mancante nei metadati dell\'artefatto ${artifact.artifactId}.',
+        );
+      }
+
+      final effectiveRevision = repoRevision ?? artifact.version;
 
       // Validazione della revisione immutabile del repository
       try {
         ImmutableRepositoryRevisionPolicy.validateRevision(
-          revision: repoRevision,
+          revision: effectiveRevision,
           source: source,
         );
       } on InvalidCatalogRevisionException catch (e) {

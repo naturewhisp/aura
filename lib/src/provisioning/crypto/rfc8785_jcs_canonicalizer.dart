@@ -86,15 +86,25 @@ abstract final class Rfc8785JcsCanonicalizer {
     } else {
       final d = number.toDouble();
       if (d == 0.0) {
-        // In JCS, sia 0.0 che -0.0 devono essere serializzati come "0"
+        // In JCS (ECMAScript Number-to-String), sia 0.0 che -0.0 devono essere serializzati come "0"
         buffer.write('0');
         return;
       }
       // Se il double rappresenta esattamente un intero senza parte decimale
-      if (d == d.truncateToDouble()) {
+      if (d == d.truncateToDouble() && d.abs() < 1e21) {
         buffer.write(d.toInt().toString());
       } else {
-        buffer.write(d.toString());
+        // ECMAScript Number-to-String formatting rules
+        var str = d.toString();
+        // Convert 'e' or 'E' in Dart to lowercase 'e' without leading zero in exponent
+        str = str.replaceAll('E', 'e');
+        if (str.contains('e')) {
+          final parts = str.split('e');
+          var exp = int.parse(parts[1]);
+          final sign = exp >= 0 ? '+' : '-';
+          str = '${parts[0]}e$sign${exp.abs()}';
+        }
+        buffer.write(str);
       }
     }
   }

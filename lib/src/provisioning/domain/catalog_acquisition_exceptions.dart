@@ -15,6 +15,7 @@ enum CatalogAcquisitionFailureReason {
   invalidSha256,
   invalidSizeBytes,
   duplicateArtifactIdentity,
+  noCompatibleCatalogCandidate,
   catalogIdentityMismatch,
   applicationIncompatible,
   canonicalizationFailed,

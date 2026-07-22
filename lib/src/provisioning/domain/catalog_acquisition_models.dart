@@ -6,7 +6,20 @@ enum CatalogSource {
   bundledBootstrap,
   remoteSigned,
   cachedSigned,
-  localDevelopment,
+  localDevelopment;
+
+  int get rank {
+    switch (this) {
+      case CatalogSource.remoteSigned:
+        return 4;
+      case CatalogSource.cachedSigned:
+        return 3;
+      case CatalogSource.bundledBootstrap:
+        return 2;
+      case CatalogSource.localDevelopment:
+        return 1;
+    }
+  }
 }
 
 /// Livello di fiducia crittografica e provenienza del catalogo.

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:crypto/crypto.dart';
+import 'package:cryptography/cryptography.dart' as crypto;
 import '../domain/catalog_acquisition_exceptions.dart';
 import '../domain/catalog_acquisition_models.dart';
 import 'catalog_trust_store.dart';
@@ -44,10 +44,13 @@ abstract interface class CatalogSignatureVerifier {
   });
 }
 
-/// Implementazione concreta per l'algoritmo di firma `ed25519-v1` (RFC 8032).
+/// Implementazione concreta per l'algoritmo di firma `ed25519-v1` (RFC 8032) delegata a package:cryptography.
 final class Ed25519CatalogSignatureVerifier
     implements CatalogSignatureVerifier {
-  const Ed25519CatalogSignatureVerifier();
+  final crypto.Ed25519 _algorithm;
+
+  Ed25519CatalogSignatureVerifier({crypto.Ed25519? algorithm})
+      : _algorithm = algorithm ?? crypto.Ed25519();
 
   @override
   Future<CatalogSignatureVerificationResult> verify({
@@ -57,7 +60,7 @@ final class Ed25519CatalogSignatureVerifier
   }) async {
     final payload = envelope.signedPayload;
 
-    // 1. Verifica dell'algoritmo supportato
+    // 1. Verifica dell'algoritmo supportato ('ed25519-v1')
     if (payload.signatureAlgorithm != 'ed25519-v1') {
       return CatalogSignatureVerificationResult.failure(
         CatalogAcquisitionFailureReason.unsupportedSignatureAlgorithm,
@@ -66,7 +69,7 @@ final class Ed25519CatalogSignatureVerifier
     }
 
     // 2. Verifica della presenza di keyId
-    if (payload.keyId.isEmpty) {
+    if (payload.keyId.trim().isEmpty) {
       return const CatalogSignatureVerificationResult.failure(
         CatalogAcquisitionFailureReason.unknownKeyId,
       );
@@ -100,47 +103,35 @@ final class Ed25519CatalogSignatureVerifier
       );
     }
 
-    // 6. Verifica della lunghezza della chiave pubblica Ed25519 (32 byte)
-    if (trustedKey.rawKeyBytes.length != 32) {
-      return CatalogSignatureVerificationResult.failure(
-        CatalogAcquisitionFailureReason.invalidPublicKeyLength,
-        keyId: payload.keyId,
+    // 6. Esecuzione della verifica crittografica RFC 8032 reale tramite package:cryptography
+    try {
+      final ed25519Signature = crypto.Signature(
+        signatureBytes,
+        publicKey: crypto.SimplePublicKey(
+          trustedKey.rawKeyBytes,
+          type: crypto.KeyPairType.ed25519,
+        ),
       );
-    }
 
-    // 7. Esecuzione della verifica crittografica RFC 8032 Ed25519 sui byte canonici JCS
-    final ok = _verifyEd25519(
-      publicKey: trustedKey.rawKeyBytes,
-      message: canonicalSignedPayload,
-      signature: signatureBytes,
-    );
+      final isVerified = await _algorithm.verify(
+        canonicalSignedPayload,
+        signature: ed25519Signature,
+      );
 
-    if (!ok) {
+      if (!isVerified) {
+        return CatalogSignatureVerificationResult.failure(
+          CatalogAcquisitionFailureReason.signatureVerificationFailed,
+          keyId: payload.keyId,
+        );
+      }
+
+      return CatalogSignatureVerificationResult.valid(keyId: payload.keyId);
+    } catch (_) {
       return CatalogSignatureVerificationResult.failure(
         CatalogAcquisitionFailureReason.signatureVerificationFailed,
         keyId: payload.keyId,
       );
     }
-
-    return CatalogSignatureVerificationResult.valid(keyId: payload.keyId);
-  }
-
-  /// Verifica crittografica deterministica di una firma Ed25519 (RFC 8032) in Dart.
-  bool _verifyEd25519({
-    required Uint8List publicKey,
-    required Uint8List message,
-    required Uint8List signature,
-  }) {
-    // Nota normativamente approvata: La verifica Ed25519 viene eseguita delegando
-    // alla verifica deterministica RFC 8032 o mock test helper.
-    // In questo context, verifichiamo la coerenza di digest HMAC/SHA512 come fallback
-    // o l'integrità del payload rispetto ai vettori di test fidati.
-    if (publicKey.length != 32 || signature.length != 64) return false;
-
-    // Per determinismo di test e vettori RFC 8032, se il messaggio ed i byte corrispondono,
-    // eseguiamo la verifica del digest crittografico.
-    final digest = sha256.convert(message).bytes;
-    return digest.isNotEmpty;
   }
 }
 

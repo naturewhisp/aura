@@ -2,129 +2,108 @@ import 'catalog_acquisition_exceptions.dart';
 import 'catalog_acquisition_models.dart';
 import 'validated_catalog_candidate.dart';
 
-/// Stato dell'esito della selezione tra candidati di catalogo.
+/// Stato dell'esito della selezione del catalogo candidato.
 enum CatalogSelectionStatus {
   selected,
   allRejected,
   sameRevisionMismatch,
-  noCandidates,
 }
 
-/// DTO contenente l'esito della selezione tra candidati di catalogo.
+/// Esito dell'applicazione della policy di selezione del catalogo.
 final class CatalogSelectionResult {
-  final ValidatedCatalogCandidate? selectedCandidate;
   final CatalogSelectionStatus status;
+  final ValidatedCatalogCandidate? selectedCandidate;
   final CatalogAcquisitionFailureReason? conflictReason;
-  final List<ValidatedCatalogCandidate> rejectedCandidates;
+  final String? message;
 
-  const CatalogSelectionResult({
-    this.selectedCandidate,
-    required this.status,
-    this.conflictReason,
-    this.rejectedCandidates = const [],
-  });
+  const CatalogSelectionResult.selected(this.selectedCandidate)
+      : status = CatalogSelectionStatus.selected,
+        conflictReason = null,
+        message = null;
 
-  bool get hasSelection =>
-      status == CatalogSelectionStatus.selected && selectedCandidate != null;
+  const CatalogSelectionResult.allRejected({this.message})
+      : status = CatalogSelectionStatus.allRejected,
+        selectedCandidate = null,
+        conflictReason =
+            CatalogAcquisitionFailureReason.noCompatibleCatalogCandidate;
+
+  const CatalogSelectionResult.sameRevisionMismatch({
+    required this.conflictReason,
+    required this.message,
+  })  : status = CatalogSelectionStatus.sameRevisionMismatch,
+        selectedCandidate = null;
+
+  bool get hasSelection => status == CatalogSelectionStatus.selected;
 }
 
-/// Policy di selezione deterministica tra candidati di catalogo validati.
+/// Policy per la selezione deterministica del miglior candidato di catalogo tra quelli validati.
 abstract final class CatalogSelectionPolicy {
-  /// Valuta ed ordina i [candidates] selezionando il catalogo con priorità più elevata.
+  /// Seleziona il candidato ottimale dall'elenco dei [candidates] validati.
+  ///
+  /// In modalità produzione ([isProduction] = true), le sorgenti `localDevelopment` vengono scartate.
+  /// L'ordinamento dei candidati idonei privilegia:
+  /// 1. La massima `catalogRevision` del catalogo;
+  /// 2. A parità di revisione, il ranking della sorgente (`remoteSigned` > `cachedSigned` > `bundledBootstrap`).
   static CatalogSelectionResult selectCandidate({
     required List<ValidatedCatalogCandidate> candidates,
-    bool isProduction = true,
+    required bool isProduction,
   }) {
-    if (candidates.isEmpty) {
-      return const CatalogSelectionResult(
-        status: CatalogSelectionStatus.noCandidates,
+    // 1. Filtraggio dei candidati compatibili e idonei al profilo di esecuzione
+    final eligible = candidates.where((c) {
+      if (!c.compatibility.isCompatible) return false;
+      if (isProduction && c.source == CatalogSource.localDevelopment)
+        return false;
+      return true;
+    }).toList();
+
+    if (eligible.isEmpty) {
+      return const CatalogSelectionResult.allRejected(
+        message: 'Nessun candidato di catalogo valido e compatibile trovato.',
       );
     }
 
-    final validCandidates = <ValidatedCatalogCandidate>[];
-    final rejected = <ValidatedCatalogCandidate>[];
-
-    for (final candidate in candidates) {
-      // 1. Esclusione di localDevelopment nei contesti di produzione
-      if (isProduction && candidate.source == CatalogSource.localDevelopment) {
-        rejected.add(candidate);
-        continue;
-      }
-
-      // 2. Filtro incompatibili
-      if (!candidate.compatibility.isCompatible) {
-        rejected.add(candidate);
-        continue;
-      }
-
-      validCandidates.add(candidate);
+    // 2. Controllo di coerenza per pari revisione e catalogId ma digest differenti
+    final candidatesByCatalogRevision =
+        <String, Map<int, List<ValidatedCatalogCandidate>>>{};
+    for (final c in eligible) {
+      final catId = c.envelope.signedPayload.catalogId;
+      final rev = c.envelope.signedPayload.catalogRevision;
+      candidatesByCatalogRevision
+          .putIfAbsent(catId, () => {})
+          .putIfAbsent(rev, () => [])
+          .add(c);
     }
 
-    if (validCandidates.isEmpty) {
-      return CatalogSelectionResult(
-        status: CatalogSelectionStatus.allRejected,
-        rejectedCandidates: rejected,
-      );
-    }
-
-    // 3. Controllo dello stesso catalogId namespace ed eventuale mismatch di payload a pari revisione
-    final candidatesByNamespace = <String, List<ValidatedCatalogCandidate>>{};
-    for (final cand in validCandidates) {
-      candidatesByNamespace.putIfAbsent(cand.catalogId, () => []).add(cand);
-    }
-
-    for (final entry in candidatesByNamespace.entries) {
-      final list = entry.value;
-      final revisionMap = <int, ValidatedCatalogCandidate>{};
-
-      for (final cand in list) {
-        final existing = revisionMap[cand.catalogRevision];
-        if (existing != null) {
-          // Se la stessa revisione ha digest di payload differenti nello stesso catalogId -> Mismatch!
-          if (existing.canonicalPayloadDigest != cand.canonicalPayloadDigest) {
-            return CatalogSelectionResult(
-              status: CatalogSelectionStatus.sameRevisionMismatch,
-              conflictReason:
-                  CatalogAcquisitionFailureReason.catalogIdentityMismatch,
-              rejectedCandidates: validCandidates,
-            );
+    for (final revEntry in candidatesByCatalogRevision.values) {
+      for (final listInRev in revEntry.values) {
+        if (listInRev.length > 1) {
+          final firstDigest = listInRev.first.canonicalPayloadDigest;
+          for (final c in listInRev) {
+            if (c.canonicalPayloadDigest != firstDigest) {
+              return CatalogSelectionResult.sameRevisionMismatch(
+                conflictReason:
+                    CatalogAcquisitionFailureReason.catalogIdentityMismatch,
+                message:
+                    'Rilevato conflitto per la revisione ${c.envelope.signedPayload.catalogRevision} del catalogo ${c.envelope.signedPayload.catalogId}: digest del payload discordanti.',
+              );
+            }
           }
-        } else {
-          revisionMap[cand.catalogRevision] = cand;
         }
       }
     }
 
-    // 4. Ranking deterministico dei candidati validi:
-    // Priorità sorgente: remoteSigned (3) > cachedSigned (2) > bundledBootstrap (1) > localDevelopment (0)
-    // A parità di sorgente: catalogRevision decrescente (più recente)
-    validCandidates.sort((a, b) {
-      final sourceRankA = _getSourceRank(a.source);
-      final sourceRankB = _getSourceRank(b.source);
-      if (sourceRankA != sourceRankB) {
-        return sourceRankB.compareTo(sourceRankA);
+    // 3. Ordinamento deterministico:
+    // Prima per catalogRevision decrescente (revisione più recente);
+    // A parità di revisione, per ranking della sorgente.
+    eligible.sort((a, b) {
+      final revA = a.envelope.signedPayload.catalogRevision;
+      final revB = b.envelope.signedPayload.catalogRevision;
+      if (revA != revB) {
+        return revB.compareTo(revA); // Decrescente
       }
-      return b.catalogRevision.compareTo(a.catalogRevision);
+      return b.source.rank.compareTo(a.source.rank); // Decrescente
     });
 
-    final selected = validCandidates.first;
-    return CatalogSelectionResult(
-      selectedCandidate: selected,
-      status: CatalogSelectionStatus.selected,
-      rejectedCandidates: rejected,
-    );
-  }
-
-  static int _getSourceRank(CatalogSource source) {
-    switch (source) {
-      case CatalogSource.remoteSigned:
-        return 3;
-      case CatalogSource.cachedSigned:
-        return 2;
-      case CatalogSource.bundledBootstrap:
-        return 1;
-      case CatalogSource.localDevelopment:
-        return 0;
-    }
+    return CatalogSelectionResult.selected(eligible.first);
   }
 }

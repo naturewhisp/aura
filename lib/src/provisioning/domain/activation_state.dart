@@ -148,7 +148,7 @@ final class ActivationState {
           json['lastKnownGoodEvaluatorModelInstallationId'] as String?;
 
       return ActivationState(
-        schemaVersion: cleanSchema,
+        schemaVersion: '1.1',
         updatedAt: rawUpdatedAt,
         activeRuntimeInstallationId:
             json['activeRuntimeInstallationId'] as String?,

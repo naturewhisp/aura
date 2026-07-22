@@ -305,7 +305,7 @@ enum ModelActivationRole {
   actor,
   evaluator;
 
-  static ModelActivationRole? parse(String? value) {
+  static ModelActivationRole? tryParse(String? value) {
     if (value == null) return null;
     final clean = value.trim().toLowerCase();
     for (final role in ModelActivationRole.values) {
@@ -314,6 +314,16 @@ enum ModelActivationRole {
       }
     }
     return null;
+  }
+
+  static ModelActivationRole parse(String value) {
+    final parsed = tryParse(value);
+    if (parsed == null) {
+      throw FormatException(
+        'Ruolo di attivazione non valido "$value". Valori ammessi: actor, evaluator.',
+      );
+    }
+    return parsed;
   }
 }
 

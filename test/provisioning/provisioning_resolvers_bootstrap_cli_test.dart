@@ -303,8 +303,27 @@ void main() {
           equals(ProvisioningFailureReason.installationConflict));
     });
 
-    test('3. Serialization ActivationState.toJson non duplica i campi legacy',
+    test(
+        '3. Serialization ActivationState.toJson non duplica i campi legacy ed effettua l upgrade da 1.0 a 1.1',
         () {
+      // Lettura di un vecchio JSON con schema 1.0
+      final oldJson = {
+        'schemaVersion': '1.0',
+        'updatedAt': '2026-07-22T12:00:00.000Z',
+        'activeModelInstallationId': 'inst-actor-old',
+        'lastKnownGoodModelInstallationId': 'inst-actor-lkg-old',
+      };
+      final loadedOld = ActivationState.fromJson(oldJson);
+      expect(loadedOld.schemaVersion, equals('1.1'));
+      expect(
+          loadedOld.activeActorModelInstallationId, equals('inst-actor-old'));
+
+      final jsonMapFromOld = loadedOld.toJson();
+      expect(jsonMapFromOld['schemaVersion'], equals('1.1'));
+      expect(jsonMapFromOld['activeActorModelInstallationId'],
+          equals('inst-actor-old'));
+      expect(jsonMapFromOld.containsKey('activeModelInstallationId'), isFalse);
+
       final state = ActivationState(
         schemaVersion: '1.1',
         updatedAt: DateTime.now().toUtc().toIso8601String(),
@@ -319,6 +338,9 @@ void main() {
           jsonMap['activeEvaluatorModelInstallationId'], equals('inst-eval-1'));
       expect(jsonMap.containsKey('activeModelInstallationId'), isFalse);
       expect(jsonMap.containsKey('lastKnownGoodModelInstallationId'), isFalse);
+
+      expect(ModelActivationRole.tryParse('invalid'), isNull);
+      expect(() => ModelActivationRole.parse('invalid'), throwsFormatException);
     });
 
     test(

@@ -110,8 +110,17 @@ void main(List<String> args) async {
         ModelActivationRole? role;
         if (args.contains('--role')) {
           final idx = args.indexOf('--role');
-          if (idx + 1 < args.length) {
-            role = ModelActivationRole.parse(args[idx + 1]);
+          if (idx + 1 >= args.length) {
+            stderr.writeln(
+                'Errore: Opzione --role specificata senza il valore del ruolo (actor|evaluator).');
+            exit(1);
+          }
+          final roleStr = args[idx + 1];
+          role = ModelActivationRole.tryParse(roleStr);
+          if (role == null) {
+            stderr.writeln(
+                'Errore: Ruolo di attivazione non valido "$roleStr". Valori ammessi: actor, evaluator.');
+            exit(1);
           }
         }
         result = await cliRunner.activate(

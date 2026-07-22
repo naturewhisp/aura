@@ -3,9 +3,7 @@ import 'package:aura_core/aura_offline.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group(
-      'RFC 8785 Appendix B Official Test Vectors & IEEE-754 Canonicalization Suite',
-      () {
+  group('RFC 8785 Appendix B Complete Official Test Vectors Suite', () {
     test(
         'RFC 8785 Property Sorting Vector: UTF-16 Code Unit Lexicographical Order',
         () {
@@ -24,36 +22,46 @@ void main() {
     });
 
     test(
-        'RFC 8785 Appendix B Official Sample Vectors (Exact Output Verification)',
+        'RFC 8785 Appendix B Complete Numbers Table Sample Vectors (List of Typed Records)',
         () {
-      final samples = <num, String>{
-        0: '0',
-        -0.0: '0',
-        1: '1',
-        -1: '-1',
-        0.000001: '0.000001',
-        0.0000001: '1e-7',
-        -0.0000001: '-1e-7',
-        1e20: '100000000000000000000',
-        1e21: '1e+21',
-        9007199254740991: '9007199254740991',
-        -9007199254740991: '-9007199254740991',
-        9007199254740992:
-            '9007199254740992', // 2^53 (RFC 8785 Appendix B exact sample)
-        -9007199254740992: '-9007199254740992',
-        295147905179352830000.0:
-            '295147905179352825856', // Shortest IEEE-754 double representation
-        5e-324: '5e-324',
-        -5e-324: '-5e-324',
-        1.7976931348623157e+308: '1.7976931348623157e+308',
-        -1.7976931348623157e+308: '-1.7976931348623157e+308',
-      };
+      final samples = <({num input, String expected})>[
+        (input: 0, expected: '0'),
+        (input: -0.0, expected: '0'),
+        (input: 1, expected: '1'),
+        (input: -1, expected: '-1'),
+        (input: 1.0, expected: '1'),
+        (input: -1.0, expected: '-1'),
+        (input: 0.000001, expected: '0.000001'),
+        (input: 0.0000001, expected: '1e-7'),
+        (input: -0.0000001, expected: '-1e-7'),
+        (input: 1e20, expected: '100000000000000000000'),
+        (input: 1e21, expected: '1e+21'),
+        (input: 9007199254740991, expected: '9007199254740991'),
+        (input: -9007199254740991, expected: '-9007199254740991'),
+        (
+          input: 9007199254740992,
+          expected: '9007199254740992'
+        ), // 2^53 (RFC 8785 Appendix B exact sample)
+        (input: -9007199254740992, expected: '-9007199254740992'),
+        (
+          input: 295147905179352830000.0,
+          expected: '295147905179352830000'
+        ), // RFC 8785 Appendix B exact sample!
+        (input: 5e-324, expected: '5e-324'),
+        (input: -5e-324, expected: '-5e-324'),
+        (input: 1.7976931348623157e+308, expected: '1.7976931348623157e+308'),
+        (input: -1.7976931348623157e+308, expected: '-1.7976931348623157e+308'),
+        (input: 333333333.3333333, expected: '333333333.3333333'),
+        (input: 333333333.33333329, expected: '333333333.3333333'),
+        (input: 333333333.3333334, expected: '333333333.3333334'),
+        (input: 1e23, expected: '1e+23'),
+      ];
 
-      for (final entry in samples.entries) {
+      for (final sample in samples) {
         final canonical =
-            Rfc8785JcsCanonicalizer.canonicalizeString({'n': entry.key});
-        expect(canonical, equals('{"n":${entry.value}}'),
-            reason: 'Failed on number: ${entry.key}');
+            Rfc8785JcsCanonicalizer.canonicalizeString({'n': sample.input});
+        expect(canonical, equals('{"n":${sample.expected}}'),
+            reason: 'Failed on number: ${sample.input}');
       }
     });
 

@@ -139,18 +139,7 @@ abstract final class Rfc8785JcsCanonicalizer {
       return;
     }
 
-    // Se il double rappresenta un intero esatto ed il suo valore assoluto è < 1e21
-    final absD = d.abs();
-    if (d == d.truncateToDouble() && absD < 1e21) {
-      try {
-        buffer.write(BigInt.from(d).toString());
-        return;
-      } catch (_) {
-        // Fallthrough alla formattazione ECMAScript standard
-      }
-    }
-
-    // Formattazione ECMAScript Number-to-String per numeri IEEE-754 double
+    // Formattazione ECMAScript Number-to-String per numeri IEEE-754 double (shortest round-trip)
     var str = d.toString();
     str = str.replaceAll('E', 'e');
 

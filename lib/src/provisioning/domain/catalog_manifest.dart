@@ -550,7 +550,7 @@ final class CatalogManifest {
       metadata: const {
         'integritySource': 'bundled-bootstrap-catalog',
         'integrityAlgorithm': 'sha256',
-        'fingerprintStatus': 'prevalidated',
+        'fingerprintStatus': 'bootstrap-declared',
         'catalogVersion': 'bootstrap-v1',
       },
     );

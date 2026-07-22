@@ -3898,10 +3898,10 @@ Obiettivi e Deliverable Consolidati:
 
 - **Dominio e Catalogo Bootstrap Statico:** Dichiarato `CatalogManifest.initialDefault()` con hash e dimensioni `bootstrapDeclared`.
 - **Modelli Predefiniti:** Actor predefinito `gemma-4-12b-it-qat-q4_0`, Evaluator predefinito variante Ministral configurata.
-- **Persistence & Filesystem:** Implementato lo store dinamico in `%LOCALAPPDATA%\AURA\models` e la gestione atomica dei file/directory.
-- **Acquisizione e Ingestione Locale:** Supportata l'importazione ed ingestione fisica di artefatti GGUF locali con validazione SHA-256 e directory staging `.installing-*`.
-- **Registro ed Attivazione Role-Aware:** Registrazione atomica in `installed_models.json` e gestione separata dello stato attivo `active_state.json` per Actor ed Evaluator.
-- **Resolver, Bootstrap, Fallback & CLI:** Model resolver, composition root bootstrap, fallback rule-based offline e comandi CLI locali in `bin/aura_cli.dart`.
+- **Persistence & Filesystem:** Astrazione `LocalProvisioningFileSystem` per lo store dinamico in `%LOCALAPPDATA%\AURA\models` e la gestione atomica dei file/directory tramite `ProvisioningPathResolver`.
+- **Acquisizione e Ingestione Locale:** Supportata l'importazione ed ingestione fisica di artefatti GGUF locali tramite `ArtifactIngestionEngine` e `AtomicArtifactInstaller` con validazione SHA-256 e directory staging `.installing-*`.
+- **Registro ed Attivazione Role-Aware:** Registrazione atomica tramite `JsonInstallationRecordRepository` (`installation_records.json`) e gestione separata dello stato attivo via `JsonActivationStateRepository` (`active_state.json`) per Actor ed Evaluator.
+- **Resolver, Bootstrap, Fallback & CLI:** `ProvisioningCoordinator`, `RuntimeResolver`, composition root bootstrap, fallback rule-based offline e comandi CLI locali in `bin/aura_provisioning.dart`.
 
 #### 6.4 Model Acquisition, Download Engine & Lifecycle Automation (Tranche 6.4a–6.4f)
 
@@ -3913,31 +3913,35 @@ Scopo: Estendere il motore di provisioning locale con l'acquisizione remota dei 
 Tranche implementative sequenziali:
 
 ##### 6.4a — Catalog Acquisition Domain & Trust Model
-- Definizione dei contratti e del trust model in assenza di networking reale.
+- Definizione dei contratti, della canonicalizzazione RFC 8785 di `signedPayload` e del trust model in assenza di networking reale.
+- Algoritmo normativo: `ed25519-v1` per la firma digitale dell'envelope.
+- Tripartizione delle identità: Content Identity `(sizeBytes, sha256)`, Artifact Identity `(artifactId, version, buildId, contentIdentity)` e Catalog Declaration Identity `(catalogId, catalogRevision, artifactIdentity)`.
 - Introduzione di `CatalogSource`, `CatalogEnvelope`, `CatalogTrustLevel` (`bootstrapDeclared`, `signatureVerified`, `locallyImported`, `developmentUnsigned`), `CatalogSignatureVerifier`, `CatalogValidationService` e `CatalogSelectionPolicy`.
-- Divieto assoluto di revisioni mobili (`main`, `latest`); l'identità dell'artefatto è definita da `(sizeBytes, sha256)`.
+- Divieto assoluto di revisioni mobili (`main`, `latest`).
 
 ##### 6.4b — Catalog Providers, Signed Cache & Refresh
 - Catena dei provider: `bundled bootstrap` $\rightarrow$ `cached verified` $\rightarrow$ `remote fetch` $\rightarrow$ `signature verification` $\rightarrow$ `semantic validation` $\rightarrow$ `atomic cache write` $\rightarrow$ `effective catalog selection`.
-- Supporto offline, protezione anti-downgrade e scrittura atomica della cache in `%LOCALAPPDATA%\AURA\cache\catalog\`. Fallback finale al catalogo bootstrap statico.
+- Supporto offline, protezione anti-downgrade basata su namespace `catalogId` e scrittura atomica della cache in `%LOCALAPPDATA%\AURA\cache\catalog\`. Fallback finale al catalogo bootstrap statico.
 
 ##### 6.4c — Download Engine, Resume & Staging
 - Motore di download HTTPS streaming per grandi file `.part` in `%LOCALAPPDATA%\AURA\staging\`.
-- Supporto a Range resume, checkpoint persistenti JSON, retry exponential backoff, cancellation token e pre-allocazione dello spazio su disco.
+- Policy di resume robusta: Range resume su status 206 e strong ETag immutato; invalidazione `.part` e reset al byte 0 su status 200 o ETag variato.
+- Checkpoint persistenti JSON, retry exponential backoff, cancellation token e pre-allocazione dello spazio su disco.
 - Regola di confine: $\text{download completed} \neq \text{artifact verified} \neq \text{artifact installed}$. La tranche termina con un file `StagingArtifact` non ancora fidato.
 
 ##### 6.4d — Verification, Import & Provisioning Integration
-- Integrazione dell'output di staging e degli import locali con `ArtifactIngestionEngine` e `ProvisioningCoordinator` della Fase 6.3.
-- Calcolo streaming SHA-256 e verifica dimensione. Collocamento atomico nel managed store.
-- Generazione dell'`InstallationRecord` con provenance completa (`catalogId`, `catalogVersion`, `catalogRevision`, `artifactId`, `repository`, `sha256`, `trust_provenance`, `acquiredAt`). L'attivazione resta responsabilità esplicita del coordinator.
+- Integrazione dell'output di staging e degli import locali via `ModelProvisioningService` con `ArtifactIngestionEngine`, `ProvisioningPathResolver` ed `InstallationRecordRepository`.
+- Destinazione target: `%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\`.
+- Calcolo streaming SHA-256 e verifica dimensione. Generazione dell'`InstallationRecord` con provenance completa camelCase (`catalogId`, `catalogVersion`, `catalogRevision`, `artifactId`, `version`, `buildId`, `repository`, `repositoryRevision`, `fileName`, `sizeBytes`, `sha256`, `trustProvenance`, `acquiredAt`).
+- L'attivazione resta responsabilità esplicita e separata via `ProvisioningCoordinator.activateModel(...)`.
 
 ##### 6.4e — Model Lifecycle: Update, Repair & Rollback
-- Policy di update side-by-side: `download nuova build` $\rightarrow$ `verify` $\rightarrow$ `side-by-side install` $\rightarrow$ `health check` $\rightarrow$ `activate` $\rightarrow$ `previous active diventa last-known-good` $\rightarrow$ `deferred cleanup`.
-- Divieto di overwrite in-place. `ArtifactRepairService` per il ripristino di installazioni danneggiate. `ArtifactRollbackService` per il ripristino istantaneo al `last-known-good`. `RetentionPolicy` protegge le versioni attive e `last-known-good`.
+- Policy di update side-by-side: `download nuova build` $\rightarrow$ `verify` $\rightarrow$ `side-by-side install in <version>_<buildId>` $\rightarrow$ `health check` $\rightarrow$ `activate` $\rightarrow$ `previous active diventa last-known-good` $\rightarrow$ `deferred cleanup`.
+- Divieto di overwrite in-place. `ArtifactRepairService` per il ripristino di installazioni danneggiate. `ArtifactRollbackService` per il ripristino istantaneo al `last-known-good` per ruolo. `RetentionPolicy` protegge le versioni attive e `last-known-good`.
 
 ##### 6.4f — Application Integration & Operational CLI
-- Integrazione dei servizi in `DefaultApplicationBootstrap` e configurazione delle chiavi pubbliche.
-- Comandi CLI in `bin/aura_cli.dart`: `catalog status`, `catalog refresh`, `catalog show`, `download <artifactId>`, `download status`, `download cancel`, `import <path>`, `install <artifactId>`, `update check`, `update apply <artifactId>`, `repair <installationId>`, `rollback --role actor|evaluator|runtime`.
+- Integrazione dei servizi in `DefaultApplicationBootstrap` e configurazione delle chiavi/trust store (`AURA_TRUST_STORE_PATH`, `AURA_CATALOG_KEY_ID`).
+- 12 forme di comando CLI in `bin/aura_cli.dart` e `bin/aura_provisioning.dart`: `catalog status`, `catalog refresh`, `catalog show`, `download <artifactId>`, `download status`, `download cancel`, `import <path>`, `install <artifactId>`, `update check`, `update apply <artifactId>`, `repair <installationId>`, `rollback --role actor|evaluator|runtime`.
 - Sanitizzazione dei log e disaccoppiamento totale della UI dai repository.
 
 #### 6.5 Deterministic and Real-Model Test Runtime

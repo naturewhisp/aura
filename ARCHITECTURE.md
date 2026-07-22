@@ -753,17 +753,17 @@ Deliverable e Componenti Implementati:
 
 1. **Dominio, Astrazioni Filesystem e Catalogo Statico:**
    - Catalogo statico di bootstrap `CatalogManifest.initialDefault()` con modelli di default `gemma-4-12b-it-qat-q4_0` (Actor) e Ministral (Evaluator) recanti lo stato `bootstrapDeclared`.
-   - Astrazione di I/O platform-neutral `ProvisioningFileSystem` con implementazione concreta `DartIoProvisioningFileSystem`.
+   - Astrazione di I/O platform-neutral `ProvisioningFileSystem` con implementazione concreta `LocalProvisioningFileSystem`.
    - Resolver di percorsi di sistema `ProvisioningPathResolver` con normalizzazione rigida e prevenzione di path traversal.
 
 2. **Ingestione Fisica, Staging Atomico e Persistence:**
-   - `ArtifactIngestionEngine` e `AtomicArtifactInstaller` con directory di staging temporanee `.installing-*` e rename atomico sul medesimo volume.
-   - `InstalledModelRegistryRepository` e `ActivationStateRepository` per la persistenza JSON atomica con protezione da lock, transazioni read-modify-write e file di backup `.bak`.
+   - `ArtifactIngestionEngine` e `AtomicArtifactInstaller` con directory di staging temporanee `.installing-*` e rename atomico sullo stesso volume.
+   - Repositories `JsonInstallationRecordRepository` (`installation_records.json`) e `JsonActivationStateRepository` (`active_state.json`) per la persistenza JSON atomica con protezione da lock, transazioni read-modify-write e file di backup `.bak`.
 
 3. **Stato Role-Aware, Service Boundary & CLI:**
    - Gestione disaccoppiata e role-aware dello stato di attivazione per Actor ed Evaluator.
    - Application boundary `ModelProvisioningService` e `ProvisioningCoordinator` per l'orchestrazione delle operazioni di provisioning.
-   - CLI locale in `bin/aura_cli.dart` per l'ispezione, ingestione, registrazione ed attivazione offline degli artefatti.
+   - CLI locale in `bin/aura_provisioning.dart` per l'ispezione, ingestione, registrazione ed attivazione offline degli artefatti.
 
 ---
 
@@ -775,31 +775,30 @@ Riferimento normativo dettagliato: [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md]
 Suddivisione in tranche implementative:
 
 1. **Tranche 6.4a — Catalog Acquisition Domain & Trust Model:**
-   - Modellazione pura dei contratti e del trust model (`CatalogEnvelope`, `CatalogTrustLevel`, `CatalogSignatureVerifier`, `CatalogValidationService`).
-   - Distinzione rigorosa tra hash dichiarati da bootstrap e fingerprint certificati da firma digitale. Divieto di revisioni mobili (`main`, `latest`).
+   - Modellazione pura dei contratti, canonicalizzazione RFC 8785 di `signedPayload`, firma `ed25519-v1` ed enum `CatalogTrustLevel`.
+   - Tripartizione delle identità: Content Identity `(sizeBytes, sha256)`, Artifact Identity `(artifactId, version, buildId, contentIdentity)` e Catalog Declaration Identity `(catalogId, catalogRevision, artifactIdentity)`.
 
 2. **Tranche 6.4b — Catalog Providers, Signed Cache & Refresh:**
    - Provider chain: `bundled bootstrap` $\rightarrow$ `cached verified` $\rightarrow$ `remote fetch` $\rightarrow$ `signature verification` $\rightarrow$ `semantic validation` $\rightarrow$ `atomic cache write` $\rightarrow$ `effective catalog selection`.
-   - Caching locale firmato in `%LOCALAPPDATA%\AURA\cache\catalog\`, supporto offline, fallback trasparente e protezione anti-downgrade.
+   - Caching locale firmato in `%LOCALAPPDATA%\AURA\cache\catalog\`, supporto offline, fallback trasparente e protezione anti-downgrade basata su namespace `catalogId`.
 
 3. **Tranche 6.4c — Download Engine, Resume & Staging:**
    - Motore di download HTTPS streaming per grandi file `.part` in staging temporaneo (`%LOCALAPPDATA%\AURA\staging\`).
-   - Supporto a Range header per resume tra riavvii dell'app, checkpoint JSON persistenti, retry con backoff esponenziale, cancellation token e controllo preventivo dello spazio su disco.
+   - Resume su status HTTP 206 e strong ETag immutato; invalidazione `.part` e reset al byte 0 su status 200 o ETag variato.
+   - Checkpoint JSON persistenti, retry con backoff esponenziale, cancellation token e controllo preventivo dello spazio su disco.
    - Invariante di confine: $\text{download completed} \neq \text{artifact verified} \neq \text{artifact installed}$.
 
 4. **Tranche 6.4d — Verification, Import & Provisioning Integration:**
-   - Calcolo streaming SHA-256 e verifica dimensioni per file staged ed importati localmente prima dell'installazione atomica nel managed store.
-   - Creazione dell'`InstallationRecord` con provenance completa (`catalogId`, `catalogVersion`, `catalogRevision`, `artifactId`, `repository`, `sha256`, `trust_provenance`, `acquiredAt`).
-   - Integrazione con `ArtifactIngestionEngine` e `ProvisioningCoordinator` della Fase 6.3.
+   - Ingestione via `ModelProvisioningService` verso il path target `%LOCALAPPDATA%\AURA\models\<artifactId>\<version>_<buildId>\` allocato da `ProvisioningPathResolver`.
+   - Calcolo streaming SHA-256 e verifica dimensioni. Registrazione via `JsonInstallationRecordRepository` con provenance completa camelCase.
+   - L'attivazione rimane una chiamata distinta ed opzionale via `ProvisioningCoordinator.activateModel(...)`.
 
 5. **Tranche 6.4e — Model Lifecycle: Update, Repair & Rollback:**
-   - Ciclo di update side-by-side: `download` $\rightarrow$ `verify` $\rightarrow$ `side-by-side install` $\rightarrow$ `health check` $\rightarrow$ `activate` $\rightarrow$ `previous active diventa last-known-good` $\rightarrow$ `deferred cleanup`.
-   - Divieto assoluto di overwrite in-place. Servizi dedicati per riparazione (`ArtifactRepairService`) e rollback atomico (`ArtifactRollbackService`). Enforcing di `RetentionPolicy`.
+   - Ciclo di update side-by-side in directory versionate distinte `<version>_<buildId>`, `InstallationHealthService` prima dell'attivazione, conservazione di `last-known-good` per ruolo e `RetentionPolicy`. Divieto assoluto di overwrite in-place.
 
 6. **Tranche 6.4f — Application Integration & Operational CLI:**
-   - Integrazione dei servizi nel composition root `DefaultApplicationBootstrap` e `PlatformServices`.
-   - Comandi CLI in `bin/aura_cli.dart`: `catalog status`, `refresh`, `show`, `download`, `import`, `install`, `update check`, `update apply`, `repair`, `rollback`.
-   - Sanitizzazione dei log e disaccoppiamento totale della UI dai repository.
+   - Integrazione nei composition root `DefaultApplicationBootstrap` e `PlatformServices`, configurazione del trust store (`AURA_TRUST_STORE_PATH`, `AURA_CATALOG_KEY_ID`).
+   - 12 forme di comando CLI in `bin/aura_cli.dart` e `bin/aura_provisioning.dart`, sanitizzazione dei log e disaccoppiamento totale della UI.
 
 > [!NOTE]
 > La pipeline CI/CD di pubblicazione e firma dei cataloghi appartiene alla **Fase 6.9** (Release Pipeline). La Fase 6.4 implementa ed esegue la verifica e il consumo lato client tramite la chiave pubblica configurata.

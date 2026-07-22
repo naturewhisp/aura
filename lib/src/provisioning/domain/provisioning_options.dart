@@ -300,6 +300,23 @@ final class ProvisioningResult {
       };
 }
 
+/// Ruolo applicativo per l'attivazione di un artefatto di modello.
+enum ModelActivationRole {
+  actor,
+  evaluator;
+
+  static ModelActivationRole? parse(String? value) {
+    if (value == null) return null;
+    final clean = value.trim().toLowerCase();
+    for (final role in ModelActivationRole.values) {
+      if (role.name == clean) {
+        return role;
+      }
+    }
+    return null;
+  }
+}
+
 /// Cause tipizzate di fallimento dell'attivazione di un'installazione.
 enum ActivationFailureReason {
   installationNotFound,
@@ -308,6 +325,8 @@ enum ActivationFailureReason {
   integrityVerificationFailed,
   activationPersistenceFailed,
   operationCancelled,
+  invalidRole,
+  roleRequired,
 }
 
 /// Risultato dell'operazione di attivazione di un'installazione.

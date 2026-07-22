@@ -29,7 +29,7 @@ void main() {
 
     test('Restituisce stato vuoto se il file non esiste', () async {
       final state = await repo.readState();
-      expect(state.schemaVersion, equals('1.0'));
+      expect(state.schemaVersion, equals('1.1'));
       expect(state.activeRuntimeInstallationId, isNull);
       expect(state.activeModelInstallationId, isNull);
     });

@@ -243,9 +243,11 @@ final class ProvisioningCoordinator {
   }
 
   /// Attiva un'installazione specifica riferita dal suo `installationId` sotto lock.
+  /// Per gli artefatti di modello, richiede obbligatoriamente il parametro [modelRole] (actor o evaluator).
   Future<ActivationResult> activateInstallation({
     required String installationId,
     required String operationId,
+    ModelActivationRole? modelRole,
     ProvisioningCancellationToken? cancellationToken,
   }) async {
     return _lock.synchronized(_lockKey, () async {
@@ -295,28 +297,57 @@ final class ProvisioningCoordinator {
         );
       }
 
+      final isRuntime = descriptor.artifactType == CatalogArtifactType.runtime;
+
+      if (isRuntime && modelRole != null) {
+        return ActivationResult.failure(
+          operationId: operationId,
+          installationId: installationId,
+          failureReason: ActivationFailureReason.invalidRole,
+          sanitizedMessage:
+              'Non è possibile specificare un modelRole per l\'attivazione di un runtime.',
+        );
+      }
+
+      if (!isRuntime && modelRole == null) {
+        return ActivationResult.failure(
+          operationId: operationId,
+          installationId: installationId,
+          failureReason: ActivationFailureReason.roleRequired,
+          sanitizedMessage:
+              'Per attivare un artefatto di modello è necessario specificare modelRole (actor o evaluator).',
+        );
+      }
+
       final nowIso = _clock.nowUtc().toUtc().toIso8601String();
       final currentState = await _activationRepository.readState();
 
-      final isRuntime = descriptor.artifactType == CatalogArtifactType.runtime;
-
-      final updatedState = currentState.copyWith(
-        activeRuntimeInstallationId: isRuntime
-            ? descriptor.installationId
-            : currentState.activeRuntimeInstallationId,
-        activeModelInstallationId: !isRuntime
-            ? descriptor.installationId
-            : currentState.activeModelInstallationId,
-        lastKnownGoodRuntimeInstallationId: isRuntime
-            ? (currentState.activeRuntimeInstallationId ??
-                currentState.lastKnownGoodRuntimeInstallationId)
-            : currentState.lastKnownGoodRuntimeInstallationId,
-        lastKnownGoodModelInstallationId: !isRuntime
-            ? (currentState.activeModelInstallationId ??
-                currentState.lastKnownGoodModelInstallationId)
-            : currentState.lastKnownGoodModelInstallationId,
-        updatedAt: nowIso,
-      );
+      ActivationState updatedState;
+      if (isRuntime) {
+        updatedState = currentState.copyWith(
+          activeRuntimeInstallationId: descriptor.installationId,
+          lastKnownGoodRuntimeInstallationId:
+              currentState.activeRuntimeInstallationId ??
+                  currentState.lastKnownGoodRuntimeInstallationId,
+          updatedAt: nowIso,
+        );
+      } else if (modelRole == ModelActivationRole.actor) {
+        updatedState = currentState.copyWith(
+          activeActorModelInstallationId: descriptor.installationId,
+          lastKnownGoodActorModelInstallationId:
+              currentState.activeActorModelInstallationId ??
+                  currentState.lastKnownGoodActorModelInstallationId,
+          updatedAt: nowIso,
+        );
+      } else {
+        updatedState = currentState.copyWith(
+          activeEvaluatorModelInstallationId: descriptor.installationId,
+          lastKnownGoodEvaluatorModelInstallationId:
+              currentState.activeEvaluatorModelInstallationId ??
+                  currentState.lastKnownGoodEvaluatorModelInstallationId,
+          updatedAt: nowIso,
+        );
+      }
 
       try {
         await _activationRepository.replaceState(updatedState);
@@ -338,7 +369,7 @@ final class ProvisioningCoordinator {
   }
 
   /// Rimuove un'installazione specifica dal filesystem e dal registro di installazione sotto lock.
-  /// Rifiuta tassativamente la rimozione diretta di un'installazione attualmente attiva.
+  /// Rifiuta tassativamente la rimozione diretta di un'installazione attualmente attiva per qualsiasi ruolo.
   Future<ProvisioningResult> removeInstallation({
     required String installationId,
     required String operationId,
@@ -357,11 +388,14 @@ final class ProvisioningCoordinator {
         );
       }
 
-      // 1. Rifiuta la rimozione se l'installazione è attualmente attiva
+      // 1. Rifiuta la rimozione se l'installazione è attualmente attiva per qualsiasi ruolo (Actor, Evaluator o Runtime)
       final currentState = await _activationRepository.readState();
       if (currentState.activeRuntimeInstallationId ==
               descriptor.installationId ||
-          currentState.activeModelInstallationId == descriptor.installationId) {
+          currentState.activeActorModelInstallationId ==
+              descriptor.installationId ||
+          currentState.activeEvaluatorModelInstallationId ==
+              descriptor.installationId) {
         return ProvisioningResult.failure(
           operationId: operationId,
           artifactId: descriptor.artifactId,
@@ -413,22 +447,30 @@ final class ProvisioningCoordinator {
         );
       }
 
-      // 4. Riconciliazione di ActivationState (pulizia di lastKnownGood se puntava all'installazione rimossa)
+      // 4. Riconciliazione di ActivationState (pulizia di lastKnownGood se puntava all'installazione rimossa per ciascun ruolo)
       final needsLkgRuntimeClean =
           currentState.lastKnownGoodRuntimeInstallationId ==
               descriptor.installationId;
-      final needsLkgModelClean =
-          currentState.lastKnownGoodModelInstallationId ==
+      final needsLkgActorClean =
+          currentState.lastKnownGoodActorModelInstallationId ==
+              descriptor.installationId;
+      final needsLkgEvaluatorClean =
+          currentState.lastKnownGoodEvaluatorModelInstallationId ==
               descriptor.installationId;
 
-      if (needsLkgRuntimeClean || needsLkgModelClean) {
+      if (needsLkgRuntimeClean ||
+          needsLkgActorClean ||
+          needsLkgEvaluatorClean) {
         final reconciledState = currentState.copyWith(
           lastKnownGoodRuntimeInstallationId: needsLkgRuntimeClean
               ? null
               : currentState.lastKnownGoodRuntimeInstallationId,
-          lastKnownGoodModelInstallationId: needsLkgModelClean
+          lastKnownGoodActorModelInstallationId: needsLkgActorClean
               ? null
-              : currentState.lastKnownGoodModelInstallationId,
+              : currentState.lastKnownGoodActorModelInstallationId,
+          lastKnownGoodEvaluatorModelInstallationId: needsLkgEvaluatorClean
+              ? null
+              : currentState.lastKnownGoodEvaluatorModelInstallationId,
           updatedAt: _clock.nowUtc().toUtc().toIso8601String(),
         );
         try {

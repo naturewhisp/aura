@@ -102,12 +102,22 @@ void main(List<String> args) async {
       case 'activate':
         if (args.length < 2) {
           stderr.writeln('Errore: Specificare l\'installationId da attivare.');
+          stderr.writeln(
+              'Uso: activate <installationId> [--role actor|evaluator]');
           exit(1);
         }
         final instId = args[1];
+        ModelActivationRole? role;
+        if (args.contains('--role')) {
+          final idx = args.indexOf('--role');
+          if (idx + 1 < args.length) {
+            role = ModelActivationRole.parse(args[idx + 1]);
+          }
+        }
         result = await cliRunner.activate(
           installationId: instId,
           operationId: 'cli-activate-${DateTime.now().millisecondsSinceEpoch}',
+          modelRole: role,
         );
         break;
       case 'remove':

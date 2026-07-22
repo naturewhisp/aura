@@ -87,12 +87,30 @@ final class ModelResolver {
   /// 3. Attesta che l'installazione attiva appartenga esplicitamente al `physicalModelId` richiesto.
   /// 4. Se l'installazione attiva è mancante, del ruolo errato o non integra, tenta `lastKnownGood` specifico del ruolo.
   /// 5. Se anche `lastKnownGood` fallisce, seleziona l'ultima installazione `verified` disponibile nel registro per quel modello specifico.
-  Future<ModelResolutionResult> resolveModel(String logicalOrPhysicalId) async {
+  Future<ModelResolutionResult> resolveModel(
+    String logicalOrPhysicalId, {
+    ModelActivationRole? role,
+  }) async {
     final physicalModelId = _catalog.resolveLogicalModelId(logicalOrPhysicalId);
-    final isEvaluator = logicalOrPhysicalId.trim() ==
-            LogicalModelIds.defaultEvaluator ||
-        logicalOrPhysicalId.trim() == LogicalModelIds.primaryEvaluatorAlias ||
-        logicalOrPhysicalId.trim() == 'evaluator.default';
+
+    ModelActivationRole targetRole = role ?? ModelActivationRole.actor;
+    if (role == null) {
+      final cleanId = logicalOrPhysicalId.trim();
+      final isEvalAlias = cleanId == LogicalModelIds.defaultEvaluator ||
+          cleanId == LogicalModelIds.primaryEvaluatorAlias ||
+          cleanId == 'evaluator.default';
+
+      if (isEvalAlias) {
+        targetRole = ModelActivationRole.evaluator;
+      } else {
+        final entry = _catalog.findModel(physicalModelId);
+        if (entry != null && entry.recommendedAgents.contains('evaluator')) {
+          targetRole = ModelActivationRole.evaluator;
+        }
+      }
+    }
+
+    final isEvaluator = targetRole == ModelActivationRole.evaluator;
 
     final record = await _recordRepository.readRecord();
     final state = await _activationRepository.readState();

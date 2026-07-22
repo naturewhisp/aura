@@ -148,7 +148,7 @@ void main() {
         recordRepository: recordRepo,
       );
 
-      // Simula i byte ed i file per Actor, Evaluator e Runtime
+      // Simula i byte ed i file per Actor ed Evaluator
       const actorContent = 'GGUF v3 Gemma 4 12B QAT content';
       actorBytes = utf8.encode(actorContent);
       const actorUri = 'https://downloads.aura.local/gemma-4-12b.gguf';
@@ -178,7 +178,7 @@ void main() {
       );
 
       evaluatorArtifact = CatalogArtifact(
-        artifactId: 'mistralai/ministral-3-3b',
+        artifactId: 'ministral-3b',
         artifactType: CatalogArtifactType.model,
         displayName: 'Ministral 3B Instruct',
         version: 'v1.0',
@@ -234,6 +234,7 @@ void main() {
       await coordinator.activateInstallation(
         installationId: resActorProv.installationId!,
         operationId: 'act-actor',
+        modelRole: ModelActivationRole.actor,
       );
 
       // Risoluzione Actor
@@ -248,11 +249,83 @@ void main() {
     });
 
     test(
-        '2. Bootstrap esige SIA Actor SIA Evaluator SIA Runtime per lo stato ready',
+        '2. Attivazione esplicita per ruolo Actor ed Evaluator nel coordinatore',
+        () async {
+      // Installa Evaluator (Ministral)
+      final reqEval = ProvisioningRequest(
+        operationId: 'op-eval-inst',
+        catalogId: 'cat-63e-dual',
+        artifactId: 'ministral-3b',
+        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
+        consent: DownloadConsent.grantedFor(
+          artifactId: 'ministral-3b',
+          sourceUri: 'https://downloads.aura.local/ministral-3b.gguf',
+          expectedSizeBytes: evaluatorBytes.length,
+          operationId: 'op-eval-inst',
+        ),
+        expectedPlatform: 'windows',
+        expectedArchitecture: 'x64',
+      );
+      final resEvalProv = await coordinator.provisionArtifact(
+        request: reqEval,
+        manifest: sampleManifest,
+      );
+
+      // Tentativo di attivazione senza modelRole deve fallire con roleRequired
+      final failAct = await coordinator.activateInstallation(
+        installationId: resEvalProv.installationId!,
+        operationId: 'op-act-norole',
+      );
+      expect(failAct.success, isFalse);
+      expect(
+          failAct.failureReason, equals(ActivationFailureReason.roleRequired));
+
+      // Attivazione esplicita come Evaluator
+      final succAct = await coordinator.activateInstallation(
+        installationId: resEvalProv.installationId!,
+        operationId: 'op-act-eval',
+        modelRole: ModelActivationRole.evaluator,
+      );
+      expect(succAct.success, isTrue);
+
+      final state = await coordinator.getActivationState();
+      expect(state.activeEvaluatorModelInstallationId,
+          equals(resEvalProv.installationId));
+      expect(state.schemaVersion, equals('1.1'));
+
+      // Protezione dalla rimozione dell'Evaluator attivo
+      final remRes = await coordinator.removeInstallation(
+        installationId: resEvalProv.installationId!,
+        operationId: 'op-rem-eval',
+      );
+      expect(remRes.status, equals(ProvisioningStatus.failed));
+      expect(remRes.failureReason,
+          equals(ProvisioningFailureReason.installationConflict));
+    });
+
+    test('3. Serialization ActivationState.toJson non duplica i campi legacy',
+        () {
+      final state = ActivationState(
+        schemaVersion: '1.1',
+        updatedAt: DateTime.now().toUtc().toIso8601String(),
+        activeActorModelInstallationId: 'inst-actor-1',
+        activeEvaluatorModelInstallationId: 'inst-eval-1',
+      );
+      final jsonMap = state.toJson();
+
+      expect(jsonMap['schemaVersion'], equals('1.1'));
+      expect(jsonMap['activeActorModelInstallationId'], equals('inst-actor-1'));
+      expect(
+          jsonMap['activeEvaluatorModelInstallationId'], equals('inst-eval-1'));
+      expect(jsonMap.containsKey('activeModelInstallationId'), isFalse);
+      expect(jsonMap.containsKey('lastKnownGoodModelInstallationId'), isFalse);
+    });
+
+    test(
+        '4. Bootstrap esige SIA Actor SIA Evaluator SIA Runtime per lo stato ready',
         () async {
       // Senza Evaluator e Runtime installati, il bootstrap restituisce failed
-      final bootRes1 =
-          await bootstrapService.bootstrap(initialManifest: sampleManifest);
+      final bootRes1 = await bootstrapService.bootstrap();
       expect(bootRes1.status, equals(ProvisioningBootstrapStatus.failed));
       expect(bootRes1.diagnostics['isActorValid'], isFalse);
       expect(bootRes1.diagnostics['isEvaluatorValid'], isFalse);
@@ -260,7 +333,7 @@ void main() {
     });
 
     test(
-        '3. RuntimeResolver verifica l effettiva presenza di llama-server.exe su disco',
+        '5. RuntimeResolver verifica l effettiva presenza di llama-server.exe su disco',
         () async {
       // Crea un descrittore di runtime fittizio verified nel registro ma senza file su disco
       final rec = await recordRepo.readRecord();
@@ -291,7 +364,7 @@ void main() {
     });
 
     test(
-        '4. ProvisioningCliRunner e executable entry point rispondono ai comandi CLI',
+        '6. ProvisioningCliRunner e executable entry point rispondono ai comandi CLI',
         () async {
       final statusRes = await cliRunner.status();
       expect(statusRes.command, equals('status'));
@@ -300,8 +373,7 @@ void main() {
       final listCatRes = cliRunner.listCatalog(sampleManifest);
       expect(listCatRes.success, isTrue);
       expect(listCatRes.toFormattedJson(), contains('gemma-4-12b-it-qat-q4-0'));
-      expect(
-          listCatRes.toFormattedJson(), contains('mistralai/ministral-3-3b'));
+      expect(listCatRes.toFormattedJson(), contains('ministral-3b'));
 
       final listInstRes = await cliRunner.listInstalled();
       expect(listInstRes.success, isTrue);

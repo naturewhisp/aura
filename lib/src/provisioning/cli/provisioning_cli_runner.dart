@@ -119,10 +119,12 @@ final class ProvisioningCliRunner {
   Future<CliCommandResult> activate({
     required String installationId,
     required String operationId,
+    ModelActivationRole? modelRole,
   }) async {
     final res = await _coordinator.activateInstallation(
       installationId: installationId,
       operationId: operationId,
+      modelRole: modelRole,
     );
 
     return CliCommandResult(

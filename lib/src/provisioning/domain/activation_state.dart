@@ -59,7 +59,7 @@ final class ActivationState {
   final Map<String, dynamic> metadata;
 
   ActivationState({
-    this.schemaVersion = '1.0',
+    this.schemaVersion = '1.1',
     required this.updatedAt,
     this.activeRuntimeInstallationId,
     String? activeModelInstallationId,
@@ -100,7 +100,7 @@ final class ActivationState {
 
   factory ActivationState.empty({required String updatedAt}) {
     return ActivationState(
-      schemaVersion: '1.0',
+      schemaVersion: '1.1',
       updatedAt: updatedAt,
     );
   }
@@ -115,11 +115,12 @@ final class ActivationState {
         );
       }
 
-      if (rawSchema.trim() != '1.0') {
+      final cleanSchema = rawSchema.trim();
+      if (cleanSchema != '1.0' && cleanSchema != '1.1') {
         throw ProvisioningException(
           reason: ProvisioningFailureReason.unsupportedSchemaVersion,
           message:
-              'Versione di schema non supportata: "$rawSchema". Attesa: "1.0".',
+              'Versione di schema non supportata: "$rawSchema". Attese: "1.0" o "1.1".',
         );
       }
 
@@ -147,7 +148,7 @@ final class ActivationState {
           json['lastKnownGoodEvaluatorModelInstallationId'] as String?;
 
       return ActivationState(
-        schemaVersion: rawSchema,
+        schemaVersion: cleanSchema,
         updatedAt: rawUpdatedAt,
         activeRuntimeInstallationId:
             json['activeRuntimeInstallationId'] as String?,
@@ -186,8 +187,6 @@ final class ActivationState {
       if (activeEvaluatorModelInstallationId != null)
         'activeEvaluatorModelInstallationId':
             activeEvaluatorModelInstallationId,
-      if (activeModelInstallationId != null)
-        'activeModelInstallationId': activeModelInstallationId,
       if (lastKnownGoodRuntimeInstallationId != null)
         'lastKnownGoodRuntimeInstallationId':
             lastKnownGoodRuntimeInstallationId,
@@ -197,8 +196,6 @@ final class ActivationState {
       if (lastKnownGoodEvaluatorModelInstallationId != null)
         'lastKnownGoodEvaluatorModelInstallationId':
             lastKnownGoodEvaluatorModelInstallationId,
-      if (lastKnownGoodModelInstallationId != null)
-        'lastKnownGoodModelInstallationId': lastKnownGoodModelInstallationId,
       'runtimeSourcePreference': runtimeSourcePreference.name,
       'fallbackPolicy': fallbackPolicy.name,
       'explicitUserSelection': explicitUserSelection,

@@ -1,7 +1,6 @@
 import 'package:meta/meta.dart';
 import '../../agent_runtime/model_catalog.dart';
 import '../domain/activation_state.dart';
-import '../domain/catalog_manifest.dart';
 import '../domain/provisioning_clock.dart';
 import '../infrastructure/activation_state_repository.dart';
 import '../infrastructure/installation_record_repository.dart';
@@ -89,9 +88,7 @@ final class ProvisioningBootstrapService {
   /// 3. Risolve e verifica in modo role-aware SIA l'Actor SIA l'Evaluator SIA il runtime.
   /// 4. Se un'installazione attiva è mancante o corrotta, riconcilia automaticamente lo stato in [ActivationStateRepository].
   /// 5. Restituisce l'esito diagnostico [ProvisioningBootstrapResult].
-  Future<ProvisioningBootstrapResult> bootstrap({
-    CatalogManifest? initialManifest,
-  }) async {
+  Future<ProvisioningBootstrapResult> bootstrap() async {
     // 1. Assicura l'esistenza delle directory gestite coerentemente con i getter del ProvisioningPathResolver
     await _fileSystem.createDirectory(_pathResolver.appManagedRoot);
     await _fileSystem.createDirectory(_pathResolver.modelsDirectory);
@@ -182,8 +179,6 @@ final class ProvisioningBootstrapService {
       'actorFallbackUsed': resolvedActor?.isFallbackUsed ?? false,
       'evaluatorFallbackUsed': resolvedEvaluator?.isFallbackUsed ?? false,
       'runtimeFallbackUsed': resolvedRuntime?.isFallbackUsed ?? false,
-      if (initialManifest != null)
-        'initialManifestCatalogId': initialManifest.catalogId,
     };
 
     return ProvisioningBootstrapResult(

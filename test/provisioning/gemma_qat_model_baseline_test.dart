@@ -314,6 +314,7 @@ void main() {
       final actRes = await coordinator.activateInstallation(
         installationId: provRes.installationId!,
         operationId: 'op-act-1',
+        modelRole: ModelActivationRole.actor,
       );
 
       expect(actRes.success, isTrue);

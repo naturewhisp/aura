@@ -505,6 +505,20 @@ final class InstallationRecord {
     return latest;
   }
 
+  /// Cerca l'installazione di runtime verified piu recente in base a installedAt.
+  InstalledArtifactDescriptor? findLatestVerifiedRuntimeInstallation() {
+    InstalledArtifactDescriptor? latest;
+    for (final a in installedArtifacts) {
+      if (a.artifactType == CatalogArtifactType.runtime &&
+          a.status == InstallationStatus.verified) {
+        if (latest == null || a.installedAt.compareTo(latest.installedAt) > 0) {
+          latest = a;
+        }
+      }
+    }
+    return latest;
+  }
+
   InstalledArtifactDescriptor? findArtifact(String artifactId) {
     return findLatestVerifiedInstallation(artifactId);
   }

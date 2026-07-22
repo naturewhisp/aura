@@ -41,15 +41,17 @@ enum ProvisionedFallbackPolicy {
   }
 }
 
-/// Rappresenta lo stato di attivazione corrente del runtime e del modello riferito ad installazioni stabili.
+/// Rappresenta lo stato di attivazione corrente del runtime e dei modelli referenziati da ruoli specifici (Actor ed Evaluator).
 @immutable
 final class ActivationState {
   final String schemaVersion;
   final String updatedAt;
   final String? activeRuntimeInstallationId;
-  final String? activeModelInstallationId;
+  final String? activeActorModelInstallationId;
+  final String? activeEvaluatorModelInstallationId;
   final String? lastKnownGoodRuntimeInstallationId;
-  final String? lastKnownGoodModelInstallationId;
+  final String? lastKnownGoodActorModelInstallationId;
+  final String? lastKnownGoodEvaluatorModelInstallationId;
   final RuntimeSourcePreference runtimeSourcePreference;
   final ProvisionedFallbackPolicy fallbackPolicy;
   final bool explicitUserSelection;
@@ -60,16 +62,25 @@ final class ActivationState {
     this.schemaVersion = '1.0',
     required this.updatedAt,
     this.activeRuntimeInstallationId,
-    this.activeModelInstallationId,
+    String? activeModelInstallationId,
+    String? activeActorModelInstallationId,
+    this.activeEvaluatorModelInstallationId,
     this.lastKnownGoodRuntimeInstallationId,
-    this.lastKnownGoodModelInstallationId,
+    String? lastKnownGoodModelInstallationId,
+    String? lastKnownGoodActorModelInstallationId,
+    this.lastKnownGoodEvaluatorModelInstallationId,
     this.runtimeSourcePreference = RuntimeSourcePreference.appManaged,
     this.fallbackPolicy =
         ProvisionedFallbackPolicy.managedLlamaServerWithRuleBasedFallback,
     this.explicitUserSelection = false,
     this.selectedModelAlias,
     Map<String, dynamic> metadata = const {},
-  }) : metadata = JsonSafeValue.ensureJsonSafeMap(metadata) {
+  })  : activeActorModelInstallationId =
+            activeActorModelInstallationId ?? activeModelInstallationId,
+        lastKnownGoodActorModelInstallationId =
+            lastKnownGoodActorModelInstallationId ??
+                lastKnownGoodModelInstallationId,
+        metadata = JsonSafeValue.ensureJsonSafeMap(metadata) {
     if (DateTime.tryParse(updatedAt) == null) {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.catalogMalformed,
@@ -77,6 +88,15 @@ final class ActivationState {
       );
     }
   }
+
+  /// Compatibility getter per l'installazione attiva predefinita del modello (Actor).
+  String? get activeModelInstallationId =>
+      activeActorModelInstallationId ?? activeEvaluatorModelInstallationId;
+
+  /// Compatibility getter per lastKnownGood del modello predefinito (Actor).
+  String? get lastKnownGoodModelInstallationId =>
+      lastKnownGoodActorModelInstallationId ??
+      lastKnownGoodEvaluatorModelInstallationId;
 
   factory ActivationState.empty({required String updatedAt}) {
     return ActivationState(
@@ -116,16 +136,27 @@ final class ActivationState {
       final rawFallback = (json['fallbackPolicy'] as String?) ??
           'managedLlamaServerWithRuleBasedFallback';
 
+      final activeActor = (json['activeActorModelInstallationId'] as String?) ??
+          (json['activeModelInstallationId'] as String?);
+      final activeEval = json['activeEvaluatorModelInstallationId'] as String?;
+
+      final lkgActor =
+          (json['lastKnownGoodActorModelInstallationId'] as String?) ??
+              (json['lastKnownGoodModelInstallationId'] as String?);
+      final lkgEval =
+          json['lastKnownGoodEvaluatorModelInstallationId'] as String?;
+
       return ActivationState(
         schemaVersion: rawSchema,
         updatedAt: rawUpdatedAt,
         activeRuntimeInstallationId:
             json['activeRuntimeInstallationId'] as String?,
-        activeModelInstallationId: json['activeModelInstallationId'] as String?,
+        activeActorModelInstallationId: activeActor,
+        activeEvaluatorModelInstallationId: activeEval,
         lastKnownGoodRuntimeInstallationId:
             json['lastKnownGoodRuntimeInstallationId'] as String?,
-        lastKnownGoodModelInstallationId:
-            json['lastKnownGoodModelInstallationId'] as String?,
+        lastKnownGoodActorModelInstallationId: lkgActor,
+        lastKnownGoodEvaluatorModelInstallationId: lkgEval,
         runtimeSourcePreference: RuntimeSourcePreference.parse(rawPref),
         fallbackPolicy: ProvisionedFallbackPolicy.parse(rawFallback),
         explicitUserSelection: json['explicitUserSelection'] as bool? ?? false,
@@ -150,11 +181,22 @@ final class ActivationState {
       'updatedAt': updatedAt,
       if (activeRuntimeInstallationId != null)
         'activeRuntimeInstallationId': activeRuntimeInstallationId,
+      if (activeActorModelInstallationId != null)
+        'activeActorModelInstallationId': activeActorModelInstallationId,
+      if (activeEvaluatorModelInstallationId != null)
+        'activeEvaluatorModelInstallationId':
+            activeEvaluatorModelInstallationId,
       if (activeModelInstallationId != null)
         'activeModelInstallationId': activeModelInstallationId,
       if (lastKnownGoodRuntimeInstallationId != null)
         'lastKnownGoodRuntimeInstallationId':
             lastKnownGoodRuntimeInstallationId,
+      if (lastKnownGoodActorModelInstallationId != null)
+        'lastKnownGoodActorModelInstallationId':
+            lastKnownGoodActorModelInstallationId,
+      if (lastKnownGoodEvaluatorModelInstallationId != null)
+        'lastKnownGoodEvaluatorModelInstallationId':
+            lastKnownGoodEvaluatorModelInstallationId,
       if (lastKnownGoodModelInstallationId != null)
         'lastKnownGoodModelInstallationId': lastKnownGoodModelInstallationId,
       'runtimeSourcePreference': runtimeSourcePreference.name,
@@ -170,14 +212,30 @@ final class ActivationState {
     String? updatedAt,
     Object? activeRuntimeInstallationId = _unset,
     Object? activeModelInstallationId = _unset,
+    Object? activeActorModelInstallationId = _unset,
+    Object? activeEvaluatorModelInstallationId = _unset,
     Object? lastKnownGoodRuntimeInstallationId = _unset,
     Object? lastKnownGoodModelInstallationId = _unset,
+    Object? lastKnownGoodActorModelInstallationId = _unset,
+    Object? lastKnownGoodEvaluatorModelInstallationId = _unset,
     RuntimeSourcePreference? runtimeSourcePreference,
     ProvisionedFallbackPolicy? fallbackPolicy,
     bool? explicitUserSelection,
     Object? selectedModelAlias = _unset,
     Map<String, dynamic>? metadata,
   }) {
+    final newActiveActor = identical(activeActorModelInstallationId, _unset)
+        ? (identical(activeModelInstallationId, _unset)
+            ? this.activeActorModelInstallationId
+            : activeModelInstallationId as String?)
+        : activeActorModelInstallationId as String?;
+
+    final newLkgActor = identical(lastKnownGoodActorModelInstallationId, _unset)
+        ? (identical(lastKnownGoodModelInstallationId, _unset)
+            ? this.lastKnownGoodActorModelInstallationId
+            : lastKnownGoodModelInstallationId as String?)
+        : lastKnownGoodActorModelInstallationId as String?;
+
     return ActivationState(
       schemaVersion: schemaVersion ?? this.schemaVersion,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -185,17 +243,20 @@ final class ActivationState {
           identical(activeRuntimeInstallationId, _unset)
               ? this.activeRuntimeInstallationId
               : activeRuntimeInstallationId as String?,
-      activeModelInstallationId: identical(activeModelInstallationId, _unset)
-          ? this.activeModelInstallationId
-          : activeModelInstallationId as String?,
+      activeActorModelInstallationId: newActiveActor,
+      activeEvaluatorModelInstallationId:
+          identical(activeEvaluatorModelInstallationId, _unset)
+              ? this.activeEvaluatorModelInstallationId
+              : activeEvaluatorModelInstallationId as String?,
       lastKnownGoodRuntimeInstallationId:
           identical(lastKnownGoodRuntimeInstallationId, _unset)
               ? this.lastKnownGoodRuntimeInstallationId
               : lastKnownGoodRuntimeInstallationId as String?,
-      lastKnownGoodModelInstallationId:
-          identical(lastKnownGoodModelInstallationId, _unset)
-              ? this.lastKnownGoodModelInstallationId
-              : lastKnownGoodModelInstallationId as String?,
+      lastKnownGoodActorModelInstallationId: newLkgActor,
+      lastKnownGoodEvaluatorModelInstallationId:
+          identical(lastKnownGoodEvaluatorModelInstallationId, _unset)
+              ? this.lastKnownGoodEvaluatorModelInstallationId
+              : lastKnownGoodEvaluatorModelInstallationId as String?,
       runtimeSourcePreference:
           runtimeSourcePreference ?? this.runtimeSourcePreference,
       fallbackPolicy: fallbackPolicy ?? this.fallbackPolicy,

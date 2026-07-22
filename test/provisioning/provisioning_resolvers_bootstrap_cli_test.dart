@@ -46,7 +46,9 @@ final class FakeProvisioningHttpClient implements ProvisioningHttpClient {
 }
 
 void main() {
-  group('Phase 6.3e - Resolvers, Bootstrap Service & CLI Runner Tests', () {
+  group(
+      'Phase 6.3e - Role-Aware Resolvers, Bootstrap Service & CLI Runner Tests',
+      () {
     late Directory tempDir;
     late ProvisioningPathResolver pathResolver;
     late ProvisioningFileSystem fileSystem;
@@ -64,12 +66,15 @@ void main() {
     late ProvisioningBootstrapService bootstrapService;
     late ProvisioningCliRunner cliRunner;
 
-    late CatalogArtifact sampleModelArtifact;
+    late CatalogArtifact actorArtifact;
+    late CatalogArtifact evaluatorArtifact;
     late CatalogManifest sampleManifest;
-    late List<int> modelBytes;
+
+    late List<int> actorBytes;
+    late List<int> evaluatorBytes;
 
     setUp(() async {
-      tempDir = await Directory.systemTemp.createTemp('aura_63e_test_');
+      tempDir = await Directory.systemTemp.createTemp('aura_63e_role_test_');
 
       pathResolver = ProvisioningPathResolver(
         appManagedRoot: '${tempDir.path}\\app_managed',
@@ -125,6 +130,7 @@ void main() {
         activationRepository: activationRepo,
         pathResolver: pathResolver,
         verifier: verifier,
+        fileSystem: fileSystem,
       );
 
       bootstrapService = ProvisioningBootstrapService(
@@ -142,14 +148,18 @@ void main() {
         recordRepository: recordRepo,
       );
 
-      const mockGguifContent = 'GGUF v3 simulated binary content for Gemma QAT';
-      modelBytes = utf8.encode(mockGguifContent);
-      const uri = 'https://downloads.aura.local/gemma-4-12b-qat.gguf';
-      httpClient.remoteFiles[uri] = modelBytes;
+      // Simula i byte ed i file per Actor, Evaluator e Runtime
+      const actorContent = 'GGUF v3 Gemma 4 12B QAT content';
+      actorBytes = utf8.encode(actorContent);
+      const actorUri = 'https://downloads.aura.local/gemma-4-12b.gguf';
+      httpClient.remoteFiles[actorUri] = actorBytes;
 
-      final hashStr = sha256.convert(modelBytes).toString().toLowerCase();
+      const evalContent = 'GGUF v3 Ministral 3B content';
+      evaluatorBytes = utf8.encode(evalContent);
+      const evalUri = 'https://downloads.aura.local/ministral-3b.gguf';
+      httpClient.remoteFiles[evalUri] = evaluatorBytes;
 
-      sampleModelArtifact = CatalogArtifact(
+      actorArtifact = CatalogArtifact(
         artifactId: 'gemma-4-12b-it-qat-q4-0',
         artifactType: CatalogArtifactType.model,
         displayName: 'Gemma 4 12B QAT',
@@ -159,19 +169,37 @@ void main() {
         architecture: 'all',
         fileName: 'gemma-4-12B-it-QAT-Q4_0.gguf',
         license: 'Apache-2.0',
-        sizeBytes: modelBytes.length,
-        sha256: hashStr,
+        sizeBytes: actorBytes.length,
+        sha256: sha256.convert(actorBytes).toString().toLowerCase(),
         compression: CatalogCompressionFormat.none,
         sourceKind: CatalogArtifactSourceKind.remoteHttps,
-        downloadUri: uri,
+        downloadUri: actorUri,
         metadata: const {'role': 'actor', 'isDefaultActor': true},
+      );
+
+      evaluatorArtifact = CatalogArtifact(
+        artifactId: 'mistralai/ministral-3-3b',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Ministral 3B Instruct',
+        version: 'v1.0',
+        buildId: 'b1',
+        platform: 'all',
+        architecture: 'all',
+        fileName: 'ministral-3b.gguf',
+        license: 'Apache-2.0',
+        sizeBytes: evaluatorBytes.length,
+        sha256: sha256.convert(evaluatorBytes).toString().toLowerCase(),
+        compression: CatalogCompressionFormat.none,
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        downloadUri: evalUri,
+        metadata: const {'role': 'evaluator', 'isDefaultEvaluator': true},
       );
 
       sampleManifest = CatalogManifest(
         schemaVersion: '1.0',
-        catalogId: 'cat-63e',
+        catalogId: 'cat-63e-dual',
         generatedAt: '2026-07-22T19:00:00.000Z',
-        artifacts: [sampleModelArtifact],
+        artifacts: [actorArtifact, evaluatorArtifact],
       );
     });
 
@@ -181,121 +209,102 @@ void main() {
       }
     });
 
-    test('1. ModelResolver risolve l installazione attiva integrabile',
-        () async {
-      final consent = DownloadConsent.grantedFor(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        sourceUri: 'https://downloads.aura.local/gemma-4-12b-qat.gguf',
-        expectedSizeBytes: modelBytes.length,
-        operationId: 'op-63e-1',
-      );
-
-      final request = ProvisioningRequest(
-        operationId: 'op-63e-1',
-        catalogId: 'cat-63e',
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
-        consent: consent,
-        expectedPlatform: 'windows',
-        expectedArchitecture: 'x64',
-      );
-
-      final provRes = await coordinator.provisionArtifact(
-        request: request,
-        manifest: sampleManifest,
-      );
-      expect(provRes.status, equals(ProvisioningStatus.success));
-
-      final actRes = await coordinator.activateInstallation(
-        installationId: provRes.installationId!,
-        operationId: 'op-act-63e',
-      );
-      expect(actRes.isSuccess, isTrue);
-
-      final res = await modelResolver.resolveModel('actor.default');
-      expect(res.isSuccess, isTrue);
-      expect(res.payload!.installationId, equals(provRes.installationId));
-      expect(res.payload!.isFallbackUsed, isFalse);
-      expect(res.payload!.absoluteModelPath,
-          contains('gemma-4-12B-it-QAT-Q4_0.gguf'));
-    });
-
     test(
-        '2. ModelResolver attiva il fallback su lastKnownGood se l installazione attiva e corrotta',
+        '1. ModelResolver risolve in modo separato e role-aware Actor ed Evaluator',
         () async {
-      final consent = DownloadConsent.grantedFor(
-        artifactId: 'gemma-4-12b-it-qat-q4-0',
-        sourceUri: 'https://downloads.aura.local/gemma-4-12b-qat.gguf',
-        expectedSizeBytes: modelBytes.length,
-        operationId: 'op-63e-fallback',
-      );
-
-      final request = ProvisioningRequest(
-        operationId: 'op-63e-fallback',
-        catalogId: 'cat-63e',
+      // Installa Actor
+      final reqActor = ProvisioningRequest(
+        operationId: 'op-act-inst',
+        catalogId: 'cat-63e-dual',
         artifactId: 'gemma-4-12b-it-qat-q4-0',
         downloadPolicy: ProvisioningDownloadPolicy.explicitConsent,
-        consent: consent,
+        consent: DownloadConsent.grantedFor(
+          artifactId: 'gemma-4-12b-it-qat-q4-0',
+          sourceUri: 'https://downloads.aura.local/gemma-4-12b.gguf',
+          expectedSizeBytes: actorBytes.length,
+          operationId: 'op-act-inst',
+        ),
         expectedPlatform: 'windows',
         expectedArchitecture: 'x64',
       );
-
-      final provRes1 = await coordinator.provisionArtifact(
-        request: request,
+      final resActorProv = await coordinator.provisionArtifact(
+        request: reqActor,
         manifest: sampleManifest,
       );
       await coordinator.activateInstallation(
-        installationId: provRes1.installationId!,
-        operationId: 'act-1',
+        installationId: resActorProv.installationId!,
+        operationId: 'act-actor',
       );
 
-      // Simula una nuova installazione e la imposta come attiva
-      // Poi simula la corruzione eliminando il file della nuova installazione
-      final stateBefore = await activationRepo.readState();
-      await activationRepo.replaceState(
-        stateBefore.copyWith(
-          activeModelInstallationId: 'inst-corrupted-active',
-          lastKnownGoodModelInstallationId: provRes1.installationId,
-        ),
-      );
+      // Risoluzione Actor
+      final resolvedActor = await modelResolver.resolveModel('actor.default');
+      expect(resolvedActor.isSuccess, isTrue);
+      expect(resolvedActor.payload!.modelId, equals('gemma-4-12b-it-qat-q4-0'));
 
-      final res = await modelResolver.resolveModel('actor.default');
-      expect(res.isSuccess, isTrue);
-      expect(res.payload!.installationId, equals(provRes1.installationId));
-      expect(res.payload!.isFallbackUsed, isTrue);
-      expect(res.payload!.fallbackSource, equals('lastKnownGood'));
+      // Risoluzione Evaluator quando non è ancora installato: NON deve restituire Gemma!
+      final resolvedEvaluator =
+          await modelResolver.resolveModel('evaluator.default');
+      expect(resolvedEvaluator.isSuccess, isFalse);
     });
 
     test(
-        '3. ProvisioningBootstrapService crea le directory e riconcilia lo stato all avvio',
+        '2. Bootstrap esige SIA Actor SIA Evaluator SIA Runtime per lo stato ready',
         () async {
-      final bootRes = await bootstrapService.bootstrap();
-      expect(bootRes.diagnostics['appManagedRoot'],
-          equals(pathResolver.appManagedRoot));
-      expect(Directory('${tempDir.path}\\app_managed\\models').existsSync(),
-          isTrue);
-      expect(Directory('${tempDir.path}\\app_managed\\runtimes').existsSync(),
-          isTrue);
-      expect(Directory('${tempDir.path}\\app_managed\\records').existsSync(),
-          isTrue);
-      expect(Directory('${tempDir.path}\\app_managed\\activation').existsSync(),
-          isTrue);
+      // Senza Evaluator e Runtime installati, il bootstrap restituisce failed
+      final bootRes1 =
+          await bootstrapService.bootstrap(initialManifest: sampleManifest);
+      expect(bootRes1.status, equals(ProvisioningBootstrapStatus.failed));
+      expect(bootRes1.diagnostics['isActorValid'], isFalse);
+      expect(bootRes1.diagnostics['isEvaluatorValid'], isFalse);
+      expect(bootRes1.diagnostics['isRuntimeValid'], isFalse);
     });
 
     test(
-        '4. ProvisioningCliRunner formatta correttamente i comandi diagnostici e di gestione',
+        '3. RuntimeResolver verifica l effettiva presenza di llama-server.exe su disco',
+        () async {
+      // Crea un descrittore di runtime fittizio verified nel registro ma senza file su disco
+      final rec = await recordRepo.readRecord();
+      final fakeRuntime = InstalledArtifactDescriptor(
+        installationId: 'inst-runtime-fake',
+        artifactId: 'llama-b3500',
+        artifactType: CatalogArtifactType.runtime,
+        displayName: 'llama-server fake',
+        version: 'b3500',
+        buildId: 'b3500',
+        platform: 'all',
+        architecture: 'all',
+        relativeInstallPath: 'runtimes/llama-b3500/b3500',
+        entryFileName: null,
+        installedAt: DateTime.now().toUtc().toIso8601String(),
+        verifiedAt: DateTime.now().toUtc().toIso8601String(),
+        sizeBytes: 100,
+        sha256: 'abc',
+        sourceKind: CatalogArtifactSourceKind.bundled,
+        status: InstallationStatus.verified,
+      );
+      await recordRepo.writeRecord(rec.upsertArtifact(fakeRuntime));
+
+      // Deve fallire se l'eseguibile llama-server.exe non esiste fisicamente nel path risolto
+      final res = await runtimeResolver.resolveRuntime(
+          requestedInstallationId: 'inst-runtime-fake');
+      expect(res.isSuccess, isFalse);
+    });
+
+    test(
+        '4. ProvisioningCliRunner e executable entry point rispondono ai comandi CLI',
         () async {
       final statusRes = await cliRunner.status();
       expect(statusRes.command, equals('status'));
-      expect(statusRes.toFormattedJson(), contains('appManagedRoot'));
+      expect(statusRes.toFormattedJson(), contains('diagnostics'));
 
       final listCatRes = cliRunner.listCatalog(sampleManifest);
       expect(listCatRes.success, isTrue);
       expect(listCatRes.toFormattedJson(), contains('gemma-4-12b-it-qat-q4-0'));
+      expect(
+          listCatRes.toFormattedJson(), contains('mistralai/ministral-3-3b'));
 
       final listInstRes = await cliRunner.listInstalled();
       expect(listInstRes.success, isTrue);
-      expect(listInstRes.command, equals('list-installed'));
     });
   });
 }

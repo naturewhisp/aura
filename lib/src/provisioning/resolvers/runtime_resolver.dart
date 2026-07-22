@@ -4,6 +4,7 @@ import '../domain/installation_record.dart';
 import '../domain/provisioning_options.dart';
 import '../infrastructure/activation_state_repository.dart';
 import '../infrastructure/installation_record_repository.dart';
+import '../infrastructure/provisioning_file_system.dart';
 import '../infrastructure/provisioning_path_resolver.dart';
 import '../validation/installed_artifact_verifier.dart';
 
@@ -64,20 +65,28 @@ final class RuntimeResolver {
   final ActivationStateRepository _activationRepository;
   final ProvisioningPathResolver _pathResolver;
   final InstalledArtifactVerifier _verifier;
+  final ProvisioningFileSystem _fileSystem;
 
   RuntimeResolver({
     required InstallationRecordRepository recordRepository,
     required ActivationStateRepository activationRepository,
     required ProvisioningPathResolver pathResolver,
     required InstalledArtifactVerifier verifier,
+    ProvisioningFileSystem fileSystem = const LocalProvisioningFileSystem(),
   })  : _recordRepository = recordRepository,
         _activationRepository = activationRepository,
         _pathResolver = pathResolver,
-        _verifier = verifier;
+        _verifier = verifier,
+        _fileSystem = fileSystem;
 
   /// Risolve il runtime di inferenza eseguibile attivo o di fallback.
-  Future<RuntimeResolutionResult> resolveRuntime(
-      {String? requestedInstallationId}) async {
+  ///
+  /// Se [requestedInstallationId] è fornito ed [allowFallback] è false (strict mode),
+  /// l'esito fallisce direttamente se l'installazione specifica non è integra o l'eseguibile è assente.
+  Future<RuntimeResolutionResult> resolveRuntime({
+    String? requestedInstallationId,
+    bool allowFallback = true,
+  }) async {
     final record = await _recordRepository.readRecord();
     final state = await _activationRepository.readState();
 
@@ -95,17 +104,37 @@ final class RuntimeResolver {
         );
         if (isValid) {
           final execPath = _resolveExecutableAbsolutePath(descriptor);
-          return RuntimeResolutionResult.success(
-            ResolvedRuntimePayload(
-              installationId: descriptor.installationId,
-              runtimeId: descriptor.artifactId,
-              executableAbsolutePath: execPath,
-              descriptor: descriptor,
-              isFallbackUsed: false,
-            ),
-          );
+          final execExists = await _fileSystem.fileExists(execPath);
+          if (execExists) {
+            return RuntimeResolutionResult.success(
+              ResolvedRuntimePayload(
+                installationId: descriptor.installationId,
+                runtimeId: descriptor.artifactId,
+                executableAbsolutePath: execPath,
+                descriptor: descriptor,
+                isFallbackUsed: false,
+              ),
+            );
+          }
         }
       }
+
+      // Se era stata richiesta un'installazione esplicita in modalità strict (allowFallback: false), non avviare fallback
+      if (requestedInstallationId != null && !allowFallback) {
+        return RuntimeResolutionResult.failure(
+          failureReason: ProvisioningFailureReason.installationNotFound,
+          sanitizedMessage:
+              'L\'installazione di runtime richiesta "$requestedInstallationId" non è integra o l\'eseguibile è assente su disco.',
+        );
+      }
+    }
+
+    if (!allowFallback && requestedInstallationId != null) {
+      return RuntimeResolutionResult.failure(
+        failureReason: ProvisioningFailureReason.installationNotFound,
+        sanitizedMessage:
+            'L\'installazione di runtime richiesta "$requestedInstallationId" non esiste.',
+      );
     }
 
     // 2. Prova lastKnownGoodRuntimeInstallationId se l'attiva ha fallito o non è impostata
@@ -121,36 +150,40 @@ final class RuntimeResolver {
         );
         if (isValid) {
           final execPath = _resolveExecutableAbsolutePath(lkgDescriptor);
-          return RuntimeResolutionResult.success(
-            ResolvedRuntimePayload(
-              installationId: lkgDescriptor.installationId,
-              runtimeId: lkgDescriptor.artifactId,
-              executableAbsolutePath: execPath,
-              descriptor: lkgDescriptor,
-              isFallbackUsed: true,
-              fallbackSource: 'lastKnownGood',
-            ),
-          );
+          final execExists = await _fileSystem.fileExists(execPath);
+          if (execExists) {
+            return RuntimeResolutionResult.success(
+              ResolvedRuntimePayload(
+                installationId: lkgDescriptor.installationId,
+                runtimeId: lkgDescriptor.artifactId,
+                executableAbsolutePath: execPath,
+                descriptor: lkgDescriptor,
+                isFallbackUsed: true,
+                fallbackSource: 'lastKnownGood',
+              ),
+            );
+          }
         }
       }
     }
 
-    // 3. Fallback sull'ultima installazione verificata di un qualsiasi runtime nel registro
-    for (final descriptor in record.installedArtifacts.reversed) {
-      if (descriptor.artifactType == CatalogArtifactType.runtime &&
-          descriptor.status == InstallationStatus.verified) {
-        final isValid = await _verifier.verifyPhysicalIntegrity(
-          descriptor,
-          pathResolver: _pathResolver,
-        );
-        if (isValid) {
-          final execPath = _resolveExecutableAbsolutePath(descriptor);
+    // 3. Fallback deterministico sull'ultima installazione di runtime verified registrata
+    final latestRuntime = record.findLatestVerifiedRuntimeInstallation();
+    if (latestRuntime != null) {
+      final isValid = await _verifier.verifyPhysicalIntegrity(
+        latestRuntime,
+        pathResolver: _pathResolver,
+      );
+      if (isValid) {
+        final execPath = _resolveExecutableAbsolutePath(latestRuntime);
+        final execExists = await _fileSystem.fileExists(execPath);
+        if (execExists) {
           return RuntimeResolutionResult.success(
             ResolvedRuntimePayload(
-              installationId: descriptor.installationId,
-              runtimeId: descriptor.artifactId,
+              installationId: latestRuntime.installationId,
+              runtimeId: latestRuntime.artifactId,
               executableAbsolutePath: execPath,
-              descriptor: descriptor,
+              descriptor: latestRuntime,
               isFallbackUsed: true,
               fallbackSource: 'latestVerified',
             ),
@@ -162,14 +195,12 @@ final class RuntimeResolver {
     return const RuntimeResolutionResult.failure(
       failureReason: ProvisioningFailureReason.installationNotFound,
       sanitizedMessage:
-          'Impossibile risolvere un runtime di inferenza integro e verificato.',
+          'Impossibile risolvere un runtime di inferenza integro e verificato con eseguibile valido su disco.',
     );
   }
 
   String _resolveExecutableAbsolutePath(
       InstalledArtifactDescriptor descriptor) {
-    final baseDir = _pathResolver
-        .resolveAppManagedRelativePath(descriptor.relativeInstallPath);
     if (descriptor.entryFileName != null &&
         descriptor.entryFileName!.trim().isNotEmpty) {
       return _pathResolver.resolveEntryFilePath(
@@ -177,7 +208,8 @@ final class RuntimeResolver {
         entryFileName: descriptor.entryFileName!,
       );
     }
-    // Per runtime ZIP estratti in cartella (es. llama-server) cerca un eseguibile standard .exe o binario
+    final baseDir = _pathResolver
+        .resolveAppManagedRelativePath(descriptor.relativeInstallPath);
     return _pathResolver.join(baseDir, 'llama-server.exe');
   }
 }

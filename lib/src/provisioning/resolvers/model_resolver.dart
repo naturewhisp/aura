@@ -59,7 +59,7 @@ final class ModelResolutionResult {
   bool get isSuccess => status == ProvisioningStatus.success && payload != null;
 }
 
-/// Servizio ad alto livello per la risoluzione del modello attivo o di fallback per alias logici/fisici.
+/// Servizio ad alto livello per la risoluzione role-aware del modello (Actor o Evaluator) per alias logici/fisici.
 final class ModelResolver {
   final ModelCatalog _catalog;
   final InstallationRecordRepository _recordRepository;
@@ -81,24 +81,32 @@ final class ModelResolver {
 
   /// Risolve un identificatore di modello (alias logico o modelId fisico) nel corrispondente [ResolvedModelPayload].
   ///
-  /// Strategia di Risoluzione:
-  /// 1. Mappa l'alias logico (es. `actor.default`, `evaluator.default`) nel `modelId` tramite [ModelCatalog].
-  /// 2. Tenta l'installazione attiva referenziata in [ActivationState.activeModelInstallationId].
-  /// 3. Se l'installazione attiva è mancante o non integra, tenta `lastKnownGoodModelInstallationId`.
-  /// 4. Se anche `lastKnownGood` è mancante o invalido, tenta l'ultima installazione `verified` disponibile nel registro per quel modello.
-  /// 5. Se nessuna installazione integra è reperibile, restituisce un fallimento tipizzato.
+  /// Strategia di Risoluzione Role-Aware:
+  /// 1. Mappa l'alias logico (es. `actor.default`, `evaluator.default`) nel `physicalModelId` tramite [ModelCatalog].
+  /// 2. Determina il ruolo specifico (Actor vs Evaluator) per interrogare la chiave attiva corretta in [ActivationState].
+  /// 3. Attesta che l'installazione attiva appartenga esplicitamente al `physicalModelId` richiesto.
+  /// 4. Se l'installazione attiva è mancante, del ruolo errato o non integra, tenta `lastKnownGood` specifico del ruolo.
+  /// 5. Se anche `lastKnownGood` fallisce, seleziona l'ultima installazione `verified` disponibile nel registro per quel modello specifico.
   Future<ModelResolutionResult> resolveModel(String logicalOrPhysicalId) async {
     final physicalModelId = _catalog.resolveLogicalModelId(logicalOrPhysicalId);
+    final isEvaluator = logicalOrPhysicalId.trim() ==
+            LogicalModelIds.defaultEvaluator ||
+        logicalOrPhysicalId.trim() == LogicalModelIds.primaryEvaluatorAlias ||
+        logicalOrPhysicalId.trim() == 'evaluator.default';
 
     final record = await _recordRepository.readRecord();
     final state = await _activationRepository.readState();
 
-    // 1. Prova l'installazione attiva corrente se presente
-    final activeId = state.activeModelInstallationId;
+    // 1. Identifica l'installazione attiva specifica per il ruolo
+    final activeId = isEvaluator
+        ? state.activeEvaluatorModelInstallationId
+        : state.activeActorModelInstallationId;
+
     if (activeId != null) {
       final activeDescriptor = record.findInstallation(activeId);
       if (activeDescriptor != null &&
           activeDescriptor.artifactType == CatalogArtifactType.model &&
+          activeDescriptor.artifactId == physicalModelId &&
           activeDescriptor.status == InstallationStatus.verified) {
         final isValid = await _verifier.verifyPhysicalIntegrity(
           activeDescriptor,
@@ -119,12 +127,16 @@ final class ModelResolver {
       }
     }
 
-    // 2. Prova lastKnownGoodModelInstallationId se l'attiva ha fallito o non è impostata
-    final lkgId = state.lastKnownGoodModelInstallationId;
+    // 2. Prova lastKnownGood specifico per il ruolo se l'attiva ha fallito o non appartiene al modello richiesto
+    final lkgId = isEvaluator
+        ? state.lastKnownGoodEvaluatorModelInstallationId
+        : state.lastKnownGoodActorModelInstallationId;
+
     if (lkgId != null && lkgId != activeId) {
       final lkgDescriptor = record.findInstallation(lkgId);
       if (lkgDescriptor != null &&
           lkgDescriptor.artifactType == CatalogArtifactType.model &&
+          lkgDescriptor.artifactId == physicalModelId &&
           lkgDescriptor.status == InstallationStatus.verified) {
         final isValid = await _verifier.verifyPhysicalIntegrity(
           lkgDescriptor,
@@ -146,7 +158,7 @@ final class ModelResolver {
       }
     }
 
-    // 3. Fallback sull'ultima installazione verificata del modello specifico nel registro
+    // 3. Fallback sull'ultima installazione verificata del modello fisico specifico nel registro
     final latestVerified =
         record.findLatestVerifiedInstallation(physicalModelId);
     if (latestVerified != null &&

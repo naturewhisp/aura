@@ -501,12 +501,17 @@ void main() {
       const router = ModelRouter();
 
       test('Default catalog registers models correctly', () {
-        expect(catalog.models.length, equals(3));
+        expect(catalog.models.length, equals(4));
 
         final mistral = catalog.findModel("mistralai/ministral-3-3b");
         expect(mistral, isNotNull);
         expect(mistral!.name, contains("Ministral"));
         expect(mistral.recommendedAgents, contains("evaluator"));
+
+        final gemmaQat = catalog.findModel("gemma-4-12b-it-qat-q4-0");
+        expect(gemmaQat, isNotNull);
+        expect(gemmaQat!.quantization, equals("q4_0"));
+        expect(gemmaQat.recommendedAgents, contains("actor"));
 
         final qwen = catalog.findModel("qwen/qwen3.5-9b");
         expect(qwen, isNotNull);
@@ -539,15 +544,18 @@ void main() {
       });
 
       test(
-          'Router resolves P2 Deep Reasoning when both mistral and gemma loaded',
+          'Router resolves P2 Deep Reasoning when both mistral and gemma QAT loaded',
           () {
         final res = router.resolve(
-          loadedModelIds: ["mistralai/ministral-3-3b", "google/gemma-4-12b"],
+          loadedModelIds: [
+            "mistralai/ministral-3-3b",
+            "gemma-4-12b-it-qat-q4-0"
+          ],
           catalog: catalog,
         );
         expect(res.profileName, contains("P2: Deep Reasoning"));
         expect(res.evaluatorModelId, equals("mistralai/ministral-3-3b"));
-        expect(res.actorModelId, equals("google/gemma-4-12b"));
+        expect(res.actorModelId, equals("gemma-4-12b-it-qat-q4-0"));
       });
 
       test('Router resolves unknown models using name heuristics', () {

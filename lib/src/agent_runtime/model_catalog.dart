@@ -165,6 +165,22 @@ class ModelCatalog {
       preferredBackend: "llama_cpp",
     ));
     catalog.registerEntry(const ModelCatalogEntry(
+      modelId: "gemma-4-12b-it-qat-q4-0",
+      name: "Gemma 4 12B IT QAT (Q4_0)",
+      source: "lmstudio-community",
+      format: "gguf",
+      platforms: ["windows", "linux", "macos"],
+      parameterClass: "12b",
+      quantization: "q4_0",
+      minRamGb: 24,
+      minVramGb: 10,
+      recommendedAgents: ["actor"],
+      capabilities: ["generate_character_response", "high_logic_reasoning"],
+      supportsGrammar: true,
+      supportsStructuredOutput: false,
+      preferredBackend: "llama_cpp",
+    ));
+    catalog.registerEntry(const ModelCatalogEntry(
       modelId: "qwen/qwen3.5-9b",
       name: "Qwen 3.5 9B Instruct (Q4_K_M)",
       source: "lmstudio-community",
@@ -186,7 +202,7 @@ class ModelCatalog {
     ));
     catalog.registerEntry(const ModelCatalogEntry(
       modelId: "google/gemma-4-12b",
-      name: "Gemma 4 12B (Q4_K_M)",
+      name: "Gemma 4 12B (Q4_K_M Legacy)",
       source: "lmstudio-community",
       format: "gguf",
       platforms: ["windows", "linux", "macos"],
@@ -194,7 +210,7 @@ class ModelCatalog {
       quantization: "q4_k_m",
       minRamGb: 24,
       minVramGb: 10,
-      recommendedAgents: ["actor"],
+      recommendedAgents: [],
       capabilities: ["generate_character_response", "high_logic_reasoning"],
       supportsGrammar: true,
       supportsStructuredOutput: false,

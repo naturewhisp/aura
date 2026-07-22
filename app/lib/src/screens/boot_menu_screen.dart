@@ -62,9 +62,9 @@ class _BootMenuScreenState extends State<BootMenuScreen>
 
   // Modelli disponibili nel catalogo locale (utilizzati per le opzioni di custom routing)
   final List<String> _modelsList = const [
-    "qwen/qwen3.5-9b",
+    "gemma-4-12b-it-qat-q4-0",
     "mistralai/ministral-3-3b",
-    "google/gemma-4-12b"
+    "qwen/qwen3.5-9b"
   ];
 
   // Indici e chiavi globali per la navigazione del menu ed effetti di lampeggiamento

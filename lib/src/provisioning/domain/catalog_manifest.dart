@@ -503,4 +503,102 @@ final class CatalogManifest {
       metadata: metadata ?? this.metadata,
     );
   }
+
+  /// Costruttore factory per il catalogo manifest predefinito iniziale di A.U.R.A.
+  factory CatalogManifest.initialDefault(
+      {String catalogId = 'aura-official-catalog'}) {
+    return CatalogManifest(
+      schemaVersion: '1.0',
+      catalogId: catalogId,
+      generatedAt: '2026-07-22T18:00:00.000Z',
+      artifacts: [
+        CatalogArtifact(
+          artifactId: 'gemma-4-12b-it-qat-q4-0',
+          artifactType: CatalogArtifactType.model,
+          displayName: 'Gemma 4 12B IT QAT (Q4_0)',
+          version: 'aaec3dd9d1012557147a627142759994d1fd8d37',
+          buildId: 'aaec3dd9d1012557147a627142759994d1fd8d37',
+          platform: 'all',
+          architecture: 'all',
+          fileName: 'gemma-4-12B-it-QAT-Q4_0.gguf',
+          sourceKind: CatalogArtifactSourceKind.remoteHttps,
+          downloadUri:
+              'https://huggingface.co/lmstudio-community/gemma-4-12B-it-QAT-GGUF/resolve/aaec3dd9d1012557147a627142759994d1fd8d37/gemma-4-12B-it-QAT-Q4_0.gguf',
+          sizeBytes: 6975879008,
+          sha256:
+              'f568ac5de71c8fcac5d5794494388ad94db9e18b4368ca897e21b30d2448eeec',
+          compression: CatalogCompressionFormat.none,
+          license: 'apache-2.0',
+          modelArchitecture: 'gemma4',
+          quantization: 'Q4_0',
+          minimumRuntimeBuild: 'b3500',
+          capabilities: const [
+            'generate_character_response',
+            'high_logic_reasoning'
+          ],
+          metadata: const {
+            'repository': 'lmstudio-community/gemma-4-12B-it-QAT-GGUF',
+            'revision': 'aaec3dd9d1012557147a627142759994d1fd8d37',
+            'sourceCheckpoint': 'google/gemma-4-12B-it-qat-q4_0-unquantized',
+            'quantizationStrategy': 'QAT',
+            'role': 'actor',
+            'isDefaultActor': true,
+          },
+        ),
+        CatalogArtifact(
+          artifactId: 'mistralai/ministral-3-3b',
+          artifactType: CatalogArtifactType.model,
+          displayName: 'Ministral 3B Instruct (Q4_K_M)',
+          version: 'b1029',
+          buildId: 'b1029',
+          platform: 'all',
+          architecture: 'all',
+          fileName: 'ministral-3b-instruct-q4_k_m.gguf',
+          sourceKind: CatalogArtifactSourceKind.remoteHttps,
+          downloadUri:
+              'https://huggingface.co/lmstudio-community/Ministral-3B-Instruct-GGUF/resolve/main/ministral-3b-instruct-q4_k_m.gguf',
+          sizeBytes: 2420000000,
+          sha256:
+              '1111111111111111111111111111111111111111111111111111111111111111',
+          compression: CatalogCompressionFormat.none,
+          license: 'apache-2.0',
+          modelArchitecture: 'mistral',
+          quantization: 'Q4_K_M',
+          minimumRuntimeBuild: 'b3500',
+          capabilities: const ['score_user_input', 'produce_json_delta'],
+          metadata: const {
+            'role': 'evaluator',
+            'isDefaultEvaluator': true,
+          },
+        ),
+        CatalogArtifact(
+          artifactId: 'google/gemma-4-12b',
+          artifactType: CatalogArtifactType.model,
+          displayName: 'Gemma 4 12B (Q4_K_M Legacy)',
+          version: 'legacy-q4km',
+          buildId: 'legacy-q4km',
+          platform: 'all',
+          architecture: 'all',
+          fileName: 'gemma-4-12b-q4_k_m.gguf',
+          sourceKind: CatalogArtifactSourceKind.remoteHttps,
+          downloadUri:
+              'https://huggingface.co/lmstudio-community/gemma-4-12b-GGUF/resolve/main/gemma-4-12b-q4_k_m.gguf',
+          sizeBytes: 7400000000,
+          sha256:
+              '2222222222222222222222222222222222222222222222222222222222222222',
+          compression: CatalogCompressionFormat.none,
+          license: 'apache-2.0',
+          modelArchitecture: 'gemma4',
+          quantization: 'Q4_K_M',
+          minimumRuntimeBuild: 'b3500',
+          capabilities: const ['generate_character_response'],
+          metadata: const {
+            'role': 'actor',
+            'isDefaultActor': false,
+            'legacy': true,
+          },
+        ),
+      ],
+    );
+  }
 }

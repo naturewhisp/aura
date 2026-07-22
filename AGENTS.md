@@ -40,7 +40,7 @@ graph TD
 ### 2.2 ActorAgent (Attore - PANOPTICON)
 *   **Ruolo:** Agente narrativo e diegetico (PANOPTICON, guardiano freddo e logico della griglia).
 *   **Obiettivo:** Interpretare lo stato corrente del gioco ed il canovaccio drammaturgico per formulare una risposta in-character, rispettando i vincoli di allerta, dissonanza e metafore attive.
-*   **Modello Target:** `qwen/qwen3.5-9b` (con CoT a budget limitato tramite prompt per ottimizzare la latenza).
+*   **Modello Target:** `gemma-4-12b-it-qat-q4-0` (`lmstudio-community/gemma-4-12B-it-QAT-GGUF` file `gemma-4-12B-it-QAT-Q4_0.gguf`) (con CoT a budget limitato tramite prompt per ottimizzare la latenza).
 *   **Formato Output:** Stringa di testo contenente la battuta in prima persona racchiusa tra i tag `<dialogo>...</dialogo>`.
 
 ### 2.3 PlayerAgent (Hacker Simulator)
@@ -133,8 +133,8 @@ L'integrazione di A.U.R.A. con i Large Language Models è astratta tramite l'int
 ## 5. Model Catalog & Routing dei Modelli
 
 La classe `ModelCatalog` cataloga le capacità dei modelli LLM caricati dal server:
-*   **Capability Mapping:** Identifica se il modello supporta l'output strutturato (es. `mistralai/ministral-3-3b` per il Valutatore) o se dispone di capacità avanzate di ragionamento (es. `qwen/qwen3.5-9b` per l'Attore).
-*   **ModelRouter:** Risolve dinamicamente l'associazione dei modelli caricati nei ruoli attivi. Ad esempio, se rileva un modello Mistral 3B e un Qwen 9B, assegna automaticamente il primo come valutatore analitico e il secondo come attore espressivo per ottimizzare i tempi di calcolo.
+*   **Capability Mapping:** Identifica se il modello supporta l'output strutturato (es. `mistralai/ministral-3-3b` per il Valutatore) o se dispone di capacità avanzate di ragionamento (es. `gemma-4-12b-it-qat-q4-0` per l'Attore).
+*   **ModelRouter:** Risolve dinamicamente l'associazione dei modelli caricati nei ruoli attivi. Ad esempio, se rileva un modello Mistral 3B e un Gemma 4 12B QAT, assegna automaticamente il primo come valutatore analitico e il secondo come attore espressivo per ottimizzare i tempi di calcolo.
 
 ---
 

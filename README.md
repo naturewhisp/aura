@@ -27,9 +27,9 @@ Il workspace è organizzato come un monorepo Dart/Flutter composto dalle seguent
 
 ### Configurazione LM Studio (Fase 4 Consigliata)
 Per un'esperienza ottimale di gioco reale:
-*   Carica un modello leggero per il Valutatore (es. `mistralai/ministral-3-3b` o `gemma-2-2b-it`).
-*   Carica un modello più grande e reattivo per l'Attore (es. `qwen/qwen3.5-9b` o `gemma-2-9b-it`).
-*   Nel pannello di configurazione del modello (Qwen), puoi scegliere se abilitare o meno il **Reasoning** (Chain-of-thought) in base alle tue esigenze di latenza.
+*   Carica un modello leggero per il Valutatore (es. `mistralai/ministral-3-3b`).
+*   Carica un modello più grande e reattivo per l'Attore (es. `lmstudio-community/gemma-4-12B-it-QAT-GGUF` o `qwen/qwen3.5-9b`).
+*   Nel pannello di configurazione del modello (Actor), puoi scegliere se abilitare o meno il **Reasoning** (Chain-of-thought) in base alle tue esigenze di latenza.
 
 ---
 

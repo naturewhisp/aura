@@ -240,7 +240,7 @@ class GameControllerNotifier extends ChangeNotifier {
   String evaluatorModelId = "mistralai/ministral-3-3b";
 
   /// ID del modello utilizzato per il ruolo di Attore (PANOPTICON).
-  String actorModelId = "qwen/qwen3.5-9b";
+  String actorModelId = "gemma-4-12b-it-qat-q4-0";
 
   /// Profilo di routing attivo derivato dal Model Router.
   String activeProfile = "Offline Fallback";

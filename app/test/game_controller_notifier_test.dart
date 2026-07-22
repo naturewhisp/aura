@@ -185,15 +185,15 @@ void main() {
 
       // Verify defaults
       expect(notifier.evaluatorModelId, equals("mistralai/ministral-3-3b"));
-      expect(notifier.actorModelId, equals("qwen/qwen3.5-9b"));
+      expect(notifier.actorModelId, equals("gemma-4-12b-it-qat-q4-0"));
 
       // Update to custom models
       notifier.updateEvaluatorModel("custom-eval-model");
-      notifier.updateActorModel("google/gemma-4-12b");
+      notifier.updateActorModel("gemma-4-12b-it-qat-q4-0");
 
       // Verify they are changed in memory
       expect(notifier.evaluatorModelId, equals("custom-eval-model"));
-      expect(notifier.actorModelId, equals("google/gemma-4-12b"));
+      expect(notifier.actorModelId, equals("gemma-4-12b-it-qat-q4-0"));
 
       // Now create a new notifier and load settings
       final anotherNotifier = GameControllerNotifier(
@@ -205,7 +205,7 @@ void main() {
 
       // Verify custom models are loaded and respected, rather than overridden by discoverModels auto-routing
       expect(anotherNotifier.evaluatorModelId, equals("custom-eval-model"));
-      expect(anotherNotifier.actorModelId, equals("google/gemma-4-12b"));
+      expect(anotherNotifier.actorModelId, equals("gemma-4-12b-it-qat-q4-0"));
       expect(anotherNotifier.activeProfile,
           equals("Configurazione Personalizzata"));
 

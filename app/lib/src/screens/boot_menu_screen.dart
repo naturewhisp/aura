@@ -324,6 +324,10 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         } else {
           await widget.notifier.clearUserDisplayName();
         }
+      } else {
+        // Se l'input è non valido, ripristina il controller visivo al valore valido salvato
+        _settingsDisplayNameController.text =
+            widget.notifier.userDisplayName ?? '';
       }
     }
     setState(() {

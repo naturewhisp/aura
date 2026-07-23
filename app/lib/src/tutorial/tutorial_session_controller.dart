@@ -265,7 +265,7 @@ final class TutorialSessionController {
           final nextState = prepared.pendingState.copyWith(
             turnCount: 3,
             metrics: prepared.pendingState.metrics.copyWith(
-              alertLevel: 0,
+              alertLevel: 50,
               imperativePillar: 45,
               controlPillar: 45,
               dissonancePillar: 45,

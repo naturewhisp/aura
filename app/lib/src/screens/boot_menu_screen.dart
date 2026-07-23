@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:aura_core/aura_core.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
 import '../audio/boot_audio_service.dart';
@@ -54,6 +55,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   bool _bootCompleted = false;
   bool _hasBootError = false;
   final FocusNode _focusNode = FocusNode();
+  final TextEditingController _settingsDisplayNameController =
+      TextEditingController();
 
   // Campi per la gestione dei replay salvati su disco
   List<FileSystemEntity> _replayFiles = [];
@@ -81,6 +84,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
 
   @override
   void dispose() {
+    _settingsDisplayNameController.dispose();
     _focusNode.dispose();
     super.dispose();
   }
@@ -298,6 +302,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         });
         break;
       case 4:
+        _settingsDisplayNameController.text =
+            widget.notifier.userDisplayName ?? '';
         setState(() {
           _subScreen = "settings";
         });
@@ -308,6 +314,18 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   }
 
   void _backToMainMenu() {
+    if (_subScreen == "settings") {
+      final val = _settingsDisplayNameController.text;
+      final validation = UserProfile.validate(val);
+      if (validation.isValid) {
+        final norm = UserProfile.normalize(val);
+        if (norm != null) {
+          unawaited(widget.notifier.updateUserDisplayName(norm));
+        } else {
+          unawaited(widget.notifier.clearUserDisplayName());
+        }
+      }
+    }
     setState(() {
       _subScreen = "menu";
     });
@@ -920,7 +938,22 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         Expanded(
           child: ListView(
             children: [
-              // 0. Difficulty Level selection
+              // 0. User Display Identity setting
+              const Text(
+                "PROFILO & IDENTITÀ UTENTE",
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  color: Color(0xFF00FF66),
+                  fontSize: 15.0,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 12.0),
+              _buildUserDisplayNameSetting(),
+              const SizedBox(height: 24.0),
+
+              // 1. Difficulty Level selection
               _buildDropdownSetting(
                 "DIFF. PREDEFINITA NUOVA CONNESSIONE (DEFAULT)",
                 widget.notifier.defaultDifficulty,
@@ -1346,6 +1379,120 @@ class _BootMenuScreenState extends State<BootMenuScreen>
           onChanged: onChanged,
         ),
       ],
+    );
+  }
+
+  Widget _buildUserDisplayNameSetting() {
+    return Container(
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFF005522)),
+        color: const Color(0xFF001104),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                "NOME VISUALIZZATO IN CHAT (DISPLAY NAME)",
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  color: Color(0xFF00FF66),
+                  fontSize: 12.0,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (widget.notifier.userDisplayName != null)
+                InkWell(
+                  key: const Key('btn_clear_user_display_name'),
+                  onTap: () async {
+                    _settingsDisplayNameController.clear();
+                    await widget.notifier.clearUserDisplayName();
+                    setState(() {});
+                  },
+                  child: const Text(
+                    "[ RIPRISTINA DEFAULT (\"Tu\") ]",
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      color: Color(0xFFFFB000),
+                      fontSize: 11.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8.0),
+          TextField(
+            key: const Key('settings_user_display_name_input'),
+            controller: _settingsDisplayNameController,
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              color: Color(0xFF00FFFF),
+              fontSize: 13.0,
+            ),
+            onChanged: (val) async {
+              final validation = UserProfile.validate(val);
+              if (validation.isValid) {
+                final norm = UserProfile.normalize(val);
+                if (norm != null) {
+                  await widget.notifier.updateUserDisplayName(norm);
+                } else {
+                  await widget.notifier.clearUserDisplayName();
+                }
+                setState(() {});
+              }
+            },
+            onSubmitted: (val) async {
+              final validation = UserProfile.validate(val);
+              if (!validation.isValid) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(validation.errorMessage ?? 'Nome non valido'),
+                    backgroundColor: Colors.red.shade900,
+                  ),
+                );
+                return;
+              }
+              final norm = UserProfile.normalize(val);
+              if (norm != null) {
+                await widget.notifier.updateUserDisplayName(norm);
+              } else {
+                await widget.notifier.clearUserDisplayName();
+              }
+              setState(() {});
+            },
+            decoration: const InputDecoration(
+              hintText: 'Inserisci il tuo nome (vuoto = "Tu")',
+              hintStyle: TextStyle(
+                fontFamily: 'monospace',
+                color: Color(0xFF005522),
+                fontSize: 11.0,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFF00FF66)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFF00FFFF), width: 2.0),
+              ),
+              isDense: true,
+              contentPadding:
+                  EdgeInsets.symmetric(horizontal: 10.0, vertical: 8.0),
+            ),
+          ),
+          const SizedBox(height: 6.0),
+          Text(
+            "Stato attuale: \"${widget.notifier.effectiveUserDisplayName}\" ${widget.notifier.userDisplayName == null ? '(default non configurato)' : '(personalizzato)'}",
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              color: Color(0xFF009944),
+              fontSize: 11.0,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

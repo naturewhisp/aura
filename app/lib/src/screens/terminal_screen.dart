@@ -389,6 +389,8 @@ class _TerminalScreenState extends State<TerminalScreen>
                                                         _victorySequenceActive,
                                                 isGameOver: isGameOver ||
                                                     _victorySequenceActive,
+                                                userDisplayName: widget
+                                                    .notifier.userDisplayName,
                                                 autocompleteEnabled:
                                                     DifficultyConfig.getPreset(
                                                             widget.notifier
@@ -497,6 +499,8 @@ class _TerminalScreenState extends State<TerminalScreen>
                                                   _victorySequenceActive,
                                           isGameOver: isGameOver ||
                                               _victorySequenceActive,
+                                          userDisplayName:
+                                              widget.notifier.userDisplayName,
                                           autocompleteEnabled:
                                               DifficultyConfig.getPreset(widget
                                                       .notifier.difficultyLevel)

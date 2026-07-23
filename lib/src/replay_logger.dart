@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 import 'models/evaluator_delta.dart';
+import 'models/user_profile.dart';
 
 /// Rappresenta i possibili tipi di evento registrati nel replay log.
 enum ReplayEventType {
@@ -34,6 +35,9 @@ class ReplayEntry {
 
   /// L'input testuale originario inserito dal giocatore.
   final String userInput;
+
+  /// Lo snapshot del nome visualizzato dell'utente al momento del turno (valido solo per i turni del giocatore).
+  final String? displayNameSnapshot;
 
   /// Il delta delle metriche calcolato e applicato dall'agente valutatore.
   final EvaluatorDelta evaluatorOutput;
@@ -84,6 +88,7 @@ class ReplayEntry {
   const ReplayEntry({
     required this.turnId,
     required this.userInput,
+    this.displayNameSnapshot,
     required this.evaluatorOutput,
     required this.stateBefore,
     required this.stateAfter,
@@ -143,9 +148,19 @@ class ReplayEntry {
           Map<String, dynamic>.from(json['override_resolution'] as Map);
     }
 
+    final rawSnap = (json['display_name_snapshot'] ??
+        json['user_display_name_snapshot']) as String?;
+    final eventTypeParsed = json['event_type'] != null
+        ? ReplayEventType.fromString(json['event_type'] as String)
+        : ReplayEventType.userTurn;
+    final snapParsed = eventTypeParsed == ReplayEventType.userTurn
+        ? UserProfile.normalize(rawSnap)
+        : null;
+
     return ReplayEntry(
       turnId: json['turn_id'] as int? ?? 0,
       userInput: json['user_input'] as String? ?? '',
+      displayNameSnapshot: snapParsed,
       evaluatorOutput:
           EvaluatorDelta.fromJson(json['evaluator_output'] ?? const {}),
       stateBefore: Map<String, dynamic>.from(json['state_before'] ?? const {}),
@@ -157,9 +172,7 @@ class ReplayEntry {
       actorModel: runtime['actor_model'] as String? ?? '',
       latencyTotalMs: runtime['latency_total_ms'] as int? ?? 0,
       eventId: json['event_id'] as String?,
-      eventType: json['event_type'] != null
-          ? ReplayEventType.fromString(json['event_type'] as String)
-          : ReplayEventType.userTurn,
+      eventType: eventTypeParsed,
       gameplayTurnId: json['gameplay_turn_id'] as int?,
       sequenceId: json['sequence_id'] as int?,
       deceptionResolution: deceptionResolutionMap,
@@ -181,9 +194,14 @@ class ReplayEntry {
     final deceptionAfter =
         cleanAfter['deception_state'] as Map<String, dynamic>? ?? const {};
 
+    final normSnap = eventType == ReplayEventType.userTurn
+        ? UserProfile.normalize(displayNameSnapshot)
+        : null;
+
     return {
       'turn_id': turnId,
       'user_input': userInput,
+      if (normSnap != null) 'display_name_snapshot': normSnap,
       'evaluator_output': evaluatorOutput.toJson(),
       'state_before': cleanBefore,
       'state_after': cleanAfter,

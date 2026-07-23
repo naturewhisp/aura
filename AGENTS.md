@@ -177,7 +177,8 @@ Questo spinge l'LLM a ridurre i token CoT risparmiando tempo e VRAM su hardware 
 
 Se desideri estendere o modificare l'architettura agentica:
 1.  **Immutabilità:** Assicurati che qualsiasi modifica al `GameState` o ad altri modelli dati avvenga tramite metodi `copyWith`. Non modificare mai direttamente i campi delle istanze.
-2.  **Mantenimento del Catalogo:** Se aggiungi il supporto a un nuovo modello LLM, registralo all'interno delle costanti di `ModelCatalog` indicando se supporta il reasoning e se è consigliato come valutatore o attore.
+2.  **Invarianza dell'Identità di Dominio:** Non derivare mai i ruoli di dominio (`role`, `speakerType`, `participantId`) o il flusso di esecuzione degli agenti dalle etichette di presentazione UI o dallo `displayNameSnapshot`. Le etichette di visualizzazione personalizzate (es. "Tu", "Davide") sono puramente cosmetiche per il rendering e non devono influire sui contratti o prompt LLM.
+3.  **Mantenimento del Catalogo:** Se aggiungi il supporto a un nuovo modello LLM, registralo all'interno delle costanti di `ModelCatalog` indicando se supporta il reasoning e se è consigliato come valutatore o attore.
 3.  **Coerenza Linguistica:** Tutti i commenti al codice delle classi principali dell'interfaccia e dei controller, così come l'interfaccia utente delle CLI, devono essere scritti rigorosamente in lingua italiana per coerenza di progetto.
 4.  **Test Suite:** Prima di sottomettere una PR, assicurati che la suite completa dei test unitari e di integrazione passi in modo pulito eseguendo `dart test`.
 5.  **Analisi Statica e Igiene del Codice (Politica "Zero Diagnostic"):** Prima di qualsiasi commit o rilascio di nuove funzionalità, è obbligatorio eseguire l'analisi statica in tutti i contesti di progetto:

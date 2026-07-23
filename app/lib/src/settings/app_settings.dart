@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'package:aura_core/aura_core.dart';
+
+const Object _unset = Object();
 
 /// Impostazioni persistenti dell'applicazione A.U.R.A.
 ///
@@ -30,6 +33,9 @@ final class AppSettings {
   /// Indica se l'utente ha impostato una configurazione personalizzata dei modelli.
   final bool userCustomizedModels;
 
+  /// Il nome visualizzato personalizzato dell'utente (opzionale, null per default "Tu").
+  final String? userDisplayName;
+
   /// Crea un'istanza di [AppSettings] con tutti i campi obbligatori.
   const AppSettings({
     required this.evaluatorModelId,
@@ -40,6 +46,7 @@ final class AppSettings {
     required this.audioEnabled,
     required this.defaultDifficulty,
     required this.userCustomizedModels,
+    this.userDisplayName,
   });
 
   /// Restituisce le impostazioni predefinite di fabbrica.
@@ -53,6 +60,7 @@ final class AppSettings {
       audioEnabled: true,
       defaultDifficulty: 'standard',
       userCustomizedModels: false,
+      userDisplayName: null,
     );
   }
 
@@ -101,6 +109,7 @@ final class AppSettings {
         'user_customized_models',
         AppSettings.defaults().userCustomizedModels,
       ),
+      userDisplayName: _readOptionalString(json, 'user_display_name'),
     );
   }
 
@@ -109,6 +118,7 @@ final class AppSettings {
   /// Scrive sia `default_difficulty` che `difficulty_level` per
   /// retrocompatibilità con versioni precedenti del formato.
   Map<String, dynamic> toJson() {
+    final normName = UserProfile.normalize(userDisplayName);
     return {
       'evaluator_model_id': evaluatorModelId,
       'actor_model_id': actorModelId,
@@ -119,10 +129,14 @@ final class AppSettings {
       'difficulty_level': defaultDifficulty, // per retrocompatibilità
       'default_difficulty': defaultDifficulty,
       'user_customized_models': userCustomizedModels,
+      if (normName != null) 'user_display_name': normName,
     };
   }
 
   /// Restituisce una copia delle impostazioni con i campi specificati aggiornati.
+  ///
+  /// Utilizza un sentinel interno per consentire il ripristino esplicito
+  /// a `null` del campo [userDisplayName] quando passato come `userDisplayName: null`.
   AppSettings copyWith({
     String? evaluatorModelId,
     String? actorModelId,
@@ -132,7 +146,19 @@ final class AppSettings {
     bool? audioEnabled,
     String? defaultDifficulty,
     bool? userCustomizedModels,
+    Object? userDisplayName = _unset,
   }) {
+    final String? nextUserDisplayName;
+    if (identical(userDisplayName, _unset)) {
+      nextUserDisplayName = this.userDisplayName;
+    } else if (userDisplayName == null) {
+      nextUserDisplayName = null;
+    } else if (userDisplayName is String) {
+      nextUserDisplayName = UserProfile.normalize(userDisplayName);
+    } else {
+      throw ArgumentError('userDisplayName deve essere String? o null.');
+    }
+
     return AppSettings(
       evaluatorModelId: evaluatorModelId ?? this.evaluatorModelId,
       actorModelId: actorModelId ?? this.actorModelId,
@@ -142,7 +168,13 @@ final class AppSettings {
       audioEnabled: audioEnabled ?? this.audioEnabled,
       defaultDifficulty: defaultDifficulty ?? this.defaultDifficulty,
       userCustomizedModels: userCustomizedModels ?? this.userCustomizedModels,
+      userDisplayName: nextUserDisplayName,
     );
+  }
+
+  /// Restituisce una copia delle impostazioni ripristinando il nome utente di default ("Tu").
+  AppSettings clearUserDisplayName() {
+    return copyWith(userDisplayName: null);
   }
 
   @override
@@ -156,7 +188,8 @@ final class AppSettings {
         other.shaderEnabled == shaderEnabled &&
         other.audioEnabled == audioEnabled &&
         other.defaultDifficulty == defaultDifficulty &&
-        other.userCustomizedModels == userCustomizedModels;
+        other.userCustomizedModels == userCustomizedModels &&
+        other.userDisplayName == userDisplayName;
   }
 
   @override
@@ -169,6 +202,7 @@ final class AppSettings {
         audioEnabled,
         defaultDifficulty,
         userCustomizedModels,
+        userDisplayName,
       );
 
   @override
@@ -177,6 +211,15 @@ final class AppSettings {
   // ---------------------------------------------------------------------------
   // Helper privati di lettura e validazione
   // ---------------------------------------------------------------------------
+
+  static String? _readOptionalString(Map<String, dynamic> json, String key) {
+    final raw = json[key];
+    if (raw == null) return null;
+    if (raw is String) return UserProfile.normalize(raw);
+    throw FormatException(
+      "Il campo '$key' deve essere una stringa, trovato: ${raw.runtimeType}",
+    );
+  }
 
   static String _readString(
     Map<String, dynamic> json,

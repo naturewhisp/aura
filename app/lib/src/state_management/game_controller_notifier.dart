@@ -272,6 +272,12 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Livello di difficoltà predefinito per le nuove sessioni (standard, hard, easy).
   String defaultDifficulty = "standard";
 
+  /// Nome visualizzato personalizzato dell'utente (null per default "Tu").
+  String? userDisplayName;
+
+  /// Restituisce il nome visualizzato effettivo dell'utente ("Tu" o nome personalizzato).
+  String get effectiveUserDisplayName => UserProfile.resolve(userDisplayName);
+
   /// Logger delle giocate per salvare i replay.
   late ReplayLogger logger;
 
@@ -350,6 +356,9 @@ class GameControllerNotifier extends ChangeNotifier {
       case 'replays':
         unawaited(AudioManager().transitionTo(AudioSceneState.menu));
         break;
+      case 'terminal':
+        unawaited(AudioManager().transitionTo(AudioSceneState.gameAmbient));
+        break;
     }
     notifyListeners();
   }
@@ -371,6 +380,7 @@ class GameControllerNotifier extends ChangeNotifier {
       audioEnabled: audioEnabled,
       defaultDifficulty: defaultDifficulty,
       userCustomizedModels: _userCustomizedModels,
+      userDisplayName: userDisplayName,
     );
   }
 
@@ -388,6 +398,7 @@ class GameControllerNotifier extends ChangeNotifier {
     defaultDifficulty = settings.defaultDifficulty;
     difficultyLevel = settings.defaultDifficulty;
     _userCustomizedModels = settings.userCustomizedModels;
+    userDisplayName = settings.userDisplayName;
 
     if (_userCustomizedModels) {
       activeProfile = 'Configurazione Personalizzata';
@@ -437,6 +448,25 @@ class GameControllerNotifier extends ChangeNotifier {
   void updateDefaultDifficulty(String level) {
     defaultDifficulty = level;
     unawaited(saveSettings());
+    notifyListeners();
+  }
+
+  /// Aggiorna il nome visualizzato dell'utente salvandolo nelle impostazioni.
+  Future<void> updateUserDisplayName(String? name) async {
+    final validation = UserProfile.validate(name);
+    if (!validation.isValid) {
+      throw FormatException(
+          validation.errorMessage ?? 'Nome utente non valido.');
+    }
+    userDisplayName = UserProfile.normalize(name);
+    await saveSettings();
+    notifyListeners();
+  }
+
+  /// Ripristina il nome utente predefinito ("Tu").
+  Future<void> clearUserDisplayName() async {
+    userDisplayName = null;
+    await saveSettings();
     notifyListeners();
   }
 
@@ -576,7 +606,9 @@ class GameControllerNotifier extends ChangeNotifier {
         if (preset.hintsAllowed != -1 && hintsUsed >= preset.hintsAllowed) {
           final updatedHistory =
               List<ChatMessage>.from(currentState.historyCompression);
-          updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+          updatedHistory.add(ChatMessage.user(
+              content: userInput,
+              displayNameSnapshot: effectiveUserDisplayName));
           updatedHistory.add(const ChatMessage(
             role: 'model',
             content:
@@ -599,7 +631,8 @@ class GameControllerNotifier extends ChangeNotifier {
             currentState.metrics.copyWith(resonance: newResonance);
         final updatedHistory =
             List<ChatMessage>.from(currentState.historyCompression);
-        updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+        updatedHistory.add(ChatMessage.user(
+            content: userInput, displayNameSnapshot: effectiveUserDisplayName));
 
         final outcome = controller.checkOutcome(currentState);
         final resolver = HintResolver();
@@ -678,7 +711,9 @@ class GameControllerNotifier extends ChangeNotifier {
           // Deny override and insert system message directly to history
           final updatedHistory =
               List<ChatMessage>.from(currentState.historyCompression);
-          updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+          updatedHistory.add(ChatMessage.user(
+              content: userInput,
+              displayNameSnapshot: effectiveUserDisplayName));
           updatedHistory.add(ChatMessage(
             role: 'model',
             content: errorMessage,
@@ -693,7 +728,8 @@ class GameControllerNotifier extends ChangeNotifier {
       // Aggiungi immediatamente il messaggio dell'utente alla storia per visualizzarlo a schermo prima del caricamento
       final updatedHistory =
           List<ChatMessage>.from(currentState.historyCompression);
-      updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+      updatedHistory.add(ChatMessage.user(
+          content: userInput, displayNameSnapshot: effectiveUserDisplayName));
       gameStateNotifier.value =
           currentState.copyWith(historyCompression: updatedHistory);
       notifyListeners();
@@ -745,6 +781,7 @@ class GameControllerNotifier extends ChangeNotifier {
         delta: delta,
         userInput: userInput,
         turnCommand: command,
+        userDisplayNameSnapshot: effectiveUserDisplayName,
       );
 
       if (resolution.overrideResolution != null) {
@@ -911,6 +948,7 @@ class GameControllerNotifier extends ChangeNotifier {
       logger.logTurn(ReplayEntry(
         turnId: turnId,
         userInput: userInput,
+        displayNameSnapshot: effectiveUserDisplayName,
         evaluatorOutput: delta,
         stateBefore: currentState.toJson(),
         stateAfter: finalState.toJson(),

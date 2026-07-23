@@ -2,6 +2,7 @@ import 'package:meta/meta.dart';
 import 'package:collection/collection.dart';
 import 'deception_state.dart';
 import 'override_status.dart';
+import 'user_profile.dart';
 
 /// Rappresenta le metriche di gioco dell'entità IA.
 ///
@@ -246,25 +247,59 @@ class ChatMessage {
   /// Il contenuto testuale del messaggio.
   final String content;
 
+  /// Lo snapshot del nome visualizzato dell'utente al momento dell'invio (valido solo se role == 'user').
+  final String? displayNameSnapshot;
+
   /// Costruttore costante per un messaggio di chat.
   const ChatMessage({
     required this.role,
     required this.content,
+    this.displayNameSnapshot,
   });
+
+  /// Costruttore factory per creare un messaggio inviato dall'utente con snapshot opzionale dell'identità.
+  factory ChatMessage.user({
+    required String content,
+    String? displayNameSnapshot,
+  }) {
+    return ChatMessage(
+      role: 'user',
+      content: content,
+      displayNameSnapshot: UserProfile.normalize(displayNameSnapshot),
+    );
+  }
+
+  /// Costruttore factory per creare un messaggio di risposta dell'IA (PANOPTICON).
+  factory ChatMessage.model({
+    required String content,
+  }) {
+    return ChatMessage(
+      role: 'model',
+      content: content,
+      displayNameSnapshot: null,
+    );
+  }
 
   /// Costruttore factory per decodificare un messaggio a partire da un JSON.
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final roleStr = json['role'] as String? ?? 'user';
+    final rawSnap = json['display_name_snapshot'] as String?;
     return ChatMessage(
-      role: json['role'] as String? ?? 'user',
+      role: roleStr,
       content: json['content'] as String? ?? '',
+      displayNameSnapshot:
+          roleStr == 'user' ? UserProfile.normalize(rawSnap) : null,
     );
   }
 
   /// Converte il messaggio di chat in una mappa JSON.
   Map<String, dynamic> toJson() {
+    final normSnap =
+        role == 'user' ? UserProfile.normalize(displayNameSnapshot) : null;
     return {
       'role': role,
       'content': content,
+      if (normSnap != null) 'display_name_snapshot': normSnap,
     };
   }
 
@@ -274,10 +309,12 @@ class ChatMessage {
       other is ChatMessage &&
           runtimeType == other.runtimeType &&
           role == other.role &&
-          content == other.content;
+          content == other.content &&
+          displayNameSnapshot == other.displayNameSnapshot;
 
   @override
-  int get hashCode => role.hashCode ^ content.hashCode;
+  int get hashCode =>
+      role.hashCode ^ content.hashCode ^ displayNameSnapshot.hashCode;
 }
 
 /// Rappresenta lo stato di gioco globale (GameState) come definito nella sezione 5.1 del TGDD.

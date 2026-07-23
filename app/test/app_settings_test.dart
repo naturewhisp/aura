@@ -188,6 +188,44 @@ void main() {
       });
     });
 
+    group('userDisplayName & clearUserDisplayName', () {
+      test('copyWith con userDisplayName valorizzato aggiorna il nome', () {
+        final original = AppSettings.defaults();
+        final custom = original.copyWith(userDisplayName: 'Davide');
+        expect(custom.userDisplayName, equals('Davide'));
+      });
+
+      test('copyWith senza userDisplayName mantiene il valore precedente', () {
+        final custom =
+            AppSettings.defaults().copyWith(userDisplayName: 'Davide');
+        final modified = custom.copyWith(shaderEnabled: false);
+        expect(modified.userDisplayName, equals('Davide'));
+      });
+
+      test('copyWith con userDisplayName: null cancella il nome salvato', () {
+        final custom =
+            AppSettings.defaults().copyWith(userDisplayName: 'Davide');
+        final cleared = custom.copyWith(userDisplayName: null);
+        expect(cleared.userDisplayName, isNull);
+      });
+
+      test('clearUserDisplayName ripristina il nome a null', () {
+        final custom =
+            AppSettings.defaults().copyWith(userDisplayName: 'Davide');
+        final cleared = custom.clearUserDisplayName();
+        expect(cleared.userDisplayName, isNull);
+      });
+
+      test('toJson omette user_display_name quando è nullo o vuoto', () {
+        final defaultJson = AppSettings.defaults().toJson();
+        expect(defaultJson.containsKey('user_display_name'), isFalse);
+
+        final customJson =
+            AppSettings.defaults().copyWith(userDisplayName: 'Davide').toJson();
+        expect(customJson['user_display_name'], equals('Davide'));
+      });
+    });
+
     group('equality e hashCode', () {
       test('Due istanze con gli stessi valori sono uguali', () {
         final a = AppSettings.defaults();

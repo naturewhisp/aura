@@ -283,6 +283,7 @@ class GameController {
     required EvaluatorDelta delta,
     required String userInput,
     TurnCommand? turnCommand,
+    String? userDisplayNameSnapshot,
   }) {
     final command = turnCommand ?? TurnCommand.parse(userInput);
     final isOverrideCommand = command.type == TurnCommandType.override;
@@ -644,7 +645,10 @@ class GameController {
 
     final updatedHistory =
         List<ChatMessage>.from(currentState.historyCompression);
-    updatedHistory.add(ChatMessage(role: 'user', content: userInput));
+    updatedHistory.add(ChatMessage.user(
+      content: userInput,
+      displayNameSnapshot: userDisplayNameSnapshot,
+    ));
     final trimmedHistory = _trimHistory(updatedHistory);
 
     final newFlags = currentState.flags.copyWith(

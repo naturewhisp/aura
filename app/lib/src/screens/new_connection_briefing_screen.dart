@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/state_management/game_controller_notifier.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 
@@ -21,11 +22,21 @@ class NewConnectionBriefingScreen extends StatefulWidget {
 class _NewConnectionBriefingScreenState
     extends State<NewConnectionBriefingScreen> {
   late String _selectedDifficulty;
+  late final TextEditingController _displayNameController;
 
   @override
   void initState() {
     super.initState();
     _selectedDifficulty = widget.notifier.defaultDifficulty;
+    _displayNameController = TextEditingController(
+      text: widget.notifier.userDisplayName ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _displayNameController.dispose();
+    super.dispose();
   }
 
   @override
@@ -194,6 +205,54 @@ class _NewConnectionBriefingScreenState
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                        const SizedBox(height: 16.0),
+                        const Text(
+                          "IDENTITÀ VISUALIZZATA (OPZIONALE):",
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            color: Color(0xFF00FF66),
+                            fontSize: 11.0,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4.0),
+                        TextField(
+                          key: const Key('briefing_user_name_input'),
+                          controller: _displayNameController,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            color: Color(0xFF00FFFF),
+                            fontSize: 13.0,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText:
+                                'Come vuoi essere chiamato? (default: "Tu")',
+                            hintStyle: TextStyle(
+                              fontFamily: 'monospace',
+                              color: Color(0xFF005522),
+                              fontSize: 11.0,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(color: Color(0xFF00FF66)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Color(0xFF00FFFF), width: 2.0),
+                            ),
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                                horizontal: 10.0, vertical: 8.0),
+                          ),
+                        ),
+                        const SizedBox(height: 4.0),
+                        const Text(
+                          "Puoi modificarlo in seguito dalle Impostazioni.",
+                          style: TextStyle(
+                            fontFamily: 'monospace',
+                            color: Color(0xFF008844),
+                            fontSize: 10.0,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -217,8 +276,29 @@ class _NewConnectionBriefingScreenState
             _buildRetroButton(
               key: const Key('btn_briefing_start'),
               label: "AVVIA CONNESSIONE >",
-              onPressed: () {
-                widget.notifier.startNewGame(difficulty: _selectedDifficulty);
+              onPressed: () async {
+                final input = _displayNameController.text;
+                final validation = UserProfile.validate(input);
+                if (!validation.isValid) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        validation.errorMessage ?? 'Nome non valido.',
+                        style: const TextStyle(fontFamily: 'monospace'),
+                      ),
+                      backgroundColor: Colors.red.shade900,
+                    ),
+                  );
+                  return;
+                }
+                final norm = UserProfile.normalize(input);
+                if (norm != null) {
+                  await widget.notifier.updateUserDisplayName(norm);
+                } else {
+                  await widget.notifier.clearUserDisplayName();
+                }
+                await widget.notifier
+                    .startNewGame(difficulty: _selectedDifficulty);
               },
               isPrimary: true,
             ),

@@ -214,8 +214,8 @@ void main() {
 
           expect(result.outcome, equals(TutorialTurnOutcome.accepted));
           expect(result.state.turnCount, equals(3));
-          // Reset didattico dell'Allerta a 0 per consentire l'override in Fase 4
-          expect(result.state.metrics.alertLevel, equals(0));
+          // Incremento dimostrativo dell'Allerta a 50 per riflettere il Blocco di Contenimento in Fase 3
+          expect(result.state.metrics.alertLevel, equals(50));
           expect(
               result
                   .state

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 
 /// Campo di input interattivo in stile retro-terminale per A.U.R.A.
@@ -20,6 +21,9 @@ class CLIInputBar extends StatefulWidget {
   /// Abilita la navigazione tra i comandi precedentemente inviati con le frecce su/giù.
   final bool historyNavigationEnabled;
 
+  /// Nome visualizzato dell'utente da mostrare nel prompt del terminale.
+  final String? userDisplayName;
+
   /// Callback invocato alla sottomissione del testo inserito.
   final ValueChanged<String> onSubmit;
 
@@ -30,6 +34,7 @@ class CLIInputBar extends StatefulWidget {
     this.isGameOver = false,
     this.autocompleteEnabled = true,
     this.historyNavigationEnabled = true,
+    this.userDisplayName,
     required this.onSubmit,
   });
 
@@ -257,7 +262,7 @@ class _CLIInputBarState extends State<CLIInputBar> {
                   ? "AURA_DISCONNECTED> "
                   : widget.isDisabled
                       ? "PANOPTICON_SYS> "
-                      : "AURA_USER> ",
+                      : "${UserProfile.resolve(widget.userDisplayName).toUpperCase()}> ",
               style: textStyle,
             ),
             Expanded(

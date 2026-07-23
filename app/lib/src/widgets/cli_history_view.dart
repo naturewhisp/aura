@@ -212,8 +212,8 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 6.0),
                 child: AnimatedCrossFade(
-                  firstChild: _buildMessageRow(isUser, displayText),
-                  secondChild: _buildMessageRow(isUser, msg.content),
+                  firstChild: _buildMessageRow(msg, displayText),
+                  secondChild: _buildMessageRow(msg, msg.content),
                   crossFadeState: isLastModelMsg
                       ? CrossFadeState.showFirst
                       : CrossFadeState.showSecond,
@@ -296,12 +296,16 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   }
 
   /// Crea la riga del singolo messaggio formattato con i colori del terminale retro.
-  Widget _buildMessageRow(bool isUser, String text) {
+  Widget _buildMessageRow(ChatMessage msg, String text) {
+    final isUser = msg.role == 'user';
+    final label =
+        isUser ? UserProfile.resolve(msg.displayNameSnapshot) : "PANOPTICON";
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          isUser ? "AURA_USER" : "PANOPTICON",
+          label,
           style: TextStyle(
             fontFamily: 'monospace',
             fontWeight: FontWeight.bold,

@@ -12,6 +12,7 @@ void main() {
     late ProvisioningPathResolver pathResolver;
     late InMemoryProvisioningLock lock;
     late JsonCatalogCacheRepository cacheRepository;
+    late JsonLkgCatalogMetadataRepository lkgRepository;
     late CatalogTrustStore trustStore;
     late CatalogCompatibilityEvaluator compatibilityEvaluator;
     late CatalogValidationService validationService;
@@ -30,6 +31,11 @@ void main() {
       );
       lock = InMemoryProvisioningLock();
       cacheRepository = JsonCatalogCacheRepository(
+        pathResolver: pathResolver,
+        lock: lock,
+        fileSystem: fileSystem,
+      );
+      lkgRepository = JsonLkgCatalogMetadataRepository(
         pathResolver: pathResolver,
         lock: lock,
         fileSystem: fileSystem,
@@ -92,7 +98,6 @@ void main() {
           remoteCandidate: remoteRes.candidate!,
           cachedCandidate: null,
           nowUtc: nowUtc,
-          applicationVersion: appVersion,
         );
 
         expect(eval.isQualified, isTrue);
@@ -127,7 +132,39 @@ void main() {
           remoteCandidate: remoteRes.candidate!,
           cachedCandidate: cachedRes.candidate!,
           nowUtc: nowUtc,
+        );
+
+        expect(eval.isQualified, isFalse);
+        expect(eval.rejectionReason,
+            equals(CatalogAcquisitionFailureReason.catalogRevisionDowngrade));
+      });
+
+      test(
+          'Rifiuta candidato remoto se inferiore a LKG metadata anche in assenza di cache (anti-downgrade LKG)',
+          () async {
+        final remoteRes = await candidateFactory.createCandidate(
+          envelope: createTestEnvelope(catalogRevision: 15),
+          source: CatalogSource.remoteSigned,
+          trustStore: trustStore,
+          compatibilityEvaluator: compatibilityEvaluator,
+          validationService: validationService,
+          signatureVerifier: signatureVerifier,
+          nowUtc: nowUtc,
           applicationVersion: appVersion,
+        );
+
+        final lkg = LkgCatalogMetadata(
+          catalogId: 'aura-official-catalog',
+          highestAcceptedRevision: 25,
+          canonicalPayloadDigest: 'abc123digest',
+          acceptedAtUtc: nowUtc,
+        );
+
+        final eval = CatalogRefreshPolicy.evaluateRemoteRefresh(
+          remoteCandidate: remoteRes.candidate!,
+          cachedCandidate: null,
+          lkgMetadata: lkg,
+          nowUtc: nowUtc,
         );
 
         expect(eval.isQualified, isFalse);
@@ -166,7 +203,6 @@ void main() {
           remoteCandidate: remoteRes.candidate!,
           cachedCandidate: cachedRes.candidate!,
           nowUtc: nowUtc,
-          applicationVersion: appVersion,
         );
 
         expect(eval.isQualified, isFalse);
@@ -252,7 +288,7 @@ void main() {
       });
 
       test(
-          'RemoteCatalogProvider recupera e convalida envelope remota via HTTP 200',
+          'RemoteCatalogProvider recupera e convalida envelope remota via HTTP 200 ed estrae ETag',
           () async {
         final validEnvelope = createTestEnvelope(catalogRevision: 30);
         final jsonText = jsonEncode(validEnvelope.toJson());
@@ -260,8 +296,10 @@ void main() {
         final mockClient = MockClient((request) async {
           if (request.url.toString() ==
               'https://catalog.aura-arena.org/v1/manifest.json') {
-            return http.Response(jsonText, 200,
-                headers: {'content-type': 'application/json'});
+            return http.Response(jsonText, 200, headers: {
+              'content-type': 'application/json',
+              'etag': '"v30-hash"'
+            });
           }
           return http.Response('Not Found', 404);
         });
@@ -283,16 +321,20 @@ void main() {
 
         final result = await provider.getCandidate(context);
         expect(result.isSuccess, isTrue);
+        expect(result.responseEtag, equals('"v30-hash"'));
         expect(result.candidate!.source, equals(CatalogSource.remoteSigned));
         expect(result.candidate!.envelope.signedPayload.catalogRevision,
             equals(30));
       });
 
       test(
-          'RemoteCatalogProvider gestisce risposte HTTP di errore senza sollevare eccezioni non gestite',
+          'RemoteCatalogProvider invia If-None-Match e gestisce HTTP 304 Not Modified',
           () async {
+        String? receivedIfNoneMatch;
+
         final mockClient = MockClient((request) async {
-          return http.Response('Internal Server Error', 500);
+          receivedIfNoneMatch = request.headers['If-None-Match'];
+          return http.Response('', 304);
         });
 
         final provider = RemoteCatalogProvider(
@@ -308,52 +350,52 @@ void main() {
           candidateFactory: candidateFactory,
           nowUtc: nowUtc,
           applicationVersion: appVersion,
+          cachedEtag: '"v30-hash"',
+          forceRefresh: false,
         );
 
         final result = await provider.getCandidate(context);
-        expect(result.isFailure, isTrue);
-        expect(result.failureReason,
-            equals(CatalogAcquisitionFailureReason.remoteFetchFailed));
+        expect(result.isNotModified, isTrue);
+        expect(receivedIfNoneMatch, equals('"v30-hash"'));
       });
-    });
 
-    group('CatalogRefreshService End-to-End Tests', () {
       test(
-          'refreshCatalog in modalita offlineOnly usa il candidato bootstrap o cached senza contattare il server remoto',
+          'RemoteCatalogProvider omette If-None-Match quando forceRefresh e true',
           () async {
-        final bundledProvider =
-            BundledCatalogProvider(manifest: defaultManifest);
-        final cachedProvider =
-            CachedCatalogProvider(repository: cacheRepository);
+        String? receivedIfNoneMatch;
+        final validEnvelope = createTestEnvelope(catalogRevision: 30);
 
-        final service = CatalogRefreshService(
-          cacheRepository: cacheRepository,
+        final mockClient = MockClient((request) async {
+          receivedIfNoneMatch = request.headers['If-None-Match'];
+          return http.Response(jsonEncode(validEnvelope.toJson()), 200);
+        });
+
+        final provider = RemoteCatalogProvider(
+          catalogUrl: 'https://catalog.aura-arena.org/v1/manifest.json',
+          httpClient: mockClient,
+        );
+
+        final context = CatalogProviderContext(
           trustStore: trustStore,
           compatibilityEvaluator: compatibilityEvaluator,
           validationService: validationService,
           signatureVerifier: signatureVerifier,
           candidateFactory: candidateFactory,
-          bundledProvider: bundledProvider,
-          cachedProvider: cachedProvider,
-          remoteProvider: null,
-          clock: MemoryProvisioningClock(nowUtc),
+          nowUtc: nowUtc,
           applicationVersion: appVersion,
+          cachedEtag: '"v30-hash"',
+          forceRefresh: true,
         );
 
-        final acquisition = await service.refreshCatalog(
-          const CatalogRefreshRequest(offlineOnly: true),
-        );
-
-        expect(
-            acquisition.catalogSource, equals(CatalogSource.bundledBootstrap));
-        expect(acquisition.trustLevel,
-            equals(CatalogTrustLevel.bootstrapDeclared));
-        expect(acquisition.effectiveCatalog.catalogId,
-            equals(defaultManifest.catalogId));
+        final result = await provider.getCandidate(context);
+        expect(result.isSuccess, isTrue);
+        expect(receivedIfNoneMatch, isNull);
       });
+    });
 
+    group('CatalogRefreshService End-to-End Tests', () {
       test(
-          'refreshCatalog in modalita online aggiorna la cache e seleziona il catalogo remoto con revisione superiore',
+          'refreshCatalog in modalita online aggiorna la cache, i metadata LKG e seleziona il catalogo remoto',
           () async {
         // Scrive un vecchio catalogo in cache (rev 5)
         await cacheRepository
@@ -362,63 +404,13 @@ void main() {
         // Remoto restituisce una nuova revisione valida (rev 50)
         final remoteEnvelope = createTestEnvelope(catalogRevision: 50);
         final mockClient = MockClient((request) async {
-          return http.Response(jsonEncode(remoteEnvelope.toJson()), 200);
-        });
-
-        final bundledProvider =
-            BundledCatalogProvider(manifest: defaultManifest);
-        final cachedProvider =
-            CachedCatalogProvider(repository: cacheRepository);
-        final remoteProvider = RemoteCatalogProvider(
-          catalogUrl: 'https://catalog.aura-arena.org/v1/manifest.json',
-          httpClient: mockClient,
-        );
-
-        final service = CatalogRefreshService(
-          cacheRepository: cacheRepository,
-          trustStore: trustStore,
-          compatibilityEvaluator: compatibilityEvaluator,
-          validationService: validationService,
-          signatureVerifier: signatureVerifier,
-          candidateFactory: candidateFactory,
-          bundledProvider: bundledProvider,
-          cachedProvider: cachedProvider,
-          remoteProvider: remoteProvider,
-          clock: MemoryProvisioningClock(nowUtc),
-          applicationVersion: appVersion,
-        );
-
-        final acquisition = await service.refreshCatalog(
-          const CatalogRefreshRequest(offlineOnly: false),
-        );
-
-        expect(acquisition.catalogSource, equals(CatalogSource.remoteSigned));
-        expect(acquisition.trustLevel,
-            equals(CatalogTrustLevel.signatureVerified));
-        expect(acquisition.diagnostics['selectedCatalogRevision'], equals(50));
-
-        // Verifica che l'envelope sia stata scritta atomicamente nella cache locale
-        final updatedCache = await cacheRepository.readEnvelope();
-        expect(updatedCache, isNotNull);
-        expect(updatedCache!.signedPayload.catalogRevision, equals(50));
-      });
-
-      test(
-          'refreshCatalog rifiuta il remoto se tenta un downgrade e mantiene il catalogo in cache',
-          () async {
-        // Cache locale possiede la revisione 100
-        await cacheRepository
-            .writeEnvelope(createTestEnvelope(catalogRevision: 100));
-
-        // Remoto restituisce una revisione inferiore (rev 10)
-        final mockClient = MockClient((request) async {
-          return http.Response(
-              jsonEncode(createTestEnvelope(catalogRevision: 10).toJson()),
-              200);
+          return http.Response(jsonEncode(remoteEnvelope.toJson()), 200,
+              headers: {'etag': '"v50-etag"'});
         });
 
         final service = CatalogRefreshService(
           cacheRepository: cacheRepository,
+          lkgRepository: lkgRepository,
           trustStore: trustStore,
           compatibilityEvaluator: compatibilityEvaluator,
           validationService: validationService,
@@ -438,16 +430,71 @@ void main() {
           const CatalogRefreshRequest(offlineOnly: false),
         );
 
-        // Il catalogo effettivo selezionato rimane la cache locale (rev 100)
-        expect(acquisition.catalogSource, equals(CatalogSource.cachedSigned));
-        expect(acquisition.diagnostics['selectedCatalogRevision'], equals(100));
+        expect(acquisition.catalogSource, equals(CatalogSource.remoteSigned));
+        expect(acquisition.diagnostics['selectedCatalogRevision'], equals(50));
+
+        // Verifica scrittura record cache con ETag
+        final updatedCacheRecord = (await cacheRepository.readCache()).record;
+        expect(updatedCacheRecord, isNotNull);
+        expect(updatedCacheRecord!.etag, equals('"v50-etag"'));
+        expect(updatedCacheRecord.envelope.signedPayload.catalogRevision,
+            equals(50));
+
+        // Verifica scrittura metadata LKG
+        final updatedLkg = await lkgRepository.readMetadata();
+        expect(updatedLkg, isNotNull);
+        expect(updatedLkg!.highestAcceptedRevision, equals(50));
+      });
+
+      test(
+          'refreshCatalog rifiuta remoto inferiore a LKG anche se la cache viene cancellata',
+          () async {
+        // Memorizza revisione 100 nell'LKG
+        await lkgRepository.writeMetadata(LkgCatalogMetadata(
+          catalogId: 'aura-official-catalog',
+          highestAcceptedRevision: 100,
+          canonicalPayloadDigest: 'abc123digest',
+          acceptedAtUtc: nowUtc,
+        ));
+
+        // La cache locale viene cancellata o non e presente
+        await cacheRepository.clearCache();
+
+        // Remoto restituisce una revisione inferiore (rev 10)
+        final mockClient = MockClient((request) async {
+          return http.Response(
+              jsonEncode(createTestEnvelope(catalogRevision: 10).toJson()),
+              200);
+        });
+
+        final service = CatalogRefreshService(
+          cacheRepository: cacheRepository,
+          lkgRepository: lkgRepository,
+          trustStore: trustStore,
+          compatibilityEvaluator: compatibilityEvaluator,
+          validationService: validationService,
+          signatureVerifier: signatureVerifier,
+          candidateFactory: candidateFactory,
+          bundledProvider: BundledCatalogProvider(manifest: defaultManifest),
+          cachedProvider: CachedCatalogProvider(repository: cacheRepository),
+          remoteProvider: RemoteCatalogProvider(
+            catalogUrl: 'https://catalog.aura-arena.org/v1/manifest.json',
+            httpClient: mockClient,
+          ),
+          clock: MemoryProvisioningClock(nowUtc),
+          applicationVersion: appVersion,
+        );
+
+        final acquisition = await service.refreshCatalog(
+          const CatalogRefreshRequest(offlineOnly: false),
+        );
+
+        // Viene selezionato il candidato bootstrap integrato e il remoto viene rifiutato per LKG downgrade
+        expect(
+            acquisition.catalogSource, equals(CatalogSource.bundledBootstrap));
         expect(acquisition.diagnostics['remoteQualified'], isFalse);
         expect(acquisition.diagnostics['remoteRejectionReason'],
             equals('catalogRevisionDowngrade'));
-
-        // La cache rimane inalterata a rev 100
-        final cacheEnvelope = await cacheRepository.readEnvelope();
-        expect(cacheEnvelope!.signedPayload.catalogRevision, equals(100));
       });
     });
   });

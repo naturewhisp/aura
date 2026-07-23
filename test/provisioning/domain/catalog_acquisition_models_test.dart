@@ -125,5 +125,52 @@ void main() {
       expect(restored.signedPayload.keyId, equals('aura-release-key-2026-01'));
       expect(restored.signature, equals(envelope.signature));
     });
+
+    test(
+        'CachedCatalogRecord & LkgCatalogMetadata round-trip JSON serialization',
+        () {
+      final manifest = CatalogManifest.initialDefault();
+      final payload = CatalogSignedPayload(
+        schemaVersion: '1.0',
+        signatureAlgorithm: 'ed25519-v1',
+        keyId: 'key1',
+        catalogId: 'aura-catalog',
+        catalogVersion: '1.0.0',
+        catalogRevision: 10,
+        issuedAt: '2026-07-22T00:00:00Z',
+        expiresAt: '2026-08-22T00:00:00Z',
+        manifest: manifest,
+      );
+      final env = CatalogEnvelope(signedPayload: payload, signature: 'sig');
+      final fetchedAt = DateTime.parse('2026-07-23T10:00:00Z');
+
+      final record = CachedCatalogRecord(
+        envelope: env,
+        etag: '"etag123"',
+        fetchedAtUtc: fetchedAt,
+        sourceUri: Uri.parse('https://catalog.aura-arena.org/manifest.json'),
+      );
+
+      final recordJson = record.toJson();
+      final restoredRecord = CachedCatalogRecord.fromJson(recordJson);
+      expect(restoredRecord.envelope.signedPayload.catalogRevision, equals(10));
+      expect(restoredRecord.etag, equals('"etag123"'));
+      expect(restoredRecord.fetchedAtUtc, equals(fetchedAt.toUtc()));
+      expect(restoredRecord.sourceUri,
+          equals(Uri.parse('https://catalog.aura-arena.org/manifest.json')));
+
+      final lkg = LkgCatalogMetadata(
+        catalogId: 'aura-catalog',
+        highestAcceptedRevision: 25,
+        canonicalPayloadDigest: 'abc123digest',
+        acceptedAtUtc: fetchedAt,
+      );
+      final lkgJson = lkg.toJson();
+      final restoredLkg = LkgCatalogMetadata.fromJson(lkgJson);
+      expect(restoredLkg.catalogId, equals('aura-catalog'));
+      expect(restoredLkg.highestAcceptedRevision, equals(25));
+      expect(restoredLkg.canonicalPayloadDigest, equals('abc123digest'));
+      expect(restoredLkg.acceptedAtUtc, equals(fetchedAt.toUtc()));
+    });
   });
 }

@@ -340,3 +340,130 @@ final class CatalogAcquisitionResult {
   int get hashCode =>
       Object.hash(effectiveCatalog, trustLevel, catalogSource, acquiredAt);
 }
+
+/// Record di memorizzazione per la cache firmata del catalogo, contenente l'envelope firmata
+/// ed i metadata di trasporto ed acquisizione HTTP (ETag, timestamp di recupero e URL sorgente).
+@immutable
+final class CachedCatalogRecord {
+  final CatalogEnvelope envelope;
+  final String? etag;
+  final DateTime fetchedAtUtc;
+  final Uri? sourceUri;
+
+  CachedCatalogRecord({
+    required this.envelope,
+    this.etag,
+    required DateTime fetchedAtUtc,
+    this.sourceUri,
+  }) : fetchedAtUtc = fetchedAtUtc.toUtc();
+
+  factory CachedCatalogRecord.fromJson(Map<String, dynamic> json) {
+    final envJson = json['envelope'] as Map<String, dynamic>?;
+    if (envJson == null) {
+      throw ArgumentError('Campo envelope mancante nel CachedCatalogRecord.');
+    }
+    final fetchedAtStr = json['fetchedAtUtc'] as String? ?? '';
+    final fetchedAt = DateTime.tryParse(fetchedAtStr)?.toUtc() ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    final sourceUriStr = json['sourceUri'] as String?;
+
+    return CachedCatalogRecord(
+      envelope: CatalogEnvelope.fromJson(envJson),
+      etag: json['etag'] as String?,
+      fetchedAtUtc: fetchedAt,
+      sourceUri: sourceUriStr != null && sourceUriStr.isNotEmpty
+          ? Uri.tryParse(sourceUriStr)
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'envelope': envelope.toJson(),
+        if (etag != null) 'etag': etag,
+        'fetchedAtUtc': fetchedAtUtc.toIso8601String(),
+        if (sourceUri != null) 'sourceUri': sourceUri.toString(),
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CachedCatalogRecord &&
+          runtimeType == other.runtimeType &&
+          envelope == other.envelope &&
+          etag == other.etag &&
+          fetchedAtUtc == other.fetchedAtUtc &&
+          sourceUri == other.sourceUri;
+
+  @override
+  int get hashCode => Object.hash(envelope, etag, fetchedAtUtc, sourceUri);
+}
+
+/// Metadata di stato trusted per la policy anti-downgrade (Last Known Good / LKG Metadata).
+/// Memorizzati separatamente dalla cache per prevenire downgrade in caso di cancellazione o corruzione del file cache.
+@immutable
+final class LkgCatalogMetadata {
+  final String catalogId;
+  final int highestAcceptedRevision;
+  final String canonicalPayloadDigest;
+  final DateTime acceptedAtUtc;
+
+  LkgCatalogMetadata({
+    required String catalogId,
+    required this.highestAcceptedRevision,
+    required String canonicalPayloadDigest,
+    required DateTime acceptedAtUtc,
+  })  : catalogId = catalogId.trim(),
+        canonicalPayloadDigest = canonicalPayloadDigest.toLowerCase().trim(),
+        acceptedAtUtc = acceptedAtUtc.toUtc() {
+    if (this.catalogId.isEmpty) {
+      throw ArgumentError('catalogId non può essere vuoto.');
+    }
+    if (highestAcceptedRevision < 0) {
+      throw ArgumentError('highestAcceptedRevision non può essere negativa.');
+    }
+    if (this.canonicalPayloadDigest.isEmpty) {
+      throw ArgumentError('canonicalPayloadDigest non può essere vuoto.');
+    }
+  }
+
+  factory LkgCatalogMetadata.fromJson(Map<String, dynamic> json) {
+    final catId = json['catalogId'] as String? ?? '';
+    final rev = (json['highestAcceptedRevision'] as num?)?.toInt() ?? 0;
+    final digest = json['canonicalPayloadDigest'] as String? ?? '';
+    final acceptedAtStr = json['acceptedAtUtc'] as String? ?? '';
+    final acceptedAt = DateTime.tryParse(acceptedAtStr)?.toUtc() ??
+        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+
+    return LkgCatalogMetadata(
+      catalogId: catId,
+      highestAcceptedRevision: rev,
+      canonicalPayloadDigest: digest,
+      acceptedAtUtc: acceptedAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'catalogId': catalogId,
+        'highestAcceptedRevision': highestAcceptedRevision,
+        'canonicalPayloadDigest': canonicalPayloadDigest,
+        'acceptedAtUtc': acceptedAtUtc.toIso8601String(),
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LkgCatalogMetadata &&
+          runtimeType == other.runtimeType &&
+          catalogId == other.catalogId &&
+          highestAcceptedRevision == other.highestAcceptedRevision &&
+          canonicalPayloadDigest == other.canonicalPayloadDigest &&
+          acceptedAtUtc == other.acceptedAtUtc;
+
+  @override
+  int get hashCode => Object.hash(
+        catalogId,
+        highestAcceptedRevision,
+        canonicalPayloadDigest,
+        acceptedAtUtc,
+      );
+}

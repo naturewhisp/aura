@@ -12,7 +12,6 @@ enum CatalogAcquisitionFailureReason {
   invalidIssuedAt,
   invalidExpiresAt,
   catalogExpired,
-  expiredCatalog,
   invalidSha256,
   invalidSizeBytes,
   duplicateArtifactIdentity,

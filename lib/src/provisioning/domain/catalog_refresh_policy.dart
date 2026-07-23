@@ -1,5 +1,5 @@
 import 'catalog_acquisition_exceptions.dart';
-import 'catalog_compatibility_evaluator.dart';
+import 'catalog_acquisition_models.dart';
 import 'validated_catalog_candidate.dart';
 
 /// Risultato della valutazione delle regole di refresh ed anti-downgrade di catalogo.
@@ -25,13 +25,12 @@ abstract final class CatalogRefreshPolicy {
   static const int defaultClockSkewMarginSeconds = 300;
 
   /// Valuta se un nuovo candidato remoto [remoteCandidate] è idoneo a sostituire o aggiornare
-  /// un candidato attualmente in cache [cachedCandidate].
+  /// un candidato in cache [cachedCandidate] ed i metadata LKG fidati persisti [lkgMetadata].
   static CatalogRefreshEvaluationResult evaluateRemoteRefresh({
     required ValidatedCatalogCandidate remoteCandidate,
     ValidatedCatalogCandidate? cachedCandidate,
+    LkgCatalogMetadata? lkgMetadata,
     required DateTime nowUtc,
-    required String applicationVersion,
-    CatalogCompatibilityEvaluator? compatibilityEvaluator,
     int clockSkewMarginSeconds = defaultClockSkewMarginSeconds,
   }) {
     final remotePayload = remoteCandidate.envelope.signedPayload;
@@ -45,7 +44,7 @@ abstract final class CatalogRefreshPolicy {
             .toUtc();
         if (nowUtc.toUtc().isAfter(maxAllowedTime)) {
           return const CatalogRefreshEvaluationResult.rejected(
-            rejectionReason: CatalogAcquisitionFailureReason.expiredCatalog,
+            rejectionReason: CatalogAcquisitionFailureReason.catalogExpired,
             message: 'Il catalogo remoto fornito risulta scaduto.',
           );
         }
@@ -62,14 +61,40 @@ abstract final class CatalogRefreshPolicy {
       );
     }
 
-    // Se non esiste alcun catalogo in cache, il remoto valido e compatibile viene qualificato subito
+    // 3. Verifiche anti-downgrade e coerenza rispetto ai metadata LKG fidati persisti
+    if (lkgMetadata != null) {
+      if (remotePayload.catalogId == lkgMetadata.catalogId) {
+        if (remotePayload.catalogRevision <
+            lkgMetadata.highestAcceptedRevision) {
+          return const CatalogRefreshEvaluationResult.rejected(
+            rejectionReason:
+                CatalogAcquisitionFailureReason.catalogRevisionDowngrade,
+            message:
+                'Tentativo di downgrade: la revisione remota è inferiore alla revisione LKG fidata già accettata.',
+          );
+        }
+        if (remotePayload.catalogRevision ==
+                lkgMetadata.highestAcceptedRevision &&
+            remoteCandidate.canonicalPayloadDigest !=
+                lkgMetadata.canonicalPayloadDigest) {
+          return const CatalogRefreshEvaluationResult.rejected(
+            rejectionReason:
+                CatalogAcquisitionFailureReason.catalogIdentityMismatch,
+            message:
+                'Conflitto di integrità: pari revisione di catalogo con digest discordante rispetto allo stato LKG fidato.',
+          );
+        }
+      }
+    }
+
+    // Se non esiste alcun catalogo in cache, il remoto valido e compatibile con LKG viene qualificato subito
     if (cachedCandidate == null) {
       return const CatalogRefreshEvaluationResult.qualified();
     }
 
     final cachedPayload = cachedCandidate.envelope.signedPayload;
 
-    // 3. Namespace Matching (catalogId)
+    // 4. Namespace Matching rispetto alla cache corrente (catalogId)
     if (remotePayload.catalogId != cachedPayload.catalogId) {
       return const CatalogRefreshEvaluationResult.rejected(
         rejectionReason:
@@ -79,7 +104,7 @@ abstract final class CatalogRefreshPolicy {
       );
     }
 
-    // 4. Monotonic Revision Check (catalogRevision)
+    // 5. Monotonic Revision Check rispetto alla cache corrente (catalogRevision)
     if (remotePayload.catalogRevision < cachedPayload.catalogRevision) {
       return const CatalogRefreshEvaluationResult.rejected(
         rejectionReason:
@@ -89,7 +114,7 @@ abstract final class CatalogRefreshPolicy {
       );
     }
 
-    // 5. Gestione di pari revisione nello stesso namespace ma digest discordanti
+    // 6. Gestione di pari revisione nello stesso namespace ma digest discordanti rispetto alla cache
     if (remotePayload.catalogRevision == cachedPayload.catalogRevision) {
       if (remoteCandidate.canonicalPayloadDigest !=
           cachedCandidate.canonicalPayloadDigest) {

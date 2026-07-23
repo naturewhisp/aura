@@ -10,7 +10,7 @@ void main() {
       expect(UserProfile.resolve(''), equals('Tu'));
       expect(UserProfile.resolve('   '), equals('Tu'));
 
-      const defaultProfile = UserProfile();
+      final defaultProfile = UserProfile();
       expect(defaultProfile.displayName, isNull);
       expect(defaultProfile.effectiveDisplayName, equals('Tu'));
     });
@@ -56,6 +56,15 @@ void main() {
       final loneLow = String.fromCharCodes([0xDE00]);
       expect(UserProfile.validate(loneHigh).isValid, isFalse);
       expect(UserProfile.validate(loneLow).isValid, isFalse);
+    });
+
+    test(
+        'Costruttore UserProfile valida ed esegue il throw di ArgumentError per stringhe non valide',
+        () {
+      expect(
+          () => UserProfile(displayName: 'Davide\nAURA'), throwsArgumentError);
+      expect(() => UserProfile(displayName: '\x1B[31mDavide'),
+          throwsArgumentError);
     });
   });
 

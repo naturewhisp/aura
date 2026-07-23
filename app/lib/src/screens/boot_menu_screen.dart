@@ -313,16 +313,16 @@ class _BootMenuScreenState extends State<BootMenuScreen>
     }
   }
 
-  void _backToMainMenu() {
+  Future<void> _backToMainMenu() async {
     if (_subScreen == "settings") {
       final val = _settingsDisplayNameController.text;
       final validation = UserProfile.validate(val);
       if (validation.isValid) {
         final norm = UserProfile.normalize(val);
         if (norm != null) {
-          unawaited(widget.notifier.updateUserDisplayName(norm));
+          await widget.notifier.updateUserDisplayName(norm);
         } else {
-          unawaited(widget.notifier.clearUserDisplayName());
+          await widget.notifier.clearUserDisplayName();
         }
       }
     }
@@ -1433,17 +1433,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
               color: Color(0xFF00FFFF),
               fontSize: 13.0,
             ),
-            onChanged: (val) async {
-              final validation = UserProfile.validate(val);
-              if (validation.isValid) {
-                final norm = UserProfile.normalize(val);
-                if (norm != null) {
-                  await widget.notifier.updateUserDisplayName(norm);
-                } else {
-                  await widget.notifier.clearUserDisplayName();
-                }
-                setState(() {});
-              }
+            onChanged: (val) {
+              setState(() {});
             },
             onSubmitted: (val) async {
               final validation = UserProfile.validate(val);

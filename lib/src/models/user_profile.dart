@@ -32,7 +32,17 @@ final class UserProfile {
   final String? displayName;
 
   /// Costruisce un [UserProfile] con il nome visualizzato specificato.
-  const UserProfile({this.displayName});
+  /// Valida e normalizza la stringa prima dell'assegnazione; lancia [ArgumentError] se non valida.
+  UserProfile({String? displayName})
+      : displayName = _validateAndNormalize(displayName);
+
+  static String? _validateAndNormalize(String? value) {
+    final validation = validate(value);
+    if (!validation.isValid) {
+      throw ArgumentError(validation.errorMessage);
+    }
+    return normalize(value);
+  }
 
   /// Restituisce il nome visualizzato effettivo:
   /// se [displayName] è nullo o vuoto, restituisce "Tu".

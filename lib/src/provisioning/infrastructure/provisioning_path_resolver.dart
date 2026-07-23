@@ -127,6 +127,10 @@ final class ProvisioningPathResolver {
   /// Path della directory di cache HTTP/download.
   String get cacheDirectory => _join(appManagedRoot, 'cache');
 
+  /// Path del file `cached_catalog_envelope.json`.
+  String get catalogCacheEnvelopePath =>
+      _join(cacheDirectory, 'cached_catalog_envelope.json');
+
   /// Path della directory dei log.
   String get logsDirectory => _join(appManagedRoot, 'logs');
 

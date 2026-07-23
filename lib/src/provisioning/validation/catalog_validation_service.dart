@@ -114,7 +114,8 @@ final class CatalogValidationService {
 
     for (final artifact in manifest.artifacts) {
       // Finding 5: Per cataloghi firmati remoti o cached, repositoryRevision DEVE essere esplicitata
-      final repoRevision = artifact.metadata['repositoryRevision'] as String?;
+      final repoRevision = (artifact.metadata['repositoryRevision'] ??
+          artifact.metadata['revision']) as String?;
       if ((source == CatalogSource.remoteSigned ||
               source == CatalogSource.cachedSigned) &&
           (repoRevision == null || repoRevision.trim().isEmpty)) {

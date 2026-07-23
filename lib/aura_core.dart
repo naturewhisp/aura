@@ -124,3 +124,16 @@ export 'src/provisioning/crypto/catalog_public_key.dart';
 
 export 'src/provisioning/bootstrap/provisioning_bootstrap_service.dart';
 export 'src/provisioning/cli/provisioning_cli_runner.dart';
+
+// Provisioning Catalog Providers, Signed Cache & Refresh (Phase 6.4b)
+export 'src/provisioning/domain/catalog_refresh_policy.dart';
+export 'src/provisioning/domain/catalog_provider_contracts.dart';
+export 'src/provisioning/crypto/catalog_signature_verifier.dart';
+export 'src/provisioning/crypto/catalog_trust_store.dart';
+export 'src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart';
+export 'src/provisioning/infrastructure/catalog_cache_repository.dart';
+export 'src/provisioning/infrastructure/bundled_catalog_provider.dart';
+export 'src/provisioning/infrastructure/cached_catalog_provider.dart';
+export 'src/provisioning/infrastructure/remote_catalog_provider.dart';
+export 'src/provisioning/infrastructure/catalog_acquisition_coordinator.dart';
+export 'src/provisioning/infrastructure/catalog_refresh_service.dart';

@@ -47,10 +47,24 @@ final class RemoteCatalogProvider implements CatalogProvider {
       );
     }
 
+    final headers = <String, String>{};
+    if (!context.forceRefresh &&
+        context.cachedEtag != null &&
+        context.cachedEtag!.isNotEmpty) {
+      headers['If-None-Match'] = context.cachedEtag!;
+    }
+
     try {
-      final response = await _httpClient.get(uri).timeout(
-            const Duration(seconds: 15),
-          );
+      final response = await _httpClient
+          .get(uri, headers: headers)
+          .timeout(context.remoteTimeout);
+
+      if (response.statusCode == 304) {
+        return CatalogProviderResult.notModified(
+          responseEtag: context.cachedEtag,
+          message: 'Catalogo remoto non modificato (HTTP 304).',
+        );
+      }
 
       if (response.statusCode != 200) {
         return CatalogProviderResult.failure(
@@ -59,6 +73,8 @@ final class RemoteCatalogProvider implements CatalogProvider {
               'Risposta HTTP remota non valida: ${response.statusCode} ${response.reasonPhrase}',
         );
       }
+
+      final responseEtag = response.headers['etag'] ?? response.headers['ETag'];
 
       final bodyText = response.body.trim();
       if (bodyText.isEmpty) {
@@ -90,7 +106,10 @@ final class RemoteCatalogProvider implements CatalogProvider {
       );
 
       if (factoryResult.isSuccess) {
-        return CatalogProviderResult.success(factoryResult.candidate);
+        return CatalogProviderResult.success(
+          factoryResult.candidate,
+          responseEtag: responseEtag,
+        );
       } else {
         return CatalogProviderResult.failure(
           failureReason: factoryResult.failureReason,
@@ -106,7 +125,8 @@ final class RemoteCatalogProvider implements CatalogProvider {
     } catch (e) {
       return CatalogProviderResult.failure(
         failureReason: CatalogAcquisitionFailureReason.remoteFetchFailed,
-        message: 'Errore di rete durante il recupero del catalogo remoto: $e',
+        message:
+            'Errore di rete durante il recupero del catalogo remoto (${e.runtimeType}).',
       );
     }
   }

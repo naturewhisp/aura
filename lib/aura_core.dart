@@ -133,6 +133,7 @@ export 'src/provisioning/crypto/catalog_signature_verifier.dart';
 export 'src/provisioning/crypto/catalog_trust_store.dart';
 export 'src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart';
 export 'src/provisioning/infrastructure/catalog_cache_repository.dart';
+export 'src/provisioning/infrastructure/lkg_catalog_metadata_repository.dart';
 export 'src/provisioning/infrastructure/bundled_catalog_provider.dart';
 export 'src/provisioning/infrastructure/cached_catalog_provider.dart';
 export 'src/provisioning/infrastructure/remote_catalog_provider.dart';

@@ -13,11 +13,13 @@ import '../validation/catalog_validation_service.dart';
 import 'bundled_catalog_provider.dart';
 import 'cached_catalog_provider.dart';
 import 'catalog_cache_repository.dart';
+import 'lkg_catalog_metadata_repository.dart';
 import 'remote_catalog_provider.dart';
 
 /// Servizio applicativo di livello superiore per l'aggiornamento, il refresh e l'acquisizione del catalogo.
 final class CatalogRefreshService {
   final CatalogCacheRepository _cacheRepository;
+  final LkgCatalogMetadataRepository? _lkgRepository;
   final CatalogTrustStore _trustStore;
   final CatalogCompatibilityEvaluator _compatibilityEvaluator;
   final CatalogValidationService _validationService;
@@ -32,6 +34,7 @@ final class CatalogRefreshService {
 
   CatalogRefreshService({
     required CatalogCacheRepository cacheRepository,
+    LkgCatalogMetadataRepository? lkgRepository,
     required CatalogTrustStore trustStore,
     required CatalogCompatibilityEvaluator compatibilityEvaluator,
     required CatalogValidationService validationService,
@@ -44,6 +47,7 @@ final class CatalogRefreshService {
     required String applicationVersion,
     bool isProduction = true,
   })  : _cacheRepository = cacheRepository,
+        _lkgRepository = lkgRepository,
         _trustStore = trustStore,
         _compatibilityEvaluator = compatibilityEvaluator,
         _validationService = validationService,
@@ -69,6 +73,10 @@ final class CatalogRefreshService {
       'isProduction': _isProduction,
     };
 
+    final cacheReadResult = await _cacheRepository.readCache();
+    final cachedRecord = cacheReadResult.record;
+    final lkgMetadata = await _lkgRepository?.readMetadata();
+
     final context = CatalogProviderContext(
       trustStore: _trustStore,
       compatibilityEvaluator: _compatibilityEvaluator,
@@ -77,6 +85,9 @@ final class CatalogRefreshService {
       candidateFactory: _candidateFactory,
       nowUtc: nowUtc,
       applicationVersion: _applicationVersion,
+      remoteTimeout: request.timeout ?? const Duration(seconds: 15),
+      cachedEtag: cachedRecord?.etag,
+      forceRefresh: request.forceRefresh,
     );
 
     final candidates = <ValidatedCatalogCandidate>[];
@@ -103,25 +114,48 @@ final class CatalogRefreshService {
     final remoteProvider = _remoteProvider;
     if (!request.offlineOnly && remoteProvider != null) {
       final remoteResult = await remoteProvider.getCandidate(context);
-      if (remoteResult.isSuccess && remoteResult.candidate != null) {
+
+      if (remoteResult.isNotModified) {
+        diagnostics['remoteFetchStatus'] = 'notModified304';
+        if (cachedCandidate != null) {
+          diagnostics['remoteQualified'] = true;
+          diagnostics['remoteRevision'] =
+              cachedCandidate.envelope.signedPayload.catalogRevision;
+        }
+      } else if (remoteResult.isSuccess && remoteResult.candidate != null) {
         final remoteCandidate = remoteResult.candidate!;
         diagnostics['remoteFetchStatus'] = 'success';
         diagnostics['remoteRevision'] =
             remoteCandidate.envelope.signedPayload.catalogRevision;
 
-        // Valutazione anti-downgrade e freschezza del remoto rispetto alla cache
+        // Valutazione anti-downgrade e freschezza del remoto rispetto alla cache ed allo stato LKG fidato
         final refreshEvaluation = CatalogRefreshPolicy.evaluateRemoteRefresh(
           remoteCandidate: remoteCandidate,
           cachedCandidate: cachedCandidate,
+          lkgMetadata: lkgMetadata,
           nowUtc: nowUtc,
-          applicationVersion: _applicationVersion,
-          compatibilityEvaluator: _compatibilityEvaluator,
         );
 
         if (refreshEvaluation.isQualified) {
           diagnostics['remoteQualified'] = true;
-          // Scrittura atomica dell'envelope remota nella cache firmata locale
-          await _cacheRepository.writeEnvelope(remoteCandidate.envelope);
+          // Scrittura atomica del record di cache contenente l'envelope firmata ed i metadata HTTP (ETag)
+          final newRecord = CachedCatalogRecord(
+            envelope: remoteCandidate.envelope,
+            etag: remoteResult.responseEtag,
+            fetchedAtUtc: nowUtc,
+          );
+          await _cacheRepository.writeRecord(newRecord);
+
+          // Persistenza dei metadata LKG fidati per l'anti-downgrade permanente
+          final newLkg = LkgCatalogMetadata(
+            catalogId: remoteCandidate.envelope.signedPayload.catalogId,
+            highestAcceptedRevision:
+                remoteCandidate.envelope.signedPayload.catalogRevision,
+            canonicalPayloadDigest: remoteCandidate.canonicalPayloadDigest,
+            acceptedAtUtc: nowUtc,
+          );
+          await _lkgRepository?.writeMetadata(newLkg);
+
           candidates.add(remoteCandidate);
         } else {
           diagnostics['remoteQualified'] = false;
@@ -163,6 +197,22 @@ final class CatalogRefreshService {
         selected.envelope.signedPayload.catalogId;
     diagnostics['selectedCatalogRevision'] =
         selected.envelope.signedPayload.catalogRevision;
+
+    // Assicura che la revisione accettata in fase di selezione sia memorizzata nell'LKG
+    final lkgRepo = _lkgRepository;
+    if (lkgRepo != null) {
+      final currentLkg = await lkgRepo.readMetadata();
+      final selPayload = selected.envelope.signedPayload;
+      if (currentLkg == null ||
+          selPayload.catalogRevision > currentLkg.highestAcceptedRevision) {
+        await lkgRepo.writeMetadata(LkgCatalogMetadata(
+          catalogId: selPayload.catalogId,
+          highestAcceptedRevision: selPayload.catalogRevision,
+          canonicalPayloadDigest: selected.canonicalPayloadDigest,
+          acceptedAtUtc: nowUtc,
+        ));
+      }
+    }
 
     return CatalogAcquisitionResult(
       effectiveCatalog: selected.envelope.signedPayload.manifest,

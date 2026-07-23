@@ -131,6 +131,10 @@ final class ProvisioningPathResolver {
   String get catalogCacheEnvelopePath =>
       _join(cacheDirectory, 'cached_catalog_envelope.json');
 
+  /// Path del file `lkg_catalog_metadata.json`.
+  String get lkgCatalogMetadataPath =>
+      _join(cacheDirectory, 'lkg_catalog_metadata.json');
+
   /// Path della directory dei log.
   String get logsDirectory => _join(appManagedRoot, 'logs');
 

@@ -35,6 +35,9 @@ final class CatalogProviderContext {
   final ValidatedCatalogCandidateFactory candidateFactory;
   final DateTime nowUtc;
   final String applicationVersion;
+  final Duration remoteTimeout;
+  final String? cachedEtag;
+  final bool forceRefresh;
 
   const CatalogProviderContext({
     required this.trustStore,
@@ -44,6 +47,9 @@ final class CatalogProviderContext {
     required this.candidateFactory,
     required this.nowUtc,
     required this.applicationVersion,
+    this.remoteTimeout = const Duration(seconds: 15),
+    this.cachedEtag,
+    this.forceRefresh = false,
   });
 }
 
@@ -52,23 +58,40 @@ final class CatalogProviderResult {
   final ValidatedCatalogCandidate? candidate;
   final CatalogAcquisitionFailureReason? failureReason;
   final String? message;
+  final bool isNotModified;
+  final String? responseEtag;
 
-  const CatalogProviderResult.success(this.candidate)
-      : failureReason = null,
-        message = null;
+  const CatalogProviderResult.success(
+    this.candidate, {
+    this.responseEtag,
+  })  : failureReason = null,
+        message = null,
+        isNotModified = false;
+
+  const CatalogProviderResult.notModified({
+    this.responseEtag,
+    this.message,
+  })  : candidate = null,
+        failureReason = null,
+        isNotModified = true;
 
   const CatalogProviderResult.failure({
     required this.failureReason,
     required this.message,
-  }) : candidate = null;
+  })  : candidate = null,
+        isNotModified = false,
+        responseEtag = null;
 
   const CatalogProviderResult.absent()
       : candidate = null,
         failureReason = null,
-        message = null;
+        message = null,
+        isNotModified = false,
+        responseEtag = null;
 
   bool get isSuccess => candidate != null;
-  bool get isAbsent => candidate == null && failureReason == null;
+  bool get isAbsent =>
+      candidate == null && failureReason == null && !isNotModified;
   bool get isFailure => failureReason != null;
 }
 

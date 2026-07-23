@@ -19,7 +19,7 @@ import 'remote_catalog_provider.dart';
 /// Servizio applicativo di livello superiore per l'aggiornamento, il refresh e l'acquisizione del catalogo.
 final class CatalogRefreshService {
   final CatalogCacheRepository _cacheRepository;
-  final LkgCatalogMetadataRepository? _lkgRepository;
+  final LkgCatalogMetadataRepository _lkgRepository;
   final CatalogTrustStore _trustStore;
   final CatalogCompatibilityEvaluator _compatibilityEvaluator;
   final CatalogValidationService _validationService;
@@ -34,7 +34,7 @@ final class CatalogRefreshService {
 
   CatalogRefreshService({
     required CatalogCacheRepository cacheRepository,
-    LkgCatalogMetadataRepository? lkgRepository,
+    required LkgCatalogMetadataRepository lkgRepository,
     required CatalogTrustStore trustStore,
     required CatalogCompatibilityEvaluator compatibilityEvaluator,
     required CatalogValidationService validationService,
@@ -75,9 +75,11 @@ final class CatalogRefreshService {
 
     final cacheReadResult = await _cacheRepository.readCache();
     final cachedRecord = cacheReadResult.record;
-    final lkgMetadata = await _lkgRepository?.readMetadata();
 
-    final context = CatalogProviderContext(
+    final candidates = <ValidatedCatalogCandidate>[];
+
+    // Contesto base per provider locali (bundled e cache)
+    final baseContext = CatalogProviderContext(
       trustStore: _trustStore,
       compatibilityEvaluator: _compatibilityEvaluator,
       validationService: _validationService,
@@ -86,22 +88,19 @@ final class CatalogRefreshService {
       nowUtc: nowUtc,
       applicationVersion: _applicationVersion,
       remoteTimeout: request.timeout ?? const Duration(seconds: 15),
-      cachedEtag: cachedRecord?.etag,
       forceRefresh: request.forceRefresh,
     );
 
-    final candidates = <ValidatedCatalogCandidate>[];
-
     // 1. Acquisizione candidato Bootstrap integrato
-    final bundledResult = await _bundledProvider.getCandidate(context);
+    final bundledResult = await _bundledProvider.getCandidate(baseContext);
     if (bundledResult.isSuccess && bundledResult.candidate != null) {
       candidates.add(bundledResult.candidate!);
       diagnostics['bundledRevision'] =
           bundledResult.candidate!.envelope.signedPayload.catalogRevision;
     }
 
-    // 2. Acquisizione candidato Signed Cache locale
-    final cachedResult = await _cachedProvider.getCandidate(context);
+    // 2. Acquisizione e validazione candidato Signed Cache locale
+    final cachedResult = await _cachedProvider.getCandidate(baseContext);
     ValidatedCatalogCandidate? cachedCandidate;
     if (cachedResult.isSuccess && cachedResult.candidate != null) {
       cachedCandidate = cachedResult.candidate;
@@ -113,7 +112,38 @@ final class CatalogRefreshService {
     // 3. Acquisizione e verifica candidato Remoto (se non offlineOnly)
     final remoteProvider = _remoteProvider;
     if (!request.offlineOnly && remoteProvider != null) {
-      final remoteResult = await remoteProvider.getCandidate(context);
+      // Invia If-None-Match (cachedEtag) SOLO SE la cache locale ha prodotto un candidato candidato valido
+      final remoteContext = CatalogProviderContext(
+        trustStore: _trustStore,
+        compatibilityEvaluator: _compatibilityEvaluator,
+        validationService: _validationService,
+        signatureVerifier: _signatureVerifier,
+        candidateFactory: _candidateFactory,
+        nowUtc: nowUtc,
+        applicationVersion: _applicationVersion,
+        remoteTimeout: request.timeout ?? const Duration(seconds: 15),
+        cachedEtag: cachedCandidate != null ? cachedRecord?.etag : null,
+        forceRefresh: request.forceRefresh,
+      );
+
+      var remoteResult = await remoteProvider.getCandidate(remoteContext);
+
+      // Se riceve 304 ma per qualsiasi motivo cachedCandidate è nullo (guardia difensiva), esegue un GET incondizionato
+      if (remoteResult.isNotModified && cachedCandidate == null) {
+        final forcedContext = CatalogProviderContext(
+          trustStore: _trustStore,
+          compatibilityEvaluator: _compatibilityEvaluator,
+          validationService: _validationService,
+          signatureVerifier: _signatureVerifier,
+          candidateFactory: _candidateFactory,
+          nowUtc: nowUtc,
+          applicationVersion: _applicationVersion,
+          remoteTimeout: request.timeout ?? const Duration(seconds: 15),
+          cachedEtag: null,
+          forceRefresh: true,
+        );
+        remoteResult = await remoteProvider.getCandidate(forcedContext);
+      }
 
       if (remoteResult.isNotModified) {
         diagnostics['remoteFetchStatus'] = 'notModified304';
@@ -128,7 +158,12 @@ final class CatalogRefreshService {
         diagnostics['remoteRevision'] =
             remoteCandidate.envelope.signedPayload.catalogRevision;
 
-        // Valutazione anti-downgrade e freschezza del remoto rispetto alla cache ed allo stato LKG fidato
+        // Recupera i metadata LKG specifici per il catalogId remoto
+        final lkgMetadata = await _lkgRepository.readMetadata(
+          catalogId: remoteCandidate.envelope.signedPayload.catalogId,
+        );
+
+        // Valutazione anti-downgrade e freschezza del remoto rispetto alla cache ed allo stato LKG fidato del namespace
         final refreshEvaluation = CatalogRefreshPolicy.evaluateRemoteRefresh(
           remoteCandidate: remoteCandidate,
           cachedCandidate: cachedCandidate,
@@ -138,15 +173,16 @@ final class CatalogRefreshService {
 
         if (refreshEvaluation.isQualified) {
           diagnostics['remoteQualified'] = true;
-          // Scrittura atomica del record di cache contenente l'envelope firmata ed i metadata HTTP (ETag)
+          // Scrittura atomica del record di cache contenente l'envelope firmata, l'ETag ed la provenance (sourceUri)
           final newRecord = CachedCatalogRecord(
             envelope: remoteCandidate.envelope,
             etag: remoteResult.responseEtag,
             fetchedAtUtc: nowUtc,
+            sourceUri: remoteResult.sourceUri,
           );
           await _cacheRepository.writeRecord(newRecord);
 
-          // Persistenza dei metadata LKG fidati per l'anti-downgrade permanente
+          // Persistenza dei metadata LKG fidati per-namespace per l'anti-downgrade permanente
           final newLkg = LkgCatalogMetadata(
             catalogId: remoteCandidate.envelope.signedPayload.catalogId,
             highestAcceptedRevision:
@@ -154,7 +190,7 @@ final class CatalogRefreshService {
             canonicalPayloadDigest: remoteCandidate.canonicalPayloadDigest,
             acceptedAtUtc: nowUtc,
           );
-          await _lkgRepository?.writeMetadata(newLkg);
+          await _lkgRepository.writeMetadata(newLkg);
 
           candidates.add(remoteCandidate);
         } else {
@@ -198,20 +234,19 @@ final class CatalogRefreshService {
     diagnostics['selectedCatalogRevision'] =
         selected.envelope.signedPayload.catalogRevision;
 
-    // Assicura che la revisione accettata in fase di selezione sia memorizzata nell'LKG
-    final lkgRepo = _lkgRepository;
-    if (lkgRepo != null) {
-      final currentLkg = await lkgRepo.readMetadata();
-      final selPayload = selected.envelope.signedPayload;
-      if (currentLkg == null ||
-          selPayload.catalogRevision > currentLkg.highestAcceptedRevision) {
-        await lkgRepo.writeMetadata(LkgCatalogMetadata(
-          catalogId: selPayload.catalogId,
-          highestAcceptedRevision: selPayload.catalogRevision,
-          canonicalPayloadDigest: selected.canonicalPayloadDigest,
-          acceptedAtUtc: nowUtc,
-        ));
-      }
+    // Assicura che la revisione accettata in fase di selezione sia memorizzata nell'LKG per il relativo catalogId
+    final selPayload = selected.envelope.signedPayload;
+    final currentLkg = await _lkgRepository.readMetadata(
+      catalogId: selPayload.catalogId,
+    );
+    if (currentLkg == null ||
+        selPayload.catalogRevision > currentLkg.highestAcceptedRevision) {
+      await _lkgRepository.writeMetadata(LkgCatalogMetadata(
+        catalogId: selPayload.catalogId,
+        highestAcceptedRevision: selPayload.catalogRevision,
+        canonicalPayloadDigest: selected.canonicalPayloadDigest,
+        acceptedAtUtc: nowUtc,
+      ));
     }
 
     return CatalogAcquisitionResult(

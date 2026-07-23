@@ -60,10 +60,12 @@ final class CatalogProviderResult {
   final String? message;
   final bool isNotModified;
   final String? responseEtag;
+  final Uri? sourceUri;
 
   const CatalogProviderResult.success(
     this.candidate, {
     this.responseEtag,
+    this.sourceUri,
   })  : failureReason = null,
         message = null,
         isNotModified = false;
@@ -71,6 +73,7 @@ final class CatalogProviderResult {
   const CatalogProviderResult.notModified({
     this.responseEtag,
     this.message,
+    this.sourceUri,
   })  : candidate = null,
         failureReason = null,
         isNotModified = true;
@@ -80,14 +83,16 @@ final class CatalogProviderResult {
     required this.message,
   })  : candidate = null,
         isNotModified = false,
-        responseEtag = null;
+        responseEtag = null,
+        sourceUri = null;
 
   const CatalogProviderResult.absent()
       : candidate = null,
         failureReason = null,
         message = null,
         isNotModified = false,
-        responseEtag = null;
+        responseEtag = null,
+        sourceUri = null;
 
   bool get isSuccess => candidate != null;
   bool get isAbsent =>

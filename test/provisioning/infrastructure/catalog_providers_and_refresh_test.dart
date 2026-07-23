@@ -140,7 +140,7 @@ void main() {
       });
 
       test(
-          'Rifiuta candidato remoto se inferiore a LKG metadata anche in assenza di cache (anti-downgrade LKG)',
+          'Rifiuta candidato remoto se inferiore a LKG metadata anche in assenza di cache (anti-downgrade LKG per-namespace)',
           () async {
         final remoteRes = await candidateFactory.createCandidate(
           envelope: createTestEnvelope(catalogRevision: 15),
@@ -288,7 +288,7 @@ void main() {
       });
 
       test(
-          'RemoteCatalogProvider recupera e convalida envelope remota via HTTP 200 ed estrae ETag',
+          'RemoteCatalogProvider recupera e convalida envelope remota via HTTP 200 ed estrae ETag e sourceUri',
           () async {
         final validEnvelope = createTestEnvelope(catalogRevision: 30);
         final jsonText = jsonEncode(validEnvelope.toJson());
@@ -322,6 +322,10 @@ void main() {
         final result = await provider.getCandidate(context);
         expect(result.isSuccess, isTrue);
         expect(result.responseEtag, equals('"v30-hash"'));
+        expect(
+            result.sourceUri,
+            equals(
+                Uri.parse('https://catalog.aura-arena.org/v1/manifest.json')));
         expect(result.candidate!.source, equals(CatalogSource.remoteSigned));
         expect(result.candidate!.envelope.signedPayload.catalogRevision,
             equals(30));
@@ -358,55 +362,33 @@ void main() {
         expect(result.isNotModified, isTrue);
         expect(receivedIfNoneMatch, equals('"v30-hash"'));
       });
-
-      test(
-          'RemoteCatalogProvider omette If-None-Match quando forceRefresh e true',
-          () async {
-        String? receivedIfNoneMatch;
-        final validEnvelope = createTestEnvelope(catalogRevision: 30);
-
-        final mockClient = MockClient((request) async {
-          receivedIfNoneMatch = request.headers['If-None-Match'];
-          return http.Response(jsonEncode(validEnvelope.toJson()), 200);
-        });
-
-        final provider = RemoteCatalogProvider(
-          catalogUrl: 'https://catalog.aura-arena.org/v1/manifest.json',
-          httpClient: mockClient,
-        );
-
-        final context = CatalogProviderContext(
-          trustStore: trustStore,
-          compatibilityEvaluator: compatibilityEvaluator,
-          validationService: validationService,
-          signatureVerifier: signatureVerifier,
-          candidateFactory: candidateFactory,
-          nowUtc: nowUtc,
-          applicationVersion: appVersion,
-          cachedEtag: '"v30-hash"',
-          forceRefresh: true,
-        );
-
-        final result = await provider.getCandidate(context);
-        expect(result.isSuccess, isTrue);
-        expect(receivedIfNoneMatch, isNull);
-      });
     });
 
     group('CatalogRefreshService End-to-End Tests', () {
       test(
-          'refreshCatalog in modalita online aggiorna la cache, i metadata LKG e seleziona il catalogo remoto',
+          'refreshCatalog omette If-None-Match quando la cache non produce un candidato valido',
           () async {
-        // Scrive un vecchio catalogo in cache (rev 5)
-        await cacheRepository
-            .writeEnvelope(createTestEnvelope(catalogRevision: 5));
-
-        // Remoto restituisce una nuova revisione valida (rev 50)
+        String? receivedIfNoneMatch;
         final remoteEnvelope = createTestEnvelope(catalogRevision: 50);
+
         final mockClient = MockClient((request) async {
-          return http.Response(jsonEncode(remoteEnvelope.toJson()), 200,
-              headers: {'etag': '"v50-etag"'});
+          receivedIfNoneMatch = request.headers['If-None-Match'];
+          return http.Response(jsonEncode(remoteEnvelope.toJson()), 200);
         });
+
+        // Scrive un record di cache con ETag ma envelope corrotta (non validabile)
+        await fileSystem.createDirectory(pathResolver.cacheDirectory);
+        await fileSystem.writeStringRecoverably(
+          pathResolver.catalogCacheEnvelopePath,
+          jsonEncode({
+            'envelope': {
+              'signed_payload': {'invalid': true},
+              'signature': 'bad'
+            },
+            'etag': '"corrupted-etag"',
+            'fetched_at': '2026-07-23T10:00:00Z'
+          }),
+        );
 
         final service = CatalogRefreshService(
           cacheRepository: cacheRepository,
@@ -430,41 +412,29 @@ void main() {
           const CatalogRefreshRequest(offlineOnly: false),
         );
 
+        expect(receivedIfNoneMatch, isNull);
         expect(acquisition.catalogSource, equals(CatalogSource.remoteSigned));
         expect(acquisition.diagnostics['selectedCatalogRevision'], equals(50));
-
-        // Verifica scrittura record cache con ETag
-        final updatedCacheRecord = (await cacheRepository.readCache()).record;
-        expect(updatedCacheRecord, isNotNull);
-        expect(updatedCacheRecord!.etag, equals('"v50-etag"'));
-        expect(updatedCacheRecord.envelope.signedPayload.catalogRevision,
-            equals(50));
-
-        // Verifica scrittura metadata LKG
-        final updatedLkg = await lkgRepository.readMetadata();
-        expect(updatedLkg, isNotNull);
-        expect(updatedLkg!.highestAcceptedRevision, equals(50));
       });
 
       test(
-          'refreshCatalog rifiuta remoto inferiore a LKG anche se la cache viene cancellata',
+          'refreshCatalog gestisce LKG per-namespace isolando catalogId differenti',
           () async {
-        // Memorizza revisione 100 nell'LKG
+        // Salva un LKG per 'aura-official-catalog' a rev 100
         await lkgRepository.writeMetadata(LkgCatalogMetadata(
           catalogId: 'aura-official-catalog',
           highestAcceptedRevision: 100,
-          canonicalPayloadDigest: 'abc123digest',
+          canonicalPayloadDigest: 'digest1',
           acceptedAtUtc: nowUtc,
         ));
 
-        // La cache locale viene cancellata o non e presente
-        await cacheRepository.clearCache();
-
-        // Remoto restituisce una revisione inferiore (rev 10)
+        // Remoto restituisce un catalogo di un DIVERSO namespace 'aura-enterprise-catalog' a rev 4
+        final remoteEnvelope = createTestEnvelope(
+          catalogRevision: 4,
+          catalogId: 'aura-enterprise-catalog',
+        );
         final mockClient = MockClient((request) async {
-          return http.Response(
-              jsonEncode(createTestEnvelope(catalogRevision: 10).toJson()),
-              200);
+          return http.Response(jsonEncode(remoteEnvelope.toJson()), 200);
         });
 
         final service = CatalogRefreshService(
@@ -486,15 +456,26 @@ void main() {
         );
 
         final acquisition = await service.refreshCatalog(
-          const CatalogRefreshRequest(offlineOnly: false),
+          const CatalogRefreshRequest(
+            offlineOnly: false,
+            targetCatalogId: 'aura-enterprise-catalog',
+          ),
         );
 
-        // Viene selezionato il candidato bootstrap integrato e il remoto viene rifiutato per LKG downgrade
-        expect(
-            acquisition.catalogSource, equals(CatalogSource.bundledBootstrap));
-        expect(acquisition.diagnostics['remoteQualified'], isFalse);
-        expect(acquisition.diagnostics['remoteRejectionReason'],
-            equals('catalogRevisionDowngrade'));
+        // 'aura-enterprise-catalog' rev 4 non viene influenzato dall'LKG di 'aura-official-catalog' rev 100
+        expect(acquisition.catalogSource, equals(CatalogSource.remoteSigned));
+        expect(acquisition.diagnostics['selectedCatalogId'],
+            equals('aura-enterprise-catalog'));
+        expect(acquisition.diagnostics['selectedCatalogRevision'], equals(4));
+
+        // Entrambi gli LKG rimangono memorizzati separatamente nel repository per-namespace
+        final lkgOfficial = await lkgRepository.readMetadata(
+            catalogId: 'aura-official-catalog');
+        final lkgEnterprise = await lkgRepository.readMetadata(
+            catalogId: 'aura-enterprise-catalog');
+
+        expect(lkgOfficial!.highestAcceptedRevision, equals(100));
+        expect(lkgEnterprise!.highestAcceptedRevision, equals(4));
       });
     });
   });

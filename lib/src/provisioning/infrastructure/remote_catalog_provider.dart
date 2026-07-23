@@ -63,6 +63,7 @@ final class RemoteCatalogProvider implements CatalogProvider {
         return CatalogProviderResult.notModified(
           responseEtag: context.cachedEtag,
           message: 'Catalogo remoto non modificato (HTTP 304).',
+          sourceUri: uri,
         );
       }
 
@@ -109,6 +110,7 @@ final class RemoteCatalogProvider implements CatalogProvider {
         return CatalogProviderResult.success(
           factoryResult.candidate,
           responseEtag: responseEtag,
+          sourceUri: uri,
         );
       } else {
         return CatalogProviderResult.failure(

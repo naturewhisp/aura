@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import '../domain/activation_state.dart';
 import '../domain/catalog_manifest.dart';
 import '../domain/installation_record.dart';
@@ -8,11 +9,13 @@ import '../domain/provisioning_options.dart';
 import '../validation/installed_artifact_verifier.dart';
 import 'activation_state_repository.dart';
 import 'artifact_ingestion_engine.dart';
+import 'download_checkpoint_repository.dart';
 import 'installation_id_generator.dart';
 import 'installation_record_repository.dart';
 import 'provisioning_file_system.dart';
 import 'provisioning_lock.dart';
 import 'provisioning_path_resolver.dart';
+import 'single_pass_artifact_ingestion_engine.dart';
 
 /// Coordinatore centrale per l'orchestrazione del provisioning, la verifica dell'integrità fisica/hash, l'attivazione per installationId ed i rollback verificati.
 final class ProvisioningCoordinator {
@@ -239,6 +242,224 @@ final class ProvisioningCoordinator {
         bytesProcessed: ingestionResult.bytesProcessed,
         alreadyInstalled: false,
       );
+    });
+  }
+
+  /// Registra ed installa atomicamente un artefatto già verificato in single-pass nello store gestito.
+  Future<ProvisioningResult> registerVerifiedArtifact({
+    required PreparedArtifactInstallation installation,
+    required String operationId,
+    DownloadCheckpointRepository? checkpointRepository,
+    ProvisioningCancellationToken? cancellationToken,
+  }) async {
+    return _lock.synchronized(_lockKey, () async {
+      final provenance = installation.provenance;
+      final finalPath = installation.finalInstallPath;
+      final tempPath = installation.temporaryInstallPath;
+
+      final sourceKind =
+          installation.sourceOwnership == ArtifactSourceOwnership.userOwnedFile
+              ? ProvisioningSourceKind.localImport
+              : ProvisioningSourceKind.remoteHttps;
+
+      // 1. Controllo Idempotenza e Conflitti sulla destinazione finale
+      final currentRecord = await _recordRepository.readRecord();
+      final existingDescriptor =
+          currentRecord.findLatestVerifiedInstallation(provenance.artifactId);
+
+      if (existingDescriptor != null &&
+          existingDescriptor.version == provenance.artifactVersion &&
+          existingDescriptor.buildId == provenance.buildId) {
+        if (existingDescriptor.sha256.toLowerCase() ==
+                provenance.sha256.toLowerCase() &&
+            existingDescriptor.sizeBytes == provenance.sizeBytes) {
+          // Idempotente no-op: cancella temp e restituisce già installato
+          await _fileSystem.deleteDirectoryBestEffort(tempPath);
+          return ProvisioningResult.success(
+            operationId: operationId,
+            artifactId: provenance.artifactId,
+            installationId: existingDescriptor.installationId,
+            sourceKind: sourceKind,
+            bytesProcessed: existingDescriptor.sizeBytes,
+            alreadyInstalled: true,
+          );
+        } else {
+          // Conflitto di fingerprint per la stessa versione
+          await _fileSystem.deleteDirectoryBestEffort(tempPath);
+          return ProvisioningResult.failure(
+            operationId: operationId,
+            artifactId: provenance.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.installationConflict,
+            sanitizedMessage:
+                'Conflitto di installazione: esiste già un\'installazione della stessa versione ma con fingerprint differente.',
+          );
+        }
+      }
+
+      // 2. Controllo del cancellation token tassativamente PRIMA dell'invocazione del rename atomico
+      if (cancellationToken?.isCancellationRequested == true) {
+        await _fileSystem.deleteDirectoryBestEffort(tempPath);
+        return ProvisioningResult.failure(
+          operationId: operationId,
+          artifactId: provenance.artifactId,
+          sourceKind: sourceKind,
+          failureReason: ProvisioningFailureReason.operationCancelled,
+          sanitizedMessage: 'Operazione annullata prima del rename atomico.',
+        );
+      }
+
+      // 3. COMMIT POINT: Rename atomico della directory temporanea -> finale
+      await _fileSystem.deleteDirectoryBestEffort(finalPath);
+      await _fileSystem.renameDirectoryWithoutFallback(tempPath, finalPath);
+
+      // Da questo punto l'installazione è irrevocabilmente COMMITTED.
+      final nowUtc = _clock.nowUtc();
+      final nowIso = nowUtc.toIso8601String();
+      final installationId = _idGenerator.generateId(
+        artifact: CatalogArtifact(
+          artifactId: provenance.artifactId,
+          artifactType: CatalogArtifactType.model,
+          displayName: provenance.artifactId,
+          version: provenance.artifactVersion,
+          buildId: provenance.buildId,
+          platform: 'all',
+          architecture: 'gguf',
+          fileName: provenance.fileName,
+          sourceKind: CatalogArtifactSourceKind.remoteHttps,
+          sizeBytes: provenance.sizeBytes,
+          sha256: provenance.sha256,
+          license: 'unknown',
+        ),
+        timestampUtc: nowUtc,
+      );
+
+      final relativeInstallPath = _pathResolver.resolveRelativeInstallPath(
+        artifactType: CatalogArtifactType.model,
+        artifactId: provenance.artifactId,
+        buildOrVersionId: provenance.artifactVersion == provenance.buildId
+            ? provenance.artifactVersion
+            : '${provenance.artifactVersion}_${provenance.buildId}',
+      );
+
+      final newDescriptor = InstalledArtifactDescriptor(
+        installationId: installationId,
+        artifactId: provenance.artifactId,
+        artifactType: CatalogArtifactType.model,
+        displayName: provenance.artifactId,
+        version: provenance.artifactVersion,
+        buildId: provenance.buildId,
+        platform: 'all',
+        architecture: 'gguf',
+        relativeInstallPath: relativeInstallPath,
+        entryFileName: provenance.fileName,
+        installedAt: nowIso,
+        verifiedAt: nowIso,
+        sizeBytes: provenance.sizeBytes,
+        sha256: provenance.sha256,
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        status: InstallationStatus.verified,
+      );
+
+      bool indexUpdated = false;
+      try {
+        await _recordRepository.updateRecord(
+          (record) => record.upsertArtifact(newDescriptor),
+        );
+        indexUpdated = true;
+      } catch (_) {
+        indexUpdated = false;
+      }
+
+      bool cleanupDone = true;
+      if (installation.sourceOwnership ==
+          ArtifactSourceOwnership.managedStaging) {
+        try {
+          await _fileSystem.deleteFileBestEffort(installation.sourcePath);
+          if (checkpointRepository != null) {
+            await checkpointRepository.deleteCheckpoint(operationId);
+          }
+        } catch (_) {
+          cleanupDone = false;
+        }
+      }
+
+      final Map<String, dynamic> diagnostics = {
+        'indexUpdated': indexUpdated,
+        'cleanupDone': cleanupDone,
+      };
+
+      return ProvisioningResult(
+        operationId: operationId,
+        artifactId: provenance.artifactId,
+        status: ProvisioningStatus.success,
+        installationId: installationId,
+        installed: true,
+        alreadyInstalled: false,
+        activated: false,
+        verified: true,
+        bytesProcessed: provenance.sizeBytes,
+        sourceKind: sourceKind,
+        rollbackPerformed: false,
+        cleanupSucceeded: cleanupDone,
+        sanitizedDiagnostics: diagnostics,
+      );
+    });
+  }
+
+  /// Scansiona lo store gestito (%LOCALAPPDATA%\AURA\models\) ed indicizza le installazioni committed con commit.marker che non compaiono nell'indice globale.
+  Future<int> reconcileUnindexedInstallations() async {
+    return _lock.synchronized(_lockKey, () async {
+      final modelsRoot = '${_pathResolver.appManagedRoot}\\models';
+      if (!await _fileSystem.directoryExists(modelsRoot)) return 0;
+
+      int reconciledCount = 0;
+      final currentRecord = await _recordRepository.readRecord();
+
+      final artifactDirs = await _fileSystem.listDirectory(modelsRoot);
+      for (final artifactSub in artifactDirs) {
+        final artifactDir = '$modelsRoot\\$artifactSub';
+        final versionDirs = await _fileSystem.listDirectory(artifactDir);
+        for (final versionSub in versionDirs) {
+          final versionDir = '$artifactDir\\$versionSub';
+          final markerPath = '$versionDir\\commit.marker';
+          final recordPath = '$versionDir\\installation_record.json';
+
+          if (await _fileSystem.fileExists(markerPath) &&
+              await _fileSystem.fileExists(recordPath)) {
+            try {
+              final markerRaw = await _fileSystem.readAsString(markerPath);
+              final recordRaw = await _fileSystem.readAsString(recordPath);
+
+              final markerJson = jsonDecode(markerRaw) as Map<String, dynamic>;
+              final recordJson = jsonDecode(recordRaw) as Map<String, dynamic>;
+
+              final descriptor =
+                  InstalledArtifactDescriptor.fromJson(recordJson);
+
+              final markerArtifactId = markerJson['artifactId'] as String?;
+              final markerSha256 = markerJson['sha256'] as String?;
+
+              if (markerArtifactId == descriptor.artifactId &&
+                  markerSha256?.toLowerCase() ==
+                      descriptor.sha256.toLowerCase()) {
+                final existing =
+                    currentRecord.findInstallation(descriptor.installationId);
+                if (existing == null) {
+                  await _recordRepository.updateRecord(
+                    (r) => r.upsertArtifact(descriptor),
+                  );
+                  reconciledCount++;
+                }
+              }
+            } catch (_) {
+              // Ignora cartelle orfane malformate
+            }
+          }
+        }
+      }
+
+      return reconciledCount;
     });
   }
 

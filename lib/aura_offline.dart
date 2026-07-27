@@ -48,3 +48,10 @@ export 'src/provisioning/crypto/catalog_signature_verifier.dart';
 // Provisioning Download Engine Infrastructure (Phase 6.4c)
 export 'src/provisioning/infrastructure/download_checkpoint_repository.dart';
 export 'src/provisioning/infrastructure/download_concurrency_controller.dart';
+
+// Provisioning Ingestion & Service Infrastructure (Phase 6.4d)
+export 'src/provisioning/domain/catalog_artifact_snapshot.dart';
+export 'src/provisioning/validation/artifact_import_inspector.dart';
+export 'src/provisioning/infrastructure/single_pass_artifact_ingestion_engine.dart'
+    show ArtifactSourceOwnership, SinglePassArtifactIngestionEngine;
+export 'src/provisioning/infrastructure/model_provisioning_service.dart';

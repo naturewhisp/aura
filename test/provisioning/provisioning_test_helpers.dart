@@ -2,35 +2,55 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:aura_core/aura_core.dart';
 
-/// Fake in-memory [ProvisioningFileSystem] per test deterministici.
+/// Fake in-memory [ProvisioningFileSystem] per test deterministici e binary-safe.
 final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
   final Map<String, String> files = {};
+  final Map<String, List<int>> byteFiles = {};
   final Set<String> directories = {};
 
-  @override
-  Future<bool> fileExists(String path) async => files.containsKey(path);
+  String _norm(String path) => path.replaceAll('/', r'\');
 
   @override
-  Future<bool> directoryExists(String path) async => directories.contains(path);
+  Future<bool> fileExists(String path) async {
+    final p = _norm(path);
+    return files.containsKey(p) || byteFiles.containsKey(p);
+  }
+
+  @override
+  Future<bool> directoryExists(String path) async {
+    final p = _norm(path);
+    if (directories.contains(p)) return true;
+    final prefix = p.endsWith(r'\') ? p : '$p\\';
+    for (final dir in directories) {
+      if (dir.startsWith(prefix)) return true;
+    }
+    for (final file in {...files.keys, ...byteFiles.keys}) {
+      if (file.startsWith(prefix)) return true;
+    }
+    return false;
+  }
 
   @override
   Future<String> readAsString(String path) async {
-    if (!files.containsKey(path)) {
-      throw const ProvisioningIoException(operation: 'readAsString');
-    }
-    return files[path]!;
+    final p = _norm(path);
+    if (files.containsKey(p)) return files[p]!;
+    if (byteFiles.containsKey(p))
+      return utf8.decode(byteFiles[p]!, allowMalformed: true);
+    throw const ProvisioningIoException(operation: 'readAsString');
   }
 
   @override
   Future<List<int>> readAsBytes(String path) async {
-    if (!files.containsKey(path)) {
-      throw const ProvisioningIoException(operation: 'readAsBytes');
-    }
-    return utf8.encode(files[path]!);
+    final p = _norm(path);
+    if (byteFiles.containsKey(p)) return List<int>.from(byteFiles[p]!);
+    if (files.containsKey(p)) return utf8.encode(files[p]!);
+    throw const ProvisioningIoException(operation: 'readAsBytes');
   }
 
   Future<void> writeAsString(String path, String content) async {
-    files[path] = content;
+    final p = _norm(path);
+    files[p] = content;
+    byteFiles.remove(p);
   }
 
   @override
@@ -39,77 +59,93 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
     String content, {
     bool preserveExistingBackup = false,
   }) async {
-    if (files.containsKey(path)) {
-      final oldContent = files[path]!;
+    final p = _norm(path);
+    if (files.containsKey(p) || byteFiles.containsKey(p)) {
+      final oldContent = await readAsString(p);
       if (!preserveExistingBackup && oldContent.trim().isNotEmpty) {
-        files['$path.bak'] = oldContent;
+        files['$p.bak'] = oldContent;
       }
     }
-    files[path] = content;
+    files[p] = content;
+    byteFiles.remove(p);
   }
 
   @override
   Future<void> restoreFromBackup(String targetPath, String backupPath) async {
-    if (!files.containsKey(backupPath)) {
+    final tp = _norm(targetPath);
+    final bp = _norm(backupPath);
+    if (!files.containsKey(bp) && !byteFiles.containsKey(bp)) {
       throw const ProvisioningIoException(operation: 'restoreFromBackup');
     }
-    files[targetPath] = files[backupPath]!;
+    if (byteFiles.containsKey(bp)) {
+      byteFiles[tp] = List<int>.from(byteFiles[bp]!);
+    } else {
+      files[tp] = files[bp]!;
+    }
   }
 
   @override
   Future<void> deleteFile(String path) async {
-    if (!files.containsKey(path)) {
+    final p = _norm(path);
+    final removedStr = files.remove(p);
+    final removedBytes = byteFiles.remove(p);
+    if (removedStr == null && removedBytes == null) {
       throw const ProvisioningIoException(operation: 'deleteFile');
     }
-    files.remove(path);
   }
 
   @override
   Future<bool> deleteFileBestEffort(String path) async {
-    if (files.containsKey(path)) {
-      files.remove(path);
-      return true;
-    }
-    return false;
+    final p = _norm(path);
+    final s = files.remove(p);
+    final b = byteFiles.remove(p);
+    return s != null || b != null;
   }
 
   @override
   Future<void> copyFile(String sourcePath, String targetPath) async {
-    if (!files.containsKey(sourcePath)) {
+    final sp = _norm(sourcePath);
+    final tp = _norm(targetPath);
+    if (byteFiles.containsKey(sp)) {
+      byteFiles[tp] = List<int>.from(byteFiles[sp]!);
+    } else if (files.containsKey(sp)) {
+      files[tp] = files[sp]!;
+    } else {
       throw const ProvisioningIoException(operation: 'copyFile');
     }
-    files[targetPath] = files[sourcePath]!;
   }
 
   Future<void> moveFile(String sourcePath, String targetPath) async {
-    if (!files.containsKey(sourcePath)) {
-      throw const ProvisioningIoException(operation: 'moveFile');
-    }
-    files[targetPath] = files[sourcePath]!;
-    files.remove(sourcePath);
+    await copyFile(sourcePath, targetPath);
+    await deleteFileBestEffort(sourcePath);
   }
 
   @override
   Stream<List<int>> openRead(String path) {
-    if (!files.containsKey(path)) {
-      throw const ProvisioningIoException(operation: 'openRead');
+    final p = _norm(path);
+    if (byteFiles.containsKey(p)) {
+      return Stream.value(List<int>.from(byteFiles[p]!));
     }
-    return Stream.value(utf8.encode(files[path]!));
+    if (files.containsKey(p)) {
+      return Stream.value(utf8.encode(files[p]!));
+    }
+    throw const ProvisioningIoException(operation: 'openRead');
   }
 
   @override
   Future<int> getFileSize(String path) async {
-    if (!files.containsKey(path)) {
-      throw const ProvisioningIoException(operation: 'getFileSize');
-    }
-    return utf8.encode(files[path]!).length;
+    final p = _norm(path);
+    if (byteFiles.containsKey(p)) return byteFiles[p]!.length;
+    if (files.containsKey(p)) return utf8.encode(files[p]!).length;
+    throw const ProvisioningIoException(operation: 'getFileSize');
   }
 
   @override
   Future<List<String>> listDirectory(String path) async {
-    final prefix = path.endsWith(r'\') ? path : '$path\\';
+    final p = _norm(path);
+    final prefix = p.endsWith(r'\') ? p : '$p\\';
     final result = <String>[];
-    for (final key in files.keys) {
+    for (final key in {...files.keys, ...byteFiles.keys}) {
       if (key.startsWith(prefix)) {
         final sub = key.substring(prefix.length);
         final firstSeg = sub.split(r'\').first;
@@ -128,9 +164,11 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
 
   @override
   Future<void> deleteDirectory(String path) async {
-    directories.remove(path);
-    final prefix = path.endsWith(r'\') ? path : '$path\\';
+    final p = _norm(path);
+    directories.remove(p);
+    final prefix = p.endsWith(r'\') ? p : '$p\\';
     files.removeWhere((k, v) => k.startsWith(prefix));
+    byteFiles.removeWhere((k, v) => k.startsWith(prefix));
     directories.removeWhere((d) => d.startsWith(prefix));
   }
 
@@ -142,10 +180,11 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
 
   @override
   Future<void> copyDirectory(String sourcePath, String targetPath) async {
-    final prefix = sourcePath.endsWith(r'\') ? sourcePath : '$sourcePath\\';
-    final targetPrefix =
-        targetPath.endsWith(r'\') ? targetPath : '$targetPath\\';
-    directories.add(targetPath);
+    final sp = _norm(sourcePath);
+    final tp = _norm(targetPath);
+    final prefix = sp.endsWith(r'\') ? sp : '$sp\\';
+    final targetPrefix = tp.endsWith(r'\') ? tp : '$tp\\';
+    directories.add(tp);
 
     final toAddFiles = <String, String>{};
     files.forEach((k, v) {
@@ -155,6 +194,15 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
       }
     });
     files.addAll(toAddFiles);
+
+    final toAddByteFiles = <String, List<int>>{};
+    byteFiles.forEach((k, v) {
+      if (k.startsWith(prefix)) {
+        final rel = k.substring(prefix.length);
+        toAddByteFiles['$targetPrefix$rel'] = List<int>.from(v);
+      }
+    });
+    byteFiles.addAll(toAddByteFiles);
   }
 
   @override
@@ -172,7 +220,7 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
 
   @override
   Future<void> createDirectory(String path) async {
-    directories.add(path);
+    directories.add(_norm(path));
   }
 
   int? mockAvailableFreeSpace;
@@ -184,28 +232,30 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
 
   @override
   Future<void> appendBytes(String path, List<int> bytes) async {
-    if (!files.containsKey(path)) {
-      files[path] = utf8.decode(bytes, allowMalformed: true);
+    final p = _norm(path);
+    if (byteFiles.containsKey(p)) {
+      byteFiles[p]!.addAll(bytes);
+    } else if (files.containsKey(p)) {
+      final existingBytes = utf8.encode(files[p]!);
+      byteFiles[p] = [...existingBytes, ...bytes];
+      files.remove(p);
     } else {
-      final existingBytes = utf8.encode(files[path]!);
-      final merged = [...existingBytes, ...bytes];
-      files[path] = utf8.decode(merged, allowMalformed: true);
+      byteFiles[p] = List<int>.from(bytes);
     }
   }
 
   @override
   Future<void> truncateFile(String path, int length) async {
+    final p = _norm(path);
     if (length == 0) {
-      files[path] = '';
+      files.remove(p);
+      byteFiles[p] = [];
       return;
     }
-    if (!files.containsKey(path)) {
-      throw const ProvisioningIoException(operation: 'truncateFile');
-    }
-    final currentBytes = utf8.encode(files[path]!);
+    final currentBytes = await readAsBytes(p);
     if (length >= currentBytes.length) return;
-    final truncated = currentBytes.sublist(0, length);
-    files[path] = utf8.decode(truncated, allowMalformed: true);
+    byteFiles[p] = currentBytes.sublist(0, length);
+    files.remove(p);
   }
 }
 

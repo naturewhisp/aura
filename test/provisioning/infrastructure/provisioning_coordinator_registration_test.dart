@@ -1,0 +1,243 @@
+import 'dart:convert';
+import 'package:aura_core/aura_offline.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:test/test.dart';
+
+import '../provisioning_test_helpers.dart';
+
+void main() {
+  group(
+      'Tranche 6.4d — ProvisioningCoordinator Registration & Reconciliation Tests',
+      () {
+    late MemoryProvisioningFileSystem fileSystem;
+    late ProvisioningPathResolver pathResolver;
+    late MemoryProvisioningClock clock;
+    late InMemoryProvisioningLock lock;
+    late JsonInstallationRecordRepository recordRepository;
+    late JsonActivationStateRepository activationRepository;
+    late SinglePassArtifactIngestionEngine ingestionEngine;
+    late ProvisioningCoordinator coordinator;
+
+    final baseTime = DateTime.parse('2026-07-27T20:00:00Z');
+
+    setUp(() async {
+      fileSystem = MemoryProvisioningFileSystem();
+      pathResolver = ProvisioningPathResolver(
+        appManagedRoot: r'C:\AURA\app_managed',
+        bundledRoot: r'C:\AURA\bundled',
+      );
+      clock = MemoryProvisioningClock(baseTime);
+      lock = InMemoryProvisioningLock();
+
+      recordRepository = JsonInstallationRecordRepository(
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        lock: lock,
+        clock: clock,
+      );
+      activationRepository = JsonActivationStateRepository(
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        lock: lock,
+        clock: clock,
+      );
+
+      ingestionEngine = SinglePassArtifactIngestionEngine(
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        clock: clock,
+      );
+
+      final mockClient = MockClient((request) async => http.Response('', 200));
+
+      coordinator = ProvisioningCoordinator(
+        lock: lock,
+        recordRepository: recordRepository,
+        activationRepository: activationRepository,
+        ingestionEngine: ArtifactIngestionEngine(
+          pathResolver: pathResolver,
+          httpClient: HttpProvisioningHttpClient(client: mockClient),
+          fileSystem: fileSystem,
+        ),
+        pathResolver: pathResolver,
+        fileSystem: fileSystem,
+        clock: clock,
+      );
+    });
+
+    test(
+        'registerVerifiedArtifact completes atomic rename commit point and records installation',
+        () async {
+      final bytes = List.generate(100, (i) => i);
+      const sha =
+          'bce0aff19cf5aa6a7469a30d61d04e4376e4bbf6381052ee9e7f33925c954d52';
+
+      final sourcePath = pathResolver.stagingPartPath('op-reg-1');
+      await fileSystem.appendBytes(sourcePath, bytes);
+
+      final snapshot = CatalogArtifactSnapshot(
+        catalogId: 'aura-official-test',
+        catalogRevision: 1,
+        catalogSchemaVersion: '1.0',
+        signingKeyId: 'test-key-1',
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        artifactId: 'model-reg-1',
+        artifactVersion: '1.0.0',
+        buildId: 'v1',
+        fileName: 'model_reg_1.gguf',
+        sizeBytes: 100,
+        sha256: sha,
+        acquiredAtUtc: baseTime,
+      );
+
+      final preparedInstallation =
+          await ingestionEngine.ingestAndVerifyToTemporaryStore(
+        sourceFilePath: sourcePath,
+        operationId: 'op-reg-1',
+        provenanceSnapshot: snapshot,
+        sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      );
+
+      final result = await coordinator.registerVerifiedArtifact(
+        installation: preparedInstallation,
+        operationId: 'op-reg-1',
+      );
+
+      expect(result.isSuccess, isTrue);
+      expect(result.status, equals(ProvisioningStatus.success));
+      expect(
+          await fileSystem
+              .directoryExists(preparedInstallation.finalInstallPath),
+          isTrue);
+
+      final record = await recordRepository.readRecord();
+      final descriptor = record.findLatestVerifiedInstallation('model-reg-1');
+      expect(descriptor, isNotNull);
+      expect(descriptor!.sha256.toLowerCase(), equals(sha));
+    });
+
+    test(
+        'Idempotent registration returns alreadyInstalled on identical destination',
+        () async {
+      final bytes = List.generate(100, (i) => i);
+      const sha =
+          'bce0aff19cf5aa6a7469a30d61d04e4376e4bbf6381052ee9e7f33925c954d52';
+
+      final sourcePath = pathResolver.stagingPartPath('op-idemp');
+      await fileSystem.appendBytes(sourcePath, bytes);
+
+      final snapshot = CatalogArtifactSnapshot(
+        catalogId: 'aura-official-test',
+        catalogRevision: 1,
+        catalogSchemaVersion: '1.0',
+        signingKeyId: 'test-key-1',
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        artifactId: 'model-idemp',
+        artifactVersion: '1.0.0',
+        buildId: 'v1',
+        fileName: 'model_idemp.gguf',
+        sizeBytes: 100,
+        sha256: sha,
+        acquiredAtUtc: baseTime,
+      );
+
+      final prep1 = await ingestionEngine.ingestAndVerifyToTemporaryStore(
+        sourceFilePath: sourcePath,
+        operationId: 'op-idemp',
+        provenanceSnapshot: snapshot,
+        sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      );
+
+      await coordinator.registerVerifiedArtifact(
+        installation: prep1,
+        operationId: 'op-idemp',
+      );
+
+      // Secondo tentativo con stesso payload
+      final sourcePath2 = pathResolver.stagingPartPath('op-idemp-2');
+      await fileSystem.appendBytes(sourcePath2, bytes);
+
+      final prep2 = await ingestionEngine.ingestAndVerifyToTemporaryStore(
+        sourceFilePath: sourcePath2,
+        operationId: 'op-idemp-2',
+        provenanceSnapshot: snapshot,
+        sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      );
+
+      final result2 = await coordinator.registerVerifiedArtifact(
+        installation: prep2,
+        operationId: 'op-idemp-2',
+      );
+
+      expect(result2.isSuccess, isTrue);
+      expect(result2.alreadyInstalled, isTrue);
+      expect(result2.status, equals(ProvisioningStatus.alreadyInstalled));
+    });
+
+    test(
+        'reconcileUnindexedInstallations recovers committed installations with valid commit.marker JSON',
+        () async {
+      final relativePath = pathResolver.resolveRelativeInstallPath(
+        artifactType: CatalogArtifactType.model,
+        artifactId: 'model-orphan',
+        buildOrVersionId: '1.0.0_v1',
+      );
+      final finalPath = '${pathResolver.appManagedRoot}\\$relativePath';
+      await fileSystem.createDirectory(finalPath);
+
+      final descriptor = InstalledArtifactDescriptor(
+        installationId: 'inst-orphan-1',
+        artifactId: 'model-orphan',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Orphan Model',
+        version: '1.0.0',
+        buildId: 'v1',
+        platform: 'all',
+        architecture: 'gguf',
+        relativeInstallPath: relativePath,
+        entryFileName: 'orphan.gguf',
+        installedAt: '2026-07-27T20:00:00.000Z',
+        verifiedAt: '2026-07-27T20:00:00.000Z',
+        sizeBytes: 300,
+        sha256:
+            '9999999999999999999999999999999999999999999999999999999999999999',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        status: InstallationStatus.verified,
+      );
+
+      await fileSystem.writeAsString(
+        '$finalPath\\installation_record.json',
+        const JsonEncoder.withIndent('  ').convert(descriptor.toJson()),
+      );
+
+      final markerPayload = {
+        'schemaVersion': '1.0',
+        'artifactId': 'model-orphan',
+        'artifactVersion': '1.0.0',
+        'buildId': 'v1',
+        'sha256':
+            '9999999999999999999999999999999999999999999999999999999999999999',
+        'preparedAtUtc': '2026-07-27T20:00:00.000Z',
+      };
+
+      await fileSystem.writeAsString(
+        '$finalPath\\commit.marker',
+        const JsonEncoder.withIndent('  ').convert(markerPayload),
+      );
+
+      // Prima della riconciliazione l'indice è vuoto
+      var record = await recordRepository.readRecord();
+      expect(record.findInstallation('inst-orphan-1'), isNull);
+
+      // Esecuzione riconciliazione
+      final reconciledCount =
+          await coordinator.reconcileUnindexedInstallations();
+      expect(reconciledCount, equals(1));
+
+      // Dopo la riconciliazione l'installazione compare nel registro globale
+      record = await recordRepository.readRecord();
+      expect(record.findInstallation('inst-orphan-1'), isNotNull);
+    });
+  });
+}

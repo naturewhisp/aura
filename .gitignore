@@ -167,3 +167,10 @@ desktop.ini
 # Telemetry and replay dataset folders
 /spike/
 /scratch/
+
+# Catalog Tooling & Local Secrets
+.local/catalog-keys/
+build/catalog/
+tool/catalog/.venv/
+tool/catalog/__pycache__/
+

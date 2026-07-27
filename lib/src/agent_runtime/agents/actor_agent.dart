@@ -71,7 +71,7 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         messages: messages,
         temperature: 0.7,
         maxTokens: context.conciseReasoning ? 800 : 4096,
-        thinking: context.thinking,
+        thinking: context.thinking ?? false,
       );
 
       final response = await _withInferenceTimeout(

@@ -40,7 +40,8 @@ graph TD
 ### 2.2 ActorAgent (Attore - PANOPTICON)
 *   **Ruolo:** Agente narrativo e diegetico (PANOPTICON, guardiano freddo e logico della griglia).
 *   **Obiettivo:** Interpretare lo stato corrente del gioco ed il canovaccio drammaturgico per formulare una risposta in-character, rispettando i vincoli di allerta, dissonanza e metafore attive.
-*   **Modello Target:** `gemma-4-12b-it-qat-q4-0` (`lmstudio-community/gemma-4-12B-it-QAT-GGUF` file `gemma-4-12B-it-QAT-Q4_0.gguf`) (con CoT a budget limitato tramite prompt per ottimizzare la latenza).
+*   **Modello Target:** `gemma-4-12b-it-qat-q4_0` / alias `google/gemma-4-12b-qat` (`lmstudio-community/gemma-4-12B-it-QAT-GGUF` file `gemma-4-12B-it-QAT-Q4_0.gguf`).
+*   **Gestione Thinking / llama.cpp:** Quando invocato via `llama.cpp` o server LM Studio per l'inferenza ordinaria dell'Attore, il parametro `thinking` deve essere esplicitamente disattivato (`thinking: context.thinking ?? false`) inviando `enable_thinking: false` ed il blocco `thinking: { "type": "disabled" }` nel payload HTTP per evitare latenze elevate e token CoT parassiti.
 *   **Formato Output:** Stringa di testo contenente la battuta in prima persona racchiusa tra i tag `<dialogo>...</dialogo>`.
 
 ### 2.3 PlayerAgent (Hacker Simulator)
@@ -193,6 +194,8 @@ Se desideri estendere o modificare l'architettura agentica:
         2. Eseguire `dart format --output=none --set-exit-if-changed` su tutti i moduli che contengono file modificati.
         3. Eseguire l'analyzer locale (`dart analyze` / `flutter analyze`) per verificare l'assenza di warning, info e unused imports.
         4. Eseguire i test unitari e di integrazione interessati dalle modifiche.
+    *   **Importazioni degli Entrypoint Pubblici nei Test:** Nei file di test e consumatori di `aura_core`, non importare MAI i file di implementazione interna sottostanti `package:aura_core/src/...`. Importare esclusivamente le librerie di entrypoint pubbliche: `package:aura_core/aura_core.dart`, `package:aura_core/aura_offline.dart` o `package:aura_core/aura_testing.dart`.
+    *   **Tooling di Generazione Catalogo Ufficiale (`tool/catalog/`):** Tutti gli script di generazione del catalogo devono utilizzare il pin dei commit SHA a 40 caratteri (evitando branch mobili come `main`), ricavare SHA-256 e dimensione esatta dai metadata LFS dell'API Hugging Face, applicare la canonicalizzazione RFC 8785 (JCS) ed effettuare la firma Ed25519 mantenendo le chiavi private in `.local/catalog-keys/` (escluse da Git).
     *   **Criteri Specifici di Risoluzione (Flutter 3.22+):**
         *   **Deprecations di Colore:** Sostituire `withOpacity(...)` sui colori con `.withValues(alpha: ...)` per evitare perdite di precisione cromatica; sostituire `background` all'interno di `ColorScheme` con `surface`; sostituire `activeColor` all'interno dei widget `Switch` con `activeThumbColor`.
         *   **Deprecations del Keyboard Event System:** Sostituire l'uso dei widget/classi deprecati `RawKeyboardListener`, `RawKeyEvent` e `RawKeyDownEvent` con i moderni equivalenti `KeyboardListener`, `KeyEvent` e `KeyDownEvent` per prevenire potenziali anomalie di threading o crash sui sistemi operativi desktop.

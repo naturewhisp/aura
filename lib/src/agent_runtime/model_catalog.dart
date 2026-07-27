@@ -132,8 +132,12 @@ class ModelCatalog {
   ///
   /// Ritorna `null` se il modello non è presente nel catalogo.
   ModelCatalogEntry? findModel(String modelId) {
+    final clean = modelId.trim();
     for (var model in _models) {
-      if (model.modelId == modelId) return model;
+      if (model.modelId == clean) return model;
+    }
+    if (clean == "google/gemma-4-12b-qat") {
+      return findModel("gemma-4-12b-it-qat-q4-0");
     }
     return null;
   }

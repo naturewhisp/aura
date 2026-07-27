@@ -632,14 +632,14 @@ void main() {
         artifactId: 'art-416',
         sourceUri: 'https://huggingface.co/model.gguf',
         strongEtag: '"strong-etag-abc"',
-        downloadedBytes: 100,
+        downloadedBytes: 50,
         expectedSizeBytes: 100,
         createdAtUtc: clock.nowUtc(),
         updatedAtUtc: clock.nowUtc(),
       );
       await checkpointRepository.saveCheckpoint(checkpoint);
       await fileSystem.appendBytes(pathResolver.stagingPartPath('op-test-416'),
-          List.generate(100, (i) => i));
+          List.generate(50, (i) => i));
 
       final mockClient = MockClient((request) async {
         if (request.headers.containsKey('Range')) {
@@ -721,6 +721,112 @@ void main() {
       );
       final result = await engine.downloadArtifact(request: req);
 
+      expect(result.isSuccess, isTrue);
+    });
+
+    test(
+        'Rejects HTTP 416 response with numeric range Content-Range (bytes 0-99/100) and falls back to byte 0',
+        () async {
+      final checkpoint = DownloadCheckpoint(
+        operationId: 'op-test-416-num',
+        artifactId: 'art-416-num',
+        sourceUri: 'https://huggingface.co/model.gguf',
+        strongEtag: '"strong-etag-abc"',
+        downloadedBytes: 50,
+        expectedSizeBytes: 100,
+        createdAtUtc: clock.nowUtc(),
+        updatedAtUtc: clock.nowUtc(),
+      );
+      await checkpointRepository.saveCheckpoint(checkpoint);
+      await fileSystem.appendBytes(
+          pathResolver.stagingPartPath('op-test-416-num'),
+          List.generate(50, (i) => i));
+
+      var fallbackExecuted = false;
+
+      final mockClient = MockClient((request) async {
+        if (request.headers.containsKey('Range')) {
+          // Risposta 416 con sintassi intervallo anziche bytes */100 !
+          return http.Response('', 416, headers: {
+            'etag': '"strong-etag-abc"',
+            'content-range': 'bytes 0-99/100',
+          });
+        }
+        fallbackExecuted = true;
+        return http.Response.bytes(List.generate(100, (i) => i), 200, headers: {
+          'etag': '"strong-etag-abc"',
+        });
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final req = createRequest(
+        operationId: 'op-test-416-num',
+        artifactId: 'art-416-num',
+        url: 'https://huggingface.co/model.gguf',
+        expectedSizeBytes: 100,
+      );
+
+      final result = await engine.downloadArtifact(request: req);
+      expect(result.isSuccess, isTrue);
+      expect(fallbackExecuted, isTrue);
+    });
+
+    test(
+        'Rejects 206 response violating end >= start and end < total invariants',
+        () async {
+      final checkpoint = DownloadCheckpoint(
+        operationId: 'op-test-inv',
+        artifactId: 'art-inv',
+        sourceUri: 'https://huggingface.co/model.gguf',
+        strongEtag: '"valid-strong-etag"',
+        downloadedBytes: 30,
+        expectedSizeBytes: 100,
+        createdAtUtc: clock.nowUtc(),
+        updatedAtUtc: clock.nowUtc(),
+      );
+      await checkpointRepository.saveCheckpoint(checkpoint);
+      await fileSystem.appendBytes(pathResolver.stagingPartPath('op-test-inv'),
+          List.generate(30, (i) => i));
+
+      final mockClient = MockClient((request) async {
+        if (request.headers.containsKey('Range')) {
+          // Risposta 206 con end < start (bytes 30-20/100) !
+          return http.Response.bytes(List.generate(70, (i) => i), 206,
+              headers: {
+                'etag': '"valid-strong-etag"',
+                'content-range': 'bytes 30-20/100',
+              });
+        }
+        return http.Response.bytes(List.generate(100, (i) => i), 200, headers: {
+          'etag': '"valid-strong-etag"',
+        });
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final req = createRequest(
+        operationId: 'op-test-inv',
+        artifactId: 'art-inv',
+        url: 'https://huggingface.co/model.gguf',
+        expectedSizeBytes: 100,
+      );
+
+      final result = await engine.downloadArtifact(request: req);
       expect(result.isSuccess, isTrue);
     });
 

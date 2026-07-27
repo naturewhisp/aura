@@ -591,6 +591,8 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
     final end = int.parse(match.group(2)!);
     final total = int.parse(match.group(3)!);
 
+    if (end < start) return false;
+    if (end >= total) return false;
     if (start != downloadedBytes) return false;
     if (total != expectedSizeBytes) return false;
 
@@ -611,9 +613,8 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
     if (contentRangeHeader == null || contentRangeHeader.trim().isEmpty) {
       return null;
     }
-    final match =
-        RegExp(r'^bytes\s+(?:\*|\d+-\d+)\/(\d+)$', caseSensitive: false)
-            .firstMatch(contentRangeHeader.trim());
+    final match = RegExp(r'^bytes\s+\*\/(\d+)$', caseSensitive: false)
+        .firstMatch(contentRangeHeader.trim());
     if (match == null) return null;
     return int.parse(match.group(1)!);
   }

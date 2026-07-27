@@ -39,6 +39,7 @@ void main() {
           'https://huggingface.co/lmstudio-community/gemma-4-12B-it-QAT-GGUF/resolve/main/gemma-4-12B-it-QAT-Q4_0.gguf',
       int expectedSizeBytes = 100,
       Map<String, String>? extraHeaders,
+      Duration? timeout,
     }) {
       return DownloadRequest(
         operationId: operationId,
@@ -46,6 +47,7 @@ void main() {
         sourceUri: Uri.parse(url),
         expectedSizeBytes: expectedSizeBytes,
         extraHeaders: extraHeaders,
+        timeout: timeout,
       );
     }
 
@@ -412,6 +414,232 @@ void main() {
       expect(result.isFailure, isTrue);
       expect(
           result.failureReason, equals(DownloadFailureReason.insecureRedirect));
+    });
+
+    test(
+        'Strips Authorization header on valid HTTPS Cross-Origin redirect without throwing UnsupportedError',
+        () async {
+      final req = createRequest(
+        expectedSizeBytes: 50,
+        extraHeaders: {'Authorization': 'Bearer secret_token'},
+      );
+
+      var redirectOccurred = false;
+      var cdnReceivedAuthHeader = false;
+
+      final mockClient = MockClient((request) async {
+        if (request.url.host == 'huggingface.co') {
+          redirectOccurred = true;
+          return http.Response('', 302, headers: {
+            'location': 'https://cdn-backend.huggingface.co/file.gguf',
+          });
+        }
+        if (request.url.host == 'cdn-backend.huggingface.co') {
+          cdnReceivedAuthHeader = request.headers.containsKey('authorization');
+          return http.Response.bytes(List.generate(50, (i) => i), 200,
+              headers: {
+                'etag': '"strong-etag-123"',
+              });
+        }
+        return http.Response('Not Found', 404);
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final result = await engine.downloadArtifact(request: req);
+
+      expect(result.isSuccess, isTrue);
+      expect(redirectOccurred, isTrue);
+      expect(cdnReceivedAuthHeader, isFalse);
+    });
+
+    test('Rejects 206 response missing an ETag when resume was requested',
+        () async {
+      final checkpoint = DownloadCheckpoint(
+        operationId: 'op-test-1',
+        artifactId: 'art-1',
+        sourceUri: 'https://huggingface.co/model.gguf',
+        strongEtag: '"valid-strong-etag"',
+        downloadedBytes: 30,
+        expectedSizeBytes: 100,
+        createdAtUtc: clock.nowUtc(),
+        updatedAtUtc: clock.nowUtc(),
+      );
+      await checkpointRepository.saveCheckpoint(checkpoint);
+      await fileSystem.appendBytes(pathResolver.stagingPartPath('op-test-1'),
+          List.generate(30, (i) => i));
+
+      var getRequestsCount = 0;
+
+      final mockClient = MockClient((request) async {
+        getRequestsCount++;
+        if (request.headers.containsKey('Range')) {
+          // Risposta 206 SENZA ETag!
+          return http.Response.bytes(List.generate(70, (i) => i), 206,
+              headers: {
+                'content-range': 'bytes 30-99/100',
+              });
+        }
+        // Fallback GET 200 da byte 0
+        return http.Response.bytes(List.generate(100, (i) => i), 200, headers: {
+          'etag': '"valid-strong-etag"',
+        });
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final req = createRequest(
+        operationId: 'op-test-1',
+        artifactId: 'art-1',
+        url: 'https://huggingface.co/model.gguf',
+        expectedSizeBytes: 100,
+      );
+      final result = await engine.downloadArtifact(request: req);
+
+      expect(result.isSuccess, isTrue);
+      expect(getRequestsCount,
+          equals(2)); // tentato resume, rifiutato, completato via GET 200
+    });
+
+    test('Rejects 206 response with total "*" in Content-Range', () async {
+      final checkpoint = DownloadCheckpoint(
+        operationId: 'op-test-1',
+        artifactId: 'art-1',
+        sourceUri: 'https://huggingface.co/model.gguf',
+        strongEtag: '"valid-strong-etag"',
+        downloadedBytes: 30,
+        expectedSizeBytes: 100,
+        createdAtUtc: clock.nowUtc(),
+        updatedAtUtc: clock.nowUtc(),
+      );
+      await checkpointRepository.saveCheckpoint(checkpoint);
+      await fileSystem.appendBytes(pathResolver.stagingPartPath('op-test-1'),
+          List.generate(30, (i) => i));
+
+      final mockClient = MockClient((request) async {
+        if (request.headers.containsKey('Range')) {
+          // Risposta 206 con totale '*' !
+          return http.Response.bytes(List.generate(70, (i) => i), 206,
+              headers: {
+                'etag': '"valid-strong-etag"',
+                'content-range': 'bytes 30-99/*',
+              });
+        }
+        return http.Response.bytes(List.generate(100, (i) => i), 200, headers: {
+          'etag': '"valid-strong-etag"',
+        });
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final req = createRequest(
+        operationId: 'op-test-1',
+        artifactId: 'art-1',
+        url: 'https://huggingface.co/model.gguf',
+        expectedSizeBytes: 100,
+      );
+      final result = await engine.downloadArtifact(request: req);
+
+      expect(result.isSuccess, isTrue);
+    });
+
+    test(
+        'Halts infinite recursion if second fallback attempt receives invalid response',
+        () async {
+      final checkpoint = DownloadCheckpoint(
+        operationId: 'op-test-1',
+        artifactId: 'art-1',
+        sourceUri: 'https://huggingface.co/model.gguf',
+        strongEtag: '"valid-strong-etag"',
+        downloadedBytes: 30,
+        expectedSizeBytes: 100,
+        createdAtUtc: clock.nowUtc(),
+        updatedAtUtc: clock.nowUtc(),
+      );
+      await checkpointRepository.saveCheckpoint(checkpoint);
+      await fileSystem.appendBytes(pathResolver.stagingPartPath('op-test-1'),
+          List.generate(30, (i) => i));
+
+      var attempts = 0;
+
+      final mockClient = MockClient((request) async {
+        attempts++;
+        // Risponde SEMPRE con 206 non valida
+        return http.Response.bytes(List.generate(70, (i) => i), 206, headers: {
+          'etag': '"mismatched-etag"',
+          'content-range': 'bytes 30-99/100',
+        });
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final req = createRequest(
+        operationId: 'op-test-1',
+        artifactId: 'art-1',
+        url: 'https://huggingface.co/model.gguf',
+        expectedSizeBytes: 100,
+      );
+      final result = await engine.downloadArtifact(request: req);
+
+      expect(result.isFailure, isTrue);
+      expect(
+          result.failureReason, equals(DownloadFailureReason.httpStatusError));
+      expect(attempts, equals(2)); // tentato resume + 1 fallback, poi stop!
+    });
+
+    test('Triggers networkTimeout failure on connection timeout', () async {
+      final req = createRequest(
+        expectedSizeBytes: 100,
+        timeout: const Duration(milliseconds: 50),
+      );
+
+      final mockClient = MockClient((request) async {
+        await Future.delayed(const Duration(milliseconds: 200));
+        return http.Response('OK', 200);
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final result = await engine.downloadArtifact(request: req);
+
+      expect(result.isFailure, isTrue);
+      expect(
+          result.failureReason, equals(DownloadFailureReason.networkTimeout));
     });
 
     test(

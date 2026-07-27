@@ -82,7 +82,9 @@ final class DownloadCheckpoint {
     if (strongEtag == null || strongEtag!.trim().isEmpty) return false;
     final trimmed = strongEtag!.trim();
     if (trimmed.startsWith('W/') || trimmed.startsWith('w/')) return false;
-    return true;
+    return trimmed.startsWith('"') &&
+        trimmed.endsWith('"') &&
+        trimmed.length >= 2;
   }
 
   /// Converte l'istanza in una mappa JSON.

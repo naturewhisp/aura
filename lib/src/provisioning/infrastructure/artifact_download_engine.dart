@@ -77,6 +77,7 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
     required DownloadRequest request,
     DownloadCancellationToken? cancellationToken,
     void Function(DownloadProgress progress)? onProgress,
+    bool allowFallbackRestart = true,
   }) async {
     final stagingPartPath = _pathResolver.stagingPartPath(request.operationId);
     final stagingDir = _pathResolver.stagingDirectory;
@@ -162,6 +163,8 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
     // 5. Esecuzione richiesta HTTP con gestione dei Redirect ed header Range/If-Range
     Uri currentUri = request.sourceUri;
     var redirectCount = 0;
+    var forwardedHeaders =
+        Map<String, String>.from(request.sanitizedExtraHeaders);
     http.StreamedResponse? response;
 
     while (redirectCount <= 5) {
@@ -172,7 +175,7 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
         );
       }
 
-      final headers = Map<String, String>.from(request.sanitizedExtraHeaders);
+      final headers = Map<String, String>.from(forwardedHeaders);
 
       // Invia Range ed If-Range solo se e presente un checkpoint valido con ETag forte
       final canUseRange = downloadedBytes > 0 &&
@@ -188,7 +191,17 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
       httpRequest.headers.addAll(headers);
 
       try {
-        final sentResponse = await _httpClient.send(httpRequest);
+        final Future<http.StreamedResponse> sendFuture =
+            _httpClient.send(httpRequest);
+        final timeoutDuration = request.timeout;
+        final sentResponse = timeoutDuration != null
+            ? await sendFuture.timeout(
+                timeoutDuration,
+                onTimeout: () => throw TimeoutException(
+                  'Timeout durante la connessione HTTP (${timeoutDuration.inSeconds}s).',
+                ),
+              )
+            : await sendFuture;
 
         // Gestione dei redirect HTTP (301, 302, 303, 307, 308)
         if (sentResponse.statusCode >= 300 &&
@@ -208,10 +221,11 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
             );
           }
 
-          // Cross-Origin redirect: rimozione degli header sensibili (es. Authorization)
-          if (currentUri.host != redirectUri.host) {
-            request.sanitizedExtraHeaders
-                .removeWhere((k, v) => k.toLowerCase() == 'authorization');
+          // Cross-Origin redirect (scheme + host + port): rimozione degli header sensibili (es. Authorization)
+          if (_isCrossOrigin(currentUri, redirectUri)) {
+            forwardedHeaders.removeWhere(
+              (k, v) => k.toLowerCase() == 'authorization',
+            );
           }
 
           currentUri = redirectUri;
@@ -221,6 +235,13 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
 
         response = sentResponse;
         break;
+      } on TimeoutException catch (e) {
+        return DownloadResult.failure(
+          reason: DownloadFailureReason.networkTimeout,
+          message: e.message ?? 'Timeout durante la connessione HTTP.',
+          checkpoint: activeCheckpoint,
+          isRetryable: true,
+        );
       } catch (e) {
         return DownloadResult.failure(
           reason: DownloadFailureReason.networkDisconnected,
@@ -265,11 +286,21 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
       );
 
       if (!is206Valid) {
-        // Rifiuto 206 non valida: reset a 0 byte e retry GET incondizionato
+        // Rifiuto 206 non valida: reset a 0 byte e retry GET incondizionato (singolo tentativo di fallback)
         await _fileSystem.truncateFile(stagingPartPath, 0);
         await _checkpointRepository.deleteCheckpoint(request.operationId);
         activeCheckpoint = null;
         downloadedBytes = 0;
+
+        if (!allowFallbackRestart) {
+          return DownloadResult.failure(
+            reason: DownloadFailureReason.httpStatusError,
+            message:
+                'Risposta HTTP 206 non valida ricevuta. Ricorsione di fallback interrotta.',
+            checkpoint: activeCheckpoint,
+            isRetryable: false,
+          );
+        }
 
         return _executeUnconditionalGet(
           request: request,
@@ -297,11 +328,21 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
         );
         return DownloadResult.success(artifact);
       } else {
-        // 416 non riconciliabile -> reset
+        // 416 non riconciliabile -> reset e singolo tentativo di fallback
         await _fileSystem.truncateFile(stagingPartPath, 0);
         await _checkpointRepository.deleteCheckpoint(request.operationId);
         activeCheckpoint = null;
         downloadedBytes = 0;
+
+        if (!allowFallbackRestart) {
+          return DownloadResult.failure(
+            reason: DownloadFailureReason.httpStatusError,
+            message:
+                'Risposta HTTP 416 non riconciliabile ricevuta. Ricorsione di fallback interrotta.',
+            checkpoint: activeCheckpoint,
+            isRetryable: false,
+          );
+        }
 
         return _executeUnconditionalGet(
           request: request,
@@ -338,12 +379,24 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
       );
     }
 
-    // 7. Streaming dei chunk su file .part e salvataggio atomico del checkpoint
+    // 7. Streaming dei chunk su file .part e salvataggio atomico del checkpoint con applicazione del timeout di inattivita
     final stopwatch = Stopwatch()..start();
     var bytesSinceLastCheckpoint = 0;
 
     try {
-      await for (final chunk in response.stream) {
+      final timeoutDuration = request.timeout;
+      final timedStream = timeoutDuration != null
+          ? response.stream.timeout(
+              timeoutDuration,
+              onTimeout: (sink) => sink.addError(
+                TimeoutException(
+                  'Inattivita dello stream HTTP oltre ${timeoutDuration.inSeconds} secondi.',
+                ),
+              ),
+            )
+          : response.stream;
+
+      await for (final chunk in timedStream) {
         if (cancellationToken != null && cancellationToken.isCancelled) {
           if (activeCheckpoint != null) {
             await _checkpointRepository.saveCheckpoint(activeCheckpoint);
@@ -446,6 +499,14 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
           isRetryable: true,
         );
       }
+    } on TimeoutException catch (e) {
+      return DownloadResult.failure(
+        reason: DownloadFailureReason.networkTimeout,
+        message:
+            'Timeout per inattivita dello stream HTTP (${request.timeout?.inSeconds ?? 0}s): ${e.message ?? ''}',
+        checkpoint: activeCheckpoint,
+        isRetryable: true,
+      );
     } catch (e) {
       return DownloadResult.failure(
         reason: DownloadFailureReason.networkDisconnected,
@@ -476,15 +537,28 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
       request: unconditionalRequest,
       cancellationToken: cancellationToken,
       onProgress: onProgress,
+      allowFallbackRestart: false,
     );
   }
 
-  /// Estrae un ETag forte garantendo che non sia nullo ne prefissato da W/.
+  /// Estrae un ETag forte garantendo che sia delimitato da virgolette ("...") e non prefissato da W/.
   String? _extractStrongEtag(String? rawEtag) {
     if (rawEtag == null || rawEtag.trim().isEmpty) return null;
     final trimmed = rawEtag.trim();
     if (trimmed.startsWith('W/') || trimmed.startsWith('w/')) return null;
+    if (!trimmed.startsWith('"') ||
+        !trimmed.endsWith('"') ||
+        trimmed.length < 2) {
+      return null;
+    }
     return trimmed;
+  }
+
+  /// Verifica se due URI costituiscono una richiesta Cross-Origin (schema, host o porta differenti).
+  bool _isCrossOrigin(Uri current, Uri target) {
+    return current.scheme.toLowerCase() != target.scheme.toLowerCase() ||
+        current.host.toLowerCase() != target.host.toLowerCase() ||
+        current.port != target.port;
   }
 
   /// Valida le condizioni rigorose per l'accettazione di una risposta HTTP 206 Partial Content.
@@ -502,7 +576,8 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
       return false;
     }
 
-    if (responseStrongEtag != null &&
+    // La risposta 206 DEVE contenere un ETag forte corrispondente a quello del checkpoint
+    if (responseStrongEtag == null ||
         responseStrongEtag != activeCheckpoint.strongEtag) {
       return false;
     }
@@ -520,7 +595,9 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
     final totalStr = match.group(3)!;
 
     if (start != downloadedBytes) return false;
-    if (totalStr != '*' && int.parse(totalStr) != expectedSizeBytes) {
+
+    // Il totale DEVE essere numerico e corrispondere esattamente a expectedSizeBytes (totale '*' non accettato)
+    if (totalStr == '*' || int.parse(totalStr) != expectedSizeBytes) {
       return false;
     }
 

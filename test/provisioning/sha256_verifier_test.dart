@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:aura_core/aura_core.dart';
 import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
-import 'installation_record_repository_test.dart';
+import 'provisioning_test_helpers.dart';
 
 void main() {
   group('Sha256Verifier Tests -', () {

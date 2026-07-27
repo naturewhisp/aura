@@ -174,6 +174,39 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
   Future<void> createDirectory(String path) async {
     directories.add(path);
   }
+
+  int? mockAvailableFreeSpace;
+
+  @override
+  Future<int?> getAvailableFreeSpace(String path) async {
+    return mockAvailableFreeSpace;
+  }
+
+  @override
+  Future<void> appendBytes(String path, List<int> bytes) async {
+    if (!files.containsKey(path)) {
+      files[path] = utf8.decode(bytes, allowMalformed: true);
+    } else {
+      final existingBytes = utf8.encode(files[path]!);
+      final merged = [...existingBytes, ...bytes];
+      files[path] = utf8.decode(merged, allowMalformed: true);
+    }
+  }
+
+  @override
+  Future<void> truncateFile(String path, int length) async {
+    if (length == 0) {
+      files[path] = '';
+      return;
+    }
+    if (!files.containsKey(path)) {
+      throw const ProvisioningIoException(operation: 'truncateFile');
+    }
+    final currentBytes = utf8.encode(files[path]!);
+    if (length >= currentBytes.length) return;
+    final truncated = currentBytes.sublist(0, length);
+    files[path] = utf8.decode(truncated, allowMalformed: true);
+  }
 }
 
 /// Fake [ProvisioningClock] per test deterministici.

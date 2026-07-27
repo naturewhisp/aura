@@ -139,3 +139,12 @@ export 'src/provisioning/infrastructure/cached_catalog_provider.dart';
 export 'src/provisioning/infrastructure/remote_catalog_provider.dart';
 export 'src/provisioning/infrastructure/catalog_acquisition_coordinator.dart';
 export 'src/provisioning/infrastructure/catalog_refresh_service.dart';
+
+// Provisioning Download Engine, HTTP Range Resume & Staging (Phase 6.4c)
+export 'src/provisioning/domain/download_request.dart';
+export 'src/provisioning/domain/download_checkpoint.dart';
+export 'src/provisioning/domain/staging_artifact.dart';
+export 'src/provisioning/domain/download_progress.dart';
+export 'src/provisioning/domain/download_result.dart';
+export 'src/provisioning/domain/download_cancellation_token.dart';
+export 'src/provisioning/infrastructure/artifact_download_engine.dart';

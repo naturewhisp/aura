@@ -40,7 +40,11 @@ export 'src/agent_runtime/output/reasoning_content_policy.dart';
 export 'src/bootstrap/application_bootstrap_factory.dart';
 export 'src/bootstrap/default_application_bootstrap.dart';
 
-// Provisioning Acquisition Cryptography & Trust Store (Phase 6.4a)
+// Provisioning Catalog Providers, Signed Cache & Refresh (Phase 6.4b)
 export 'src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart';
 export 'src/provisioning/crypto/catalog_trust_store.dart';
 export 'src/provisioning/crypto/catalog_signature_verifier.dart';
+
+// Provisioning Download Engine Infrastructure (Phase 6.4c)
+export 'src/provisioning/infrastructure/download_checkpoint_repository.dart';
+export 'src/provisioning/infrastructure/download_concurrency_controller.dart';

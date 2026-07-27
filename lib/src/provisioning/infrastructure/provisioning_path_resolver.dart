@@ -124,6 +124,26 @@ final class ProvisioningPathResolver {
   /// Path della directory di staging temporaneo.
   String get stagingDirectory => _join(appManagedRoot, 'staging');
 
+  /// Sanitizza un identificatore di operazione per uso sicuro come file di staging.
+  String sanitizeOperationId(String operationId) {
+    final clean = operationId.replaceAll(RegExp(r'[^A-Za-z0-9_\-]'), '_');
+    if (clean.isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message: 'operationId non e sintatticamente valido.',
+      );
+    }
+    return clean;
+  }
+
+  /// Path del file `.part` temporaneo di staging per un'operazione.
+  String stagingPartPath(String operationId) =>
+      _join(stagingDirectory, '${sanitizeOperationId(operationId)}.part');
+
+  /// Path del file `.checkpoint.json` per un'operazione.
+  String stagingCheckpointPath(String operationId) => _join(
+      stagingDirectory, '${sanitizeOperationId(operationId)}.checkpoint.json');
+
   /// Path della directory di cache HTTP/download.
   String get cacheDirectory => _join(appManagedRoot, 'cache');
 

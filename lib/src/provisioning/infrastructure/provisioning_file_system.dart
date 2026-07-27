@@ -63,6 +63,15 @@ abstract class ProvisioningFileSystem {
 
   /// Crea una directory e le sue parent.
   Future<void> createDirectory(String path);
+
+  /// Aggiunge byte in coda ad un file esistente o lo crea se non esiste (append I/O).
+  Future<void> appendBytes(String path, List<int> bytes);
+
+  /// Tronca un file all'esatto numero di byte [length].
+  Future<void> truncateFile(String path, int length);
+
+  /// Ritorna lo spazio libero in byte disponibile sul volume del percorso specificato (`null` se non rilevabile).
+  Future<int?> getAvailableFreeSpace(String path);
 }
 
 /// Implementazione concreta basata su file I/O nativi di dart:io.
@@ -337,5 +346,47 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       }
       throw const ProvisioningIoException(operation: 'writeStringRecoverably');
     }
+  }
+
+  @override
+  Future<void> appendBytes(String path, List<int> bytes) async {
+    try {
+      final file = File(path);
+      await file.parent.create(recursive: true);
+      final sink = file.openWrite(mode: FileMode.append);
+      sink.add(bytes);
+      await sink.flush();
+      await sink.close();
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'appendBytes');
+    }
+  }
+
+  @override
+  Future<void> truncateFile(String path, int length) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        if (length == 0) {
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes([], flush: true);
+          return;
+        } else {
+          throw const ProvisioningIoException(
+              operation: 'truncateFile_missing');
+        }
+      }
+      final randomAccess = await file.open(mode: FileMode.writeOnlyAppend);
+      await randomAccess.truncate(length);
+      await randomAccess.close();
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'truncateFile');
+    }
+  }
+
+  @override
+  Future<int?> getAvailableFreeSpace(String path) async {
+    // Implementazione nativa platform-dependent se disponibile
+    return null;
   }
 }

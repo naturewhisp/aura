@@ -310,13 +310,17 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
         );
       }
     } else if (responseStatusCode == 416) {
-      // Gestione restrittiva HTTP 416 Range Not Satisfiable
+      // Gestione restrittiva HTTP 416 Range Not Satisfiable con validazione ETag della risposta
       final contentRangeHeader = response.headers['content-range'];
       final remoteTotal = _parse416RemoteTotal(contentRangeHeader);
 
-      if (downloadedBytes == request.expectedSizeBytes &&
+      final is416Valid = downloadedBytes == request.expectedSizeBytes &&
           remoteTotal == request.expectedSizeBytes &&
-          activeCheckpoint != null) {
+          activeCheckpoint != null &&
+          responseStrongEtag != null &&
+          responseStrongEtag == activeCheckpoint.strongEtag;
+
+      if (is416Valid) {
         await _checkpointRepository.deleteCheckpoint(request.operationId);
         final artifact = StagingArtifact(
           operationId: request.operationId,
@@ -328,7 +332,7 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
         );
         return DownloadResult.success(artifact);
       } else {
-        // 416 non riconciliabile -> reset e singolo tentativo di fallback
+        // 416 non riconciliabile o ETag difforme -> reset e singolo tentativo di fallback
         await _fileSystem.truncateFile(stagingPartPath, 0);
         await _checkpointRepository.deleteCheckpoint(request.operationId);
         activeCheckpoint = null;
@@ -338,7 +342,7 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
           return DownloadResult.failure(
             reason: DownloadFailureReason.httpStatusError,
             message:
-                'Risposta HTTP 416 non riconciliabile ricevuta. Ricorsione di fallback interrotta.',
+                'Risposta HTTP 416 non riconciliabile o ETag difforme ricevuta. Ricorsione di fallback interrotta.',
             checkpoint: activeCheckpoint,
             isRetryable: false,
           );
@@ -541,17 +545,10 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
     );
   }
 
-  /// Estrae un ETag forte garantendo che sia delimitato da virgolette ("...") e non prefissato da W/.
+  /// Estrae un ETag forte garantendo la conformita al pattern ^"[^"]+"$.
   String? _extractStrongEtag(String? rawEtag) {
-    if (rawEtag == null || rawEtag.trim().isEmpty) return null;
-    final trimmed = rawEtag.trim();
-    if (trimmed.startsWith('W/') || trimmed.startsWith('w/')) return null;
-    if (!trimmed.startsWith('"') ||
-        !trimmed.endsWith('"') ||
-        trimmed.length < 2) {
-      return null;
-    }
-    return trimmed;
+    if (!DownloadCheckpoint.isValidStrongEtag(rawEtag)) return null;
+    return rawEtag!.trim();
   }
 
   /// Verifica se due URI costituiscono una richiesta Cross-Origin (schema, host o porta differenti).
@@ -585,26 +582,23 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
     final contentRange = responseHeaders['content-range'];
     if (contentRange == null || contentRange.trim().isEmpty) return false;
 
-    // Content-Range: bytes <start>-<end>/<total>
-    final match = RegExp(r'bytes\s+(\d+)-(\d+)\/(\d+|\*)', caseSensitive: false)
+    // Content-Range: bytes <start>-<end>/<total> (ancorata, totale '*' non accettato)
+    final match = RegExp(r'^bytes\s+(\d+)-(\d+)\/(\d+)$', caseSensitive: false)
         .firstMatch(contentRange.trim());
     if (match == null) return false;
 
     final start = int.parse(match.group(1)!);
     final end = int.parse(match.group(2)!);
-    final totalStr = match.group(3)!;
+    final total = int.parse(match.group(3)!);
 
     if (start != downloadedBytes) return false;
-
-    // Il totale DEVE essere numerico e corrispondere esattamente a expectedSizeBytes (totale '*' non accettato)
-    if (totalStr == '*' || int.parse(totalStr) != expectedSizeBytes) {
-      return false;
-    }
+    if (total != expectedSizeBytes) return false;
 
     final contentLengthStr = responseHeaders['content-length'];
     if (contentLengthStr != null) {
-      final contentLength = int.tryParse(contentLengthStr);
-      if (contentLength != null && contentLength != (end - start + 1)) {
+      final contentLength = int.tryParse(contentLengthStr.trim());
+      // Se Content-Length e presente, deve essere parsabile e corrispondere esattamente a (end - start + 1)
+      if (contentLength == null || contentLength != (end - start + 1)) {
         return false;
       }
     }
@@ -617,8 +611,9 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
     if (contentRangeHeader == null || contentRangeHeader.trim().isEmpty) {
       return null;
     }
-    final match = RegExp(r'bytes\s+(?:\*|\d+-\d+)\/(\d+)', caseSensitive: false)
-        .firstMatch(contentRangeHeader.trim());
+    final match =
+        RegExp(r'^bytes\s+(?:\*|\d+-\d+)\/(\d+)$', caseSensitive: false)
+            .firstMatch(contentRangeHeader.trim());
     if (match == null) return null;
     return int.parse(match.group(1)!);
   }

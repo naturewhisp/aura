@@ -77,15 +77,18 @@ final class DownloadCheckpoint {
     }
   }
 
-  /// Indica se il checkpoint possiede un ETag forte sintatticamente valido idoneo per il resume con `If-Range`.
-  bool get hasValidStrongEtag {
-    if (strongEtag == null || strongEtag!.trim().isEmpty) return false;
-    final trimmed = strongEtag!.trim();
+  static final RegExp _strongEtagRegex = RegExp(r'^"[^"]+"$');
+
+  /// Indica se l'ETag fornito e un ETag forte sintatticamente valido (`^"[^"]+"$`).
+  static bool isValidStrongEtag(String? tag) {
+    if (tag == null || tag.trim().isEmpty) return false;
+    final trimmed = tag.trim();
     if (trimmed.startsWith('W/') || trimmed.startsWith('w/')) return false;
-    return trimmed.startsWith('"') &&
-        trimmed.endsWith('"') &&
-        trimmed.length >= 2;
+    return _strongEtagRegex.hasMatch(trimmed);
   }
+
+  /// Indica se il checkpoint possiede un ETag forte sintatticamente valido idoneo per il resume con `If-Range`.
+  bool get hasValidStrongEtag => isValidStrongEtag(strongEtag);
 
   /// Converte l'istanza in una mappa JSON.
   Map<String, dynamic> toJson() {

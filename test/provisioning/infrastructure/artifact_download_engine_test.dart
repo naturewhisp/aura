@@ -615,6 +615,115 @@ void main() {
       expect(attempts, equals(2)); // tentato resume + 1 fallback, poi stop!
     });
 
+    test(r'isValidStrongEtag strictly validates ^"[^"]+"$', () {
+      expect(DownloadCheckpoint.isValidStrongEtag('"valid-etag-123"'), isTrue);
+      expect(DownloadCheckpoint.isValidStrongEtag('""'), isFalse);
+      expect(DownloadCheckpoint.isValidStrongEtag('"a"b"'), isFalse);
+      expect(DownloadCheckpoint.isValidStrongEtag('W/"weak"'), isFalse);
+      expect(DownloadCheckpoint.isValidStrongEtag(null), isFalse);
+      expect(DownloadCheckpoint.isValidStrongEtag(''), isFalse);
+    });
+
+    test(
+        'Rejects HTTP 416 response missing or mismatched ETag under strict policy',
+        () async {
+      final checkpoint = DownloadCheckpoint(
+        operationId: 'op-test-416',
+        artifactId: 'art-416',
+        sourceUri: 'https://huggingface.co/model.gguf',
+        strongEtag: '"strong-etag-abc"',
+        downloadedBytes: 100,
+        expectedSizeBytes: 100,
+        createdAtUtc: clock.nowUtc(),
+        updatedAtUtc: clock.nowUtc(),
+      );
+      await checkpointRepository.saveCheckpoint(checkpoint);
+      await fileSystem.appendBytes(pathResolver.stagingPartPath('op-test-416'),
+          List.generate(100, (i) => i));
+
+      final mockClient = MockClient((request) async {
+        if (request.headers.containsKey('Range')) {
+          // Risposta 416 SENZA ETag!
+          return http.Response('', 416, headers: {
+            'content-range': 'bytes */100',
+          });
+        }
+        return http.Response.bytes(List.generate(100, (i) => i), 200, headers: {
+          'etag': '"strong-etag-abc"',
+        });
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final req = createRequest(
+        operationId: 'op-test-416',
+        artifactId: 'art-416',
+        url: 'https://huggingface.co/model.gguf',
+        expectedSizeBytes: 100,
+      );
+
+      final result = await engine.downloadArtifact(request: req);
+      expect(result.isSuccess, isTrue);
+    });
+
+    test('Rejects 206 response with malformed non-numeric Content-Length',
+        () async {
+      final checkpoint = DownloadCheckpoint(
+        operationId: 'op-test-1',
+        artifactId: 'art-1',
+        sourceUri: 'https://huggingface.co/model.gguf',
+        strongEtag: '"valid-strong-etag"',
+        downloadedBytes: 30,
+        expectedSizeBytes: 100,
+        createdAtUtc: clock.nowUtc(),
+        updatedAtUtc: clock.nowUtc(),
+      );
+      await checkpointRepository.saveCheckpoint(checkpoint);
+      await fileSystem.appendBytes(pathResolver.stagingPartPath('op-test-1'),
+          List.generate(30, (i) => i));
+
+      final mockClient = MockClient((request) async {
+        if (request.headers.containsKey('Range')) {
+          // Risposta 206 con Content-Length malformato!
+          return http.Response.bytes(List.generate(70, (i) => i), 206,
+              headers: {
+                'etag': '"valid-strong-etag"',
+                'content-range': 'bytes 30-99/100',
+                'content-length': 'invalid-number',
+              });
+        }
+        return http.Response.bytes(List.generate(100, (i) => i), 200, headers: {
+          'etag': '"valid-strong-etag"',
+        });
+      });
+
+      final engine = DefaultArtifactDownloadEngine(
+        httpClient: mockClient,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        checkpointRepository: checkpointRepository,
+        concurrencyController: concurrencyController,
+        clock: clock,
+      );
+
+      final req = createRequest(
+        operationId: 'op-test-1',
+        artifactId: 'art-1',
+        url: 'https://huggingface.co/model.gguf',
+        expectedSizeBytes: 100,
+      );
+      final result = await engine.downloadArtifact(request: req);
+
+      expect(result.isSuccess, isTrue);
+    });
+
     test('Triggers networkTimeout failure on connection timeout', () async {
       final req = createRequest(
         expectedSizeBytes: 100,

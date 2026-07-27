@@ -17,14 +17,15 @@ Una risposta `206` viene accettata per il resume **esclusivamente se**:
 - `Content-Range` rispetta l'espressione regolare ancorata `^bytes\s+(\d+)-(\d+)\/(\d+)$`;
 - `Content-Range.start == downloadedBytes`;
 - `Content-Range.total == expectedSizeBytes` (il totale `*` viene tassativamente rifiutato);
+- Invarianti dell'intervallo rispettate: `end >= start` ed `end < total`;
 - `Content-Length` (se presente) è numerico ed equivalente a `(end - start + 1)` (valori non parsabili generano rifiuto immediato della risposta 206).
 
 ### 1.3 Strict Policy per HTTP `416 Range Not Satisfiable`
-- Il completamento per codice status `416` viene accettato secondo la **strict policy**:
+- Il completamento per codice status `416` viene accettato esclusivamente secondo la sintassi **strict** `^bytes\s+\*\/(\d+)$`:
   - `downloadedBytes == expectedSizeBytes`
-  - `remoteTotal == expectedSizeBytes` (da `^bytes\s+(?:\*|\d+-\d+)\/(\d+)$`)
+  - `remoteTotal == expectedSizeBytes` (estratto esclusivamente dal formato `bytes */<total>`)
   - `responseStrongEtag != null && responseStrongEtag == activeCheckpoint.strongEtag`
-- Se la risposta 416 non fornisce un ETag forte corrispondente al checkpoint, la risposta viene considerata non riconciliabile, il checkpoint viene eliminato ed il file `.part` viene resettato a 0 per un tentativo di fallback.
+- Risposte 416 che presentano un intervallo numerico (es. `bytes 0-99/100`), ETag assente o difforme vengono rifiutate come non riconciliabili, attivando il reset del checkpoint/file `.part` ed un tentativo di fallback da byte 0.
 
 ### 1.4 Prevenzione della Ricorsione Indefinita nei Fallback
 - Dopo un `206` non valido o un `416` non riconciliabile, il motore attiva il tentativo di fallback `_executeUnconditionalGet` impostando il flag interno `allowFallbackRestart: false`.
@@ -45,7 +46,7 @@ Una risposta `206` viene accettata per il resume **esclusivamente se**:
 
 ### 2.1 Suite Unitari Standard (Veloce / CI)
 - **File:** `test/provisioning/infrastructure/artifact_download_engine_test.dart`
-- **Caratteristiche:** Test deterministici isolati che utilizzano `MockClient` in-memory. **593 test unitari superati** in < 3 secondi.
+- **Caratteristiche:** Test deterministici isolati che utilizzano `MockClient` in-memory. **595 test unitari superati** in < 3 secondi.
 
 ### 2.2 Suite di Rete On-Demand (Heavy Remote Models)
 - **File:** `test/provisioning/download_engine_network_on_demand_test.dart`
@@ -63,5 +64,5 @@ Una risposta `206` viene accettata per il resume **esclusivamente se**:
 | **`dart format`** | **PASS** | 100% aderenza ai criteri di formattazione Dart canonici. |
 | **`dart analyze`** | **PASS** | 0 errori, 0 avvisi, 0 info (Zero Diagnostic Policy). |
 | **`flutter analyze`** | **PASS** | 0 errori, 0 avvisi, 0 info. |
-| **`dart test`** | **PASS** | 593 test unitari superati con successo in ~2 secondi. |
+| **`dart test`** | **PASS** | 595 test unitari superati con successo in ~2 secondi. |
 | **On-Demand Network Test** | **PASS** | Download reale completato (398 MB da Hugging Face, ETag forte ed atomicità verified). |

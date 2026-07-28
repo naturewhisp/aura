@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:meta/meta.dart';
 import '../domain/provisioning_options.dart';
 
@@ -49,5 +50,68 @@ final class InMemoryProvisioningLock implements ProvisioningLock {
         _keyLocks.remove(cleanKey);
       }
     }
+  }
+}
+
+/// Implementazione di file lock inter-processo atomico con fallback intra-processo.
+final class FileBasedProvisioningLock implements ProvisioningLock {
+  final String _lockDirectory;
+  final InMemoryProvisioningLock _inMemoryLock;
+
+  FileBasedProvisioningLock({
+    required String lockDirectory,
+  })  : _lockDirectory = lockDirectory,
+        _inMemoryLock = InMemoryProvisioningLock();
+
+  @override
+  Future<T> synchronized<T>(
+    String key,
+    Future<T> Function() action,
+  ) async {
+    return _inMemoryLock.synchronized(key, () async {
+      final sanitizedKey = key.replaceAll(RegExp(r'[^\w\.-]'), '_');
+      final lockDir = Directory(_lockDirectory);
+      if (!await lockDir.exists()) {
+        await lockDir.create(recursive: true);
+      }
+
+      final lockFilePath =
+          '${lockDir.path}${Platform.pathSeparator}$sanitizedKey.lock';
+      final lockFile = File(lockFilePath);
+
+      RandomAccessFile? raf;
+      var attempts = 0;
+      const maxAttempts = 100;
+      const pollingInterval = Duration(milliseconds: 50);
+
+      while (attempts < maxAttempts) {
+        try {
+          raf = await lockFile.open(mode: FileMode.write);
+          await raf.lock(FileLock.exclusive);
+          break;
+        } catch (_) {
+          attempts++;
+          if (attempts >= maxAttempts) {
+            throw ProvisioningException(
+              reason: ProvisioningFailureReason.installationConflict,
+              message:
+                  'Impossibile acquisire il file lock inter-processo per "$key" su "$lockFilePath".',
+            );
+          }
+          await Future.delayed(pollingInterval);
+        }
+      }
+
+      try {
+        return await action();
+      } finally {
+        if (raf != null) {
+          try {
+            await raf.unlock();
+            await raf.close();
+          } catch (_) {}
+        }
+      }
+    });
   }
 }

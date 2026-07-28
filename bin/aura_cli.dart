@@ -64,72 +64,26 @@ void main(List<String> args) async {
   if (args.isNotEmpty &&
       ['runtime', 'model', 'preflight'].contains(args.first.toLowerCase())) {
     final jsonOutput = args.contains('--json');
-    final cleanArgs = args.where((a) => a != '--json').toList();
+    final cleanArgs = args
+        .where((a) => a != '--json' && !a.startsWith('--data-root='))
+        .toList();
     final category = cleanArgs.first.toLowerCase();
     final subArgs = cleanArgs.sublist(1);
 
-    final pathResolver = ProvisioningPathResolver(
-      appManagedRoot: r'C:\AppRoot',
-      bundledRoot: r'C:\Program Files\AURA',
-    );
-    final fileSystem = const LocalProvisioningFileSystem();
-    final lock = InMemoryProvisioningLock();
-
-    final configRepo = JsonModelConfigurationRepository(
-      storeDirectoryPath: pathResolver.appManagedRoot,
-      fileSystem: fileSystem,
-      lock: lock,
-    );
-    final installRepo = JsonInstallationRecordRepository(
-      pathResolver: pathResolver,
-      fileSystem: fileSystem,
-      lock: lock,
-    );
-
-    final dependencyService = DefaultLlamaServerDependencyService(
-      configurationRepository: configRepo,
-      fileSystem: fileSystem,
-      pathResolver: pathResolver,
-    );
-    final modelService = DefaultModelConfigurationService(
-      configurationRepository: configRepo,
-      installationRecordRepository: installRepo,
-      fileSystem: fileSystem,
-      pathResolver: pathResolver,
-    );
-    final preflightEngine = DefaultLocalInferencePreflightEngine(
-      configurationRepository: configRepo,
-      installationRecordRepository: installRepo,
-      dependencyService: dependencyService,
-      fileSystem: fileSystem,
-      pathResolver: pathResolver,
-    );
-
-    final inferenceFacade = DefaultLocalInferenceFacade(
-      preflightEngine: preflightEngine,
-      dependencyService: dependencyService,
-      modelConfigurationService: modelService,
-      installationRecordRepository: installRepo,
-    );
-    final settingsFacade = DefaultRuntimeModelSettingsFacade(
-      dependencyService: dependencyService,
-      modelService: modelService,
-      winGetAdapter: WinGetDependencyAdapter(),
-    );
-
-    final cliRunner = LocalInferenceCliRunner(
-      inferenceFacade: inferenceFacade,
-      settingsFacade: settingsFacade,
-    );
+    final environment = AuraCliEnvironment.fromPlatform(cliArgs: args);
+    final services =
+        LocalInferenceServiceProvider.create(environment: environment);
 
     late final CliExecutionResult res;
     if (category == 'runtime') {
-      res = await cliRunner.runRuntimeCommand(subArgs, jsonOutput: jsonOutput);
+      res = await services.cliRunner
+          .runRuntimeCommand(subArgs, jsonOutput: jsonOutput);
     } else if (category == 'model') {
-      res = await cliRunner.runModelCommand(subArgs, jsonOutput: jsonOutput);
+      res = await services.cliRunner
+          .runModelCommand(subArgs, jsonOutput: jsonOutput);
     } else {
-      res =
-          await cliRunner.runPreflightCommand(subArgs, jsonOutput: jsonOutput);
+      res = await services.cliRunner
+          .runPreflightCommand(subArgs, jsonOutput: jsonOutput);
     }
 
     print(res.outputText);
@@ -140,11 +94,20 @@ void main(List<String> args) async {
 
   if (parsedArgs.containsKey('help')) {
     print('''
-A.U.R.A. Interactive CLI Shell
+A.U.R.A. Interactive & Local Inference CLI
 
-Uso: dart run bin/aura_cli.dart [OPZIONI]
+Uso: dart run bin/aura_cli.dart [COMANDO | OPZIONI]
 
-Opzioni Generali:
+Comandi Inferenza Locale:
+  aura runtime status | detect | set <path> | clear
+  aura model status | list | scan [directory] | bind --role actor|evaluator --managed <id>|--external <path> | clear --role actor|evaluator | consent status|accept
+  aura preflight quick | probe
+
+Opzioni Generali Inferenza:
+  --json                     Formatta l'output in formato JSON strutturato
+  --data-root=<path>         Directory radice personalizzata per lo store dei modelli e configurazione
+
+Opzioni Shell Interattiva:
   --runtime=<mode>           Modalità runtime (legacy | external | managed | rule-based)
   --session-id=<id>          ID della sessione corrente
   --skip-health-check        Salta il controllo iniziale di health

@@ -1949,10 +1949,8 @@ final class ProvisioningCoordinator {
 
       if (markerSchema != '1.0' ||
           markerArtifactId != expectedDescriptor.artifactId ||
-          (markerVersion != null &&
-              markerVersion != expectedDescriptor.version) ||
-          (markerBuildId != null &&
-              markerBuildId != expectedDescriptor.buildId) ||
+          markerVersion != expectedDescriptor.version ||
+          markerBuildId != expectedDescriptor.buildId ||
           markerSha256?.toLowerCase() !=
               expectedDescriptor.sha256.toLowerCase() ||
           markerSizeBytes != expectedDescriptor.sizeBytes ||

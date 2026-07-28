@@ -67,3 +67,10 @@ export 'src/provisioning/validation/artifact_import_inspector.dart'
 // Provisioning Model Lifecycle (Phase 6.4e)
 export 'src/provisioning/domain/model_lifecycle_models.dart';
 export 'src/provisioning/domain/release_version_comparer.dart';
+
+// Provisioning Runtime & Model Configuration (Phase 6.4f)
+export 'src/provisioning/domain/configured_model_reference.dart';
+export 'src/provisioning/domain/local_inference_preflight_models.dart';
+export 'src/provisioning/domain/model_configuration_models.dart';
+export 'src/provisioning/domain/runtime_dependency_models.dart';
+export 'src/provisioning/infrastructure/json_model_configuration_repository.dart';

@@ -70,6 +70,10 @@ abstract class ProvisioningFileSystem {
   /// Tronca un file all'esatto numero di byte [length].
   Future<void> truncateFile(String path, int length);
 
+  /// Rinomina un file dallo stesso volume senza fallback a copia.
+  /// Lancia [ProvisioningIoException] se il rename fallisce (es. volume diverso o file assente).
+  Future<void> renameFile(String sourcePath, String targetPath);
+
   /// Ritorna lo spazio libero in byte disponibile sul volume del percorso specificato (`null` se non rilevabile).
   Future<int?> getAvailableFreeSpace(String path);
 }
@@ -388,5 +392,15 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
   Future<int?> getAvailableFreeSpace(String path) async {
     // Implementazione nativa platform-dependent se disponibile
     return null;
+  }
+
+  @override
+  Future<void> renameFile(String sourcePath, String targetPath) async {
+    try {
+      final source = File(sourcePath);
+      await source.rename(targetPath);
+    } catch (_) {
+      throw const ProvisioningIoException(operation: 'renameFile');
+    }
   }
 }

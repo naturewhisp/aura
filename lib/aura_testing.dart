@@ -18,3 +18,14 @@ export 'src/testing/fake_llama_server_environment.dart';
 // Provisioning Acquisition Mocks (Phase 6.4a)
 export 'src/provisioning/crypto/catalog_trust_store.dart';
 export 'src/provisioning/crypto/catalog_signature_verifier.dart';
+
+// Provisioning Ingestion Engine & Internal Testing Types (Phase 6.4d)
+// Esportati SOLO tramite aura_testing.dart per i test unitari dell'engine.
+// Non fanno parte dell'API pubblica di aura_offline.dart.
+export 'src/provisioning/infrastructure/single_pass_artifact_ingestion_engine.dart'
+    show
+        SinglePassArtifactIngestionEngine,
+        ArtifactSourceOwnership,
+        QuarantineStatus,
+        PreparedArtifactInstallation;
+export 'src/provisioning/validation/artifact_import_inspector.dart';

@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'catalog_acquisition_models.dart';
 import 'catalog_manifest.dart';
+import 'provisioning_options.dart';
 import 'validated_catalog_candidate.dart';
 
 /// DTO immutabile contenente la provenienza statica completa di un artefatto di catalogo autenticato.
@@ -97,36 +98,178 @@ final class CatalogArtifactSnapshot {
   }
 
   /// Deserializza una mappa JSON nello snapshot di provenienza.
+  /// Lancia [ProvisioningException] se un qualsiasi campo obbligatorio è mancante,
+  /// vuoto o non conforme al formato atteso.
   factory CatalogArtifactSnapshot.fromJson(Map<String, dynamic> json) {
-    final trustName = json['trustLevel'] as String? ??
-        CatalogTrustLevel.developmentUnsigned.name;
-    final trust = CatalogTrustLevel.values.firstWhere(
-      (e) => e.name == trustName,
-      orElse: () => CatalogTrustLevel.developmentUnsigned,
-    );
+    // --- trustLevel ---
+    final trustName = json['trustLevel'] as String?;
+    if (trustName == null || trustName.isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: campo "trustLevel" mancante.',
+      );
+    }
+    CatalogTrustLevel? trust;
+    for (final v in CatalogTrustLevel.values) {
+      if (v.name == trustName) {
+        trust = v;
+        break;
+      }
+    }
+    if (trust == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: trustLevel sconosciuto "$trustName".',
+      );
+    }
 
+    // --- signingKeyId ---
+    final signingKeyId = json['signingKeyId'] as String?;
+    if (signingKeyId == null || signingKeyId.trim().isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: campo "signingKeyId" mancante o vuoto.',
+      );
+    }
+
+    // --- catalogSchemaVersion ---
+    final catalogSchemaVersion = json['catalogSchemaVersion'] as String?;
+    if (catalogSchemaVersion == null || catalogSchemaVersion.trim().isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: campo "catalogSchemaVersion" mancante.',
+      );
+    }
+
+    // --- sha256 ---
+    final sha256Raw = json['sha256'] as String?;
+    if (sha256Raw == null) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message: 'CatalogArtifactSnapshot.fromJson: campo "sha256" mancante.',
+      );
+    }
+    final sha256 = sha256Raw.toLowerCase();
+    if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(sha256)) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: sha256 non conforme (atteso hex di 64 caratteri).',
+      );
+    }
+
+    // --- sizeBytes ---
+    final sizeBytesRaw = json['sizeBytes'];
+    if (sizeBytesRaw == null) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: campo "sizeBytes" mancante.',
+      );
+    }
+    final sizeBytes = (sizeBytesRaw as num).toInt();
+    if (sizeBytes <= 0) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: sizeBytes deve essere > 0, ricevuto $sizeBytes.',
+      );
+    }
+
+    // --- campi stringa obbligatori non vuoti ---
+    String _requireString(String key) {
+      final v = json[key] as String?;
+      if (v == null || v.trim().isEmpty) {
+        throw ProvisioningException(
+          reason: ProvisioningFailureReason.installationRecordReadFailed,
+          message:
+              'CatalogArtifactSnapshot.fromJson: campo "$key" mancante o vuoto.',
+        );
+      }
+      return v;
+    }
+
+    final catalogId = _requireString('catalogId');
+    final artifactId = _requireString('artifactId');
+    final artifactVersion = _requireString('artifactVersion');
+    final buildId = _requireString('buildId');
+    final fileName = _requireString('fileName');
+
+    // --- catalogRevision ---
+    final catalogRevisionRaw = json['catalogRevision'];
+    if (catalogRevisionRaw == null) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: campo "catalogRevision" mancante.',
+      );
+    }
+    final catalogRevision = (catalogRevisionRaw as num).toInt();
+    if (catalogRevision < 0) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: catalogRevision non valido: $catalogRevision.',
+      );
+    }
+
+    // --- acquiredAtUtc ---
+    final acquiredAtUtcRaw = json['acquiredAtUtc'] as String?;
+    if (acquiredAtUtcRaw == null || acquiredAtUtcRaw.trim().isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: campo "acquiredAtUtc" mancante.',
+      );
+    }
+    DateTime acquiredAtUtc;
+    try {
+      acquiredAtUtc = DateTime.parse(acquiredAtUtcRaw).toUtc();
+    } catch (_) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'CatalogArtifactSnapshot.fromJson: "acquiredAtUtc" non parsabile come ISO-8601.',
+      );
+    }
+
+    // --- sourceUri opzionale ---
     Uri? parsedUri;
     final uriStr = json['sourceUri'] as String?;
     if (uriStr != null && uriStr.trim().isNotEmpty) {
       parsedUri = Uri.tryParse(uriStr.trim());
+      if (parsedUri != null) {
+        final scheme = parsedUri.scheme.toLowerCase();
+        if (scheme != 'https' && scheme != 'http') {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.installationRecordReadFailed,
+            message:
+                'CatalogArtifactSnapshot.fromJson: schema URI non ammesso "$scheme" (solo https/http).',
+          );
+        }
+      }
     }
 
     return CatalogArtifactSnapshot(
-      catalogId: json['catalogId'] as String,
-      catalogRevision: (json['catalogRevision'] as num).toInt(),
-      catalogSchemaVersion: json['catalogSchemaVersion'] as String? ?? '1.0',
-      signingKeyId: json['signingKeyId'] as String? ?? 'unknown-key',
+      catalogId: catalogId,
+      catalogRevision: catalogRevision,
+      catalogSchemaVersion: catalogSchemaVersion,
+      signingKeyId: signingKeyId,
       trustLevel: trust,
-      artifactId: json['artifactId'] as String,
-      artifactVersion: json['artifactVersion'] as String,
-      buildId: json['buildId'] as String,
+      artifactId: artifactId,
+      artifactVersion: artifactVersion,
+      buildId: buildId,
       sourceRepository: json['sourceRepository'] as String?,
       sourceRevision: json['sourceRevision'] as String?,
       sourceUri: parsedUri,
-      fileName: json['fileName'] as String,
-      sizeBytes: (json['sizeBytes'] as num).toInt(),
-      sha256: (json['sha256'] as String).toLowerCase(),
-      acquiredAtUtc: DateTime.parse(json['acquiredAtUtc'] as String).toUtc(),
+      fileName: fileName,
+      sizeBytes: sizeBytes,
+      sha256: sha256,
+      acquiredAtUtc: acquiredAtUtc,
     );
   }
 

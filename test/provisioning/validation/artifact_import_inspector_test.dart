@@ -1,5 +1,5 @@
 import 'dart:typed_data';
-import 'package:aura_core/aura_offline.dart';
+import 'package:aura_core/aura_testing.dart';
 import 'package:test/test.dart';
 
 import '../provisioning_test_helpers.dart';

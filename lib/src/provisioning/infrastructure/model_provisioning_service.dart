@@ -11,6 +11,8 @@ import '../validation/artifact_import_inspector.dart';
 import 'artifact_download_engine.dart';
 import 'download_checkpoint_repository.dart';
 import 'provisioning_coordinator.dart';
+import 'provisioning_file_system.dart';
+import 'provisioning_path_resolver.dart';
 import 'single_pass_artifact_ingestion_engine.dart';
 
 /// Fase specifica del processo di provisioning di un modello.
@@ -23,23 +25,113 @@ enum ModelProvisioningPhase {
 }
 
 /// Richiesta di importazione per un file GGUF locale scelto dall'utente.
+///
+/// Il chiamante non specifica l'artifact target: il matching avviene internamente
+/// tramite il calcolo SHA-256 single-pass contro la lista dei candidati del manifesto.
+/// [preferredArtifactId] può restringere i candidati preliminari ma non bypassa
+/// la verifica crittografica.
 @immutable
 final class LocalArtifactImportRequest {
   final String operationId;
   final String localFilePath;
   final ValidatedCatalogCandidate candidate;
-  final CatalogArtifact targetArtifact;
+
+  /// Manifesto del catalogo usato per la pre-filtrazione per sizeBytes + magic.
+  final CatalogManifest manifest;
+
+  /// Hint opzionale per disambiguare tra più candidati compatibili per dimensione.
+  /// Se specificato, restringe la lista dei candidati prima del calcolo SHA-256,
+  /// ma il hash viene sempre verificato.
+  final String? preferredArtifactId;
 
   const LocalArtifactImportRequest({
     required this.operationId,
     required this.localFilePath,
     required this.candidate,
-    required this.targetArtifact,
+    required this.manifest,
+    this.preferredArtifactId,
   });
 }
 
-/// Servizio di orchestrazione applicativa per l'acquisizione, la verifica ed il provisioning dei modelli.
-final class ModelProvisioningService {
+/// Aggregato pubblico delle dipendenze infrastrutturali necessarie per la costruzione
+/// di [ModelProvisioningService] tramite factory.
+///
+/// Tutte le dipendenze sono di tipo pubblico — il [SinglePassArtifactIngestionEngine]
+/// e l'[ArtifactImportInspector] sono creati internamente dall'implementazione privata.
+@immutable
+final class ProvisioningEnvironment {
+  final ArtifactDownloadEngine downloadEngine;
+  final ProvisioningCoordinator coordinator;
+  final DownloadCheckpointRepository checkpointRepository;
+  final ProvisioningPathResolver pathResolver;
+  final ProvisioningFileSystem fileSystem;
+  final ProvisioningClock clock;
+
+  const ProvisioningEnvironment({
+    required this.downloadEngine,
+    required this.coordinator,
+    required this.checkpointRepository,
+    required this.pathResolver,
+    required this.fileSystem,
+    this.clock = const SystemProvisioningClock(),
+  });
+}
+
+/// Interfaccia pubblica del servizio di orchestrazione per l'acquisizione,
+/// la verifica ed il provisioning dei modelli GGUF.
+///
+/// I tipi infrastrutturali concreti ([SinglePassArtifactIngestionEngine],
+/// [ArtifactSourceOwnership]) non compaiono mai nella firma pubblica.
+///
+/// Costruzione tramite factory:
+/// ```dart
+/// final service = ModelProvisioningService(environment: myEnvironment);
+/// ```
+abstract interface class ModelProvisioningService {
+  /// Costruisce il servizio applicativo dall'aggregato [ProvisioningEnvironment].
+  /// L'implementazione crea internamente l'engine di ingestione e l'inspector.
+  factory ModelProvisioningService({
+    required ProvisioningEnvironment environment,
+  }) = _DefaultModelProvisioningService;
+
+  /// Esegue la pipeline completa per un modello remoto:
+  /// Download Range → Ingestione & Verifica Single-Pass → Commit Atomico.
+  Future<ProvisioningResult> provisionRemoteModel({
+    required ProvisioningRequest request,
+    required ValidatedCatalogCandidate candidate,
+    required CatalogArtifact artifact,
+    ProvisioningCancellationToken? cancellationToken,
+    void Function(double progressFraction)? onProgress,
+  });
+
+  /// Ispeziona ed importa un file GGUF locale dell'utente preservando il file sorgente.
+  ///
+  /// Il matching avviene in tre fasi:
+  /// 1. Pre-filtro per `sizeBytes` + magic GGUF tramite inspector.
+  /// 2. Single-pass: copia in staging temp + calcolo SHA-256.
+  /// 3. Matching finale: selezione del candidato con `sha256` coincidente.
+  ///
+  /// Esiti:
+  /// - `0 match` → [ProvisioningFailureReason.artifactNotVerified]
+  /// - `>1 match` → [ProvisioningFailureReason.installationConflict]
+  /// - `1 match` → commit atomico
+  Future<ProvisioningResult> importLocalModel({
+    required LocalArtifactImportRequest importRequest,
+    ProvisioningCancellationToken? cancellationToken,
+  });
+
+  /// Ispeziona un file GGUF locale e restituisce i candidati compatibili per dimensione e formato.
+  /// Metodo applicativo alternativo all'esposizione diretta dell'[ArtifactImportInspector].
+  Future<LocalGgufInspectionResult> inspectLocalArtifact({
+    required String filePath,
+    required CatalogManifest manifest,
+  });
+}
+
+/// Implementazione privata del servizio di orchestrazione del provisioning modelli.
+/// Costruisce internamente [SinglePassArtifactIngestionEngine] e [ArtifactImportInspector].
+final class _DefaultModelProvisioningService
+    implements ModelProvisioningService {
   final ArtifactDownloadEngine _downloadEngine;
   final SinglePassArtifactIngestionEngine _ingestionEngine;
   final ProvisioningCoordinator _coordinator;
@@ -47,24 +139,32 @@ final class ModelProvisioningService {
   final DownloadCheckpointRepository _checkpointRepository;
   final ProvisioningClock _clock;
 
-  ModelProvisioningService({
-    required ArtifactDownloadEngine downloadEngine,
-    required SinglePassArtifactIngestionEngine ingestionEngine,
-    required ProvisioningCoordinator coordinator,
-    required ArtifactImportInspector importInspector,
-    required DownloadCheckpointRepository checkpointRepository,
-    ProvisioningClock clock = const SystemProvisioningClock(),
-  })  : _downloadEngine = downloadEngine,
-        _ingestionEngine = ingestionEngine,
-        _coordinator = coordinator,
-        _importInspector = importInspector,
-        _checkpointRepository = checkpointRepository,
-        _clock = clock;
+  _DefaultModelProvisioningService({
+    required ProvisioningEnvironment environment,
+  })  : _downloadEngine = environment.downloadEngine,
+        _coordinator = environment.coordinator,
+        _checkpointRepository = environment.checkpointRepository,
+        _clock = environment.clock,
+        _ingestionEngine = SinglePassArtifactIngestionEngine(
+          fileSystem: environment.fileSystem,
+          pathResolver: environment.pathResolver,
+          clock: environment.clock,
+        ),
+        _importInspector = ArtifactImportInspector(
+          fileSystem: environment.fileSystem,
+        );
 
-  ArtifactImportInspector get importInspector => _importInspector;
+  @override
+  Future<LocalGgufInspectionResult> inspectLocalArtifact({
+    required String filePath,
+    required CatalogManifest manifest,
+  }) =>
+      _importInspector.inspectLocalFile(
+        filePath: filePath,
+        manifest: manifest,
+      );
 
-  /// Esegue la pipeline completa per un modello remoto:
-  /// Download Range -> Ingestione & Verifica Single-Pass -> Commit Atomico nel Coordinator.
+  @override
   Future<ProvisioningResult> provisionRemoteModel({
     required ProvisioningRequest request,
     required ValidatedCatalogCandidate candidate,
@@ -153,30 +253,63 @@ final class ModelProvisioningService {
     }
   }
 
-  /// Ispeziona ed importa un file GGUF locale dell'utente preservando intatto il file sorgente originale.
+  @override
   Future<ProvisioningResult> importLocalModel({
     required LocalArtifactImportRequest importRequest,
     ProvisioningCancellationToken? cancellationToken,
   }) async {
-    final provenanceSnapshot = CatalogArtifactSnapshot.fromCandidate(
-      candidate: importRequest.candidate,
-      artifact: importRequest.targetArtifact,
-      acquiredAtUtc: _clock.nowUtc(),
+    // 1. Pre-filtro per sizeBytes + magic GGUF tramite inspector
+    final inspectionResult = await _importInspector.inspectLocalFile(
+      filePath: importRequest.localFilePath,
+      manifest: importRequest.manifest,
     );
 
+    if (!inspectionResult.isGgufHeaderValid) {
+      return ProvisioningResult.failure(
+        operationId: importRequest.operationId,
+        artifactId: importRequest.preferredArtifactId ?? 'unknown',
+        sourceKind: ProvisioningSourceKind.localImport,
+        failureReason: ProvisioningFailureReason.artifactNotVerified,
+        sanitizedMessage:
+            'Il file non è un artefatto GGUF valido (magic header non riconosciuto).',
+      );
+    }
+
+    if (inspectionResult.candidateArtifacts.isEmpty) {
+      return ProvisioningResult.failure(
+        operationId: importRequest.operationId,
+        artifactId: importRequest.preferredArtifactId ?? 'unknown',
+        sourceKind: ProvisioningSourceKind.localImport,
+        failureReason: ProvisioningFailureReason.artifactNotVerified,
+        sanitizedMessage:
+            'Nessun artefatto del catalogo compatibile per dimensione (${inspectionResult.sizeBytes} B).',
+      );
+    }
+
+    // 2. Converti candidati in snapshot di provenienza autenticati
+    final candidateSnapshots = inspectionResult.candidateArtifacts
+        .map(
+          (a) => CatalogArtifactSnapshot.fromCandidate(
+            candidate: importRequest.candidate,
+            artifact: a,
+            acquiredAtUtc: _clock.nowUtc(),
+          ),
+        )
+        .toList();
+
+    // 3. Single-pass con matching post-hash sulla lista di candidati
     try {
       cancellationToken?.throwIfCancelled();
 
-      // Ingestione Single-Pass con possesso sorgente userOwnedFile (sorgente mai cancellato)
-      final preparedInstallation =
-          await _ingestionEngine.ingestAndVerifyToTemporaryStore(
+      final preparedInstallation = await _ingestionEngine.ingestLocalArtifact(
         sourceFilePath: importRequest.localFilePath,
         operationId: importRequest.operationId,
-        provenanceSnapshot: provenanceSnapshot,
-        sourceOwnership: ArtifactSourceOwnership.userOwnedFile,
+        candidateSnapshots: candidateSnapshots,
+        preferredArtifactId: importRequest.preferredArtifactId,
         cancellationToken: cancellationToken,
       );
 
+      // 4. Commit atomico nel coordinator
       return await _coordinator.registerVerifiedArtifact(
         installation: preparedInstallation,
         operationId: importRequest.operationId,
@@ -187,7 +320,7 @@ final class ModelProvisioningService {
           e.reason == ProvisioningFailureReason.operationCancelled) {
         return ProvisioningResult.failure(
           operationId: importRequest.operationId,
-          artifactId: importRequest.targetArtifact.artifactId,
+          artifactId: importRequest.preferredArtifactId ?? 'unknown',
           sourceKind: ProvisioningSourceKind.localImport,
           failureReason: ProvisioningFailureReason.operationCancelled,
           sanitizedMessage: 'Importazione locale annullata.',
@@ -196,7 +329,7 @@ final class ModelProvisioningService {
       if (e is ProvisioningException) {
         return ProvisioningResult.failure(
           operationId: importRequest.operationId,
-          artifactId: importRequest.targetArtifact.artifactId,
+          artifactId: importRequest.preferredArtifactId ?? 'unknown',
           sourceKind: ProvisioningSourceKind.localImport,
           failureReason: e.reason,
           sanitizedMessage: e.message,

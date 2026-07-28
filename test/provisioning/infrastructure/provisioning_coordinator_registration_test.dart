@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:aura_core/aura_offline.dart';
+import 'package:aura_core/aura_testing.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:test/test.dart';
@@ -226,6 +227,12 @@ void main() {
         const JsonEncoder.withIndent('  ').convert(markerPayload),
       );
 
+      // Crea il file GGUF fisico con esattamente sizeBytes byte (invariante 11/12)
+      await fileSystem.appendBytes(
+        '$finalPath\\orphan.gguf',
+        List.generate(300, (i) => i % 256),
+      );
+
       // Prima della riconciliazione l'indice è vuoto
       var record = await recordRepository.readRecord();
       expect(record.findInstallation('inst-orphan-1'), isNull);
@@ -238,6 +245,85 @@ void main() {
       // Dopo la riconciliazione l'installazione compare nel registro globale
       record = await recordRepository.readRecord();
       expect(record.findInstallation('inst-orphan-1'), isNotNull);
+    });
+
+    test(
+        'B2 — registerVerifiedArtifact con target fisico identico → idempotent success senza delete',
+        () async {
+      final bytes = List.generate(100, (i) => i);
+      const sha =
+          'bce0aff19cf5aa6a7469a30d61d04e4376e4bbf6381052ee9e7f33925c954d52';
+
+      final sourcePath = pathResolver.stagingPartPath('op-b2');
+      await fileSystem.appendBytes(sourcePath, bytes);
+
+      final snapshot = CatalogArtifactSnapshot(
+        catalogId: 'aura-official-test',
+        catalogRevision: 1,
+        catalogSchemaVersion: '1.0',
+        signingKeyId: 'test-key-1',
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        artifactId: 'model-b2',
+        artifactVersion: '1.0.0',
+        buildId: 'v1',
+        fileName: 'model_b2.gguf',
+        sizeBytes: 100,
+        sha256: sha,
+        acquiredAtUtc: baseTime,
+      );
+
+      // Prima installazione riuscita
+      final prepared1 = await ingestionEngine.ingestAndVerifyToTemporaryStore(
+        sourceFilePath: sourcePath,
+        operationId: 'op-b2',
+        provenanceSnapshot: snapshot,
+        sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      );
+      final result1 = await coordinator.registerVerifiedArtifact(
+        installation: prepared1,
+        operationId: 'op-b2',
+      );
+      expect(result1.status, equals(ProvisioningStatus.success));
+      expect(result1.alreadyInstalled, isFalse);
+
+      // Seconda ingestione con stessa fingerprint (simulazione retry)
+      await fileSystem.appendBytes(sourcePath, bytes);
+      final prepared2 = await ingestionEngine.ingestAndVerifyToTemporaryStore(
+        sourceFilePath: sourcePath,
+        operationId: 'op-b2-retry',
+        provenanceSnapshot: snapshot,
+        sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      );
+
+      // B2: il target finale esiste con stessa fingerprint → idempotent
+      final result2 = await coordinator.registerVerifiedArtifact(
+        installation: prepared2,
+        operationId: 'op-b2-retry',
+      );
+
+      // Il coordinator risponde con alreadyInstalled (via record globale idempotency)
+      expect(result2.status, equals(ProvisioningStatus.alreadyInstalled));
+      expect(result2.alreadyInstalled, isTrue);
+      // Il target finale NON viene eliminato: esiste ancora
+      expect(
+          await fileSystem.directoryExists(prepared1.finalInstallPath), isTrue);
+    });
+
+    test('Reconciliation ignora directory .installing-* residue', () async {
+      // Crea una directory .installing residua nella gerarchia dei modelli
+      final modelsRoot = r'C:\AURA\app_managed\models';
+      final orphanInstalling =
+          '$modelsRoot\\model-installing\\1.0.0.installing-op-stale';
+      await fileSystem.createDirectory(orphanInstalling);
+
+      // Anche con marker valido nella installing residua, non deve essere riconciliata
+      await fileSystem.writeAsString(
+        '$orphanInstalling\\commit.marker',
+        '{"schemaVersion":"1.0","artifactId":"model-installing","artifactVersion":"1.0.0","buildId":"v1","sha256":"${'a' * 64}","preparedAtUtc":"2026-07-27T20:00:00.000Z"}',
+      );
+
+      final count = await coordinator.reconcileUnindexedInstallations();
+      expect(count, equals(0));
     });
   });
 }

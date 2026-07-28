@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import '../domain/activation_state.dart';
+import '../domain/catalog_artifact_snapshot.dart';
 import '../domain/catalog_manifest.dart';
 import '../domain/installation_record.dart';
 import '../domain/provisioning_cancellation_token.dart';
@@ -257,12 +258,19 @@ final class ProvisioningCoordinator {
       final finalPath = installation.finalInstallPath;
       final tempPath = installation.temporaryInstallPath;
 
+      // sourceKind derivato univocamente da sourceOwnership del token verificato
       final sourceKind =
           installation.sourceOwnership == ArtifactSourceOwnership.userOwnedFile
               ? ProvisioningSourceKind.localImport
               : ProvisioningSourceKind.remoteHttps;
 
-      // 1. Controllo Idempotenza e Conflitti sulla destinazione finale
+      // Analogo sourceKind per i descrittori dell'indice
+      final artifactSourceKind =
+          installation.sourceOwnership == ArtifactSourceOwnership.userOwnedFile
+              ? CatalogArtifactSourceKind.localImport
+              : CatalogArtifactSourceKind.remoteHttps;
+
+      // 1. Controllo Idempotenza e Conflitti logici sul record globale
       final currentRecord = await _recordRepository.readRecord();
       final existingDescriptor =
           currentRecord.findLatestVerifiedInstallation(provenance.artifactId);
@@ -274,14 +282,22 @@ final class ProvisioningCoordinator {
                 provenance.sha256.toLowerCase() &&
             existingDescriptor.sizeBytes == provenance.sizeBytes) {
           // Idempotente no-op: cancella temp e restituisce già installato
-          await _fileSystem.deleteDirectoryBestEffort(tempPath);
-          return ProvisioningResult.success(
+          final tempDeleted =
+              await _fileSystem.deleteDirectoryBestEffort(tempPath);
+          return ProvisioningResult(
             operationId: operationId,
             artifactId: provenance.artifactId,
+            status: ProvisioningStatus.alreadyInstalled,
             installationId: existingDescriptor.installationId,
-            sourceKind: sourceKind,
-            bytesProcessed: existingDescriptor.sizeBytes,
+            installed: false,
             alreadyInstalled: true,
+            activated: false,
+            verified: true,
+            bytesProcessed: existingDescriptor.sizeBytes,
+            sourceKind: sourceKind,
+            rollbackPerformed: false,
+            cleanupSucceeded: tempDeleted,
+            sanitizedDiagnostics: {'cleanupPending': !tempDeleted},
           );
         } else {
           // Conflitto di fingerprint per la stessa versione
@@ -297,7 +313,7 @@ final class ProvisioningCoordinator {
         }
       }
 
-      // 2. Controllo del cancellation token tassativamente PRIMA dell'invocazione del rename atomico
+      // 2. Cancellation check PRIMA del rename atomico
       if (cancellationToken?.isCancellationRequested == true) {
         await _fileSystem.deleteDirectoryBestEffort(tempPath);
         return ProvisioningResult.failure(
@@ -309,8 +325,44 @@ final class ProvisioningCoordinator {
         );
       }
 
-      // 3. COMMIT POINT: Rename atomico della directory temporanea -> finale
-      await _fileSystem.deleteDirectoryBestEffort(finalPath);
+      // 3. Check fisico della destinazione finale PRIMA del rename (B2)
+      //    Non si elimina mai il target incondizionatamente.
+      if (await _fileSystem.directoryExists(finalPath)) {
+        // Analisi fisica del contenuto: marker + record + fingerprint + size fisica GGUF
+        final physicalIdempotent =
+            await _isPhysicallyIdenticalInstallation(finalPath, provenance);
+        await _fileSystem.deleteDirectoryBestEffort(tempPath);
+        if (physicalIdempotent) {
+          return ProvisioningResult(
+            operationId: operationId,
+            artifactId: provenance.artifactId,
+            status: ProvisioningStatus.alreadyInstalled,
+            installationId: existingDescriptor?.installationId ??
+                'inst-recovered-$operationId',
+            installed: false,
+            alreadyInstalled: true,
+            activated: false,
+            verified: true,
+            bytesProcessed: provenance.sizeBytes,
+            sourceKind: sourceKind,
+            rollbackPerformed: false,
+            cleanupSucceeded: true,
+            sanitizedDiagnostics: const {'physicalTarget': 'already_committed'},
+          );
+        } else {
+          return ProvisioningResult.failure(
+            operationId: operationId,
+            artifactId: provenance.artifactId,
+            sourceKind: sourceKind,
+            failureReason: ProvisioningFailureReason.installationConflict,
+            sanitizedMessage:
+                'Conflitto fisico: il target finale esiste già con fingerprint o stato diverso.',
+          );
+        }
+      }
+
+      // 4. COMMIT POINT: Rename atomico della directory temporanea -> finale
+      //    Il target è garantito assente per il controllo fisico precedente.
       await _fileSystem.renameDirectoryWithoutFallback(tempPath, finalPath);
 
       // Da questo punto l'installazione è irrevocabilmente COMMITTED.
@@ -326,7 +378,7 @@ final class ProvisioningCoordinator {
           platform: 'all',
           architecture: 'gguf',
           fileName: provenance.fileName,
-          sourceKind: CatalogArtifactSourceKind.remoteHttps,
+          sourceKind: artifactSourceKind,
           sizeBytes: provenance.sizeBytes,
           sha256: provenance.sha256,
           license: 'unknown',
@@ -357,7 +409,7 @@ final class ProvisioningCoordinator {
         verifiedAt: nowIso,
         sizeBytes: provenance.sizeBytes,
         sha256: provenance.sha256,
-        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        sourceKind: artifactSourceKind,
         status: InstallationStatus.verified,
       );
 
@@ -371,22 +423,35 @@ final class ProvisioningCoordinator {
         indexUpdated = false;
       }
 
-      bool cleanupDone = true;
+      // B3 — Cleanup con post-condizione: critica è l'assenza fisica, non il bool di ritorno
+      bool sourceCleanupSucceeded = true;
+      bool checkpointCleanupSucceeded = true;
+
       if (installation.sourceOwnership ==
           ArtifactSourceOwnership.managedStaging) {
-        try {
-          await _fileSystem.deleteFileBestEffort(installation.sourcePath);
-          if (checkpointRepository != null) {
-            await checkpointRepository.deleteCheckpoint(operationId);
-          }
-        } catch (_) {
-          cleanupDone = false;
+        final sourcePath = installation.sourcePath;
+        final existedBefore = await _fileSystem.fileExists(sourcePath);
+        if (existedBefore) {
+          await _fileSystem.deleteFileBestEffort(sourcePath);
+        }
+        final existsAfter = await _fileSystem.fileExists(sourcePath);
+        sourceCleanupSucceeded = !existsAfter;
+
+        if (checkpointRepository != null) {
+          await checkpointRepository.deleteCheckpoint(operationId);
+          final remaining =
+              await checkpointRepository.readCheckpoint(operationId);
+          checkpointCleanupSucceeded = (remaining == null);
         }
       }
+
+      final cleanupDone = sourceCleanupSucceeded && checkpointCleanupSucceeded;
 
       final Map<String, dynamic> diagnostics = {
         'indexUpdated': indexUpdated,
         'cleanupDone': cleanupDone,
+        if (!sourceCleanupSucceeded) 'sourceCleanupSucceeded': false,
+        if (!checkpointCleanupSucceeded) 'checkpointCleanupSucceeded': false,
       };
 
       return ProvisioningResult(
@@ -407,54 +472,211 @@ final class ProvisioningCoordinator {
     });
   }
 
-  /// Scansiona lo store gestito (%LOCALAPPDATA%\AURA\models\) ed indicizza le installazioni committed con commit.marker che non compaiono nell'indice globale.
+  /// Verifica fisicamente se la directory [finalPath] contiene un'installazione
+  /// committed con marker, record, fingerprint e file GGUF identici a [provenance].
+  Future<bool> _isPhysicallyIdenticalInstallation(
+    String finalPath,
+    CatalogArtifactSnapshot provenance,
+  ) async {
+    try {
+      final markerPath = '$finalPath\\commit.marker';
+      final recordPath = '$finalPath\\installation_record.json';
+
+      if (!await _fileSystem.fileExists(markerPath) ||
+          !await _fileSystem.fileExists(recordPath)) {
+        return false;
+      }
+
+      final markerRaw = await _fileSystem.readAsString(markerPath);
+      final recordRaw = await _fileSystem.readAsString(recordPath);
+
+      final markerJson = jsonDecode(markerRaw) as Map<String, dynamic>;
+      final recordJson = jsonDecode(recordRaw) as Map<String, dynamic>;
+
+      final descriptor = InstalledArtifactDescriptor.fromJson(recordJson);
+
+      // Verifica marker
+      if (markerJson['artifactId'] != provenance.artifactId) return false;
+      if (markerJson['artifactVersion'] != provenance.artifactVersion)
+        return false;
+      if (markerJson['buildId'] != provenance.buildId) return false;
+      final markerSha = (markerJson['sha256'] as String?)?.toLowerCase();
+      if (markerSha != provenance.sha256.toLowerCase()) return false;
+
+      // Verifica coerenza marker ↔ record
+      if (descriptor.artifactId != provenance.artifactId) return false;
+      if (descriptor.sha256.toLowerCase() != provenance.sha256.toLowerCase())
+        return false;
+      if (descriptor.sizeBytes != provenance.sizeBytes) return false;
+
+      // Verifica esistenza e dimensione fisica del file GGUF
+      final entryFileName = descriptor.entryFileName;
+      if (entryFileName == null ||
+          entryFileName.isEmpty ||
+          entryFileName.contains('\\') ||
+          entryFileName.contains('/')) {
+        return false;
+      }
+      final ggufPath = '$finalPath\\$entryFileName';
+      if (!await _fileSystem.fileExists(ggufPath)) return false;
+
+      final physicalSize = await _fileSystem.getFileSize(ggufPath);
+      if (physicalSize != provenance.sizeBytes) return false;
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Scansiona lo store gestito (%LOCALAPPDATA%\AURA\models\) ed indicizza le installazioni
+  /// committed con `commit.marker` che non compaiono nell'indice globale.
+  ///
+  /// Applica 14 invarianti strutturali prima di accettare una directory:
+  /// - esclusione directory `.installing-*` (temporanee residue)
+  /// - schemaVersion del marker == '1.0'
+  /// - coerenza artifactId del marker con il segmento della directory
+  /// - corrispondenza artifactVersion e buildId tra marker e record
+  /// - sha256 nel marker hex di esattamente 64 caratteri
+  /// - sha256 coerente tra marker e record
+  /// - preparedAtUtc del marker parsabile come ISO-8601
+  /// - status del record == verified
+  /// - entryFileName non nullo, non vuoto, senza separatori
+  /// - coerenza relativeInstallPath del record con il path fisico scansionato
+  /// - file GGUF presente fisicamente nella directory
+  /// - dimensione fisica del GGUF == sizeBytes del record
+  ///
+  /// Nota: verifica symlink/reparse point demandata alla 6.4e per mancanza di
+  /// un contratto esplicito nel filesystem abstraction corrente.
   Future<int> reconcileUnindexedInstallations() async {
     return _lock.synchronized(_lockKey, () async {
       final modelsRoot = '${_pathResolver.appManagedRoot}\\models';
       if (!await _fileSystem.directoryExists(modelsRoot)) return 0;
 
       int reconciledCount = 0;
-      final currentRecord = await _recordRepository.readRecord();
+      // Snapshot locale aggiornato in-memory dopo ogni inserimento riuscito
+      // (evita rilettura completa da disco per ogni directory)
+      var currentSnapshot = await _recordRepository.readRecord();
+
+      // Regex per identificare ed escludere directory .installing residue
+      final installingPattern = RegExp(r'\.installing-[^\\/]+$');
+      // Regex per sha256 hex 64 caratteri
+      final sha256Pattern = RegExp(r'^[a-f0-9]{64}$');
 
       final artifactDirs = await _fileSystem.listDirectory(modelsRoot);
       for (final artifactSub in artifactDirs) {
         final artifactDir = '$modelsRoot\\$artifactSub';
         final versionDirs = await _fileSystem.listDirectory(artifactDir);
+
         for (final versionSub in versionDirs) {
+          // 1. Esclusione directory .installing residue
+          if (installingPattern.hasMatch(versionSub)) continue;
+
           final versionDir = '$artifactDir\\$versionSub';
           final markerPath = '$versionDir\\commit.marker';
           final recordPath = '$versionDir\\installation_record.json';
 
-          if (await _fileSystem.fileExists(markerPath) &&
-              await _fileSystem.fileExists(recordPath)) {
-            try {
-              final markerRaw = await _fileSystem.readAsString(markerPath);
-              final recordRaw = await _fileSystem.readAsString(recordPath);
+          if (!await _fileSystem.fileExists(markerPath) ||
+              !await _fileSystem.fileExists(recordPath)) {
+            continue;
+          }
 
-              final markerJson = jsonDecode(markerRaw) as Map<String, dynamic>;
-              final recordJson = jsonDecode(recordRaw) as Map<String, dynamic>;
+          try {
+            final markerRaw = await _fileSystem.readAsString(markerPath);
+            final recordRaw = await _fileSystem.readAsString(recordPath);
 
-              final descriptor =
-                  InstalledArtifactDescriptor.fromJson(recordJson);
+            final markerJson = jsonDecode(markerRaw) as Map<String, dynamic>;
+            final recordJson = jsonDecode(recordRaw) as Map<String, dynamic>;
 
-              final markerArtifactId = markerJson['artifactId'] as String?;
-              final markerSha256 = markerJson['sha256'] as String?;
+            // 2. schemaVersion del marker
+            if (markerJson['schemaVersion'] != '1.0') continue;
 
-              if (markerArtifactId == descriptor.artifactId &&
-                  markerSha256?.toLowerCase() ==
-                      descriptor.sha256.toLowerCase()) {
-                final existing =
-                    currentRecord.findInstallation(descriptor.installationId);
-                if (existing == null) {
-                  await _recordRepository.updateRecord(
-                    (r) => r.upsertArtifact(descriptor),
-                  );
-                  reconciledCount++;
-                }
-              }
-            } catch (_) {
-              // Ignora cartelle orfane malformate
+            final descriptor = InstalledArtifactDescriptor.fromJson(recordJson);
+
+            // 3. artifactId del marker corrisponde al segmento della directory
+            final markerArtifactId = markerJson['artifactId'] as String?;
+            if (markerArtifactId == null ||
+                markerArtifactId.isEmpty ||
+                markerArtifactId != artifactSub) {
+              continue;
             }
+
+            // 4. artifactVersion e buildId coerenti tra marker e record
+            final markerVersion = markerJson['artifactVersion'] as String?;
+            final markerBuildId = markerJson['buildId'] as String?;
+            if (markerVersion == null || markerVersion != descriptor.version) {
+              continue;
+            }
+            if (markerBuildId == null || markerBuildId != descriptor.buildId) {
+              continue;
+            }
+
+            // 5. sha256 del marker: hex di esattamente 64 caratteri
+            final markerSha256 =
+                (markerJson['sha256'] as String?)?.toLowerCase();
+            if (markerSha256 == null || !sha256Pattern.hasMatch(markerSha256)) {
+              continue;
+            }
+
+            // 6. sha256 coerente tra marker e record
+            if (markerSha256 != descriptor.sha256.toLowerCase()) continue;
+
+            // 7. preparedAtUtc parsabile come ISO-8601
+            final preparedAtUtcRaw = markerJson['preparedAtUtc'] as String?;
+            if (preparedAtUtcRaw == null || preparedAtUtcRaw.isEmpty) {
+              continue;
+            }
+            try {
+              DateTime.parse(preparedAtUtcRaw);
+            } catch (_) {
+              continue;
+            }
+
+            // 8. status del record == verified
+            if (descriptor.status != InstallationStatus.verified) continue;
+
+            // 9. entryFileName non nullo, non vuoto, senza separatori
+            final entryFileName = descriptor.entryFileName;
+            if (entryFileName == null ||
+                entryFileName.isEmpty ||
+                entryFileName.contains('\\') ||
+                entryFileName.contains('/')) {
+              continue;
+            }
+
+            // 10. Coerenza relativeInstallPath con path fisico scansionato
+            //     Il relativeInstallPath del record include il prefisso tipo
+            //     (es. 'models/artifact-id/version'). Verifichiamo che i segmenti
+            //     finali corrispondano al path fisico scansionato (artifactSub\versionSub),
+            //     normalizzando i separatori di directory.
+            final normalizedRecordPath =
+                descriptor.relativeInstallPath.replaceAll('/', '\\');
+            final expectedSuffix = '$artifactSub\\$versionSub';
+            if (!normalizedRecordPath.endsWith(expectedSuffix)) {
+              continue;
+            }
+
+            // 11. File GGUF presente fisicamente
+            final ggufPath = '$versionDir\\$entryFileName';
+            if (!await _fileSystem.fileExists(ggufPath)) continue;
+
+            // 12. Dimensione fisica del GGUF == sizeBytes del record
+            final physicalSize = await _fileSystem.getFileSize(ggufPath);
+            if (physicalSize != descriptor.sizeBytes) continue;
+
+            // Verifica assenza nell'indice corrente (snapshot in-memory)
+            final existing =
+                currentSnapshot.findInstallation(descriptor.installationId);
+            if (existing == null) {
+              await _recordRepository.updateRecord(
+                (r) => r.upsertArtifact(descriptor),
+              );
+              // Aggiorna snapshot in-memory senza rilettura da disco
+              currentSnapshot = currentSnapshot.upsertArtifact(descriptor);
+              reconciledCount++;
+            }
+          } catch (_) {
+            // Ignora cartelle orfane malformate o con record non deserializzabili
           }
         }
       }

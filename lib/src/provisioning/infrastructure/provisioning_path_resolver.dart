@@ -312,6 +312,22 @@ final class ProvisioningPathResolver {
     return _join(stagingDirectory, cleanOpId);
   }
 
+  /// Directory radice della quarantena per staging gestiti corrotti.
+  String get quarantineDirectory => _join(stagingDirectory, 'quarantine');
+
+  /// Calcola il path assoluto della directory di quarantena per una specifica operazione.
+  String quarantineOperationPath(String operationId) {
+    final cleanOpId = sanitizeSegment(operationId);
+    return _join(quarantineDirectory, cleanOpId);
+  }
+
+  /// Calcola il path assoluto della directory temporanea per l'import locale single-pass.
+  /// Struttura: `staging/local-import/<operationId>/`
+  String localImportTempPath(String operationId) {
+    final cleanOpId = sanitizeSegment(operationId);
+    return _join(_join(stagingDirectory, 'local-import'), cleanOpId);
+  }
+
   /// Sanitizza e valida rigorosamente un singolo segmento di path.
   /// Rifiuta separatori, traversal, caratteri invalidi e nomi riservati senza alcuna mutazione silenziosa.
   static String sanitizeSegment(String segment) {

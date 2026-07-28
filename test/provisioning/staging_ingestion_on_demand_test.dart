@@ -77,12 +77,6 @@ void main() {
           clock: clock,
         );
 
-        final ingestionEngine = SinglePassArtifactIngestionEngine(
-          fileSystem: fileSystem,
-          pathResolver: pathResolver,
-          clock: clock,
-        );
-
         final coordinator = ProvisioningCoordinator(
           lock: lock,
           recordRepository: recordRepo,
@@ -97,15 +91,17 @@ void main() {
           clock: clock,
         );
 
-        final importInspector = ArtifactImportInspector(fileSystem: fileSystem);
+        final environment = ProvisioningEnvironment(
+          downloadEngine: downloadEngine,
+          coordinator: coordinator,
+          checkpointRepository: checkpointRepo,
+          pathResolver: pathResolver,
+          fileSystem: fileSystem,
+          clock: clock,
+        );
 
         final provisioningService = ModelProvisioningService(
-          downloadEngine: downloadEngine,
-          ingestionEngine: ingestionEngine,
-          coordinator: coordinator,
-          importInspector: importInspector,
-          checkpointRepository: checkpointRepo,
-          clock: clock,
+          environment: environment,
         );
 
         // Modello di test ufficiale Qwen 2.5 0.5B (398 MB)

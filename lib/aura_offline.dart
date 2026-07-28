@@ -51,7 +51,15 @@ export 'src/provisioning/infrastructure/download_concurrency_controller.dart';
 
 // Provisioning Ingestion & Service Infrastructure (Phase 6.4d)
 export 'src/provisioning/domain/catalog_artifact_snapshot.dart';
-export 'src/provisioning/validation/artifact_import_inspector.dart';
-export 'src/provisioning/infrastructure/single_pass_artifact_ingestion_engine.dart'
-    show ArtifactSourceOwnership, SinglePassArtifactIngestionEngine;
-export 'src/provisioning/infrastructure/model_provisioning_service.dart';
+export 'src/provisioning/infrastructure/provisioning_path_resolver.dart'
+    show ProvisioningPathResolver;
+export 'src/provisioning/infrastructure/model_provisioning_service.dart'
+    show
+        ModelProvisioningService,
+        ProvisioningEnvironment,
+        LocalArtifactImportRequest,
+        ModelProvisioningPhase;
+// ArtifactImportInspector, LocalGgufInspectionResult sono ri-esportati via model_provisioning_service.dart
+// attraverso il metodo applicativo inspectLocalArtifact. Non esposti come tipi diretti.
+export 'src/provisioning/validation/artifact_import_inspector.dart'
+    show LocalGgufInspectionResult;

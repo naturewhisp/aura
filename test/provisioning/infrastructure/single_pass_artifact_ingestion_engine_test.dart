@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:aura_core/aura_offline.dart';
+import 'package:aura_core/aura_testing.dart';
 import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
 
@@ -18,6 +19,8 @@ void main() {
       required String artifactId,
       required int sizeBytes,
       required String sha256Hex,
+      String version = '1.0.0',
+      String buildId = 'v1',
     }) {
       return CatalogArtifactSnapshot(
         catalogId: 'aura-official-test',
@@ -26,8 +29,8 @@ void main() {
         signingKeyId: 'test-key-1',
         trustLevel: CatalogTrustLevel.signatureVerified,
         artifactId: artifactId,
-        artifactVersion: '1.0.0',
-        buildId: 'v1',
+        artifactVersion: version,
+        buildId: buildId,
         fileName: '$artifactId.gguf',
         sizeBytes: sizeBytes,
         sha256: sha256Hex.toLowerCase(),
@@ -48,6 +51,8 @@ void main() {
         clock: clock,
       );
     });
+
+    // ─── ingestAndVerifyToTemporaryStore ───────────────────────────────────
 
     test(
         'Single-pass streaming copy and SHA-256 calculation succeeds on matching file',
@@ -122,10 +127,9 @@ void main() {
       // Staging .part file originale è stato rimosso dalla posizione iniziale e spostato in quarantena
       expect(await fileSystem.fileExists(sourcePath), isFalse);
 
-      final stagingDir = pathResolver.resolveStagingDirectory('op-bad');
-      final quarantineReport =
-          '$stagingDir\\quarantine\\op-bad\\verification_failure.json';
-      final quarantinePart = '$stagingDir\\quarantine\\op-bad\\corrupted.part';
+      final quarantineDir = pathResolver.quarantineOperationPath('op-bad');
+      final quarantineReport = '$quarantineDir\\verification_failure.json';
+      final quarantinePart = '$quarantineDir\\corrupted.part';
 
       expect(await fileSystem.fileExists(quarantineReport), isTrue);
       expect(await fileSystem.fileExists(quarantinePart), isTrue);
@@ -203,6 +207,204 @@ void main() {
 
       // Il sorgente gestito rimane intatto poichè l'operazione è stata annullata prima del completamento
       expect(await fileSystem.fileExists(sourcePath), isTrue);
+    });
+
+    // ─── ingestLocalArtifact — post-hash matching ─────────────────────────
+
+    group('ingestLocalArtifact — post-hash matching', () {
+      late List<int> bytes;
+      late String correctSha;
+      const userPath = r'C:\Users\dendo\Downloads\model.gguf';
+
+      setUp(() async {
+        bytes = List.generate(256, (i) => i % 256);
+        correctSha = sha256.convert(bytes).toString().toLowerCase();
+        await fileSystem.appendBytes(userPath, bytes);
+      });
+
+      test('1 match: ingestione riuscita e file utente non eliminato',
+          () async {
+        final snapshot = createSnapshot(
+          artifactId: 'model-local-a',
+          sizeBytes: 256,
+          sha256Hex: correctSha,
+        );
+
+        final result = await engine.ingestLocalArtifact(
+          sourceFilePath: userPath,
+          operationId: 'local-op-1',
+          candidateSnapshots: [snapshot],
+        );
+
+        expect(result.verifiedSha256, equals(correctSha));
+        expect(result.verifiedSizeBytes, equals(256));
+        expect(result.provenance.artifactId, equals('model-local-a'));
+        expect(result.sourceOwnership,
+            equals(ArtifactSourceOwnership.userOwnedFile));
+
+        // File utente intatto
+        expect(await fileSystem.fileExists(userPath), isTrue);
+
+        // Directory temporanea rinominata in .installing
+        expect(await fileSystem.directoryExists(result.temporaryInstallPath),
+            isTrue);
+        expect(result.temporaryInstallPath, contains('.installing-local-op-1'));
+
+        // Il payload ha il nome canonico (non payload.importing)
+        final canonicalFile =
+            '${result.temporaryInstallPath}\\model-local-a.gguf';
+        expect(await fileSystem.fileExists(canonicalFile), isTrue);
+
+        // Metadati scritti
+        final markerPath = '${result.temporaryInstallPath}\\commit.marker';
+        final recordPath =
+            '${result.temporaryInstallPath}\\installation_record.json';
+        expect(await fileSystem.fileExists(markerPath), isTrue);
+        expect(await fileSystem.fileExists(recordPath), isTrue);
+
+        // local-import temp eliminata dopo rinomina
+        final localTempDir = pathResolver.localImportTempPath('local-op-1');
+        expect(await fileSystem.directoryExists(localTempDir), isFalse);
+      });
+
+      test(
+          '0 match: nessun candidato corrisponde all\'hash → artifactNotVerified',
+          () async {
+        final wrongSnapshot = createSnapshot(
+          artifactId: 'model-wrong',
+          sizeBytes: 256,
+          sha256Hex: '0' * 64,
+        );
+
+        await expectLater(
+          engine.ingestLocalArtifact(
+            sourceFilePath: userPath,
+            operationId: 'local-op-0',
+            candidateSnapshots: [wrongSnapshot],
+          ),
+          throwsA(isA<ProvisioningException>().having(
+            (e) => e.reason,
+            'reason',
+            equals(ProvisioningFailureReason.artifactNotVerified),
+          )),
+        );
+
+        // File utente intatto
+        expect(await fileSystem.fileExists(userPath), isTrue);
+        // Temp dir eliminata
+        final localTempDir = pathResolver.localImportTempPath('local-op-0');
+        expect(await fileSystem.directoryExists(localTempDir), isFalse);
+      });
+
+      test('>1 match: due candidati con stessa impronta → installationConflict',
+          () async {
+        final snapshotA = createSnapshot(
+          artifactId: 'model-a-dup',
+          sizeBytes: 256,
+          sha256Hex: correctSha,
+        );
+        final snapshotB = createSnapshot(
+          artifactId: 'model-b-dup',
+          sizeBytes: 256,
+          sha256Hex: correctSha,
+        );
+
+        await expectLater(
+          engine.ingestLocalArtifact(
+            sourceFilePath: userPath,
+            operationId: 'local-op-dup',
+            candidateSnapshots: [snapshotA, snapshotB],
+          ),
+          throwsA(isA<ProvisioningException>().having(
+            (e) => e.reason,
+            'reason',
+            equals(ProvisioningFailureReason.installationConflict),
+          )),
+        );
+
+        // File utente intatto
+        expect(await fileSystem.fileExists(userPath), isTrue);
+        // Temp dir eliminata
+        final localTempDir = pathResolver.localImportTempPath('local-op-dup');
+        expect(await fileSystem.directoryExists(localTempDir), isFalse);
+      });
+
+      test(
+          '>1 candidati per size ma solo 1 ha hash corretto → match univoco dopo SHA-256',
+          () async {
+        // snapshotOther ha stessa dimensione ma sha256 diverso
+        final snapshotCorrect = createSnapshot(
+          artifactId: 'model-c-ok',
+          sizeBytes: 256,
+          sha256Hex: correctSha,
+        );
+        final snapshotOther = createSnapshot(
+          artifactId: 'model-c-other',
+          sizeBytes: 256,
+          sha256Hex: 'a' * 64,
+        );
+
+        final result = await engine.ingestLocalArtifact(
+          sourceFilePath: userPath,
+          operationId: 'local-op-disamb',
+          candidateSnapshots: [snapshotCorrect, snapshotOther],
+        );
+
+        expect(result.provenance.artifactId, equals('model-c-ok'));
+        expect(result.verifiedSha256, equals(correctSha));
+        expect(await fileSystem.fileExists(userPath), isTrue);
+      });
+
+      test(
+          'preferredArtifactId non presente tra i candidati → artifactNotVerified',
+          () async {
+        final snapshot = createSnapshot(
+          artifactId: 'model-d',
+          sizeBytes: 256,
+          sha256Hex: correctSha,
+        );
+
+        await expectLater(
+          engine.ingestLocalArtifact(
+            sourceFilePath: userPath,
+            operationId: 'local-op-pref-fail',
+            candidateSnapshots: [snapshot],
+            preferredArtifactId: 'model-does-not-exist',
+          ),
+          throwsA(isA<ProvisioningException>().having(
+            (e) => e.reason,
+            'reason',
+            equals(ProvisioningFailureReason.artifactNotVerified),
+          )),
+        );
+      });
+
+      test(
+          'preferredArtifactId restringe correttamente a 1 candidato → match riuscito',
+          () async {
+        final snapshotE = createSnapshot(
+          artifactId: 'model-e',
+          sizeBytes: 256,
+          sha256Hex: correctSha,
+        );
+        // Stessa dimensione e hash, ma preferredArtifactId disambigua
+        final snapshotF = createSnapshot(
+          artifactId: 'model-f',
+          sizeBytes: 256,
+          sha256Hex: correctSha,
+        );
+
+        // Con preferredArtifactId specifichiamo model-e → 1 solo candidato → match
+        final result = await engine.ingestLocalArtifact(
+          sourceFilePath: userPath,
+          operationId: 'local-op-pref-ok',
+          candidateSnapshots: [snapshotE, snapshotF],
+          preferredArtifactId: 'model-e',
+        );
+
+        expect(result.provenance.artifactId, equals('model-e'));
+        expect(await fileSystem.fileExists(userPath), isTrue);
+      });
     });
   });
 }

@@ -257,6 +257,19 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
     byteFiles[p] = currentBytes.sublist(0, length);
     files.remove(p);
   }
+
+  @override
+  Future<void> renameFile(String sourcePath, String targetPath) async {
+    final src = _norm(sourcePath);
+    final dst = _norm(targetPath);
+    if (byteFiles.containsKey(src)) {
+      byteFiles[dst] = byteFiles.remove(src)!;
+    } else if (files.containsKey(src)) {
+      files[dst] = files.remove(src)!;
+    } else {
+      throw ProvisioningIoException(operation: 'renameFile_missing[$src]');
+    }
+  }
 }
 
 /// Fake [ProvisioningClock] per test deterministici.

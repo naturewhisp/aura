@@ -12,7 +12,20 @@ import '../domain/provisioning_options.dart';
 import 'provisioning_file_system.dart';
 import 'provisioning_path_resolver.dart';
 
+/// Stato dell'operazione di quarantena per uno staging gestito corrotto.
+enum QuarantineStatus {
+  /// File copiato in quarantena e sorgente eliminato con successo.
+  quarantined,
+
+  /// File copiato in quarantena ma il sorgente originale non è stato eliminato.
+  sourceRetained,
+
+  /// La copia in quarantena è fallita; il sorgente originale resta invariato.
+  copyFailed,
+}
+
 /// Specifica la natura del possesso della sorgente prima dell'ingestione nello store gestito.
+/// Rimane `library`-private: non è esposto dall'API pubblica di `aura_offline.dart`.
 enum ArtifactSourceOwnership {
   /// File `.part` gestito internamente dal motore di download nello staging.
   managedStaging,
@@ -118,6 +131,14 @@ final class SinglePassArtifactIngestionEngine {
         '${_pathResolver.appManagedRoot}\\$relativeInstallPath';
     final temporaryInstallPath = '$finalInstallPath.installing-$operationId';
 
+    // sourceKind derivato univocamente da sourceOwnership
+    final artifactSourceKind = switch (sourceOwnership) {
+      ArtifactSourceOwnership.managedStaging =>
+        CatalogArtifactSourceKind.remoteHttps,
+      ArtifactSourceOwnership.userOwnedFile =>
+        CatalogArtifactSourceKind.localImport,
+    };
+
     // 1. Isolamento della directory temporanea dello store
     await _fileSystem.deleteDirectoryBestEffort(temporaryInstallPath);
     await _fileSystem.createDirectory(temporaryInstallPath);
@@ -157,7 +178,7 @@ final class SinglePassArtifactIngestionEngine {
       }
       throw ProvisioningException(
         reason: ProvisioningFailureReason.invalidSourceUri,
-        message: 'Errore di I/O durante la copia streaming dell\'artefatto: $e',
+        message: 'Errore di I/O durante la copia streaming dell\'artefatto.',
       );
     }
 
@@ -191,7 +212,214 @@ final class SinglePassArtifactIngestionEngine {
       );
     }
 
-    // 4. Scrittura del file installation_record.json nella directory temporanea
+    // 4. Scrittura dei metadati nella directory temporanea
+    await _writeInstallMetadata(
+      temporaryInstallPath: temporaryInstallPath,
+      relativeInstallPath: relativeInstallPath,
+      operationId: operationId,
+      provenanceSnapshot: provenanceSnapshot,
+      calculatedSha256: calculatedSha256,
+      bytesRead: bytesRead,
+      artifactSourceKind: artifactSourceKind,
+    );
+
+    return PreparedArtifactInstallation._internal(
+      temporaryInstallPath: temporaryInstallPath,
+      finalInstallPath: finalInstallPath,
+      sourcePath: cleanSourcePath,
+      sourceOwnership: sourceOwnership,
+      provenance: provenanceSnapshot,
+      verifiedSizeBytes: bytesRead,
+      verifiedSha256: calculatedSha256,
+      verifiedAtUtc: _clock.nowUtc(),
+    );
+  }
+
+  /// Esegue la copia streaming + SHA-256 di un file locale dell'utente in un'unica scansione e
+  /// seleziona automaticamente lo snapshot corrispondente dalla lista di candidati post-hash.
+  ///
+  /// Il file sorgente non viene mai modificato né cancellato.
+  ///
+  /// Pipeline:
+  /// 1. Pre-filtro per `preferredArtifactId` se specificato (restringe candidati, NON bypassa l'hash).
+  /// 2. Single-pass: copia in `staging/local-import/<operationId>/payload.importing`, calcolo SHA-256.
+  /// 3. Matching finale: filtra candidati per `sizeBytes == bytesRead && sha256 == computedHash`.
+  /// 4. 0 match → [ProvisioningFailureReason.artifactNotVerified]
+  ///    >1 match → [ProvisioningFailureReason.installationConflict]
+  ///    1 match → rename staging temp → `.installing-<operationId>`, scrittura metadati.
+  Future<PreparedArtifactInstallation> ingestLocalArtifact({
+    required String sourceFilePath,
+    required String operationId,
+    required List<CatalogArtifactSnapshot> candidateSnapshots,
+    String? preferredArtifactId,
+    ProvisioningCancellationToken? cancellationToken,
+  }) async {
+    final cleanSourcePath = sourceFilePath.trim();
+    if (!await _fileSystem.fileExists(cleanSourcePath)) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidSourceUri,
+        message: 'File locale per l\'import non trovato: $cleanSourcePath',
+      );
+    }
+
+    // 1. Pre-filtro per preferredArtifactId (solo restringe, non bypassa hash)
+    final List<CatalogArtifactSnapshot> preFiltered;
+    if (preferredArtifactId != null && preferredArtifactId.isNotEmpty) {
+      preFiltered = candidateSnapshots
+          .where((s) => s.artifactId == preferredArtifactId)
+          .toList();
+      if (preFiltered.isEmpty) {
+        throw ProvisioningException(
+          reason: ProvisioningFailureReason.artifactNotVerified,
+          message:
+              'preferredArtifactId "$preferredArtifactId" non presente tra i candidati compatibili per dimensione.',
+        );
+      }
+    } else {
+      preFiltered = List.of(candidateSnapshots);
+    }
+
+    if (preFiltered.isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.artifactNotVerified,
+        message:
+            'Nessun artefatto compatibile trovato nel catalogo per questo file locale.',
+      );
+    }
+
+    // 2. Copia in directory temporanea dedicata con placeholder fisso
+    final localTempDir = _pathResolver.localImportTempPath(operationId);
+    await _fileSystem.deleteDirectoryBestEffort(localTempDir);
+    await _fileSystem.createDirectory(localTempDir);
+
+    final placeholderPath = '$localTempDir\\payload.importing';
+
+    int bytesRead = 0;
+    String calculatedSha256 = '';
+
+    try {
+      cancellationToken?.throwIfCancelled();
+
+      // Single-pass: copia streaming + SHA-256 in pipeline
+      final inputStream = _fileSystem.openRead(cleanSourcePath);
+      final digestSink = _DigestSink();
+      final shaConversion = sha256.startChunkedConversion(digestSink);
+
+      await for (final chunk in inputStream) {
+        cancellationToken?.throwIfCancelled();
+        bytesRead += chunk.length;
+        shaConversion.add(chunk);
+        await _fileSystem.appendBytes(placeholderPath, chunk);
+      }
+      shaConversion.close();
+
+      calculatedSha256 = digestSink.digest?.toString().toLowerCase() ?? '';
+
+      cancellationToken?.throwIfCancelled();
+    } catch (e) {
+      // Pulizia immediata del temp dir locale; file utente intatto
+      await _fileSystem.deleteDirectoryBestEffort(localTempDir);
+
+      if (e is ProvisioningException &&
+          e.reason == ProvisioningFailureReason.operationCancelled) {
+        rethrow;
+      }
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidSourceUri,
+        message: 'Errore di I/O durante la copia locale single-pass.',
+      );
+    }
+
+    // 3. Matching finale post-hash su sizeBytes + sha256
+    final matched = preFiltered
+        .where(
+          (s) =>
+              s.sizeBytes == bytesRead &&
+              s.sha256.toLowerCase() == calculatedSha256.toLowerCase(),
+        )
+        .toList();
+
+    if (matched.isEmpty) {
+      await _fileSystem.deleteDirectoryBestEffort(localTempDir);
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.artifactNotVerified,
+        message:
+            'UnknownLocalArtifact: nessun artefatto del catalogo corrisponde a sizeBytes=$bytesRead sha256=$calculatedSha256.',
+      );
+    }
+
+    if (matched.length > 1) {
+      await _fileSystem.deleteDirectoryBestEffort(localTempDir);
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.installationConflict,
+        message:
+            'AmbiguousCatalogMatch: ${matched.length} artefatti corrispondono alla stessa impronta crittografica. Specificare preferredArtifactId.',
+      );
+    }
+
+    final matchedSnapshot = matched.first;
+
+    // 4. Calcola path finale e rename: staging/local-import/<opId>/ → <target>.installing-<opId>/
+    final relativeInstallPath = _pathResolver.resolveRelativeInstallPath(
+      artifactType: CatalogArtifactType.model,
+      artifactId: matchedSnapshot.artifactId,
+      buildOrVersionId:
+          matchedSnapshot.artifactVersion == matchedSnapshot.buildId
+              ? matchedSnapshot.artifactVersion
+              : '${matchedSnapshot.artifactVersion}_${matchedSnapshot.buildId}',
+    );
+
+    final finalInstallPath =
+        '${_pathResolver.appManagedRoot}\\$relativeInstallPath';
+    final temporaryInstallPath = '$finalInstallPath.installing-$operationId';
+
+    // Pulisce eventuale .installing residuo
+    await _fileSystem.deleteDirectoryBestEffort(temporaryInstallPath);
+
+    // Rename canonical della directory: local-temp → .installing
+    await _fileSystem.renameDirectoryWithoutFallback(
+        localTempDir, temporaryInstallPath);
+
+    // Rename placeholder → nome canonico (avviene PRIMA della scrittura di record e marker)
+    final canonicalFilePath =
+        '$temporaryInstallPath\\${matchedSnapshot.fileName}';
+    await _fileSystem.renameFile(
+        placeholderPath.replaceFirst(localTempDir, temporaryInstallPath),
+        canonicalFilePath);
+
+    // Scrittura metadati
+    await _writeInstallMetadata(
+      temporaryInstallPath: temporaryInstallPath,
+      relativeInstallPath: relativeInstallPath,
+      operationId: operationId,
+      provenanceSnapshot: matchedSnapshot,
+      calculatedSha256: calculatedSha256,
+      bytesRead: bytesRead,
+      artifactSourceKind: CatalogArtifactSourceKind.localImport,
+    );
+
+    return PreparedArtifactInstallation._internal(
+      temporaryInstallPath: temporaryInstallPath,
+      finalInstallPath: finalInstallPath,
+      sourcePath: cleanSourcePath,
+      sourceOwnership: ArtifactSourceOwnership.userOwnedFile,
+      provenance: matchedSnapshot,
+      verifiedSizeBytes: bytesRead,
+      verifiedSha256: calculatedSha256,
+      verifiedAtUtc: _clock.nowUtc(),
+    );
+  }
+
+  /// Scrive `installation_record.json` e `commit.marker` nella directory temporanea.
+  Future<void> _writeInstallMetadata({
+    required String temporaryInstallPath,
+    required String relativeInstallPath,
+    required String operationId,
+    required CatalogArtifactSnapshot provenanceSnapshot,
+    required String calculatedSha256,
+    required int bytesRead,
+    required CatalogArtifactSourceKind artifactSourceKind,
+  }) async {
     final nowUtc = _clock.nowUtc();
     final nowIso = nowUtc.toIso8601String();
 
@@ -210,7 +438,7 @@ final class SinglePassArtifactIngestionEngine {
       verifiedAt: nowIso,
       sizeBytes: bytesRead,
       sha256: calculatedSha256,
-      sourceKind: CatalogArtifactSourceKind.remoteHttps,
+      sourceKind: artifactSourceKind,
       status: InstallationStatus.verified,
     );
 
@@ -220,7 +448,6 @@ final class SinglePassArtifactIngestionEngine {
       const JsonEncoder.withIndent('  ').convert(descriptor.toJson()),
     );
 
-    // 5. Scrittura del commit.marker JSON strutturato nella directory temporanea
     final markerPayload = {
       'schemaVersion': '1.0',
       'artifactId': provenanceSnapshot.artifactId,
@@ -234,20 +461,9 @@ final class SinglePassArtifactIngestionEngine {
       markerJsonPath,
       const JsonEncoder.withIndent('  ').convert(markerPayload),
     );
-
-    return PreparedArtifactInstallation._internal(
-      temporaryInstallPath: temporaryInstallPath,
-      finalInstallPath: finalInstallPath,
-      sourcePath: cleanSourcePath,
-      sourceOwnership: sourceOwnership,
-      provenance: provenanceSnapshot,
-      verifiedSizeBytes: bytesRead,
-      verifiedSha256: calculatedSha256,
-      verifiedAtUtc: nowUtc,
-    );
   }
 
-  /// Sposta uno staging gestito corretto o corrotto nella cartella di quarantena.
+  /// Sposta uno staging gestito corrotto nella cartella di quarantena con reporting differenziato.
   Future<void> _quarantineManagedStaging({
     required String operationId,
     required String sourceFilePath,
@@ -255,15 +471,25 @@ final class SinglePassArtifactIngestionEngine {
     required int actualSizeBytes,
     required String actualSha256,
   }) async {
+    QuarantineStatus status = QuarantineStatus.copyFailed;
     try {
-      final stagingRoot = _pathResolver.resolveStagingDirectory(operationId);
-      final quarantineDir = '$stagingRoot\\quarantine\\$operationId';
+      final quarantineDir = _pathResolver.quarantineOperationPath(operationId);
       await _fileSystem.createDirectory(quarantineDir);
 
       final quarantinePartPath = '$quarantineDir\\corrupted.part';
-      await _fileSystem.copyFile(sourceFilePath, quarantinePartPath);
-      await _fileSystem.deleteFileBestEffort(sourceFilePath);
+      try {
+        await _fileSystem.copyFile(sourceFilePath, quarantinePartPath);
+        // Verifica post-condizione cancellazione sorgente
+        await _fileSystem.deleteFileBestEffort(sourceFilePath);
+        final stillExists = await _fileSystem.fileExists(sourceFilePath);
+        status = stillExists
+            ? QuarantineStatus.sourceRetained
+            : QuarantineStatus.quarantined;
+      } catch (_) {
+        status = QuarantineStatus.copyFailed;
+      }
 
+      // Report scritto SEMPRE in best effort, indipendentemente dallo status
       final report = {
         'schemaVersion': '1.0',
         'operationId': operationId,
@@ -272,6 +498,7 @@ final class SinglePassArtifactIngestionEngine {
         'actualSizeBytes': actualSizeBytes,
         'expectedSha256': provenance.sha256,
         'actualSha256': actualSha256,
+        'quarantineStatus': status.name,
         'quarantinedAtUtc': _clock.nowUtc().toIso8601String(),
       };
 
@@ -281,7 +508,7 @@ final class SinglePassArtifactIngestionEngine {
         const JsonEncoder.withIndent('  ').convert(report),
       );
     } catch (_) {
-      // Pulizia best-effort: la quarantena non deve mai bloccare l'eccezione principale di hash mismatch
+      // La quarantena non deve mai bloccare l'eccezione principale di hash mismatch
     }
   }
 }

@@ -140,6 +140,7 @@ enum ModelUpdateStatus {
   installedActivationPending,
   updateConflict,
   stalePrecondition,
+  updateCommitIndeterminate,
   failed,
 }
 
@@ -173,6 +174,7 @@ final class ModelUpdateResult {
   final bool recordCommitted;
   final bool activationCommitted;
   final bool cleanupPending;
+  final bool reconciliationRequired;
   final ProvisioningFailureReason? failureReason;
   final String? message;
 
@@ -186,6 +188,7 @@ final class ModelUpdateResult {
     this.recordCommitted = false,
     this.activationCommitted = false,
     this.cleanupPending = false,
+    this.reconciliationRequired = false,
     this.failureReason,
     this.message,
   });

@@ -1463,13 +1463,38 @@ final class ProvisioningCoordinator {
                 await _fileSystem.deleteDirectoryBestEffort(versionDir);
                 cleanedStaleTempCount++;
               } else {
-                // Il target non è sano: promuoviamo la riparazione in staging sul target
-                await _fileSystem.deleteDirectoryBestEffort(targetDir);
-                await _fileSystem.renameDirectoryWithoutFallback(
-                  versionDir,
-                  targetDir,
-                );
-                repairedCount++;
+                bool repairingHealthy = false;
+                if (desc != null) {
+                  final localRecordPath =
+                      '$versionDir\\installation_record.json';
+                  final commitMarkerPath = '$versionDir\\commit.marker';
+                  final hasRecord =
+                      await _fileSystem.fileExists(localRecordPath);
+                  final hasMarker =
+                      await _fileSystem.fileExists(commitMarkerPath);
+
+                  if (hasRecord && hasMarker) {
+                    final tempDesc = desc.copyWith(
+                      relativeInstallPath: 'models/$artifactSub/$versionSub',
+                    );
+                    repairingHealthy = await _verifier.verifyPhysicalIntegrity(
+                      tempDesc,
+                      pathResolver: _pathResolver,
+                    );
+                  }
+                }
+
+                if (repairingHealthy) {
+                  await _fileSystem.deleteDirectoryBestEffort(targetDir);
+                  await _fileSystem.renameDirectoryWithoutFallback(
+                    versionDir,
+                    targetDir,
+                  );
+                  repairedCount++;
+                } else {
+                  await _fileSystem.deleteDirectoryBestEffort(versionDir);
+                  cleanedStaleTempCount++;
+                }
               }
               continue;
             }
@@ -1805,6 +1830,44 @@ final class ProvisioningCoordinator {
             await _fileSystem.deleteDirectoryBestEffort(
                 preparedArtifact.temporaryInstallPath);
           }
+
+          final finalStillExists = await _fileSystem.directoryExists(finalPath);
+          final tempStillExists = await _fileSystem
+              .directoryExists(preparedArtifact.temporaryInstallPath);
+
+          if (finalStillExists) {
+            return ModelUpdateResult(
+              operationId: operationId,
+              artifactId: artifactId,
+              previousInstallationId: prevInstId,
+              status: ModelUpdateStatus.updateCommitIndeterminate,
+              failureReason: ProvisioningFailureReason.atomicMoveFailed,
+              filesystemCommitted: true,
+              recordCommitted: false,
+              activationCommitted: false,
+              reconciliationRequired: true,
+              message:
+                  'Fallimento nella compensazione: la directory finale e ancora presente sul filesystem ma il record globale non e stato scritto. E richiesta la riconciliazione.',
+            );
+          }
+
+          if (tempStillExists) {
+            return ModelUpdateResult(
+              operationId: operationId,
+              artifactId: artifactId,
+              previousInstallationId: prevInstId,
+              status: ModelUpdateStatus.failed,
+              failureReason: ProvisioningFailureReason.cleanupFailed,
+              filesystemCommitted: false,
+              recordCommitted: false,
+              activationCommitted: false,
+              cleanupPending: true,
+              reconciliationRequired: true,
+              message:
+                  'Fallimento nella rimozione della directory temporanea durante la compensazione dell\'aggiornamento.',
+            );
+          }
+
           return ModelUpdateResult(
             operationId: operationId,
             artifactId: artifactId,
@@ -1815,6 +1878,7 @@ final class ProvisioningCoordinator {
             filesystemCommitted: false,
             recordCommitted: false,
             activationCommitted: false,
+            reconciliationRequired: false,
             message:
                 'Fallimento nella persistenza del record di installazione.',
           );

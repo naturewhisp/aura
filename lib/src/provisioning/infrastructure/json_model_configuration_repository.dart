@@ -142,32 +142,7 @@ final class JsonModelConfigurationRepository {
   /// Legge lo stato corrente della configurazione con fallback a `.bak` in caso di corruzione.
   Future<ModelConfigurationRecord> readRecord() async {
     return _lock.synchronized(_lockKey, () async {
-      if (!await _fileSystem.fileExists(_primaryFilePath)) {
-        if (await _fileSystem.fileExists(_backupFilePath)) {
-          final backupRecord = await _tryReadRecordFromFile(_backupFilePath);
-          if (backupRecord != null) {
-            await _writeRecordInternal(backupRecord);
-            return backupRecord;
-          }
-        }
-        return ModelConfigurationRecord.empty();
-      }
-
-      final primaryRecord = await _tryReadRecordFromFile(_primaryFilePath);
-      if (primaryRecord != null) {
-        return primaryRecord;
-      }
-
-      // Tenta fallback a .bak
-      if (await _fileSystem.fileExists(_backupFilePath)) {
-        final backupRecord = await _tryReadRecordFromFile(_backupFilePath);
-        if (backupRecord != null) {
-          await _writeRecordInternal(backupRecord);
-          return backupRecord;
-        }
-      }
-
-      return ModelConfigurationRecord.empty();
+      return _readRecordInternal();
     });
   }
 
@@ -186,11 +161,40 @@ final class JsonModelConfigurationRepository {
         transform,
   ) async {
     return _lock.synchronized(_lockKey, () async {
-      final current = await readRecord();
+      final current = await _readRecordInternal();
       final updated = transform(current);
       await _writeRecordInternal(updated);
       return updated;
     });
+  }
+
+  Future<ModelConfigurationRecord> _readRecordInternal() async {
+    if (!await _fileSystem.fileExists(_primaryFilePath)) {
+      if (await _fileSystem.fileExists(_backupFilePath)) {
+        final backupRecord = await _tryReadRecordFromFile(_backupFilePath);
+        if (backupRecord != null) {
+          await _writeRecordInternal(backupRecord);
+          return backupRecord;
+        }
+      }
+      return ModelConfigurationRecord.empty();
+    }
+
+    final primaryRecord = await _tryReadRecordFromFile(_primaryFilePath);
+    if (primaryRecord != null) {
+      return primaryRecord;
+    }
+
+    // Tenta fallback a .bak
+    if (await _fileSystem.fileExists(_backupFilePath)) {
+      final backupRecord = await _tryReadRecordFromFile(_backupFilePath);
+      if (backupRecord != null) {
+        await _writeRecordInternal(backupRecord);
+        return backupRecord;
+      }
+    }
+
+    return ModelConfigurationRecord.empty();
   }
 
   Future<ModelConfigurationRecord?> _tryReadRecordFromFile(String path) async {

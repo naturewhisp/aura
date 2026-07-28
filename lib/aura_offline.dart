@@ -74,3 +74,5 @@ export 'src/provisioning/domain/local_inference_preflight_models.dart';
 export 'src/provisioning/domain/model_configuration_models.dart';
 export 'src/provisioning/domain/runtime_dependency_models.dart';
 export 'src/provisioning/infrastructure/json_model_configuration_repository.dart';
+export 'src/provisioning/infrastructure/llama_server_dependency_service.dart';
+export 'src/provisioning/infrastructure/winget_dependency_adapter.dart';

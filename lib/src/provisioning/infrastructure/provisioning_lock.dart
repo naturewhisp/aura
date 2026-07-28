@@ -53,13 +53,19 @@ final class InMemoryProvisioningLock implements ProvisioningLock {
   }
 }
 
-/// Implementazione di file lock inter-processo atomico con fallback intra-processo.
+/// Implementazione di file lock inter-processo atomico con fallback intra-processo e timeout controllato.
 final class FileBasedProvisioningLock implements ProvisioningLock {
   final String _lockDirectory;
   final InMemoryProvisioningLock _inMemoryLock;
+  final Duration acquisitionTimeout;
+  final Duration retryInterval;
+  final Duration maxWaitDuration;
 
   FileBasedProvisioningLock({
     required String lockDirectory,
+    this.acquisitionTimeout = const Duration(milliseconds: 100),
+    this.retryInterval = const Duration(milliseconds: 50),
+    this.maxWaitDuration = const Duration(seconds: 5),
   })  : _lockDirectory = lockDirectory,
         _inMemoryLock = InMemoryProvisioningLock();
 
@@ -80,25 +86,32 @@ final class FileBasedProvisioningLock implements ProvisioningLock {
       final lockFile = File(lockFilePath);
 
       RandomAccessFile? raf;
-      var attempts = 0;
-      const maxAttempts = 100;
-      const pollingInterval = Duration(milliseconds: 50);
+      final stopwatch = Stopwatch()..start();
+      var acquired = false;
 
-      while (attempts < maxAttempts) {
+      while (!acquired) {
+        RandomAccessFile? candidateRaf;
         try {
-          raf = await lockFile.open(mode: FileMode.write);
-          await raf.lock(FileLock.exclusive);
-          break;
+          candidateRaf = await lockFile.open(mode: FileMode.write);
+          await candidateRaf
+              .lock(FileLock.exclusive)
+              .timeout(acquisitionTimeout);
+          raf = candidateRaf;
+          acquired = true;
         } catch (_) {
-          attempts++;
-          if (attempts >= maxAttempts) {
+          if (candidateRaf != null) {
+            try {
+              await candidateRaf.close();
+            } catch (_) {}
+          }
+          if (stopwatch.elapsed >= maxWaitDuration) {
             throw ProvisioningException(
               reason: ProvisioningFailureReason.installationConflict,
               message:
-                  'Impossibile acquisire il file lock inter-processo per "$key" su "$lockFilePath".',
+                  'Impossibile acquisire il file lock inter-processo per "$key" su "$lockFilePath" entro il timeout di ${maxWaitDuration.inMilliseconds}ms.',
             );
           }
-          await Future.delayed(pollingInterval);
+          await Future.delayed(retryInterval);
         }
       }
 
@@ -108,6 +121,8 @@ final class FileBasedProvisioningLock implements ProvisioningLock {
         if (raf != null) {
           try {
             await raf.unlock();
+          } catch (_) {}
+          try {
             await raf.close();
           } catch (_) {}
         }

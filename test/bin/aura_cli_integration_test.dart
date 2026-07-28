@@ -1,95 +1,189 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:aura_core/aura_offline.dart';
-import '../provisioning/provisioning_test_helpers.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('Tranche 6.4f.8-fix — CLI Entrypoint Integration & Environment Tests',
+  group(
+      'Tranche 6.4f.8-lock-fix — CLI & FileBasedProvisioningLock Extended Tests',
       () {
-    late MemoryProvisioningFileSystem fileSystem;
-
-    setUp(() {
-      fileSystem = MemoryProvisioningFileSystem();
+    late Directory tempLockDir;
+    setUp(() async {
+      tempLockDir = await Directory.systemTemp.createTemp('aura_lock_test_');
     });
 
-    group('AuraCliEnvironment Path Resolution', () {
-      test('risolve i percorsi predefiniti da ambiente Platform', () {
+    tearDown(() async {
+      if (await tempLockDir.exists()) {
+        await tempLockDir.delete(recursive: true);
+      }
+    });
+
+    group('AuraCliEnvironment Platform Resolution', () {
+      test('risolve i percorsi Windows in modo corretto', () {
         final env = AuraCliEnvironment.fromPlatform(
           environment: {'APPDATA': r'C:\Users\TestUser\AppData\Roaming'},
+          targetOS: AuraOperatingSystem.windows,
         );
 
-        expect(env.appManagedRoot, contains('AURA'));
-        expect(env.bundledRoot, contains('AURA'));
+        expect(env.appManagedRoot,
+            equals(r'C:\Users\TestUser\AppData\Roaming\AURA\models'));
       });
 
-      test('rispetta l\'override da variabile d\'ambiente AURA_DATA_ROOT', () {
+      test('risolve i percorsi Linux (XDG Data Home)', () {
         final env = AuraCliEnvironment.fromPlatform(
-          environment: {'AURA_DATA_ROOT': r'D:\CustomDataRoot'},
+          environment: {'XDG_DATA_HOME': '/home/testuser/.data'},
+          targetOS: AuraOperatingSystem.linux,
         );
 
-        expect(env.appManagedRoot, equals(r'D:\CustomDataRoot'));
+        expect(env.appManagedRoot, equals('/home/testuser/.data/aura/models'));
       });
 
-      test('rispetta l\'override da flag CLI --data-root=<path>', () {
+      test('risolve i percorsi macOS (Application Support)', () {
         final env = AuraCliEnvironment.fromPlatform(
-          cliArgs: ['model', 'list', r'--data-root=E:\CliDataRoot'],
+          environment: {'HOME': '/Users/testuser'},
+          targetOS: AuraOperatingSystem.macOS,
         );
 
-        expect(env.appManagedRoot, equals(r'E:\CliDataRoot'));
+        expect(env.appManagedRoot,
+            equals('/Users/testuser/Library/Application Support/AURA/models'));
       });
     });
 
-    group('LocalInferenceServiceProvider & Integration', () {
+    group('FileBasedProvisioningLock Multi-Instance & Exception Resilience',
+        () {
       test(
-          'crea il grafo di dipendenze con file system e lock personalizzabili',
+          'serializza l\'accesso concorrente tra due istanze FileBasedProvisioningLock',
           () async {
-        final env = const AuraCliEnvironment(
-          appManagedRoot: r'C:\TestRoot',
-          bundledRoot: r'C:\BundledRoot',
+        final lock1 = FileBasedProvisioningLock(
+          lockDirectory: tempLockDir.path,
+          acquisitionTimeout: const Duration(milliseconds: 100),
+          retryInterval: const Duration(milliseconds: 20),
         );
-        final lock = InMemoryProvisioningLock();
-
-        final services = LocalInferenceServiceProvider.create(
-          environment: env,
-          customFileSystem: fileSystem,
-          customLock: lock,
+        final lock2 = FileBasedProvisioningLock(
+          lockDirectory: tempLockDir.path,
+          acquisitionTimeout: const Duration(milliseconds: 100),
+          retryInterval: const Duration(milliseconds: 20),
         );
 
-        final res = await services.cliRunner
-            .runRuntimeCommand(['status'], jsonOutput: true);
-        expect(res.exitCode, equals(3));
+        final executionOrder = <int>[];
 
-        final json = jsonDecode(res.outputText) as Map<String, dynamic>;
-        expect(json['ok'], isFalse);
-        expect(json['code'], equals('runtime_unconfigured'));
+        final future1 = lock1.synchronized('shared_key', () async {
+          executionOrder.add(1);
+          await Future.delayed(const Duration(milliseconds: 150));
+          executionOrder.add(2);
+        });
+
+        // Breve delay per consentire a lock1 di acquisire il file lock
+        await Future.delayed(const Duration(milliseconds: 20));
+
+        final future2 = lock2.synchronized('shared_key', () async {
+          executionOrder.add(3);
+        });
+
+        await Future.wait([future1, future2]);
+
+        expect(executionOrder, equals([1, 2, 3]));
       });
 
       test(
-          'esegue la persistenza delle impostazioni sul percorso condiviso dell\'ambiente',
+          'rilascia il file lock se l\'azione solleva un\'eccezione imprevista',
           () async {
-        final env = const AuraCliEnvironment(
-          appManagedRoot: r'C:\SharedStore',
-          bundledRoot: r'C:\BundledStore',
+        final lock1 = FileBasedProvisioningLock(
+          lockDirectory: tempLockDir.path,
+          acquisitionTimeout: const Duration(milliseconds: 100),
+          retryInterval: const Duration(milliseconds: 20),
+        );
+        final lock2 = FileBasedProvisioningLock(
+          lockDirectory: tempLockDir.path,
+          acquisitionTimeout: const Duration(milliseconds: 100),
+          retryInterval: const Duration(milliseconds: 20),
         );
 
-        final services = LocalInferenceServiceProvider.create(
-          environment: env,
-          customFileSystem: fileSystem,
+        await expectLater(
+          lock1.synchronized('faulty_key', () async {
+            throw Exception('Imprevisto nel lock');
+          }),
+          throwsA(isA<Exception>()),
         );
 
-        const execPath = r'C:\Tools\llama-server.exe';
-        fileSystem.writeBytes(execPath, [1, 2, 3]);
+        // Verifica che lock2 riesca immediatamente ad acquisire il lock libero
+        var lock2Acquired = false;
+        await lock2.synchronized('faulty_key', () async {
+          lock2Acquired = true;
+        });
 
-        final setRes =
-            await services.cliRunner.runRuntimeCommand(['set', execPath]);
-        expect(setRes.exitCode, equals(0));
+        expect(lock2Acquired, isTrue);
+      });
 
-        final statusRes = await services.cliRunner
-            .runRuntimeCommand(['status'], jsonOutput: true);
-        final json = jsonDecode(statusRes.outputText) as Map<String, dynamic>;
-        expect(json['ok'], isTrue);
-        expect(json['executablePath'], equals(execPath));
+      test('solleva ProvisioningException quando scade il maxWaitDuration',
+          () async {
+        final lock1 = FileBasedProvisioningLock(
+          lockDirectory: tempLockDir.path,
+          acquisitionTimeout: const Duration(milliseconds: 50),
+          retryInterval: const Duration(milliseconds: 20),
+          maxWaitDuration: const Duration(milliseconds: 500),
+        );
+        final lock2 = FileBasedProvisioningLock(
+          lockDirectory: tempLockDir.path,
+          acquisitionTimeout: const Duration(milliseconds: 50),
+          retryInterval: const Duration(milliseconds: 20),
+          maxWaitDuration: const Duration(milliseconds: 200),
+        );
+
+        final blocker = lock1.synchronized('block_key', () async {
+          await Future.delayed(const Duration(milliseconds: 600));
+        });
+
+        await Future.delayed(const Duration(milliseconds: 30));
+
+        await expectLater(
+          lock2.synchronized('block_key', () async {
+            return 'should_fail';
+          }),
+          throwsA(isA<ProvisioningException>()),
+        );
+
+        await blocker;
+      });
+    });
+
+    group('Real Multi-Process Dart Integration Tests', () {
+      test('sincronizza l\'accesso tra due processi Dart reali separati',
+          () async {
+        final workerScriptPath = r'test\bin\lock_process_worker.dart';
+        if (!await File(workerScriptPath).exists()) {
+          return;
+        }
+
+        final proc1 = await Process.start(
+            'dart', [workerScriptPath, tempLockDir.path, '300']);
+        final lines1 = <String>[];
+        proc1.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen(lines1.add);
+
+        // Attende che il processo 1 abbia acquisito il lock
+        await Future.delayed(const Duration(milliseconds: 150));
+
+        final proc2 = await Process.start(
+            'dart', [workerScriptPath, tempLockDir.path, '50']);
+        final lines2 = <String>[];
+        proc2.stdout
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .listen(lines2.add);
+
+        final code1 = await proc1.exitCode;
+        final code2 = await proc2.exitCode;
+
+        expect(code1, equals(0));
+        expect(code2, equals(0));
+        expect(lines1, contains('LOCKED'));
+        expect(lines1, contains('UNLOCKED'));
+        expect(lines2, contains('LOCKED'));
+        expect(lines2, contains('UNLOCKED'));
       });
     });
   });

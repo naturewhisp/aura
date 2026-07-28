@@ -281,24 +281,30 @@ final class ProvisioningCoordinator {
         if (existingDescriptor.sha256.toLowerCase() ==
                 provenance.sha256.toLowerCase() &&
             existingDescriptor.sizeBytes == provenance.sizeBytes) {
-          // Idempotente no-op: cancella temp e restituisce già installato
-          final tempDeleted =
-              await _fileSystem.deleteDirectoryBestEffort(tempPath);
-          return ProvisioningResult(
-            operationId: operationId,
-            artifactId: provenance.artifactId,
-            status: ProvisioningStatus.alreadyInstalled,
-            installationId: existingDescriptor.installationId,
-            installed: false,
-            alreadyInstalled: true,
-            activated: false,
-            verified: true,
-            bytesProcessed: existingDescriptor.sizeBytes,
-            sourceKind: sourceKind,
-            rollbackPerformed: false,
-            cleanupSucceeded: tempDeleted,
-            sanitizedDiagnostics: {'cleanupPending': !tempDeleted},
-          );
+          // Finding 1 Fix: l'idempotenza logica deve essere validata dalla presenza fisica dello store
+          final physicalIdempotent =
+              await _isPhysicallyIdenticalInstallation(finalPath, provenance);
+          if (physicalIdempotent) {
+            final tempDeleted =
+                await _fileSystem.deleteDirectoryBestEffort(tempPath);
+            return ProvisioningResult(
+              operationId: operationId,
+              artifactId: provenance.artifactId,
+              status: ProvisioningStatus.alreadyInstalled,
+              installationId: existingDescriptor.installationId,
+              installed: false,
+              alreadyInstalled: true,
+              activated: false,
+              verified: true,
+              bytesProcessed: existingDescriptor.sizeBytes,
+              sourceKind: sourceKind,
+              rollbackPerformed: false,
+              cleanupSucceeded: tempDeleted,
+              sanitizedDiagnostics: {'cleanupPending': !tempDeleted},
+            );
+          }
+          // Se il record globale è uguale ma il target fisico è assente o corrotto,
+          // non restituisce già installato bensì prosegue verso la nuova installazione.
         } else {
           // Conflitto di fingerprint per la stessa versione
           await _fileSystem.deleteDirectoryBestEffort(tempPath);
@@ -359,6 +365,20 @@ final class ProvisioningCoordinator {
                 'Conflitto fisico: il target finale esiste già con fingerprint o stato diverso.',
           );
         }
+      }
+
+      // Finding 4: Gestione esplicita di finalPath come file ordinario
+      if (await _fileSystem.fileExists(finalPath) &&
+          !await _fileSystem.directoryExists(finalPath)) {
+        await _fileSystem.deleteDirectoryBestEffort(tempPath);
+        return ProvisioningResult.failure(
+          operationId: operationId,
+          artifactId: provenance.artifactId,
+          sourceKind: sourceKind,
+          failureReason: ProvisioningFailureReason.installationConflict,
+          sanitizedMessage:
+              'Conflitto fisico: la destinazione finale "$finalPath" è un file anziché una directory.',
+        );
       }
 
       // 4. COMMIT POINT: Rename atomico della directory temporanea -> finale

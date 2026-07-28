@@ -2,7 +2,9 @@ import 'package:meta/meta.dart';
 
 import '../domain/catalog_artifact_snapshot.dart';
 import '../domain/catalog_manifest.dart';
+import '../domain/download_cancellation_token.dart';
 import '../domain/download_request.dart';
+
 import '../domain/provisioning_cancellation_token.dart';
 import '../domain/provisioning_clock.dart';
 import '../domain/provisioning_options.dart';
@@ -36,9 +38,6 @@ final class LocalArtifactImportRequest {
   final String localFilePath;
   final ValidatedCatalogCandidate candidate;
 
-  /// Manifesto del catalogo usato per la pre-filtrazione per sizeBytes + magic.
-  final CatalogManifest manifest;
-
   /// Hint opzionale per disambiguare tra più candidati compatibili per dimensione.
   /// Se specificato, restringe la lista dei candidati prima del calcolo SHA-256,
   /// ma il hash viene sempre verificato.
@@ -48,7 +47,6 @@ final class LocalArtifactImportRequest {
     required this.operationId,
     required this.localFilePath,
     required this.candidate,
-    required this.manifest,
     this.preferredArtifactId,
   });
 }
@@ -186,9 +184,24 @@ final class _DefaultModelProvisioningService
       expectedSizeBytes: artifact.sizeBytes,
     );
 
+    // Conversione ed addebito del token di cancellazione per l'engine di download
+    DownloadCancellationToken? downloadCancellationToken;
+    if (cancellationToken != null) {
+      downloadCancellationToken = DownloadCancellationToken();
+      if (cancellationToken.isCancellationRequested) {
+        downloadCancellationToken
+            .cancel('Operazione di provisioning annullata.');
+      } else {
+        cancellationToken.whenCancelled.then((_) {
+          downloadCancellationToken
+              ?.cancel('Operazione di provisioning annullata.');
+        });
+      }
+    }
+
     final downloadResult = await _downloadEngine.downloadArtifact(
       request: downloadRequest,
-      cancellationToken: null,
+      cancellationToken: downloadCancellationToken,
       onProgress: (progress) {
         if (onProgress != null) {
           onProgress(progress.fraction);
@@ -261,7 +274,7 @@ final class _DefaultModelProvisioningService
     // 1. Pre-filtro per sizeBytes + magic GGUF tramite inspector
     final inspectionResult = await _importInspector.inspectLocalFile(
       filePath: importRequest.localFilePath,
-      manifest: importRequest.manifest,
+      manifest: importRequest.candidate.manifest,
     );
 
     if (!inspectionResult.isGgufHeaderValid) {

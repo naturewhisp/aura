@@ -212,16 +212,21 @@ final class SinglePassArtifactIngestionEngine {
       );
     }
 
-    // 4. Scrittura dei metadati nella directory temporanea
-    await _writeInstallMetadata(
-      temporaryInstallPath: temporaryInstallPath,
-      relativeInstallPath: relativeInstallPath,
-      operationId: operationId,
-      provenanceSnapshot: provenanceSnapshot,
-      calculatedSha256: calculatedSha256,
-      bytesRead: bytesRead,
-      artifactSourceKind: artifactSourceKind,
-    );
+    // 4. Scrittura dei metadati nella directory temporanea con pulizia compensativa su errore
+    try {
+      await _writeInstallMetadata(
+        temporaryInstallPath: temporaryInstallPath,
+        relativeInstallPath: relativeInstallPath,
+        operationId: operationId,
+        provenanceSnapshot: provenanceSnapshot,
+        calculatedSha256: calculatedSha256,
+        bytesRead: bytesRead,
+        artifactSourceKind: artifactSourceKind,
+      );
+    } catch (_) {
+      await _fileSystem.deleteDirectoryBestEffort(temporaryInstallPath);
+      rethrow;
+    }
 
     return PreparedArtifactInstallation._internal(
       temporaryInstallPath: temporaryInstallPath,
@@ -376,27 +381,33 @@ final class SinglePassArtifactIngestionEngine {
     // Pulisce eventuale .installing residuo
     await _fileSystem.deleteDirectoryBestEffort(temporaryInstallPath);
 
-    // Rename canonical della directory: local-temp → .installing
-    await _fileSystem.renameDirectoryWithoutFallback(
-        localTempDir, temporaryInstallPath);
+    // 4. Scrittura metadati e rename con pulizia compensativa se qualsiasi operazione post-creazione .installing fallisce
+    try {
+      // Rename canonical della directory: local-temp → .installing
+      await _fileSystem.renameDirectoryWithoutFallback(
+          localTempDir, temporaryInstallPath);
 
-    // Rename placeholder → nome canonico (avviene PRIMA della scrittura di record e marker)
-    final canonicalFilePath =
-        '$temporaryInstallPath\\${matchedSnapshot.fileName}';
-    await _fileSystem.renameFile(
-        placeholderPath.replaceFirst(localTempDir, temporaryInstallPath),
-        canonicalFilePath);
+      // Rename placeholder → nome canonico (avviene PRIMA della scrittura di record e marker)
+      final canonicalFilePath =
+          '$temporaryInstallPath\\${matchedSnapshot.fileName}';
+      await _fileSystem.renameFile(
+          placeholderPath.replaceFirst(localTempDir, temporaryInstallPath),
+          canonicalFilePath);
 
-    // Scrittura metadati
-    await _writeInstallMetadata(
-      temporaryInstallPath: temporaryInstallPath,
-      relativeInstallPath: relativeInstallPath,
-      operationId: operationId,
-      provenanceSnapshot: matchedSnapshot,
-      calculatedSha256: calculatedSha256,
-      bytesRead: bytesRead,
-      artifactSourceKind: CatalogArtifactSourceKind.localImport,
-    );
+      // Scrittura metadati
+      await _writeInstallMetadata(
+        temporaryInstallPath: temporaryInstallPath,
+        relativeInstallPath: relativeInstallPath,
+        operationId: operationId,
+        provenanceSnapshot: matchedSnapshot,
+        calculatedSha256: calculatedSha256,
+        bytesRead: bytesRead,
+        artifactSourceKind: CatalogArtifactSourceKind.localImport,
+      );
+    } catch (_) {
+      await _fileSystem.deleteDirectoryBestEffort(temporaryInstallPath);
+      rethrow;
+    }
 
     return PreparedArtifactInstallation._internal(
       temporaryInstallPath: temporaryInstallPath,

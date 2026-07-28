@@ -325,5 +325,117 @@ void main() {
       final count = await coordinator.reconcileUnindexedInstallations();
       expect(count, equals(0));
     });
+
+    test(
+        'Finding 1 — Record globale presente ma target fisico assente → non restituisce già installato, procede con l\'installazione',
+        () async {
+      final bytes = List.generate(100, (i) => i);
+      const sha =
+          'bce0aff19cf5aa6a7469a30d61d04e4376e4bbf6381052ee9e7f33925c954d52';
+
+      final sourcePath = pathResolver.stagingPartPath('op-f1');
+      await fileSystem.appendBytes(sourcePath, bytes);
+
+      final snapshot = CatalogArtifactSnapshot(
+        catalogId: 'aura-official-test',
+        catalogRevision: 1,
+        catalogSchemaVersion: '1.0',
+        signingKeyId: 'test-key-1',
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        artifactId: 'model-f1',
+        artifactVersion: '1.0.0',
+        buildId: 'v1',
+        fileName: 'model_f1.gguf',
+        sizeBytes: 100,
+        sha256: sha,
+        acquiredAtUtc: baseTime,
+      );
+
+      // 1. Prima installazione
+      final prepared1 = await ingestionEngine.ingestAndVerifyToTemporaryStore(
+        sourceFilePath: sourcePath,
+        operationId: 'op-f1-1',
+        provenanceSnapshot: snapshot,
+        sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      );
+      final res1 = await coordinator.registerVerifiedArtifact(
+        installation: prepared1,
+        operationId: 'op-f1-1',
+      );
+      expect(res1.status, equals(ProvisioningStatus.success));
+
+      // 2. Simuliamo la cancellazione fisica/corruzione accidentale del target su disco
+      await fileSystem.deleteDirectory(prepared1.finalInstallPath);
+      expect(await fileSystem.directoryExists(prepared1.finalInstallPath),
+          isFalse);
+
+      // 3. Nuova richiesta di installazione con stessa provenienza
+      await fileSystem.appendBytes(sourcePath, bytes);
+      final prepared2 = await ingestionEngine.ingestAndVerifyToTemporaryStore(
+        sourceFilePath: sourcePath,
+        operationId: 'op-f1-2',
+        provenanceSnapshot: snapshot,
+        sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      );
+
+      // Il record globale dice "stessa versione e sha", ma il check FISICO fallisce (assente)
+      // Pertanto NON deve restituire già installato, ma procedere con l'installazione!
+      final res2 = await coordinator.registerVerifiedArtifact(
+        installation: prepared2,
+        operationId: 'op-f1-2',
+      );
+
+      expect(res2.status, equals(ProvisioningStatus.success));
+      expect(res2.alreadyInstalled, isFalse);
+      expect(
+          await fileSystem.directoryExists(prepared1.finalInstallPath), isTrue);
+    });
+
+    test(
+        'Finding 4 — finalPath presente come file ordinario → restituisce installationConflict',
+        () async {
+      final bytes = List.generate(100, (i) => i);
+      const sha =
+          'bce0aff19cf5aa6a7469a30d61d04e4376e4bbf6381052ee9e7f33925c954d52';
+
+      final sourcePath = pathResolver.stagingPartPath('op-f4');
+      await fileSystem.appendBytes(sourcePath, bytes);
+
+      final snapshot = CatalogArtifactSnapshot(
+        catalogId: 'aura-official-test',
+        catalogRevision: 1,
+        catalogSchemaVersion: '1.0',
+        signingKeyId: 'test-key-1',
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        artifactId: 'model-f4',
+        artifactVersion: '1.0.0',
+        buildId: 'v1',
+        fileName: 'model_f4.gguf',
+        sizeBytes: 100,
+        sha256: sha,
+        acquiredAtUtc: baseTime,
+      );
+
+      final prepared = await ingestionEngine.ingestAndVerifyToTemporaryStore(
+        sourceFilePath: sourcePath,
+        operationId: 'op-f4',
+        provenanceSnapshot: snapshot,
+        sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      );
+
+      // Creiamo un file ordinario al percorso finalInstallPath anziché una directory
+      await fileSystem.writeAsString(prepared.finalInstallPath, 'i am a file');
+
+      final result = await coordinator.registerVerifiedArtifact(
+        installation: prepared,
+        operationId: 'op-f4',
+      );
+
+      expect(result.status, equals(ProvisioningStatus.failed));
+      expect(result.failureReason,
+          equals(ProvisioningFailureReason.installationConflict));
+
+      expect(result.sanitizedMessage, contains('file anziché una directory'));
+    });
   });
 }

@@ -242,15 +242,20 @@ final class CatalogArtifactSnapshot {
     final uriStr = json['sourceUri'] as String?;
     if (uriStr != null && uriStr.trim().isNotEmpty) {
       parsedUri = Uri.tryParse(uriStr.trim());
-      if (parsedUri != null) {
-        final scheme = parsedUri.scheme.toLowerCase();
-        if (scheme != 'https' && scheme != 'http') {
-          throw ProvisioningException(
-            reason: ProvisioningFailureReason.installationRecordReadFailed,
-            message:
-                'CatalogArtifactSnapshot.fromJson: schema URI non ammesso "$scheme" (solo https/http).',
-          );
-        }
+      if (parsedUri == null || !parsedUri.hasScheme || parsedUri.host.isEmpty) {
+        throw ProvisioningException(
+          reason: ProvisioningFailureReason.installationRecordReadFailed,
+          message:
+              'CatalogArtifactSnapshot.fromJson: "sourceUri" presente ma non valido: "$uriStr".',
+        );
+      }
+      final scheme = parsedUri.scheme.toLowerCase();
+      if (scheme != 'https' && scheme != 'http') {
+        throw ProvisioningException(
+          reason: ProvisioningFailureReason.installationRecordReadFailed,
+          message:
+              'CatalogArtifactSnapshot.fromJson: schema URI non ammesso "$scheme" (solo https/http).',
+        );
       }
     }
 

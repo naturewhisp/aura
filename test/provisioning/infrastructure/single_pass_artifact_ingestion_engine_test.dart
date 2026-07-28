@@ -406,5 +406,63 @@ void main() {
         expect(await fileSystem.fileExists(userPath), isTrue);
       });
     });
+
+    group('Finding 6 — CatalogArtifactSnapshot.fromJson sourceUri validation',
+        () {
+      test('sourceUri malformato o non assoluto lancia ProvisioningException',
+          () {
+        final json = {
+          'catalogId': 'cat-1',
+          'catalogRevision': 1,
+          'catalogSchemaVersion': '1.0',
+          'signingKeyId': 'key-1',
+          'trustLevel': 'signatureVerified',
+          'artifactId': 'art-1',
+          'artifactVersion': '1.0.0',
+          'buildId': 'v1',
+          'fileName': 'art-1.gguf',
+          'sizeBytes': 100,
+          'sha256': 'a' * 64,
+          'acquiredAtUtc': '2026-07-28T09:00:00.000Z',
+          'sourceUri': 'not_a_valid_uri',
+        };
+
+        expect(
+          () => CatalogArtifactSnapshot.fromJson(json),
+          throwsA(isA<ProvisioningException>().having(
+            (e) => e.reason,
+            'reason',
+            equals(ProvisioningFailureReason.installationRecordReadFailed),
+          )),
+        );
+      });
+
+      test('sourceUri con schema ftp o file lancia ProvisioningException', () {
+        final json = {
+          'catalogId': 'cat-1',
+          'catalogRevision': 1,
+          'catalogSchemaVersion': '1.0',
+          'signingKeyId': 'key-1',
+          'trustLevel': 'signatureVerified',
+          'artifactId': 'art-1',
+          'artifactVersion': '1.0.0',
+          'buildId': 'v1',
+          'fileName': 'art-1.gguf',
+          'sizeBytes': 100,
+          'sha256': 'a' * 64,
+          'acquiredAtUtc': '2026-07-28T09:00:00.000Z',
+          'sourceUri': 'ftp://example.com/file.gguf',
+        };
+
+        expect(
+          () => CatalogArtifactSnapshot.fromJson(json),
+          throwsA(isA<ProvisioningException>().having(
+            (e) => e.reason,
+            'reason',
+            equals(ProvisioningFailureReason.installationRecordReadFailed),
+          )),
+        );
+      });
+    });
   });
 }

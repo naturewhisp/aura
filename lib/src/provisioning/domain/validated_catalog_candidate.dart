@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import 'catalog_acquisition_models.dart';
 import 'catalog_compatibility_evaluator.dart';
+import 'catalog_manifest.dart';
 
 /// Rappresentazione di un candidato di catalogo già sottoposto a validazione strutturale e di firma.
 @immutable
@@ -48,6 +49,7 @@ final class ValidatedCatalogCandidate {
 
   String get catalogId => envelope.signedPayload.catalogId;
   int get catalogRevision => envelope.signedPayload.catalogRevision;
+  CatalogManifest get manifest => envelope.signedPayload.manifest;
 
   @override
   bool operator ==(Object other) =>

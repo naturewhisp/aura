@@ -458,8 +458,6 @@ final class _DefaultModelProvisioningService
           break;
         }
       }
-      catalogArtifact ??=
-          request.candidate!.manifest.findArtifact(targetDescriptor.artifactId);
     }
 
     if (catalogArtifact == null || catalogArtifact.downloadUri == null) {
@@ -470,7 +468,7 @@ final class _DefaultModelProvisioningService
         status: ModelRepairStatus.repairSourceUnavailable,
         failureReason: ProvisioningFailureReason.artifactIdNotFound,
         message:
-            'URI di download non disponibile nel manifesto per la riparazione.',
+            'URI di download o provenance esatta non disponibile nel manifesto per la riparazione.',
       );
     }
 
@@ -588,6 +586,17 @@ final class _DefaultModelProvisioningService
         candidateArtifact: candidateArtifact,
         candidateCatalogRevision: request.candidate.catalogRevision,
       );
+
+      if (isNewer == ReleaseVersionComparer.sameVersionFingerprintConflict) {
+        return ModelUpdateResult(
+          operationId: request.operationId,
+          artifactId: request.artifactId,
+          status: ModelUpdateStatus.updateConflict,
+          failureReason: ProvisioningFailureReason.catalogMalformed,
+          message:
+              'Conflitto di fingerprint: la release ha la stessa versione e revisione ma SHA-256 o buildId differenti.',
+        );
+      }
 
       if (isNewer <= 0) {
         return ModelUpdateResult(

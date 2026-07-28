@@ -168,5 +168,89 @@ void main() {
 
       expect(res.status, equals(ModelUpdateStatus.alreadyLatest));
     });
+
+    test(
+        'updateModel restituisce updateConflict in caso di sameVersionFingerprintConflict',
+        () async {
+      final installedDesc = InstalledArtifactDescriptor(
+        installationId: 'inst_current',
+        artifactId: 'actor-mod',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Actor Model',
+        platform: 'any',
+        architecture: 'any',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        version: '1.0.0',
+        buildId: 'b1',
+        sizeBytes: 1000,
+        sha256: 'abc111',
+        relativeInstallPath: r'models\actor-mod\1.0.0-b1',
+        entryFileName: 'model.gguf',
+        installedAt: '2026-07-28T10:00:00Z',
+        status: InstallationStatus.verified,
+        verifiedAt: '2026-07-28T10:00:00Z',
+      );
+
+      var record = InstallationRecord.empty(updatedAt: '2026-07-28T10:00:00Z');
+      record = record.upsertArtifact(installedDesc);
+      await recordRepository.writeRecord(record);
+
+      final candidateArtifact = CatalogArtifact(
+        artifactId: 'actor-mod',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Actor Model',
+        version: '1.0.0',
+        buildId: 'b2_conflict',
+        platform: 'any',
+        architecture: 'any',
+        fileName: 'model.gguf',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        downloadUri: 'https://example.com/model.gguf',
+        sizeBytes: 1000,
+        sha256: 'xyz222_different_hash',
+        license: 'MIT',
+      );
+
+      final manifest = CatalogManifest(
+        schemaVersion: '1.0',
+        catalogId: 'cat_1',
+        generatedAt: '2026-07-28T10:00:00Z',
+        artifacts: [candidateArtifact],
+      );
+
+      final candidate = ValidatedCatalogCandidate(
+        envelope: CatalogEnvelope(
+          signedPayload: CatalogSignedPayload(
+            schemaVersion: '1.0',
+            signatureAlgorithm: 'Ed25519',
+            keyId: 'key1',
+            catalogId: 'cat_1',
+            catalogVersion: '1.0',
+            catalogRevision: 0,
+            issuedAt: '2026-07-28T10:00:00Z',
+            expiresAt: '2026-08-28T10:00:00Z',
+            manifest: manifest,
+          ),
+          signature: 'abc',
+        ),
+        source: CatalogSource.remoteSigned,
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        compatibility: const CatalogCompatibilityResult(
+          status: CatalogCompatibilityStatus.compatible,
+        ),
+        canonicalPayloadDigest: 'abc',
+      );
+
+      final updateReq = UpdateModelRequest(
+        operationId: 'op_update_conflict',
+        artifactId: 'actor-mod',
+        modelRole: ModelActivationRole.actor,
+        candidate: candidate,
+      );
+
+      final res = await provisioningService.updateModel(request: updateReq);
+
+      expect(res.status, equals(ModelUpdateStatus.updateConflict));
+    });
   });
 }

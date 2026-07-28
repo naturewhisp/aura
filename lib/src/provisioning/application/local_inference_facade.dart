@@ -90,10 +90,20 @@ final class DefaultLocalInferenceFacade implements LocalInferenceFacade {
   @override
   Future<List<InstalledArtifactDescriptor>> listManagedModels() async {
     final record = await _installationRecordRepository.readRecord();
-    return record.installedArtifacts
+    final models = record.installedArtifacts
         .where((artifact) =>
             artifact.status == InstallationStatus.verified &&
             artifact.artifactType == CatalogArtifactType.model)
         .toList();
+
+    models.sort((a, b) {
+      final nameCmp = a.displayName.compareTo(b.displayName);
+      if (nameCmp != 0) return nameCmp;
+      final versionCmp = a.version.compareTo(b.version);
+      if (versionCmp != 0) return versionCmp;
+      return a.installationId.compareTo(b.installationId);
+    });
+
+    return models;
   }
 }

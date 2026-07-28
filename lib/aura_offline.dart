@@ -83,3 +83,4 @@ export 'src/provisioning/infrastructure/llama_server_dependency_service.dart';
 export 'src/provisioning/infrastructure/local_inference_preflight_engine.dart';
 export 'src/provisioning/infrastructure/model_configuration_service.dart';
 export 'src/provisioning/infrastructure/winget_dependency_adapter.dart';
+export 'src/provisioning/cli/local_inference_cli_runner.dart';

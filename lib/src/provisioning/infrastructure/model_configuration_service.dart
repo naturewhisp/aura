@@ -164,6 +164,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ManagedModelReference(installationId: installationId),
+        failureReason: ModelBindingFailure.managedInstallationUnavailable,
         errorMessage:
             'Nessuna installazione gestita trovata con id "$installationId".',
       );
@@ -173,6 +174,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ManagedModelReference(installationId: installationId),
+        failureReason: ModelBindingFailure.managedInstallationUnavailable,
         errorMessage:
             'L\'installazione gestita "$installationId" si trova nello stato non valido "${descriptor.status.name}".',
       );
@@ -182,6 +184,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ManagedModelReference(installationId: installationId),
+        failureReason: ModelBindingFailure.invalidReference,
         errorMessage:
             'L\'installazione gestita "$installationId" ha tipo "${descriptor.artifactType.name}" e non è un modello.',
       );
@@ -195,6 +198,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ManagedModelReference(installationId: installationId),
+        failureReason: ModelBindingFailure.fileMissing,
         errorMessage:
             'La directory dell\'installazione gestita ("$installDir") non esiste più sul disco.',
       );
@@ -205,6 +209,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ManagedModelReference(installationId: installationId),
+        failureReason: ModelBindingFailure.fileMissing,
         errorMessage:
             'Il file payload dell\'installazione ("$entryFilePath") non esiste sul disco.',
       );
@@ -227,6 +232,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ref,
+        failureReason: ModelBindingFailure.consentRequired,
         errorMessage:
             'L\'utilizzo di modelli GGUF esterni richiede l\'accettazione del consenso informato.',
       );
@@ -237,6 +243,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ref,
+        failureReason: ModelBindingFailure.invalidReference,
         errorMessage:
             'Il file specificato non ha estensione ".gguf": "$cleanPath".',
       );
@@ -246,6 +253,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ref,
+        failureReason: ModelBindingFailure.invalidReference,
         errorMessage:
             'Il percorso specificato indica una directory, non un file GGUF.',
       );
@@ -255,6 +263,7 @@ final class DefaultModelConfigurationService
       return ModelBindingValidationResult(
         isValid: false,
         reference: ref,
+        failureReason: ModelBindingFailure.fileMissing,
         errorMessage: 'Il file GGUF esterno non esiste: "$cleanPath".',
       );
     }
@@ -265,6 +274,7 @@ final class DefaultModelConfigurationService
         return ModelBindingValidationResult(
           isValid: false,
           reference: ref,
+          failureReason: ModelBindingFailure.fileUnreadable,
           errorMessage:
               'Il file GGUF esterno ha dimensione non valida (0 byte).',
         );

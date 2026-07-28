@@ -182,27 +182,40 @@ final class ExternalModelCandidate {
       'ExternalModelCandidate(file: $fileName, size: $sizeBytes)';
 }
 
+/// Cause tipizzate di fallimento della validazione di un binding di modello.
+enum ModelBindingFailure {
+  consentRequired,
+  fileMissing,
+  fileUnreadable,
+  managedInstallationUnavailable,
+  invalidReference,
+}
+
 /// Esito della validazione di un binding di modello per un ruolo specifico.
 @immutable
 final class ModelBindingValidationResult {
   final bool isValid;
   final ConfiguredModelReference reference;
   final String? errorMessage;
+  final ModelBindingFailure? failureReason;
 
   const ModelBindingValidationResult({
     required this.isValid,
     required this.reference,
     this.errorMessage,
+    this.failureReason,
   });
 
   const ModelBindingValidationResult.valid(this.reference)
       : isValid = true,
-        errorMessage = null;
+        errorMessage = null,
+        failureReason = null;
 
   const ModelBindingValidationResult.invalid(
     this.reference,
-    this.errorMessage,
-  ) : isValid = false;
+    this.errorMessage, {
+    this.failureReason,
+  }) : isValid = false;
 
   @override
   bool operator ==(Object other) =>
@@ -211,12 +224,14 @@ final class ModelBindingValidationResult {
           runtimeType == other.runtimeType &&
           isValid == other.isValid &&
           reference == other.reference &&
-          errorMessage == other.errorMessage;
+          errorMessage == other.errorMessage &&
+          failureReason == other.failureReason;
 
   @override
-  int get hashCode => Object.hash(isValid, reference, errorMessage);
+  int get hashCode =>
+      Object.hash(isValid, reference, errorMessage, failureReason);
 
   @override
   String toString() =>
-      'ModelBindingValidationResult(valid: $isValid, ref: $reference, err: $errorMessage)';
+      'ModelBindingValidationResult(valid: $isValid, ref: $reference, reason: ${failureReason?.name}, err: $errorMessage)';
 }

@@ -5,6 +5,7 @@ import '../application/local_inference_facade.dart';
 import '../application/runtime_model_settings_facade.dart';
 import '../domain/configured_model_reference.dart';
 import '../domain/local_inference_preflight_models.dart';
+import '../domain/model_configuration_models.dart';
 import '../domain/provisioning_options.dart';
 
 /// Risultato dell'esecuzione di un comando CLI dell'inferenza locale.
@@ -22,15 +23,13 @@ final class CliExecutionResult {
 final class LocalInferenceCliRunner {
   final LocalInferenceFacade _inferenceFacade;
   final RuntimeModelSettingsFacade _settingsFacade;
-  final FirstRunModelSetupFacade _firstRunFacade;
 
   LocalInferenceCliRunner({
     required LocalInferenceFacade inferenceFacade,
     required RuntimeModelSettingsFacade settingsFacade,
     required FirstRunModelSetupFacade firstRunFacade,
   })  : _inferenceFacade = inferenceFacade,
-        _settingsFacade = settingsFacade,
-        _firstRunFacade = firstRunFacade;
+        _settingsFacade = settingsFacade;
 
   /// Esegue i comandi della categoria `runtime`.
   Future<CliExecutionResult> runRuntimeCommand(
@@ -38,13 +37,30 @@ final class LocalInferenceCliRunner {
     bool jsonOutput = false,
   }) async {
     if (args.isEmpty || args.first == 'status') {
+      if (args.length > 1) {
+        return _errorResult(
+          exitCode: 2,
+          code: 'invalid_argument',
+          message: 'Argomenti extra non riconosciuti per il comando status.',
+          jsonOutput: jsonOutput,
+        );
+      }
       return _handleRuntimeStatus(jsonOutput: jsonOutput);
     }
 
     final subCommand = args.first.toLowerCase();
     switch (subCommand) {
       case 'detect':
+        if (args.length > 1) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message: 'Argomenti extra non riconosciuti per il comando detect.',
+            jsonOutput: jsonOutput,
+          );
+        }
         return _handleRuntimeDetect(jsonOutput: jsonOutput);
+
       case 'set':
         if (args.length < 2) {
           return _errorResult(
@@ -54,9 +70,27 @@ final class LocalInferenceCliRunner {
             jsonOutput: jsonOutput,
           );
         }
+        if (args.length > 2) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message: 'Troppi argomenti specificati per il comando set.',
+            jsonOutput: jsonOutput,
+          );
+        }
         return _handleRuntimeSet(args[1], jsonOutput: jsonOutput);
+
       case 'clear':
+        if (args.length > 1) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message: 'Argomenti extra non riconosciuti per il comando clear.',
+            jsonOutput: jsonOutput,
+          );
+        }
         return _handleRuntimeClear(jsonOutput: jsonOutput);
+
       default:
         return _errorResult(
           exitCode: 2,
@@ -73,22 +107,51 @@ final class LocalInferenceCliRunner {
     bool jsonOutput = false,
   }) async {
     if (args.isEmpty || args.first == 'status') {
+      if (args.length > 1) {
+        return _errorResult(
+          exitCode: 2,
+          code: 'invalid_argument',
+          message: 'Argomenti extra non riconosciuti per il comando status.',
+          jsonOutput: jsonOutput,
+        );
+      }
       return _handleModelStatus(jsonOutput: jsonOutput);
     }
 
     final subCommand = args.first.toLowerCase();
     switch (subCommand) {
       case 'list':
+        if (args.length > 1) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message: 'Argomenti extra non riconosciuti per il comando list.',
+            jsonOutput: jsonOutput,
+          );
+        }
         return _handleModelList(jsonOutput: jsonOutput);
+
       case 'scan':
+        if (args.length > 2) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message: 'Troppi argomenti posizionali per il comando scan.',
+            jsonOutput: jsonOutput,
+          );
+        }
         final customPath = args.length > 1 ? args[1] : null;
         return _handleModelScan(customPath: customPath, jsonOutput: jsonOutput);
+
       case 'bind':
         return _handleModelBind(args.sublist(1), jsonOutput: jsonOutput);
+
       case 'clear':
         return _handleModelClear(args.sublist(1), jsonOutput: jsonOutput);
+
       case 'consent':
         return _handleModelConsent(args.sublist(1), jsonOutput: jsonOutput);
+
       default:
         return _errorResult(
           exitCode: 2,
@@ -105,6 +168,15 @@ final class LocalInferenceCliRunner {
     bool jsonOutput = false,
   }) async {
     final subCommand = args.isEmpty ? 'quick' : args.first.toLowerCase();
+    if (args.length > 1) {
+      return _errorResult(
+        exitCode: 2,
+        code: 'invalid_argument',
+        message: 'Argomenti extra non riconosciuti per il comando preflight.',
+        jsonOutput: jsonOutput,
+      );
+    }
+
     switch (subCommand) {
       case 'quick':
         return _handlePreflight(
@@ -137,8 +209,12 @@ final class LocalInferenceCliRunner {
           exitCode: path != null ? 0 : 3,
           outputText: jsonEncode({
             'ok': path != null,
+            'exitCode': path != null ? 0 : 3,
             'code':
                 path != null ? 'runtime_configured' : 'runtime_unconfigured',
+            'message': path != null
+                ? 'Runtime configurato.'
+                : 'Runtime non configurato.',
             'executablePath': path,
             'validationStatus': runtime?.validationStatus.name,
             'detectedVersion': runtime?.detectedVersion,
@@ -179,8 +255,12 @@ final class LocalInferenceCliRunner {
           exitCode: candidate != null ? 0 : 4,
           outputText: jsonEncode({
             'ok': candidate != null,
+            'exitCode': candidate != null ? 0 : 4,
             'code':
                 candidate != null ? 'runtime_detected' : 'runtime_not_found',
+            'message': candidate != null
+                ? 'Eseguibile llama-server rilevato.'
+                : 'Nessun eseguibile llama-server rilevato automaticamente.',
             'effectiveCandidate': candidate,
             'configuredCandidate': result.configuredCandidate,
             'detectedFallback': result.detectedFallback,
@@ -220,7 +300,9 @@ final class LocalInferenceCliRunner {
           exitCode: 0,
           outputText: jsonEncode({
             'ok': true,
+            'exitCode': 0,
             'code': 'runtime_updated',
+            'message': 'Eseguibile llama-server configurato con successo.',
             'executablePath': config.executablePath,
             'validationStatus': config.validationStatus.name,
           }),
@@ -250,7 +332,9 @@ final class LocalInferenceCliRunner {
           exitCode: 0,
           outputText: jsonEncode({
             'ok': true,
+            'exitCode': 0,
             'code': 'runtime_cleared',
+            'message': 'Configurazione runtime rimossa con successo.',
           }),
         );
       }
@@ -285,7 +369,11 @@ final class LocalInferenceCliRunner {
           exitCode: isComplete ? 0 : 3,
           outputText: jsonEncode({
             'ok': isComplete,
+            'exitCode': isComplete ? 0 : 3,
             'code': isComplete ? 'models_configured' : 'models_incomplete',
+            'message': isComplete
+                ? 'Configurazione modelli completa.'
+                : 'Configurazione modelli incompleta.',
             'actor': actor != null ? _referenceToJson(actor) : null,
             'evaluator': evaluator != null ? _referenceToJson(evaluator) : null,
             'isConsentValid': snapshot.isConsentValid,
@@ -325,6 +413,9 @@ final class LocalInferenceCliRunner {
           exitCode: 0,
           outputText: jsonEncode({
             'ok': true,
+            'exitCode': 0,
+            'code': 'model_list_retrieved',
+            'message': 'Modelli gestiti recuperati con successo.',
             'count': models.length,
             'models': models
                 .map((m) => {
@@ -379,6 +470,9 @@ final class LocalInferenceCliRunner {
           exitCode: 0,
           outputText: jsonEncode({
             'ok': true,
+            'exitCode': 0,
+            'code': 'model_scan_completed',
+            'message': 'Scansione modelli esterni completata.',
             'count': candidates.length,
             'candidates': candidates
                 .map((c) => {
@@ -426,17 +520,76 @@ final class LocalInferenceCliRunner {
     ModelActivationRole? role;
     String? managedId;
     String? externalPath;
+    final parsedFlags = <String>{};
 
     for (var i = 0; i < args.length; i++) {
       final arg = args[i];
-      if (arg == '--role' && i + 1 < args.length) {
+      if (arg == '--role') {
+        if (parsedFlags.contains('--role')) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message: 'Flag --role specificato più di una volta.',
+            jsonOutput: jsonOutput,
+          );
+        }
+        parsedFlags.add('--role');
+        if (i + 1 >= args.length) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'missing_argument',
+            message: 'Valore mancante dopo --role.',
+            jsonOutput: jsonOutput,
+          );
+        }
         final rStr = args[++i].toLowerCase();
         if (rStr == 'actor') role = ModelActivationRole.actor;
         if (rStr == 'evaluator') role = ModelActivationRole.evaluator;
-      } else if (arg == '--managed' && i + 1 < args.length) {
+      } else if (arg == '--managed') {
+        if (parsedFlags.contains('--managed')) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message: 'Flag --managed specificato più di una volta.',
+            jsonOutput: jsonOutput,
+          );
+        }
+        parsedFlags.add('--managed');
+        if (i + 1 >= args.length) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'missing_argument',
+            message: 'Valore mancante dopo --managed.',
+            jsonOutput: jsonOutput,
+          );
+        }
         managedId = args[++i];
-      } else if (arg == '--external' && i + 1 < args.length) {
+      } else if (arg == '--external') {
+        if (parsedFlags.contains('--external')) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message: 'Flag --external specificato più di una volta.',
+            jsonOutput: jsonOutput,
+          );
+        }
+        parsedFlags.add('--external');
+        if (i + 1 >= args.length) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'missing_argument',
+            message: 'Valore mancante dopo --external.',
+            jsonOutput: jsonOutput,
+          );
+        }
         externalPath = args[++i];
+      } else {
+        return _errorResult(
+          exitCode: 2,
+          code: 'invalid_argument',
+          message: 'Flag o argomento non riconosciuto: $arg',
+          jsonOutput: jsonOutput,
+        );
       }
     }
 
@@ -478,15 +631,14 @@ final class LocalInferenceCliRunner {
           ? await _settingsFacade.bindActor(ref)
           : await _settingsFacade.bindEvaluator(ref);
 
-      final isConsentMissing = !validation.isValid &&
-          (validation.errorMessage?.contains('consenso') ?? false);
-
-      if (isConsentMissing) {
+      if (!validation.isValid &&
+          validation.failureReason == ModelBindingFailure.consentRequired) {
         if (jsonOutput) {
           return CliExecutionResult(
             exitCode: 6,
             outputText: jsonEncode({
               'ok': false,
+              'exitCode': 6,
               'code': 'external_model_consent_required',
               'message':
                   'È richiesto il consenso informato prima di utilizzare un modello esterno.',
@@ -507,10 +659,15 @@ final class LocalInferenceCliRunner {
           exitCode: validation.isValid ? 0 : 5,
           outputText: jsonEncode({
             'ok': validation.isValid,
+            'exitCode': validation.isValid ? 0 : 5,
             'code':
                 validation.isValid ? 'model_bound' : 'model_validation_failed',
+            'message': validation.isValid
+                ? 'Associazione modello completata con successo.'
+                : (validation.errorMessage ?? 'Validazione binding fallita.'),
             'role': role.name,
             'reference': _referenceToJson(ref),
+            'failureReason': validation.failureReason?.name,
             'errorMessage': validation.errorMessage,
           }),
         );
@@ -538,10 +695,25 @@ final class LocalInferenceCliRunner {
     ModelActivationRole? role;
 
     for (var i = 0; i < args.length; i++) {
-      if (args[i] == '--role' && i + 1 < args.length) {
+      if (args[i] == '--role') {
+        if (i + 1 >= args.length) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'missing_argument',
+            message: 'Valore mancante dopo --role.',
+            jsonOutput: jsonOutput,
+          );
+        }
         final rStr = args[++i].toLowerCase();
         if (rStr == 'actor') role = ModelActivationRole.actor;
         if (rStr == 'evaluator') role = ModelActivationRole.evaluator;
+      } else {
+        return _errorResult(
+          exitCode: 2,
+          code: 'invalid_argument',
+          message: 'Flag non riconosciuto: ${args[i]}',
+          jsonOutput: jsonOutput,
+        );
       }
     }
 
@@ -567,7 +739,9 @@ final class LocalInferenceCliRunner {
           exitCode: 0,
           outputText: jsonEncode({
             'ok': true,
+            'exitCode': 0,
             'code': 'model_binding_cleared',
+            'message': 'Associazione modello rimossa con successo.',
             'role': role.name,
           }),
         );
@@ -592,54 +766,77 @@ final class LocalInferenceCliRunner {
   Future<CliExecutionResult> _handleModelConsent(List<String> args,
       {required bool jsonOutput}) async {
     final action = args.isEmpty ? 'status' : args.first.toLowerCase();
+    if (args.length > 1) {
+      return _errorResult(
+        exitCode: 2,
+        code: 'invalid_argument',
+        message: 'Argomenti extra non riconosciuti per il comando consent.',
+        jsonOutput: jsonOutput,
+      );
+    }
 
-    switch (action) {
-      case 'status':
-        final snapshot = await _inferenceFacade.getSnapshot();
-        if (jsonOutput) {
+    try {
+      switch (action) {
+        case 'status':
+          final snapshot = await _inferenceFacade.getSnapshot();
+          if (jsonOutput) {
+            return CliExecutionResult(
+              exitCode: snapshot.isConsentValid ? 0 : 6,
+              outputText: jsonEncode({
+                'ok': snapshot.isConsentValid,
+                'exitCode': snapshot.isConsentValid ? 0 : 6,
+                'code': snapshot.isConsentValid
+                    ? 'consent_accepted'
+                    : 'consent_required',
+                'message': snapshot.isConsentValid
+                    ? 'Consenso informato già registrato.'
+                    : 'Consenso informato non registrato.',
+                'isConsentValid': snapshot.isConsentValid,
+              }),
+            );
+          }
           return CliExecutionResult(
             exitCode: snapshot.isConsentValid ? 0 : 6,
-            outputText: jsonEncode({
-              'ok': snapshot.isConsentValid,
-              'code': snapshot.isConsentValid
-                  ? 'consent_accepted'
-                  : 'consent_required',
-              'isConsentValid': snapshot.isConsentValid,
-            }),
+            outputText: snapshot.isConsentValid
+                ? 'Consenso informato modelli esterni: GIÀ REGISTRATO'
+                : 'Consenso informato modelli esterni: NON REGISTRATO / RICHIESTO',
           );
-        }
-        return CliExecutionResult(
-          exitCode: snapshot.isConsentValid ? 0 : 6,
-          outputText: snapshot.isConsentValid
-              ? 'Consenso informato modelli esterni: GIÀ REGISTRATO'
-              : 'Consenso informato modelli esterni: NON REGISTRATO / RICHIESTO',
-        );
 
-      case 'accept':
-        await _settingsFacade.recordConsent();
-        if (jsonOutput) {
-          return CliExecutionResult(
+        case 'accept':
+          await _settingsFacade.recordConsent();
+          if (jsonOutput) {
+            return CliExecutionResult(
+              exitCode: 0,
+              outputText: jsonEncode({
+                'ok': true,
+                'exitCode': 0,
+                'code': 'consent_recorded',
+                'message': 'Consenso informato registrato con successo.',
+              }),
+            );
+          }
+          return const CliExecutionResult(
             exitCode: 0,
-            outputText: jsonEncode({
-              'ok': true,
-              'code': 'consent_recorded',
-            }),
+            outputText:
+                'Consenso informato per modelli esterni registrato con successo.',
           );
-        }
-        return const CliExecutionResult(
-          exitCode: 0,
-          outputText:
-              'Consenso informato per modelli esterni registrato con successo.',
-        );
 
-      default:
-        return _errorResult(
-          exitCode: 2,
-          code: 'invalid_subcommand',
-          message:
-              'Azione consent non valida: $action. Utilizzare status o accept.',
-          jsonOutput: jsonOutput,
-        );
+        default:
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_subcommand',
+            message:
+                'Azione consent non valida: $action. Utilizzare status o accept.',
+            jsonOutput: jsonOutput,
+          );
+      }
+    } catch (e) {
+      return _errorResult(
+        exitCode: 1,
+        code: 'consent_operation_failed',
+        message: 'Impossibile leggere o aggiornare il consenso informato.',
+        jsonOutput: jsonOutput,
+      );
     }
   }
 
@@ -650,11 +847,7 @@ final class LocalInferenceCliRunner {
     required bool jsonOutput,
   }) async {
     try {
-      final result = depth == PreflightDepth.quick
-          ? await _inferenceFacade.runPreflight(depth: PreflightDepth.quick)
-          : await _firstRunFacade.runFinalPreflight().then((s) =>
-              s.preflightResult ?? const LocalInferencePreflightResult.ready());
-
+      final result = await _inferenceFacade.runPreflight(depth: depth);
       final exitCode = _mapPreflightExitCode(result);
 
       if (jsonOutput) {
@@ -662,7 +855,13 @@ final class LocalInferenceCliRunner {
           exitCode: exitCode,
           outputText: jsonEncode({
             'ok': result.isReady,
-            'code': result.failureReason?.name ?? 'ready',
+            'exitCode': exitCode,
+            'code': result.isReady
+                ? 'ready'
+                : (result.failureReason?.name ?? 'preflight_failed'),
+            'message': result.isReady
+                ? 'Preflight completato con successo.'
+                : (result.sanitizedMessage ?? 'Preflight fallito.'),
             'depth': depth.name,
             'affectedRole': result.affectedRole?.name,
             'sanitizedMessage': result.sanitizedMessage,
@@ -753,6 +952,7 @@ final class LocalInferenceCliRunner {
         exitCode: exitCode,
         outputText: jsonEncode({
           'ok': false,
+          'exitCode': exitCode,
           'code': code,
           'message': message,
         }),

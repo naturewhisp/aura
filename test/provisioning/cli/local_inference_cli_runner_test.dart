@@ -4,8 +4,93 @@ import 'package:aura_core/aura_offline.dart';
 import '../provisioning_test_helpers.dart';
 import 'package:test/test.dart';
 
+final class ExceptionThrowingLocalInferenceFacade
+    implements LocalInferenceFacade {
+  @override
+  Future<LocalInferenceSnapshot> getSnapshot() {
+    throw Exception('Simulated database access failure in getSnapshot');
+  }
+
+  @override
+  Future<LocalInferencePreflightResult> runPreflight(
+      {required PreflightDepth depth}) {
+    throw Exception('Simulated failure in runPreflight');
+  }
+
+  @override
+  Future<LlamaServerDetectionResult> detectRuntime() {
+    throw Exception('Simulated failure in detectRuntime');
+  }
+
+  @override
+  Future<List<ExternalModelCandidate>> scanExternalCandidates(
+      {String? customPath}) {
+    throw Exception('Simulated failure in scanExternalCandidates');
+  }
+
+  @override
+  Future<List<InstalledArtifactDescriptor>> listManagedModels() {
+    throw Exception('Simulated failure in listManagedModels');
+  }
+}
+
+final class ExceptionThrowingSettingsFacade
+    implements RuntimeModelSettingsFacade {
+  @override
+  Future<LlamaServerConfiguration> setRuntimeExecutable(String path) {
+    throw Exception('Simulated error in setRuntimeExecutable');
+  }
+
+  @override
+  Future<void> clearRuntimeExecutable() {
+    throw Exception('Simulated error in clearRuntimeExecutable');
+  }
+
+  @override
+  Future<ModelBindingValidationResult> bindActor(ConfiguredModelReference ref) {
+    throw Exception('Simulated error in bindActor');
+  }
+
+  @override
+  Future<void> clearActorBinding() {
+    throw Exception('Simulated error in clearActorBinding');
+  }
+
+  @override
+  Future<ModelBindingValidationResult> bindEvaluator(
+      ConfiguredModelReference ref) {
+    throw Exception('Simulated error in bindEvaluator');
+  }
+
+  @override
+  Future<void> clearEvaluatorBinding() {
+    throw Exception('Simulated error in clearEvaluatorBinding');
+  }
+
+  @override
+  Future<ExternalModelConsent> recordConsent() {
+    throw Exception('Simulated error in recordConsent');
+  }
+
+  @override
+  Future<bool> isConsentValid() {
+    throw Exception('Simulated error in isConsentValid');
+  }
+
+  @override
+  Future<InstallationAssistance> getWinGetAssistance(
+      {String? customPackageId}) {
+    throw Exception('Simulated error in getWinGetAssistance');
+  }
+
+  @override
+  Future<bool> isWinGetAvailable() {
+    throw Exception('Simulated error in isWinGetAvailable');
+  }
+}
+
 void main() {
-  group('Tranche 6.4f.7 — LocalInferenceCliRunner Tests', () {
+  group('Tranche 6.4f.7-fix — LocalInferenceCliRunner Extended Tests', () {
     late MemoryProvisioningFileSystem fileSystem;
     late ProvisioningPathResolver pathResolver;
     late JsonModelConfigurationRepository configRepo;
@@ -98,6 +183,7 @@ void main() {
         expect(res.exitCode, equals(3));
         final json = jsonDecode(res.outputText) as Map<String, dynamic>;
         expect(json['ok'], isFalse);
+        expect(json['exitCode'], equals(3));
         expect(json['code'], equals('runtime_unconfigured'));
       });
 
@@ -112,6 +198,14 @@ void main() {
         final statusRes = await cliRunner.runRuntimeCommand(['status']);
         expect(statusRes.exitCode, equals(0));
         expect(statusRes.outputText, contains(path));
+      });
+
+      test('runtime set rifiuta argomenti extra posizionali con exit code 2',
+          () async {
+        final res = await cliRunner
+            .runRuntimeCommand(['set', r'C:\llama.exe', 'extra']);
+        expect(res.exitCode, equals(2));
+        expect(res.outputText, contains('Troppi argomenti'));
       });
 
       test('runtime clear rimuove configurazione', () async {
@@ -187,7 +281,7 @@ void main() {
       });
 
       test(
-          'model bind --role actor --external senza consenso restituisce exit code 6',
+          'model bind --role actor --external senza consenso restituisce exit code 6 via ModelBindingFailure.consentRequired',
           () async {
         const modelPath = r'C:\Models\actor.gguf';
         fileSystem.writeBytes(modelPath, [10, 20]);
@@ -218,9 +312,10 @@ void main() {
         expect(bindRes.exitCode, equals(0));
       });
 
-      test('model bind con argomenti confliggenti restituisce exit code 2',
+      test(
+          'model bind con argomenti confliggenti o flag duplicati restituisce exit code 2',
           () async {
-        final res = await cliRunner.runModelCommand(
+        final conflictRes = await cliRunner.runModelCommand(
           [
             'bind',
             '--role',
@@ -231,8 +326,37 @@ void main() {
             r'C:\path.gguf'
           ],
         );
+        expect(conflictRes.exitCode, equals(2));
+        expect(conflictRes.outputText, contains('simultaneamente'));
+
+        final dupRes = await cliRunner.runModelCommand(
+          [
+            'bind',
+            '--role',
+            'actor',
+            '--role',
+            'evaluator',
+            '--managed',
+            'id1'
+          ],
+        );
+        expect(dupRes.exitCode, equals(2));
+        expect(dupRes.outputText, contains('più di una volta'));
+      });
+
+      test('model bind con valore mancante dopo flag restituisce exit code 2',
+          () async {
+        final res = await cliRunner.runModelCommand(['bind', '--role']);
         expect(res.exitCode, equals(2));
-        expect(res.outputText, contains('simultaneamente'));
+        expect(res.outputText, contains('Valore mancante'));
+      });
+
+      test('model bind con flag non riconosciuto restituisce exit code 2',
+          () async {
+        final res = await cliRunner
+            .runModelCommand(['bind', '--role', 'actor', '--unknown', 'val']);
+        expect(res.exitCode, equals(2));
+        expect(res.outputText, contains('non riconosciuto'));
       });
 
       test('model clear --role actor rimuove l\'associazione', () async {
@@ -258,16 +382,64 @@ void main() {
           () async {
         final res =
             await cliRunner.runPreflightCommand(['quick'], jsonOutput: true);
-        expect(res.exitCode, equals(4)); // runtime missing
+        expect(res.exitCode, equals(4));
         final json = jsonDecode(res.outputText) as Map<String, dynamic>;
         expect(json['ok'], isFalse);
         expect(json['code'], equals('runtimeNotConfigured'));
       });
 
-      test('preflight probe esegue la verifica dinamica', () async {
+      test(
+          'preflight probe esegue la verifica dinamica direttamente via facade',
+          () async {
         final res = await cliRunner.runPreflightCommand(['probe']);
         expect(res.exitCode, equals(4));
         expect(res.outputText, contains('PREFLIGHT FAILED [RUNTIMEPROBE]'));
+      });
+    });
+
+    group('Gestione Eccezioni e Robustezza Runner (6.4f.7-fix Findings 2 & 3)',
+        () {
+      test('consent status cattura eccezioni interne e restituisce exit code 1',
+          () async {
+        final throwingRunner = LocalInferenceCliRunner(
+          inferenceFacade: ExceptionThrowingLocalInferenceFacade(),
+          settingsFacade: ExceptionThrowingSettingsFacade(),
+          firstRunFacade: firstRunFacade,
+        );
+
+        final res = await throwingRunner
+            .runModelCommand(['consent', 'status'], jsonOutput: true);
+        expect(res.exitCode, equals(1));
+        final json = jsonDecode(res.outputText) as Map<String, dynamic>;
+        expect(json['ok'], isFalse);
+        expect(json['code'], equals('consent_operation_failed'));
+      });
+
+      test('consent accept cattura eccezioni interne e restituisce exit code 1',
+          () async {
+        final throwingRunner = LocalInferenceCliRunner(
+          inferenceFacade: inferenceFacade,
+          settingsFacade: ExceptionThrowingSettingsFacade(),
+          firstRunFacade: firstRunFacade,
+        );
+
+        final res = await throwingRunner
+            .runModelCommand(['consent', 'accept'], jsonOutput: true);
+        expect(res.exitCode, equals(1));
+        final json = jsonDecode(res.outputText) as Map<String, dynamic>;
+        expect(json['ok'], isFalse);
+        expect(json['code'], equals('consent_operation_failed'));
+      });
+
+      test('tutti gli output JSON contengono ok, exitCode, code e message',
+          () async {
+        final res =
+            await cliRunner.runRuntimeCommand(['status'], jsonOutput: true);
+        final json = jsonDecode(res.outputText) as Map<String, dynamic>;
+        expect(json.containsKey('ok'), isTrue);
+        expect(json.containsKey('exitCode'), isTrue);
+        expect(json.containsKey('code'), isTrue);
+        expect(json.containsKey('message'), isTrue);
       });
     });
   });

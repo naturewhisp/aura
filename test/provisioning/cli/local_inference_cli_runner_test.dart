@@ -101,7 +101,6 @@ void main() {
 
     late DefaultLocalInferenceFacade inferenceFacade;
     late DefaultRuntimeModelSettingsFacade settingsFacade;
-    late DefaultFirstRunModelSetupFacade firstRunFacade;
     late LocalInferenceCliRunner cliRunner;
 
     setUp(() {
@@ -157,16 +156,9 @@ void main() {
         winGetAdapter: WinGetDependencyAdapter(),
       );
 
-      firstRunFacade = DefaultFirstRunModelSetupFacade(
-        preflightEngine: preflightEngine,
-        dependencyService: dependencyService,
-        modelService: modelService,
-      );
-
       cliRunner = LocalInferenceCliRunner(
         inferenceFacade: inferenceFacade,
         settingsFacade: settingsFacade,
-        firstRunFacade: firstRunFacade,
       );
     });
 
@@ -404,7 +396,6 @@ void main() {
         final throwingRunner = LocalInferenceCliRunner(
           inferenceFacade: ExceptionThrowingLocalInferenceFacade(),
           settingsFacade: ExceptionThrowingSettingsFacade(),
-          firstRunFacade: firstRunFacade,
         );
 
         final res = await throwingRunner
@@ -420,7 +411,6 @@ void main() {
         final throwingRunner = LocalInferenceCliRunner(
           inferenceFacade: inferenceFacade,
           settingsFacade: ExceptionThrowingSettingsFacade(),
-          firstRunFacade: firstRunFacade,
         );
 
         final res = await throwingRunner

@@ -61,6 +61,81 @@ Map<String, String> _parseArgs(List<String> args) {
 }
 
 void main(List<String> args) async {
+  if (args.isNotEmpty &&
+      ['runtime', 'model', 'preflight'].contains(args.first.toLowerCase())) {
+    final jsonOutput = args.contains('--json');
+    final cleanArgs = args.where((a) => a != '--json').toList();
+    final category = cleanArgs.first.toLowerCase();
+    final subArgs = cleanArgs.sublist(1);
+
+    final pathResolver = ProvisioningPathResolver(
+      appManagedRoot: r'C:\AppRoot',
+      bundledRoot: r'C:\Program Files\AURA',
+    );
+    final fileSystem = const LocalProvisioningFileSystem();
+    final lock = InMemoryProvisioningLock();
+
+    final configRepo = JsonModelConfigurationRepository(
+      storeDirectoryPath: pathResolver.appManagedRoot,
+      fileSystem: fileSystem,
+      lock: lock,
+    );
+    final installRepo = JsonInstallationRecordRepository(
+      pathResolver: pathResolver,
+      fileSystem: fileSystem,
+      lock: lock,
+    );
+
+    final dependencyService = DefaultLlamaServerDependencyService(
+      configurationRepository: configRepo,
+      fileSystem: fileSystem,
+      pathResolver: pathResolver,
+    );
+    final modelService = DefaultModelConfigurationService(
+      configurationRepository: configRepo,
+      installationRecordRepository: installRepo,
+      fileSystem: fileSystem,
+      pathResolver: pathResolver,
+    );
+    final preflightEngine = DefaultLocalInferencePreflightEngine(
+      configurationRepository: configRepo,
+      installationRecordRepository: installRepo,
+      dependencyService: dependencyService,
+      fileSystem: fileSystem,
+      pathResolver: pathResolver,
+    );
+
+    final inferenceFacade = DefaultLocalInferenceFacade(
+      preflightEngine: preflightEngine,
+      dependencyService: dependencyService,
+      modelConfigurationService: modelService,
+      installationRecordRepository: installRepo,
+    );
+    final settingsFacade = DefaultRuntimeModelSettingsFacade(
+      dependencyService: dependencyService,
+      modelService: modelService,
+      winGetAdapter: WinGetDependencyAdapter(),
+    );
+
+    final cliRunner = LocalInferenceCliRunner(
+      inferenceFacade: inferenceFacade,
+      settingsFacade: settingsFacade,
+    );
+
+    late final CliExecutionResult res;
+    if (category == 'runtime') {
+      res = await cliRunner.runRuntimeCommand(subArgs, jsonOutput: jsonOutput);
+    } else if (category == 'model') {
+      res = await cliRunner.runModelCommand(subArgs, jsonOutput: jsonOutput);
+    } else {
+      res =
+          await cliRunner.runPreflightCommand(subArgs, jsonOutput: jsonOutput);
+    }
+
+    print(res.outputText);
+    exit(res.exitCode);
+  }
+
   final parsedArgs = _parseArgs(args);
 
   if (parsedArgs.containsKey('help')) {

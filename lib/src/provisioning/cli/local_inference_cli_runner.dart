@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import '../application/first_run_model_setup_facade.dart';
 import '../application/local_inference_facade.dart';
 import '../application/runtime_model_settings_facade.dart';
 import '../domain/configured_model_reference.dart';
@@ -27,7 +26,6 @@ final class LocalInferenceCliRunner {
   LocalInferenceCliRunner({
     required LocalInferenceFacade inferenceFacade,
     required RuntimeModelSettingsFacade settingsFacade,
-    required FirstRunModelSetupFacade firstRunFacade,
   })  : _inferenceFacade = inferenceFacade,
         _settingsFacade = settingsFacade;
 
@@ -36,7 +34,7 @@ final class LocalInferenceCliRunner {
     List<String> args, {
     bool jsonOutput = false,
   }) async {
-    if (args.isEmpty || args.first == 'status') {
+    if (args.isEmpty || args.first.toLowerCase() == 'status') {
       if (args.length > 1) {
         return _errorResult(
           exitCode: 2,
@@ -534,7 +532,7 @@ final class LocalInferenceCliRunner {
           );
         }
         parsedFlags.add('--role');
-        if (i + 1 >= args.length) {
+        if (i + 1 >= args.length || args[i + 1].startsWith('--')) {
           return _errorResult(
             exitCode: 2,
             code: 'missing_argument',
@@ -555,7 +553,7 @@ final class LocalInferenceCliRunner {
           );
         }
         parsedFlags.add('--managed');
-        if (i + 1 >= args.length) {
+        if (i + 1 >= args.length || args[i + 1].startsWith('--')) {
           return _errorResult(
             exitCode: 2,
             code: 'missing_argument',
@@ -574,7 +572,7 @@ final class LocalInferenceCliRunner {
           );
         }
         parsedFlags.add('--external');
-        if (i + 1 >= args.length) {
+        if (i + 1 >= args.length || args[i + 1].startsWith('--')) {
           return _errorResult(
             exitCode: 2,
             code: 'missing_argument',

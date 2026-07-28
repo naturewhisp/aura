@@ -4,6 +4,7 @@ import '../domain/catalog_manifest.dart';
 import '../domain/configured_model_reference.dart';
 import '../domain/installation_record.dart';
 import '../domain/local_inference_preflight_models.dart';
+import '../domain/provisioning_options.dart';
 import '../domain/runtime_dependency_models.dart';
 import 'installation_record_repository.dart';
 import 'json_model_configuration_repository.dart';
@@ -113,6 +114,7 @@ final class DefaultLocalInferencePreflightEngine
         reason: LocalInferencePreflightFailure.actorNotConfigured,
         message: 'Nessun modello Actor è stato configurato. '
             'Configura un modello per il ruolo Actor nelle impostazioni.',
+        affectedRole: ModelActivationRole.actor,
         runtimeConfiguration: runtimeConfig,
         modelConfiguration: modelConfig,
       );
@@ -124,6 +126,7 @@ final class DefaultLocalInferencePreflightEngine
       return LocalInferencePreflightResult.failed(
         reason: actorCheck.failure,
         message: actorCheck.message,
+        affectedRole: ModelActivationRole.actor,
         runtimeConfiguration: runtimeConfig,
         modelConfiguration: modelConfig,
       );
@@ -136,6 +139,7 @@ final class DefaultLocalInferencePreflightEngine
         reason: LocalInferencePreflightFailure.evaluatorNotConfigured,
         message: 'Nessun modello Evaluator è stato configurato. '
             'Configura un modello per il ruolo Evaluator nelle impostazioni.',
+        affectedRole: ModelActivationRole.evaluator,
         runtimeConfiguration: runtimeConfig,
         modelConfiguration: modelConfig,
       );
@@ -147,6 +151,7 @@ final class DefaultLocalInferencePreflightEngine
       return LocalInferencePreflightResult.failed(
         reason: evaluatorCheck.failure,
         message: evaluatorCheck.message,
+        affectedRole: ModelActivationRole.evaluator,
         runtimeConfiguration: runtimeConfig,
         modelConfiguration: modelConfig,
       );

@@ -48,6 +48,32 @@ final class TestProcessLauncher implements ProcessLauncher {
       handler(request);
 }
 
+/// Fake LocalInferenceFacade controllabile per testare le chiamate out-of-order del status notifier.
+final class ControllableLocalInferenceFacade implements LocalInferenceFacade {
+  final List<Completer<LocalInferenceSnapshot>> completers = [];
+
+  @override
+  Future<LocalInferenceSnapshot> getSnapshot() {
+    final completer = Completer<LocalInferenceSnapshot>();
+    completers.add(completer);
+    return completer.future;
+  }
+
+  @override
+  Future<LlamaServerDetectionResult> detectRuntime() async =>
+      const LlamaServerDetectionResult();
+
+  @override
+  Future<LocalInferencePreflightResult> runPreflight(
+          {required PreflightDepth depth}) async =>
+      const LocalInferencePreflightResult.ready();
+
+  @override
+  Future<List<ExternalModelCandidate>> scanExternalCandidates(
+          {String? customPath}) async =>
+      const [];
+}
+
 void main() {
   late MemoryProvisioningFileSystem fileSystem;
   late ProvisioningPathResolver pathResolver;
@@ -137,7 +163,7 @@ void main() {
     statusNotifier = LocalInferenceStatusNotifier(facade: inferenceFacade);
   });
 
-  group('Tranche 6.4f.5 — Application Facades & Notifier Tests', () {
+  group('Tranche 6.4f.5-fix — Application Facades & Notifier Tests', () {
     test(
         'LocalInferenceFacade.getSnapshot e StatusNotifier restituiscono lo stato aggiornato',
         () async {
@@ -192,7 +218,7 @@ void main() {
     });
 
     test(
-        'FirstRunModelSetupFacade guida lo stepper di onboarding attraverso i passi',
+        'FirstRunModelSetupFacade con retry effettivo e stateless dopo consenso',
         () async {
       // 1. Stato iniziale: nessun runtime configurato
       final step1 = await firstRunFacade.evaluateInitialState();
@@ -203,7 +229,7 @@ void main() {
       final step2 = await firstRunFacade.configureRuntime(execPath);
       expect(step2.step, equals(FirstRunSetupStep.actorSelection));
 
-      // 3. Seleziona modello Actor (External senza consenso)
+      // 3. Seleziona modello Actor (External senza consenso) -> va in consentRequired
       const actorPath = r'C:\Models\actor.gguf';
       await fileSystem.writeBytes(actorPath, [1, 2, 3]);
       final step3 = await firstRunFacade.selectActorModel(
@@ -211,15 +237,13 @@ void main() {
       );
       expect(step3.step, equals(FirstRunSetupStep.consentRequired));
 
-      // 4. Accetta consenso
-      final step4 = await firstRunFacade.acceptConsentAndRetry();
-      expect(step4.step, equals(FirstRunSetupStep.actorSelection));
-
-      // Ora il consenso è accettato, la ri-selezione dell'Actor fa avanzare all'Evaluator
-      final step4b = await firstRunFacade.selectActorModel(
-        ExternalModelReference(absolutePath: actorPath),
+      // 4. Esegue il retry reale con consenso tramite acceptConsentAndRetry
+      final step4 = await firstRunFacade.acceptConsentAndRetry(
+        role: ModelActivationRole.actor,
+        reference: ExternalModelReference(absolutePath: actorPath),
       );
-      expect(step4b.step, equals(FirstRunSetupStep.evaluatorSelection));
+      // Il binding ha successo e il flusso avanza ad evaluatorSelection!
+      expect(step4.step, equals(FirstRunSetupStep.evaluatorSelection));
 
       // 5. Seleziona modello Evaluator
       const evalPath = r'C:\Models\evaluator.gguf';
@@ -232,21 +256,210 @@ void main() {
     });
 
     test(
-        'StatusNotifier ignora le risposte fuori ordine (out-of-order execution protection)',
+        'evaluateInitialState identifica simmetricamente Actor ed Evaluator in caso di fallimento',
         () async {
-      var notifiedSnapshots = <LocalInferenceSnapshot>[];
-      statusNotifier.addListener((snap) {
-        notifiedSnapshots.add(snap);
+      await fileSystem.writeBytes(execPath, [1, 2, 3]);
+      await settingsFacade.setRuntimeExecutable(execPath);
+
+      // Actor configurato ma con installazione gestita mancante -> deve indicare actorSelection
+      await configRepo.replaceRecord(
+        ModelConfigurationRecord(
+          schemaVersion: 1,
+          runtime: const LlamaServerConfiguration(executablePath: execPath),
+          models: ModelRoleConfiguration(
+            actor: ManagedModelReference(installationId: 'missing_actor'),
+          ),
+        ),
+      );
+
+      final actorFailState = await firstRunFacade.evaluateInitialState();
+      expect(actorFailState.step, equals(FirstRunSetupStep.actorSelection));
+      expect(
+        actorFailState.preflightResult?.affectedRole,
+        equals(ModelActivationRole.actor),
+      );
+
+      // Actor valido, Evaluator gestito mancante -> deve indicare evaluatorSelection
+      const actorInstId = 'inst_actor_ok';
+      const actorRelPath = r'models\actor-ok';
+      await installRepo.replaceRecord(
+        InstallationRecord(
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+          installedArtifacts: [
+            InstalledArtifactDescriptor(
+              installationId: actorInstId,
+              artifactId: 'aura-actor-v1',
+              displayName: 'Aura Actor Model',
+              version: '1.0.0',
+              buildId: 'b1',
+              platform: 'windows',
+              architecture: 'x64',
+              relativeInstallPath: actorRelPath,
+              entryFileName: 'actor.gguf',
+              artifactType: CatalogArtifactType.model,
+              sourceKind: CatalogArtifactSourceKind.remoteHttps,
+              sizeBytes: 1024,
+              sha256: 'abc',
+              status: InstallationStatus.verified,
+              verifiedAt: DateTime.now().toUtc().toIso8601String(),
+              installedAt: DateTime.now().toUtc().toIso8601String(),
+            ),
+          ],
+        ),
+      );
+      final actorFullPath =
+          '${pathResolver.resolveAppManagedRelativePath(actorRelPath)}\\actor.gguf';
+      await fileSystem.writeBytes(actorFullPath, [1, 2, 3, 4]);
+
+      await configRepo.replaceRecord(
+        ModelConfigurationRecord(
+          schemaVersion: 1,
+          runtime: const LlamaServerConfiguration(executablePath: execPath),
+          models: ModelRoleConfiguration(
+            actor: ManagedModelReference(installationId: actorInstId),
+            evaluator:
+                ManagedModelReference(installationId: 'missing_evaluator'),
+          ),
+        ),
+      );
+
+      final evalFailState = await firstRunFacade.evaluateInitialState();
+      expect(evalFailState.step, equals(FirstRunSetupStep.evaluatorSelection));
+      expect(
+        evalFailState.preflightResult?.affectedRole,
+        equals(ModelActivationRole.evaluator),
+      );
+    });
+
+    test(
+        'StatusNotifier scarta le risposte fuori ordine tramite Completer controllate',
+        () async {
+      final controllableFacade = ControllableLocalInferenceFacade();
+      final notifier = LocalInferenceStatusNotifier(facade: controllableFacade);
+
+      final snapshotsNotified = <LocalInferenceSnapshot>[];
+      notifier.addListener((snap) => snapshotsNotified.add(snap));
+
+      // 1. Avvia refresh A (sequence 1)
+      final futureA = notifier.refresh();
+      expect(controllableFacade.completers.length, equals(1));
+
+      // 2. Avvia refresh B (sequence 2)
+      final futureB = notifier.refresh();
+      expect(controllableFacade.completers.length, equals(2));
+
+      final snapshotA = const LocalInferenceSnapshot(
+        runtimeConfiguration: LlamaServerConfiguration(executablePath: 'A.exe'),
+        modelConfiguration: ModelRoleConfiguration(),
+        isConsentValid: false,
+        lastPreflightResult: LocalInferencePreflightResult.ready(),
+      );
+
+      final snapshotB = const LocalInferenceSnapshot(
+        runtimeConfiguration: LlamaServerConfiguration(executablePath: 'B.exe'),
+        modelConfiguration: ModelRoleConfiguration(),
+        isConsentValid: true,
+        lastPreflightResult: LocalInferencePreflightResult.ready(),
+      );
+
+      // 3. Completa B prima di A
+      controllableFacade.completers[1].complete(snapshotB);
+      await futureB;
+
+      expect(notifier.snapshot, equals(snapshotB));
+      expect(snapshotsNotified.length, equals(1));
+      expect(snapshotsNotified.first, equals(snapshotB));
+
+      // 4. Completa A successivamente
+      controllableFacade.completers[0].complete(snapshotA);
+      await futureA;
+
+      // Lo snapshot non deve essere sovrascritto da A, e nessun nuovo evento deve essere emesso
+      expect(notifier.snapshot, equals(snapshotB));
+      expect(snapshotsNotified.length, equals(1));
+    });
+
+    test(
+        'evaluateInitialState e runFinalPreflight gestiscono il fallimento del probe finale',
+        () async {
+      // Launcher che fallisce il probe processuale
+      final failingLauncher = TestProcessLauncher((req) async {
+        return TestManagedProcess(exitCodeValue: 1, stderrText: 'CUDA error');
       });
 
-      // Esegui due refresh consecutivi
-      final f1 = statusNotifier.refresh();
-      final f2 = statusNotifier.refresh();
+      final failingDependencyService = DefaultLlamaServerDependencyService(
+        configurationRepository: configRepo,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        processLauncher: failingLauncher,
+      );
 
-      await Future.wait([f1, f2]);
+      final failingEngine = DefaultLocalInferencePreflightEngine(
+        configurationRepository: configRepo,
+        installationRecordRepository: installRepo,
+        dependencyService: failingDependencyService,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+      );
 
-      // Il notifier deve contenere lo snapshot finale e aver notificato in modo coerente
-      expect(statusNotifier.snapshot, isNotNull);
+      final failingFirstRunFacade = DefaultFirstRunModelSetupFacade(
+        preflightEngine: failingEngine,
+        dependencyService: failingDependencyService,
+        modelService: modelService,
+      );
+
+      await fileSystem.writeBytes(execPath, [1, 2, 3]);
+
+      const actorInstId = 'inst_actor_ok';
+      const actorRelPath = r'models\actor-ok';
+      await installRepo.replaceRecord(
+        InstallationRecord(
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+          installedArtifacts: [
+            InstalledArtifactDescriptor(
+              installationId: actorInstId,
+              artifactId: 'aura-actor-v1',
+              displayName: 'Aura Actor Model',
+              version: '1.0.0',
+              buildId: 'b1',
+              platform: 'windows',
+              architecture: 'x64',
+              relativeInstallPath: actorRelPath,
+              entryFileName: 'actor.gguf',
+              artifactType: CatalogArtifactType.model,
+              sourceKind: CatalogArtifactSourceKind.remoteHttps,
+              sizeBytes: 1024,
+              sha256: 'abc',
+              status: InstallationStatus.verified,
+              verifiedAt: DateTime.now().toUtc().toIso8601String(),
+              installedAt: DateTime.now().toUtc().toIso8601String(),
+            ),
+          ],
+        ),
+      );
+      final actorFullPath =
+          '${pathResolver.resolveAppManagedRelativePath(actorRelPath)}\\actor.gguf';
+      await fileSystem.writeBytes(actorFullPath, [1, 2, 3, 4]);
+
+      const evalExtPath = r'C:\Models\evaluator.gguf';
+      await fileSystem.writeBytes(evalExtPath, [1, 2, 3]);
+
+      await configRepo.replaceRecord(
+        ModelConfigurationRecord(
+          schemaVersion: 1,
+          runtime: const LlamaServerConfiguration(executablePath: execPath),
+          models: ModelRoleConfiguration(
+            actor: ManagedModelReference(installationId: actorInstId),
+            evaluator: ExternalModelReference(absolutePath: evalExtPath),
+          ),
+          externalModelConsent: ExternalModelConsent.now(),
+        ),
+      );
+
+      // Il preflight finale deve fallire a causa del probe processuale
+      final finalRes = await failingFirstRunFacade.runFinalPreflight();
+      expect(finalRes.step, equals(FirstRunSetupStep.failed));
+      expect(finalRes.errorMessage, contains('probe processuale'));
     });
   });
 }

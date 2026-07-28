@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 
 import 'model_configuration_models.dart';
+import 'provisioning_options.dart';
 import 'runtime_dependency_models.dart';
 
 /// Livelli di profondità di preflight per l'inferenza locale.
@@ -36,6 +37,7 @@ final class LocalInferencePreflightResult {
   final bool isReady;
   final LocalInferencePreflightFailure? failureReason;
   final String? sanitizedMessage;
+  final ModelActivationRole? affectedRole;
   final LlamaServerConfiguration? runtimeConfiguration;
   final ModelRoleConfiguration? modelConfiguration;
 
@@ -43,6 +45,7 @@ final class LocalInferencePreflightResult {
     required this.isReady,
     this.failureReason,
     this.sanitizedMessage,
+    this.affectedRole,
     this.runtimeConfiguration,
     this.modelConfiguration,
   });
@@ -52,11 +55,13 @@ final class LocalInferencePreflightResult {
     this.modelConfiguration,
   })  : isReady = true,
         failureReason = null,
-        sanitizedMessage = null;
+        sanitizedMessage = null,
+        affectedRole = null;
 
   const LocalInferencePreflightResult.failed({
     required LocalInferencePreflightFailure reason,
     required String message,
+    this.affectedRole,
     this.runtimeConfiguration,
     this.modelConfiguration,
   })  : isReady = false,
@@ -71,6 +76,7 @@ final class LocalInferencePreflightResult {
           isReady == other.isReady &&
           failureReason == other.failureReason &&
           sanitizedMessage == other.sanitizedMessage &&
+          affectedRole == other.affectedRole &&
           runtimeConfiguration == other.runtimeConfiguration &&
           modelConfiguration == other.modelConfiguration;
 
@@ -79,11 +85,12 @@ final class LocalInferencePreflightResult {
         isReady,
         failureReason,
         sanitizedMessage,
+        affectedRole,
         runtimeConfiguration,
         modelConfiguration,
       );
 
   @override
   String toString() =>
-      'LocalInferencePreflightResult(ready: $isReady, reason: ${failureReason?.name}, msg: $sanitizedMessage)';
+      'LocalInferencePreflightResult(ready: $isReady, reason: ${failureReason?.name}, role: ${affectedRole?.name}, msg: $sanitizedMessage)';
 }

@@ -3,6 +3,7 @@ import 'package:meta/meta.dart';
 
 import '../domain/configured_model_reference.dart';
 import '../domain/local_inference_preflight_models.dart';
+import '../domain/provisioning_options.dart';
 import '../domain/runtime_dependency_models.dart';
 import '../infrastructure/llama_server_dependency_service.dart';
 import '../infrastructure/local_inference_preflight_engine.dart';
@@ -106,8 +107,21 @@ abstract interface class FirstRunModelSetupFacade {
   /// Assegna il modello per il ruolo Evaluator e fa progredire il flusso.
   Future<FirstRunSetupState> selectEvaluatorModel(ConfiguredModelReference ref);
 
-  /// Registra il consenso informato per i modelli esterni e ritenta il passo bloccato.
-  Future<FirstRunSetupState> acceptConsentAndRetry();
+  /// Registra il consenso informato e ritenta il binding del modello Actor in modo stateless.
+  Future<FirstRunSetupState> acceptConsentAndBindActor(
+    ExternalModelReference reference,
+  );
+
+  /// Registra il consenso informato e ritenta il binding del modello Evaluator in modo stateless.
+  Future<FirstRunSetupState> acceptConsentAndBindEvaluator(
+    ExternalModelReference reference,
+  );
+
+  /// Registra il consenso informato per i modelli esterni e ritenta il passo bloccato per il ruolo specificato.
+  Future<FirstRunSetupState> acceptConsentAndRetry({
+    required ModelActivationRole role,
+    required ExternalModelReference reference,
+  });
 
   /// Esegue la verifica finale `runtimeProbe` per completare l'onboarding.
   Future<FirstRunSetupState> runFinalPreflight();
@@ -140,34 +154,41 @@ final class DefaultFirstRunModelSetupFacade
           step: FirstRunSetupStep.complete,
           preflightResult: probeResult,
         );
+      } else {
+        return FirstRunSetupState(
+          step: FirstRunSetupStep.failed,
+          preflightResult: probeResult,
+          errorMessage: probeResult.sanitizedMessage,
+        );
       }
     }
 
     final detection = await _dependencyService.detect();
 
+    // Se preflight individua il ruolo specifico che necessita di intervento:
+    if (preflight.affectedRole == ModelActivationRole.actor) {
+      return FirstRunSetupState(
+        step: FirstRunSetupStep.actorSelection,
+        preflightResult: preflight,
+        runtimeDetectionResult: detection,
+      );
+    }
+
+    if (preflight.affectedRole == ModelActivationRole.evaluator) {
+      return FirstRunSetupState(
+        step: FirstRunSetupStep.evaluatorSelection,
+        preflightResult: preflight,
+        runtimeDetectionResult: detection,
+      );
+    }
+
+    // Fallback in base alla causa di fallimento runtime
     switch (preflight.failureReason) {
       case LocalInferencePreflightFailure.runtimeNotConfigured:
       case LocalInferencePreflightFailure.runtimeMissing:
       case LocalInferencePreflightFailure.runtimeInvalid:
         return FirstRunSetupState(
           step: FirstRunSetupStep.runtimeSelection,
-          preflightResult: preflight,
-          runtimeDetectionResult: detection,
-        );
-
-      case LocalInferencePreflightFailure.actorNotConfigured:
-      case LocalInferencePreflightFailure.managedInstallationUnavailable:
-        return FirstRunSetupState(
-          step: FirstRunSetupStep.actorSelection,
-          preflightResult: preflight,
-          runtimeDetectionResult: detection,
-        );
-
-      case LocalInferencePreflightFailure.evaluatorNotConfigured:
-      case LocalInferencePreflightFailure.externalModelMissing:
-      case LocalInferencePreflightFailure.externalModelUnreadable:
-        return FirstRunSetupState(
-          step: FirstRunSetupStep.evaluatorSelection,
           preflightResult: preflight,
           runtimeDetectionResult: detection,
         );
@@ -242,9 +263,33 @@ final class DefaultFirstRunModelSetupFacade
   }
 
   @override
-  Future<FirstRunSetupState> acceptConsentAndRetry() async {
+  Future<FirstRunSetupState> acceptConsentAndBindActor(
+    ExternalModelReference reference,
+  ) async {
     await _modelService.recordExternalModelConsent();
-    return evaluateInitialState();
+    return selectActorModel(reference);
+  }
+
+  @override
+  Future<FirstRunSetupState> acceptConsentAndBindEvaluator(
+    ExternalModelReference reference,
+  ) async {
+    await _modelService.recordExternalModelConsent();
+    return selectEvaluatorModel(reference);
+  }
+
+  @override
+  Future<FirstRunSetupState> acceptConsentAndRetry({
+    required ModelActivationRole role,
+    required ExternalModelReference reference,
+  }) async {
+    await _modelService.recordExternalModelConsent();
+    switch (role) {
+      case ModelActivationRole.actor:
+        return selectActorModel(reference);
+      case ModelActivationRole.evaluator:
+        return selectEvaluatorModel(reference);
+    }
   }
 
   @override

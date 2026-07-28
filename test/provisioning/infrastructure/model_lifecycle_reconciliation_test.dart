@@ -139,5 +139,63 @@ void main() {
               reconResult.deactivatedNoFallbackCount,
           equals(1));
     });
+
+    test(
+        'reconcileLifecycleTransactions rifiuta la promozione di una .repairing-* se i metadati locale o marker sono incoerenti',
+        () async {
+      final desc = InstalledArtifactDescriptor(
+        installationId: 'inst_repair_test',
+        artifactId: 'actor-mod',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Actor Model',
+        platform: 'any',
+        architecture: 'any',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        version: '1.0.0',
+        buildId: 'b1',
+        sizeBytes: 3,
+        sha256:
+            '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+        relativeInstallPath: 'models/actor-mod/1.0.0-b1',
+        entryFileName: 'model.gguf',
+        installedAt: '2026-07-28T10:00:00Z',
+        status: InstallationStatus.verified,
+        verifiedAt: '2026-07-28T10:00:00Z',
+      );
+
+      var record = InstallationRecord.empty(updatedAt: '2026-07-28T10:00:00Z');
+      record = record.upsertArtifact(desc);
+      await recordRepository.writeRecord(record);
+
+      final targetPath =
+          pathResolver.resolveAppManagedRelativePath(desc.relativeInstallPath);
+      // Non creiamo il targetPath (o creiamo un target fisicamente corrotto)
+      await fileSystem.createDirectory(targetPath);
+      await fileSystem
+          .writeBytes('$targetPath\\model.gguf', [9, 9, 9]); // Corrotto!
+
+      final repairingDir = '${targetPath}.repairing-op1';
+      await fileSystem.createDirectory(repairingDir);
+      await fileSystem
+          .writeBytes('$repairingDir\\model.gguf', [1, 2, 3]); // GGUF valido
+
+      // Ma lasciamo marker o record con artifactId INCOERENTE!
+      await fileSystem.writeStringRecoverably(
+        '$repairingDir\\installation_record.json',
+        '{"artifactId": "WRONG_ID", "version": "1.0.0"}',
+      );
+      await fileSystem.writeStringRecoverably(
+        '$repairingDir\\commit.marker',
+        '{"schemaVersion": "1.0", "artifactId": "WRONG_ID"}',
+      );
+
+      final reconResult = await coordinator.reconcileLifecycleTransactions();
+
+      // Poiche i metadati della .repairing-* sono incoerenti, NON viene promossa!
+      final repairingExists = await fileSystem.directoryExists(repairingDir);
+      expect(repairingExists, isFalse,
+          reason: 'La directory .repairing-* non valida viene eliminata.');
+      expect(reconResult.cleanedStaleTempCount, greaterThan(0));
+    });
   });
 }

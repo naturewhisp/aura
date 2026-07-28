@@ -1465,23 +1465,11 @@ final class ProvisioningCoordinator {
               } else {
                 bool repairingHealthy = false;
                 if (desc != null) {
-                  final localRecordPath =
-                      '$versionDir\\installation_record.json';
-                  final commitMarkerPath = '$versionDir\\commit.marker';
-                  final hasRecord =
-                      await _fileSystem.fileExists(localRecordPath);
-                  final hasMarker =
-                      await _fileSystem.fileExists(commitMarkerPath);
-
-                  if (hasRecord && hasMarker) {
-                    final tempDesc = desc.copyWith(
-                      relativeInstallPath: 'models/$artifactSub/$versionSub',
-                    );
-                    repairingHealthy = await _verifier.verifyPhysicalIntegrity(
-                      tempDesc,
-                      pathResolver: _pathResolver,
-                    );
-                  }
+                  repairingHealthy =
+                      await verifyTransactionalInstallationDirectory(
+                    absolutePath: versionDir,
+                    expectedDescriptor: desc,
+                  );
                 }
 
                 if (repairingHealthy) {
@@ -1911,5 +1899,72 @@ final class ProvisioningCoordinator {
     return _lock.synchronized(_lockKey, () async {
       return _activationRepository.readState();
     });
+  }
+
+  /// Attesta l'integrità fisica e la coerenza dei metadati self-describing (`installation_record.json` e `commit.marker`)
+  /// di una directory di transazione o backup alternativa prima della sua eventuale promozione.
+  Future<bool> verifyTransactionalInstallationDirectory({
+    required String absolutePath,
+    required InstalledArtifactDescriptor expectedDescriptor,
+  }) async {
+    final localRecordPath = '$absolutePath\\installation_record.json';
+    final commitMarkerPath = '$absolutePath\\commit.marker';
+
+    if (!await _fileSystem.fileExists(localRecordPath) ||
+        !await _fileSystem.fileExists(commitMarkerPath)) {
+      return false;
+    }
+
+    try {
+      // 1. Validazione e deserializzazione installation_record.json locale
+      final recordStr = await _fileSystem.readAsString(localRecordPath);
+      final recordMap = jsonDecode(recordStr) as Map<String, dynamic>;
+      final localDescriptor = InstalledArtifactDescriptor.fromJson(recordMap);
+
+      if (localDescriptor.artifactId != expectedDescriptor.artifactId ||
+          localDescriptor.version != expectedDescriptor.version ||
+          localDescriptor.buildId != expectedDescriptor.buildId ||
+          localDescriptor.sha256.toLowerCase() !=
+              expectedDescriptor.sha256.toLowerCase() ||
+          localDescriptor.sizeBytes != expectedDescriptor.sizeBytes ||
+          localDescriptor.status != InstallationStatus.verified) {
+        return false;
+      }
+
+      // 2. Validazione e deserializzazione commit.marker
+      final markerStr = await _fileSystem.readAsString(commitMarkerPath);
+      final markerMap = jsonDecode(markerStr) as Map<String, dynamic>;
+
+      final markerSchema = markerMap['schemaVersion'] as String?;
+      final markerArtifactId = markerMap['artifactId'] as String?;
+      final markerSha256 = markerMap['sha256'] as String?;
+      final markerSizeBytes = markerMap['sizeBytes'] as int?;
+      final markerPreparedAtIso = markerMap['preparedAtUtc'] as String?;
+
+      if (markerSchema != '1.0' ||
+          markerArtifactId != expectedDescriptor.artifactId ||
+          markerSha256?.toLowerCase() !=
+              expectedDescriptor.sha256.toLowerCase() ||
+          markerSizeBytes != expectedDescriptor.sizeBytes ||
+          markerPreparedAtIso == null ||
+          DateTime.tryParse(markerPreparedAtIso) == null) {
+        return false;
+      }
+
+      // 3. Verificatore fisicità ed hashing del payload GGUF
+      final relativeSubDir = absolutePath.substring(
+        _pathResolver.appManagedRoot.length + 1,
+      );
+      final tempDescriptor = localDescriptor.copyWith(
+        relativeInstallPath: relativeSubDir,
+      );
+
+      return await _verifier.verifyPhysicalIntegrity(
+        tempDescriptor,
+        pathResolver: _pathResolver,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 }

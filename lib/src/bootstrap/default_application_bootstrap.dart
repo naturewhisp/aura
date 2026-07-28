@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:aura_core/aura_core.dart';
+import '../agent_runtime/bridges/dual_model_inference_bridge.dart';
 import '../agent_runtime/bridges/local_api_inference_bridge.dart';
 import '../agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 import '../agent_runtime/bridges/runtime_inference_bridge.dart';
@@ -10,6 +11,7 @@ import '../agent_runtime/runtime/adapters/external_openai/external_openai_runtim
 import '../agent_runtime/runtime/adapters/managed_llama_server/dart_io_process_launcher.dart';
 import '../agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_runtime.dart';
 import '../agent_runtime/runtime/adapters/rule_based_inference_runtime.dart';
+import 'managed_inference_topology.dart';
 
 /// Implementazione predefinita del composition root applicativo [ApplicationBootstrap].
 class DefaultApplicationBootstrap implements ApplicationBootstrap {
@@ -92,6 +94,11 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       case ApplicationRuntimeMode.externalOpenAiRuntime:
         return await _bootstrapExternalOpenAi(request, config);
       case ApplicationRuntimeMode.managedLlamaServer:
+        // Smistamento: dual-role topology vs single-model legacy.
+        if (config.managedInferenceTopology != null) {
+          return await _bootstrapDualManagedLlamaServer(
+              request, config, config.managedInferenceTopology!);
+        }
         return await _bootstrapManagedLlamaServer(request, config);
       case ApplicationRuntimeMode.ruleBased:
         return await _bootstrapRuleBased(config);
@@ -627,6 +634,217 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Ciclo di vita dual-managed: Actor runtime + Evaluator runtime separati.
+  // ---------------------------------------------------------------------------
+
+  /// Secondo processo `llama-server` per il ruolo Evaluator (dual-managed).
+  InferenceRuntime? _activeEvaluatorRuntime;
+
+  Future<ApplicationBootstrapResult> _bootstrapDualManagedLlamaServer(
+    ApplicationBootstrapRequest request,
+    ApplicationRuntimeConfiguration config,
+    ManagedInferenceTopology topology,
+  ) async {
+    final sessionId =
+        (config.sessionId != null && config.sessionId!.trim().isNotEmpty)
+            ? config.sessionId!.trim()
+            : 'bootstrap-session';
+
+    final fileSystem = request.customFileSystem ?? const LocalFileSystem();
+    final processLauncher =
+        request.customProcessLauncher ?? const DartIoProcessLauncher();
+    final portAllocator =
+        request.customPortAllocator ?? const LoopbackPortAllocator();
+    final healthProbe =
+        request.customHealthProbe ?? HttpLlamaServerHealthProbe();
+
+    // ---------- ACTOR ----------
+    _validateDualRoleConfig(topology.actor.serverConfiguration, fileSystem);
+
+    final delegateFactory = request.customDelegateFactory != null
+        ? (clientConfig, bindings) =>
+            request.customDelegateFactory!(clientConfig)
+        : null;
+
+    final actorSupervisor = LlamaServerProcessSupervisor(
+      configuration: topology.actor.serverConfiguration,
+      processLauncher: processLauncher,
+      portAllocator: portAllocator,
+      healthProbe: healthProbe,
+      fileSystem: fileSystem,
+    );
+
+    final actorRuntime = ManagedLlamaServerRuntime(
+      configuration: topology.actor.serverConfiguration,
+      supervisor: actorSupervisor,
+      delegateFactory: delegateFactory,
+    );
+
+    _activeRuntime = actorRuntime;
+
+    try {
+      await actorRuntime.initialize(
+        RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('instance-actor-$sessionId'),
+        ),
+      );
+    } catch (e) {
+      throw ApplicationBootstrapException(
+        const ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.runtimeInitializationFailed,
+          message: 'Inizializzazione del runtime Actor fallita.',
+        ),
+        e,
+      );
+    }
+
+    // ---------- EVALUATOR ----------
+    // Se l'Evaluator fallisce, il runtime Actor viene terminato prima di sollevare l'errore.
+    _validateDualRoleConfig(topology.evaluator.serverConfiguration, fileSystem);
+
+    final evaluatorSupervisor = LlamaServerProcessSupervisor(
+      configuration: topology.evaluator.serverConfiguration,
+      processLauncher: processLauncher,
+      portAllocator: portAllocator,
+      healthProbe: healthProbe,
+      fileSystem: fileSystem,
+    );
+
+    final evaluatorRuntime = ManagedLlamaServerRuntime(
+      configuration: topology.evaluator.serverConfiguration,
+      supervisor: evaluatorSupervisor,
+      delegateFactory: delegateFactory,
+    );
+
+    _activeEvaluatorRuntime = evaluatorRuntime;
+
+    try {
+      await evaluatorRuntime.initialize(
+        RuntimeInitializationRequest(
+          instanceId: RuntimeInstanceId('instance-evaluator-$sessionId'),
+        ),
+      );
+    } catch (e) {
+      // Lifecycle transazionale: termina l'Actor prima di sollevare l'errore.
+      try {
+        await actorRuntime.dispose();
+      } catch (_) {
+        // Ignora gli errori di cleanup secondari.
+      }
+      _activeRuntime = null;
+      _activeEvaluatorRuntime = null;
+
+      throw ApplicationBootstrapException(
+        const ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.runtimeInitializationFailed,
+          message:
+              'Inizializzazione del runtime Evaluator fallita. Il runtime Actor è stato terminato.',
+        ),
+        e,
+      );
+    }
+
+    // ---------- CARICAMENTO MODELLI ----------
+    final actorHandle = await actorRuntime.loadModel(
+      ModelLoadRequest(
+        requestId: ModelLoadRequestId('load-actor-$sessionId'),
+        artifact: ResolvedModelArtifact(
+          modelVariantId: topology.actor.modelId,
+          sha256: 'placeholder-sha',
+          format: 'gguf',
+          quantization: 'q4_k_m',
+          architecture: 'llama',
+          compatibility: const ModelRuntimeCompatibility(compatible: true),
+          localArtifactUri:
+              Uri.file(topology.actor.serverConfiguration.modelPath),
+        ),
+        logicalModelId: topology.actor.modelId,
+        roles: const {ModelRole.actor},
+      ),
+    );
+
+    final evaluatorHandle = await evaluatorRuntime.loadModel(
+      ModelLoadRequest(
+        requestId: ModelLoadRequestId('load-evaluator-$sessionId'),
+        artifact: ResolvedModelArtifact(
+          modelVariantId: topology.evaluator.modelId,
+          sha256: 'placeholder-sha',
+          format: 'gguf',
+          quantization: 'q4_k_m',
+          architecture: 'llama',
+          compatibility: const ModelRuntimeCompatibility(compatible: true),
+          localArtifactUri:
+              Uri.file(topology.evaluator.serverConfiguration.modelPath),
+        ),
+        logicalModelId: topology.evaluator.modelId,
+        roles: const {ModelRole.evaluator},
+      ),
+    );
+
+    // ---------- BRIDGE DUAL-ROLE ----------
+    final actorBridge = RuntimeInferenceBridge.fromHandleResolver(
+      runtime: actorRuntime,
+      handleResolver: (_) => actorHandle,
+    );
+
+    final evaluatorBridge = RuntimeInferenceBridge.fromHandleResolver(
+      runtime: evaluatorRuntime,
+      handleResolver: (_) => evaluatorHandle,
+    );
+
+    final dualBridge = DualModelInferenceBridge(
+      actorBridge: actorBridge,
+      evaluatorBridge: evaluatorBridge,
+      actorModelId: topology.actor.modelId,
+      evaluatorModelId: topology.evaluator.modelId,
+    );
+
+    // ---------- RISULTATO ----------
+    const controller = GameController();
+    final status = ApplicationRuntimeStatus(
+      runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+      isHealthy: true,
+      statusDescription:
+          'Runtime dual-managed attivo: Actor + Evaluator su processi separati.',
+      diagnostics: {
+        'managed': true,
+        'dualProcess': true,
+        'actorModelId': topology.actor.modelId,
+        'evaluatorModelId': topology.evaluator.modelId,
+        if (config.sessionId != null) 'sessionId': config.sessionId,
+      },
+    );
+
+    return ApplicationBootstrapResult(
+      controller: controller,
+      activeBridge: dualBridge,
+      runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+      status: status,
+      actorModelId: topology.actor.modelId,
+      evaluatorModelId: topology.evaluator.modelId,
+      onDispose: dispose,
+    );
+  }
+
+  /// Valida la configurazione di un supervisor managed prima dell'avvio.
+  void _validateDualRoleConfig(
+    ManagedLlamaServerConfiguration cfg,
+    ManagedFileSystem fileSystem,
+  ) {
+    try {
+      cfg.validate(fileSystem);
+    } on ManagedLlamaServerException catch (e) {
+      throw ApplicationBootstrapException(
+        ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.incompleteConfiguration,
+          message: e.message,
+        ),
+        e,
+      );
+    }
+  }
+
   Future<ApplicationBootstrapResult> _bootstrapRuleBased(
     ApplicationRuntimeConfiguration config,
   ) async {
@@ -671,6 +889,17 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         firstError ??= e;
       } finally {
         _activeRuntime = null;
+      }
+    }
+
+    if (_activeEvaluatorRuntime != null) {
+      try {
+        await _activeEvaluatorRuntime!.dispose();
+      } catch (e) {
+        runtimeSuccess = false;
+        firstError ??= e;
+      } finally {
+        _activeEvaluatorRuntime = null;
       }
     }
 

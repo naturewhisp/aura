@@ -45,6 +45,12 @@ class ApplicationBootstrapResult {
   /// Stato di salute e diagnostica iniziale del runtime.
   final ApplicationRuntimeStatus status;
 
+  /// Model ID utilizzato per l'agente Attore (PANOPTICON).
+  final String actorModelId;
+
+  /// Model ID utilizzato per l'agente Valutatore.
+  final String evaluatorModelId;
+
   /// Callback interna per la dismissione delle risorse.
   final Future<void> Function() onDispose;
 
@@ -54,6 +60,8 @@ class ApplicationBootstrapResult {
     required this.activeBridge,
     required this.runtimeMode,
     required this.status,
+    this.actorModelId = 'gemma-4-12b-it-qat-q4-0',
+    this.evaluatorModelId = 'mistralai/ministral-3-3b',
     required this.onDispose,
   });
 

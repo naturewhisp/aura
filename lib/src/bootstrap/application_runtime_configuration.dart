@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 import '../agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_configuration.dart';
 import 'application_runtime_mode.dart';
+import 'managed_inference_topology.dart';
 
 /// Policy di fallback in caso di errore di inizializzazione o connettività.
 enum BootstrapFallbackPolicy {
@@ -48,14 +49,29 @@ class ApplicationRuntimeConfiguration {
   final BootstrapFallbackPolicy fallbackPolicy;
 
   /// Configurazione specifica per il runtime gestito `llama-server` (opzionale).
+  ///
+  /// Utilizzato per la modalità single-model (legacy single-process). Non deve essere
+  /// valorizzato contemporaneamente a [managedInferenceTopology].
   final ManagedLlamaServerConfiguration? managedLlamaConfig;
+
+  /// Topologia di inferenza dual-role (Actor + Evaluator) per la modalità managed.
+  ///
+  /// Se presente, il bootstrap utilizza due processi `llama-server` distinti.
+  /// Non deve essere valorizzato contemporaneamente a [managedLlamaConfig].
+  ///
+  /// Regole di esclusività:
+  /// - solo [managedLlamaConfig] → modalità single-model;
+  /// - solo [managedInferenceTopology] → modalità dual-role;
+  /// - entrambi presenti → configurazione non valida (errore al bootstrap);
+  /// - nessuno con `runtimeMode == managedLlamaServer` → configurazione incompleta.
+  final ManagedInferenceTopology? managedInferenceTopology;
 
   /// Costruisce un'istanza immutabile di [ApplicationRuntimeConfiguration].
   const ApplicationRuntimeConfiguration({
     this.runtimeMode = ApplicationRuntimeMode.legacyExternalOpenAi,
     this.baseUri,
     this.apiKey,
-    this.actorModelId = 'qwen/qwen3.5-9b',
+    this.actorModelId = 'gemma-4-12b-it-qat-q4-0',
     this.evaluatorModelId = 'mistralai/ministral-3-3b',
     this.timeout = const Duration(seconds: 30),
     this.skipHealthCheck = false,
@@ -64,7 +80,11 @@ class ApplicationRuntimeConfiguration {
     this.diagnosticMode = false,
     this.fallbackPolicy = BootstrapFallbackPolicy.none,
     this.managedLlamaConfig,
-  });
+    this.managedInferenceTopology,
+  }) : assert(
+          managedLlamaConfig == null || managedInferenceTopology == null,
+          'managedLlamaConfig e managedInferenceTopology non possono essere entrambi presenti.',
+        );
 
   /// Crea un'istanza di [ApplicationRuntimeConfiguration] a partire da una mappa di variabili d'ambiente.
   ///
@@ -143,12 +163,17 @@ class ApplicationRuntimeConfiguration {
 
     ManagedLlamaServerConfiguration? managedConfig =
         defaults.managedLlamaConfig;
+    ManagedInferenceTopology? managedTopology =
+        defaults.managedInferenceTopology;
+
     final llamaExec = env['AURA_LLAMA_SERVER_EXECUTABLE']?.trim();
     final llamaModel = env['AURA_LLAMA_MODEL_PATH']?.trim();
 
     if (llamaExec != null ||
         llamaModel != null ||
-        mode == ApplicationRuntimeMode.managedLlamaServer) {
+        (mode == ApplicationRuntimeMode.managedLlamaServer &&
+            defaults.managedInferenceTopology == null &&
+            defaults.managedLlamaConfig != null)) {
       final host = env['AURA_LLAMA_HOST']?.trim() ?? '127.0.0.1';
       final portStr = env['AURA_LLAMA_PORT']?.trim();
       final port = portStr != null ? int.tryParse(portStr) : null;
@@ -189,6 +214,7 @@ class ApplicationRuntimeConfiguration {
         apiKey: apiKey ?? 'managed-llama-secret',
         diagnosticMode: defaults.diagnosticMode,
       );
+      managedTopology = null;
     }
 
     return ApplicationRuntimeConfiguration(
@@ -204,6 +230,7 @@ class ApplicationRuntimeConfiguration {
       diagnosticMode: defaults.diagnosticMode,
       fallbackPolicy: defaults.fallbackPolicy,
       managedLlamaConfig: managedConfig,
+      managedInferenceTopology: managedTopology,
     );
   }
 
@@ -221,6 +248,7 @@ class ApplicationRuntimeConfiguration {
     bool? diagnosticMode,
     BootstrapFallbackPolicy? fallbackPolicy,
     ManagedLlamaServerConfiguration? managedLlamaConfig,
+    ManagedInferenceTopology? managedInferenceTopology,
   }) {
     return ApplicationRuntimeConfiguration(
       runtimeMode: runtimeMode ?? this.runtimeMode,
@@ -235,6 +263,8 @@ class ApplicationRuntimeConfiguration {
       diagnosticMode: diagnosticMode ?? this.diagnosticMode,
       fallbackPolicy: fallbackPolicy ?? this.fallbackPolicy,
       managedLlamaConfig: managedLlamaConfig ?? this.managedLlamaConfig,
+      managedInferenceTopology:
+          managedInferenceTopology ?? this.managedInferenceTopology,
     );
   }
 }

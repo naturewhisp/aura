@@ -31,8 +31,21 @@ class ActorOutputSanitizer {
     final hasNativeReasoning = reasoning.trim().isNotEmpty;
     _ExtractionResult? reasoningFallbackExtraction;
 
-    // 1. Fallback: if content is empty but native reasoning is present, attempt extraction from reasoning
+    // 1. Fallback: if content is empty but native reasoning is present, attempt extraction from reasoning.
+    //    VINCOLO: se thinkingRequested == false, la presenza di reasoning_content con content vuoto
+    //    è un errore del modello (ha prodotto solo reasoning nonostante thinking disabilitato).
+    //    In questo caso si solleva un errore tipizzato anziché estrarre dal reasoning.
     if (content.trim().isEmpty && reasoning.isNotEmpty) {
+      if (!request.thinkingRequested) {
+        // thinking=false + content vuoto + reasoning presente → errore tipizzato.
+        throw const OutputPolicyFailure(
+          code: OutputPolicyFailureCode.reasoningOnly,
+          message:
+              'Il modello ha generato solo ragionamento (reasoning_content) con thinking disabilitato. '
+              'Nessun dialogo estraibile: la risposta non è conforme al contratto.',
+        );
+      }
+
       try {
         final fallbackExtraction = _extractFromText(
           reasoning,

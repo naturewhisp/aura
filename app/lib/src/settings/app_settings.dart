@@ -53,7 +53,7 @@ final class AppSettings {
   factory AppSettings.defaults() {
     return const AppSettings(
       evaluatorModelId: 'mistralai/ministral-3-3b',
-      actorModelId: 'qwen/qwen3.5-9b',
+      actorModelId: 'gemma-4-12b-it-qat-q4-0',
       reasoningEnabled: false,
       conciseReasoning: false,
       shaderEnabled: true,

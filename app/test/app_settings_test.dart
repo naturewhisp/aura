@@ -7,7 +7,7 @@ void main() {
       test('AppSettings.defaults() restituisce i valori attesi', () {
         final s = AppSettings.defaults();
         expect(s.evaluatorModelId, equals('mistralai/ministral-3-3b'));
-        expect(s.actorModelId, equals('qwen/qwen3.5-9b'));
+        expect(s.actorModelId, equals('gemma-4-12b-it-qat-q4-0'));
         expect(s.reasoningEnabled, isFalse);
         expect(s.conciseReasoning, isFalse);
         expect(s.shaderEnabled, isTrue);

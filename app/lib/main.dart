@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:aura_core/aura_offline.dart';
@@ -10,7 +9,7 @@ import 'src/screens/boot_menu_screen.dart';
 ///
 /// Inizializza lo stato di gioco e delega la selezione ed assemblaggio delle dipendenze
 /// al composition root esplicito [ApplicationBootstrap].
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Inizializza lo stato di gioco iniziale
@@ -20,32 +19,11 @@ void main() async {
     targetObjectiveId: "containment_grid_override",
   );
 
-  const bootstrapFactory = ApplicationBootstrapFactory();
-  final bootstrap = bootstrapFactory.create();
-
-  final ApplicationBootstrapResult result;
-  try {
-    result = await bootstrap.bootstrap(
-      ApplicationBootstrapRequest(
-        configuration: ApplicationRuntimeConfiguration(
-          runtimeMode: ApplicationRuntimeMode.legacyExternalOpenAi,
-          sessionId: initialState.sessionId,
-        ),
-        environmentOverride: Platform.environment,
-      ),
-    );
-  } on ApplicationBootstrapException catch (e) {
-    debugPrint(
-        "[BOOTSTRAP ERROR] Inizializzazione applicazione fallita: ${e.failure.message}");
-    rethrow;
-  }
-
-  // Inizializza il notifier della gestione dello stato con le dipendenze fornite dal bootstrap
+  // Avvia immediatamente l'applicazione con il notifier iniziale.
+  // Il bootstrap managed dual-process dei modelli viene eseguito in modo
+  // asincrono nello schermo di Boot di BootMenuScreen, fornendo log in tempo reale.
   final controllerNotifier = GameControllerNotifier(
-    controller: result.controller,
-    bridge: result.activeBridge,
     initialState: initialState,
-    onDispose: result.dispose,
   );
 
   runApp(AuraApp(notifier: controllerNotifier));

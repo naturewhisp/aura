@@ -83,6 +83,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
         finishReason: finishReason,
         requestedMaxTokens: maxTokens,
         conversationHistory: conversationHistory,
+        thinkingRequested: thinking ?? false,
       ),
     );
     return result.content;

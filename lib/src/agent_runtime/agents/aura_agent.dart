@@ -2,6 +2,7 @@ import '../prompt_builder.dart';
 import '../inference_bridge.dart';
 import '../output_validator.dart';
 import '../agent_card.dart';
+import 'actor_inference_logger.dart';
 
 /// Il contesto di esecuzione passato a un agente durante l'esecuzione di un task di inferenza.
 class AgentRuntimeContext {
@@ -26,6 +27,11 @@ class AgentRuntimeContext {
   /// Timeout massimo opzionale per l'esecuzione dell'inferenza primaria dell'agente.
   final Duration? inferenceTimeout;
 
+  /// Logger iniettabile per la registrazione dei log diagnostici dell'ActorAgent.
+  ///
+  /// Defaults a [NoOpActorInferenceLogger] per garantire la compatibilità retroattiva.
+  final ActorInferenceLogger actorInferenceLogger;
+
   const AgentRuntimeContext({
     required this.promptBuilder,
     required this.inferenceBridge,
@@ -34,6 +40,7 @@ class AgentRuntimeContext {
     this.thinking,
     this.conciseReasoning = false,
     this.inferenceTimeout,
+    this.actorInferenceLogger = const NoOpActorInferenceLogger(),
   });
 }
 

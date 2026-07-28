@@ -49,6 +49,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
 
   // Campi relativi all'animazione di boot
   final List<String> _bootLines = [];
+  double _bootProgress = 0.0;
   bool _logoVisible = false;
   bool _pressEnterVisible = false;
   Future<void>? _bootFuture;
@@ -66,8 +67,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   // Modelli disponibili nel catalogo locale (utilizzati per le opzioni di custom routing)
   final List<String> _modelsList = const [
     "gemma-4-12b-it-qat-q4-0",
-    "mistralai/ministral-3-3b",
-    "qwen/qwen3.5-9b"
+    "mistralai/ministral-3-3b"
   ];
 
   // Indici e chiavi globali per la navigazione del menu ed effetti di lampeggiamento
@@ -92,40 +92,62 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   Future<void> _runBootSequence() async {
     try {
       _appendBootLog("AURA_INIT> SYSTEM INITIALIZATION... OK");
+      setState(() {
+        _bootProgress = 0.05;
+      });
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
       _appendBootLog(
           "AURA_INIT> SCANNING HARDWARE ENGINES (Vulkan/CUDA)... DETECTED");
+      setState(() {
+        _bootProgress = 0.10;
+      });
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
       _appendBootLog("AURA_INIT> FETCHING LOCAL MODEL CATALOG...");
 
-      final initModelsFn =
-          widget.initializeModels ?? widget.notifier.initializeModels;
-      final modelResult = await initModelsFn();
+      final ModelInitializationResult modelResult;
+      if (widget.initializeModels != null) {
+        modelResult = await widget.initializeModels!();
+      } else {
+        await widget.notifier.performManagedBootstrap(
+          onProgress: (progress, log) {
+            if (!mounted) return;
+            setState(() {
+              _bootProgress = progress;
+              _bootLines.add(log);
+            });
+          },
+        );
+        if (!mounted) return;
+        modelResult = await widget.notifier.initializeModels();
+      }
       if (!mounted) return;
 
-      if (modelResult.status == ModelInitializationStatus.online) {
-        _appendBootLog(
-            "AURA_INIT> Model Router profile: [${modelResult.activeProfile}] loaded.");
-        _appendBootLog("AURA_INIT> ACTIVE ENGINES IDENTIFIED AND ROUTED.");
-        await Future.delayed(const Duration(milliseconds: 300));
-        if (!mounted) return;
-
-        _appendBootLog(
-            "AURA_INIT> CONNECTING TO NEURAL PORT [PORT 1234]... STABLE");
-      } else if (modelResult.status ==
-          ModelInitializationStatus.noModelsDiscovered) {
-        _appendBootLog("AURA_INIT> [WARNING] Nessun modello rilevato.");
-        _appendBootLog(
-            "AURA_INIT> Configurazione modelli predefinita mantenuta.");
-      } else if (modelResult.status == ModelInitializationStatus.unavailable) {
-        _appendBootLog("AURA_INIT> [WARNING] Model Router non disponibile.");
-        _appendBootLog(
-            "AURA_INIT> Configurazione modelli predefinita mantenuta.");
+      switch (modelResult.status) {
+        case ModelInitializationStatus.online:
+          _appendBootLog(
+              "AURA_INIT> Model Router profile: [${modelResult.activeProfile}] loaded.");
+          _appendBootLog("AURA_INIT> ACTIVE ENGINES IDENTIFIED AND ROUTED.");
+          _appendBootLog("AURA_INIT> CONNECTING TO NEURAL PORT...");
+          break;
+        case ModelInitializationStatus.noModelsDiscovered:
+          _appendBootLog("AURA_INIT> WARNING: Nessun modello rilevato.");
+          _appendBootLog(
+              "AURA_INIT> Configurazione modelli predefinita mantenuta.");
+          break;
+        case ModelInitializationStatus.unavailable:
+          _appendBootLog("AURA_INIT> WARNING: Model Router non disponibile.");
+          _appendBootLog(
+              "AURA_INIT> Configurazione modelli predefinita mantenuta.");
+          break;
       }
+
+      setState(() {
+        _bootProgress = 1.0;
+      });
 
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
@@ -515,19 +537,23 @@ class _BootMenuScreenState extends State<BootMenuScreen>
           // Boot sequence logs
           Expanded(
             child: ListView.builder(
-              itemCount: _bootLines.length,
+              itemCount: _bootLines.length +
+                  (_bootCompleted || _bootProgress <= 0.0 ? 0 : 1),
               itemBuilder: (context, index) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2.0),
-                  child: Text(
-                    _bootLines[index],
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      color: Color(0xFF00FF66),
-                      fontSize: 14.0,
+                if (index < _bootLines.length) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2.0),
+                    child: Text(
+                      _bootLines[index],
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF00FF66),
+                        fontSize: 14.0,
+                      ),
                     ),
-                  ),
-                );
+                  );
+                }
+                return _buildProgressBar();
               },
             ),
           ),
@@ -589,6 +615,32 @@ class _BootMenuScreenState extends State<BootMenuScreen>
           ),
           const SizedBox(height: 20.0),
         ],
+      ),
+    );
+  }
+
+  Widget _buildProgressBar() {
+    if (_bootCompleted || _bootProgress <= 0.0) {
+      return const SizedBox.shrink();
+    }
+
+    const totalBlocks = 24;
+    final filledBlocks =
+        (_bootProgress * totalBlocks).clamp(0, totalBlocks).toInt();
+    final emptyBlocks = totalBlocks - filledBlocks;
+    final bar = '█' * filledBlocks + '░' * emptyBlocks;
+    final percentage = (_bootProgress * 100).clamp(0, 100).toInt();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Text(
+        '[$bar] $percentage%',
+        style: const TextStyle(
+          fontFamily: 'monospace',
+          color: Color(0xFF00FF66),
+          fontSize: 13.0,
+          fontWeight: FontWeight.bold,
+        ),
       ),
     );
   }

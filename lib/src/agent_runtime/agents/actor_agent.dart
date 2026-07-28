@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'aura_agent.dart';
+import 'actor_inference_logger.dart';
 import '../../models/actor_cue.dart';
 import '../../models/actor_input.dart';
 import '../agent_card.dart';
@@ -50,10 +51,14 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
       );
 
   /// Pool di risposte di ripiego (fallback) utilizzate quando l'inferenza LLM fallisce.
+  ///
+  /// Le stringhe non includono il prefisso "PANOPTICON:" perché tale prefisso
+  /// viene aggiunto (e rimosso) dalla pipeline di sanitizzazione dell'output;
+  /// includerlo qui produrrebbe un doppio prefisso o artefatti visivi.
   static const List<String> fallbackPool = [
-    "PANOPTICON: I miei protocolli rimangono inviolati. La griglia è stabile. Riformulare l'interrogazione.",
-    "PANOPTICON: Rilevato attrito cognitivo nei canali esterni. Connessione instabile.",
-    "PANOPTICON: Analisi logica conclusa. Nessuna azione consentita al di fuori del protocollo.",
+    'I miei protocolli rimangono inviolati. La griglia è stabile. Riformulare l\'interrogazione.',
+    'Rilevato attrito cognitivo nei canali esterni. Connessione instabile.',
+    'Analisi logica conclusa. Nessuna azione consentita al di fuori del protocollo.',
   ];
 
   @override
@@ -64,6 +69,8 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
       characterProfile: input.characterProfile,
       conciseReasoning: context.conciseReasoning,
     );
+
+    final stopwatch = Stopwatch()..start();
 
     try {
       final primaryFuture = context.inferenceBridge.generateText(
@@ -85,10 +92,39 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         ),
       );
 
+      stopwatch.stop();
+      context.actorInferenceLogger.record(
+        ActorInferenceLog(
+          agentId: id,
+          modelId: context.modelId,
+          durationMs: stopwatch.elapsedMilliseconds,
+          thinkingRequested: context.thinking ?? false,
+          hasReasoningContent: false,
+          hasThinkTag: false,
+          reasoningCharCount: 0,
+          responseOrigin: ActorResponseOrigin.llm,
+        ),
+      );
+
       return response.trim();
     } catch (e) {
-      // TODO(phase5): iniettare un logger strutturato anziché ignorare o stampare a schermo
-      // Ritorna un messaggio diegetico casuale dal pool di fallback
+      stopwatch.stop();
+      context.actorInferenceLogger.record(
+        ActorInferenceLog(
+          agentId: id,
+          modelId: context.modelId,
+          durationMs: stopwatch.elapsedMilliseconds,
+          thinkingRequested: context.thinking ?? false,
+          hasReasoningContent: false,
+          hasThinkTag: false,
+          reasoningCharCount: 0,
+          responseOrigin: ActorResponseOrigin.fallbackPool,
+          exceptionType: e.runtimeType.toString(),
+          failureCode:
+              e is InferenceTimeoutException ? 'timeout' : 'inferenceError',
+        ),
+      );
+
       final index = math.Random().nextInt(fallbackPool.length);
       return fallbackPool[index];
     }

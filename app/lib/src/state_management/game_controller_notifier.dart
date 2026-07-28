@@ -188,8 +188,8 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Validatore di output per estrarre JSON semantico e blocchi di dialogo.
   final OutputValidator outputValidator;
 
-  /// Bridge di inferenza attivo per effettuare le chiamate ai modelli LLM.
-  final InferenceBridge bridge;
+  /// Bridge di inferenza attivo per comunicare con gli agenti.
+  InferenceBridge bridge;
 
   /// Notifier del valore che contiene lo stato corrente del gioco.
   late ValueNotifier<GameState> gameStateNotifier;
@@ -198,7 +198,11 @@ class GameControllerNotifier extends ChangeNotifier {
   Timer? _loadingTimer;
   final List<String> _loadingLogs = [];
   bool _disposed = false;
+  bool _isBootstrapped = false;
   int _operationGeneration = 0;
+
+  /// Indica se il bootstrap dei modelli è già stato eseguito ed i server sono persistiti attivi.
+  bool get isBootstrapped => _isBootstrapped;
 
   bool _isStale(int generation) =>
       _disposed || generation != _operationGeneration;
@@ -237,10 +241,10 @@ class GameControllerNotifier extends ChangeNotifier {
   bool get hasExceededControl50 => _hasExceededControl50;
 
   /// ID del modello utilizzato per il ruolo di Valutatore.
-  String evaluatorModelId = "mistralai/ministral-3-3b";
+  String evaluatorModelId;
 
   /// ID del modello utilizzato per il ruolo di Attore (PANOPTICON).
-  String actorModelId = "gemma-4-12b-it-qat-q4-0";
+  String actorModelId;
 
   /// Profilo di routing attivo derivato dal Model Router.
   String activeProfile = "Offline Fallback";
@@ -300,7 +304,7 @@ class GameControllerNotifier extends ChangeNotifier {
   final InferenceTimeouts inferenceTimeouts;
 
   /// Callback di dismissione risorse del composition root.
-  final Future<void> Function()? onDispose;
+  Future<void> Function()? onDispose;
 
   /// Crea un notifier di gestione dello stato a partire dallo stato iniziale e dal bridge.
   ///
@@ -310,15 +314,19 @@ class GameControllerNotifier extends ChangeNotifier {
     this.controller = const GameController(),
     this.promptBuilder = const PromptBuilder(),
     this.outputValidator = const OutputValidator(),
-    required this.bridge,
+    this.bridge = const RuleBasedEvaluatorBridge(),
     required GameState initialState,
+    String? actorModelId,
+    String? evaluatorModelId,
     String? customStoragePath,
     SettingsRepository? settingsRepository,
     SessionRepository? sessionRepository,
     this.tutorialController = const TutorialSessionController(),
     this.inferenceTimeouts = InferenceTimeouts.defaults,
     this.onDispose,
-  }) : _storagePath = customStoragePath ??
+  })  : actorModelId = actorModelId ?? "gemma-4-12b-it-qat-q4-0",
+        evaluatorModelId = evaluatorModelId ?? "mistralai/ministral-3-3b",
+        _storagePath = customStoragePath ??
             ((Platform.environment.containsKey('FLUTTER_TEST') ||
                     Platform.environment.containsKey('DART_TEST'))
                 ? "${Directory.systemTemp.path}/aura_test_${initialState.sessionId}"
@@ -391,18 +399,17 @@ class GameControllerNotifier extends ChangeNotifier {
   void _applySettings(AppSettings settings) {
     evaluatorModelId = settings.evaluatorModelId;
     actorModelId = settings.actorModelId;
+    _userCustomizedModels = settings.userCustomizedModels;
+    if (_userCustomizedModels) {
+      activeProfile = 'Configurazione Personalizzata';
+    }
     reasoningEnabled = settings.reasoningEnabled;
     conciseReasoning = settings.conciseReasoning;
     shaderEnabled = settings.shaderEnabled;
     audioEnabled = settings.audioEnabled;
     defaultDifficulty = settings.defaultDifficulty;
     difficultyLevel = settings.defaultDifficulty;
-    _userCustomizedModels = settings.userCustomizedModels;
     userDisplayName = settings.userDisplayName;
-
-    if (_userCustomizedModels) {
-      activeProfile = 'Configurazione Personalizzata';
-    }
   }
 
   // ---------------------------------------------------------------------------
@@ -474,6 +481,7 @@ class GameControllerNotifier extends ChangeNotifier {
   void updateEvaluatorModel(String modelId) {
     evaluatorModelId = modelId;
     _userCustomizedModels = true;
+    _isBootstrapped = false;
     activeProfile = 'Configurazione Personalizzata';
     unawaited(saveSettings());
     notifyListeners();
@@ -483,9 +491,109 @@ class GameControllerNotifier extends ChangeNotifier {
   void updateActorModel(String modelId) {
     actorModelId = modelId;
     _userCustomizedModels = true;
+    _isBootstrapped = false;
     activeProfile = 'Configurazione Personalizzata';
     unawaited(saveSettings());
     notifyListeners();
+  }
+
+  /// Aggiorna il bridge attivo, gli ID dei modelli e la callback di cleanup a seguito del bootstrap managed completato.
+  void updateBootstrapResult(ApplicationBootstrapResult result) {
+    bridge = result.activeBridge;
+    if (!_userCustomizedModels) {
+      actorModelId = result.actorModelId;
+      evaluatorModelId = result.evaluatorModelId;
+    }
+    onDispose = result.dispose;
+    _isBootstrapped = true;
+    notifyListeners();
+  }
+
+  /// Esegue il bootstrap asincrono delle dipendenze di inferenza e aggiorna i supervisor dei modelli.
+  Future<void> performManagedBootstrap({
+    void Function(double progress, String log)? onProgress,
+  }) async {
+    if (_isBootstrapped) {
+      onProgress?.call(
+          1.0, 'AURA_INIT> NEURAL INFERENCE ENGINE STABLE (PERSISTED).');
+      return;
+    }
+
+    if (onDispose != null) {
+      try {
+        await onDispose!();
+      } catch (_) {}
+      onDispose = null;
+    }
+
+    onProgress?.call(0.05, 'AURA_INIT> READ MODEL CONFIGURATION RECORD...');
+
+    const bridgeResolver = InferenceBootstrapBridge();
+    final resolution = await bridgeResolver.resolve(
+      sessionId: gameStateNotifier.value.sessionId,
+      environmentOverride: Platform.environment,
+    );
+
+    ApplicationRuntimeConfiguration runtimeConfig;
+    switch (resolution) {
+      case ManagedDualResolution(:final topology):
+        onProgress?.call(0.15,
+            'AURA_INIT> DUAL TOPOLOGY RESOLVED: ACTOR (GEMMA 12B) + EVALUATOR (MINISTRAL 3B)');
+        runtimeConfig = ApplicationRuntimeConfiguration(
+          runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+          sessionId: gameStateNotifier.value.sessionId,
+          managedInferenceTopology: topology,
+          actorModelId: topology.actor.modelId,
+          evaluatorModelId: topology.evaluator.modelId,
+        );
+      case ExternalResolution(:final endpoint):
+        onProgress?.call(
+            0.15, 'AURA_INIT> EXTERNAL OPENAI ENDPOINT RESOLVED: $endpoint');
+        runtimeConfig = ApplicationRuntimeConfiguration(
+          runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
+          sessionId: gameStateNotifier.value.sessionId,
+          baseUri: endpoint,
+        );
+      case RuleBasedResolution():
+        onProgress?.call(
+            0.15, 'AURA_INIT> OFFLINE RULE-BASED ENGINE SELECTED.');
+        runtimeConfig = ApplicationRuntimeConfiguration(
+          runtimeMode: ApplicationRuntimeMode.ruleBased,
+          sessionId: gameStateNotifier.value.sessionId,
+        );
+      case InvalidResolution(:final sanitizedMessage):
+        onProgress?.call(0.15,
+            'AURA_INIT> [WARN] CONFIGURATION RESOLUTION FAILED: $sanitizedMessage');
+        runtimeConfig = ApplicationRuntimeConfiguration(
+          runtimeMode: ApplicationRuntimeMode.ruleBased,
+          sessionId: gameStateNotifier.value.sessionId,
+        );
+    }
+
+    if (runtimeConfig.runtimeMode ==
+        ApplicationRuntimeMode.managedLlamaServer) {
+      onProgress?.call(
+          0.35, 'AURA_INIT> LAUNCHING MANAGED LLAMA-SERVER PROCESSES...');
+      onProgress?.call(0.65,
+          'AURA_INIT> LOADING GGUF WEIGHTS INTO VRAM (ACTOR + EVALUATOR)...');
+    }
+
+    const bootstrapFactory = ApplicationBootstrapFactory();
+    final bootstrap = bootstrapFactory.create();
+
+    try {
+      final result = await bootstrap.bootstrap(
+        ApplicationBootstrapRequest(
+          configuration: runtimeConfig,
+          environmentOverride: Platform.environment,
+        ),
+      );
+
+      updateBootstrapResult(result);
+      onProgress?.call(1.0, 'AURA_INIT> NEURAL INFERENCE ENGINE STABLE.');
+    } catch (e) {
+      onProgress?.call(1.0, 'AURA_INIT> [WARN] BOOTSTRAP FAILED: $e');
+    }
   }
 
   /// Rileva i modelli LLM caricati sul server e li assegna ai ruoli tramite il Model Router.
@@ -849,6 +957,9 @@ class GameControllerNotifier extends ChangeNotifier {
           thinking: reasoningEnabled,
           conciseReasoning: reasoningEnabled && conciseReasoning,
           inferenceTimeout: inferenceTimeouts.actor,
+          actorInferenceLogger: DebugActorInferenceLogger(
+            output: (msg) => debugPrint(msg),
+          ),
         );
 
         final actorStartTime = DateTime.now();

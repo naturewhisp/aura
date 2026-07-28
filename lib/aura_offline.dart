@@ -10,11 +10,13 @@ export 'src/agent_runtime/model_catalog.dart';
 export 'src/agent_runtime/model_router.dart';
 export 'src/agent_runtime/agents/evaluator_agent.dart';
 export 'src/agent_runtime/agents/actor_agent.dart';
+export 'src/agent_runtime/agents/actor_inference_logger.dart';
 
 // Inference Bridges & Runtime Adapters
 export 'src/agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 export 'src/agent_runtime/bridges/local_api_inference_bridge.dart';
 export 'src/agent_runtime/bridges/runtime_inference_bridge.dart';
+export 'src/agent_runtime/bridges/dual_model_inference_bridge.dart';
 export 'src/agent_runtime/runtime/adapters/rule_based_inference_runtime.dart';
 export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_runtime.dart';
 export 'src/agent_runtime/runtime/adapters/external_openai/external_openai_configuration.dart';
@@ -39,6 +41,7 @@ export 'src/agent_runtime/output/reasoning_content_policy.dart';
 // Application Composition Root Factory & Implementations (Phase 6.2a)
 export 'src/bootstrap/application_bootstrap_factory.dart';
 export 'src/bootstrap/default_application_bootstrap.dart';
+export 'src/bootstrap/managed_inference_topology.dart';
 
 // Provisioning Catalog Providers, Signed Cache & Refresh (Phase 6.4b)
 export 'src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart';
@@ -74,6 +77,7 @@ export 'src/provisioning/domain/local_inference_preflight_models.dart';
 export 'src/provisioning/domain/model_configuration_models.dart';
 export 'src/provisioning/domain/runtime_dependency_models.dart';
 export 'src/provisioning/application/first_run_model_setup_facade.dart';
+export 'src/provisioning/application/inference_bootstrap_bridge.dart';
 export 'src/provisioning/application/local_inference_facade.dart';
 export 'src/provisioning/application/local_inference_models.dart';
 export 'src/provisioning/application/local_inference_status_notifier.dart';

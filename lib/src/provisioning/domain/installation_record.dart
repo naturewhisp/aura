@@ -72,6 +72,8 @@ final class InstalledArtifactDescriptor {
   final String? lastValidationAt;
   final String? failureDiscriminator;
   final bool retained;
+  final int repairCount;
+  final String? lastRepairedAt;
   final Map<String, dynamic> metadata;
 
   InstalledArtifactDescriptor({
@@ -95,6 +97,8 @@ final class InstalledArtifactDescriptor {
     this.lastValidationAt,
     this.failureDiscriminator,
     this.retained = true,
+    this.repairCount = 0,
+    this.lastRepairedAt,
     Map<String, dynamic> metadata = const {},
   }) : metadata = JsonSafeValue.ensureJsonSafeMap(metadata) {
     // Validazione ISO-8601 timestamp
@@ -244,6 +248,8 @@ final class InstalledArtifactDescriptor {
         lastValidationAt: json['lastValidationAt'] as String?,
         failureDiscriminator: json['failureDiscriminator'] as String?,
         retained: json['retained'] as bool? ?? true,
+        repairCount: (json['repairCount'] as num?)?.toInt() ?? 0,
+        lastRepairedAt: json['lastRepairedAt'] as String?,
         metadata: json['metadata'] != null
             ? Map<String, dynamic>.from(json['metadata'] as Map)
             : const {},
@@ -281,6 +287,8 @@ final class InstalledArtifactDescriptor {
       if (failureDiscriminator != null)
         'failureDiscriminator': failureDiscriminator,
       'retained': retained,
+      if (repairCount > 0) 'repairCount': repairCount,
+      if (lastRepairedAt != null) 'lastRepairedAt': lastRepairedAt,
       if (metadata.isNotEmpty) 'metadata': metadata,
     };
   }
@@ -306,6 +314,8 @@ final class InstalledArtifactDescriptor {
     Object? lastValidationAt = _unset,
     Object? failureDiscriminator = _unset,
     bool? retained,
+    int? repairCount,
+    Object? lastRepairedAt = _unset,
     Map<String, dynamic>? metadata,
   }) {
     return InstalledArtifactDescriptor(
@@ -337,6 +347,10 @@ final class InstalledArtifactDescriptor {
           ? this.failureDiscriminator
           : failureDiscriminator as String?,
       retained: retained ?? this.retained,
+      repairCount: repairCount ?? this.repairCount,
+      lastRepairedAt: identical(lastRepairedAt, _unset)
+          ? this.lastRepairedAt
+          : lastRepairedAt as String?,
       metadata: metadata ?? this.metadata,
     );
   }

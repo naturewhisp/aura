@@ -53,6 +53,12 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
     byteFiles.remove(p);
   }
 
+  Future<void> writeBytes(String path, List<int> bytes) async {
+    final p = _norm(path);
+    byteFiles[p] = List<int>.from(bytes);
+    files.remove(p);
+  }
+
   @override
   Future<void> writeStringRecoverably(
     String path,

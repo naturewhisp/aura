@@ -63,3 +63,7 @@ export 'src/provisioning/infrastructure/model_provisioning_service.dart'
 // attraverso il metodo applicativo inspectLocalArtifact. Non esposti come tipi diretti.
 export 'src/provisioning/validation/artifact_import_inspector.dart'
     show LocalGgufInspectionResult;
+
+// Provisioning Model Lifecycle (Phase 6.4e)
+export 'src/provisioning/domain/model_lifecycle_models.dart';
+export 'src/provisioning/domain/release_version_comparer.dart';

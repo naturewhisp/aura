@@ -265,4 +265,44 @@ final class ActivationState {
       metadata: metadata ?? this.metadata,
     );
   }
+
+  /// Restituisce l'installationId attualmente attivo per il ruolo specificato.
+  String? getActiveInstallationId(ModelActivationRole role) {
+    return switch (role) {
+      ModelActivationRole.actor => activeActorModelInstallationId,
+      ModelActivationRole.evaluator => activeEvaluatorModelInstallationId,
+    };
+  }
+
+  /// Attiva l'installazione specificata per il ruolo indicato.
+  ActivationState activateBinding({
+    required ModelActivationRole role,
+    required String installationId,
+    required String activatedAtIso,
+  }) {
+    return switch (role) {
+      ModelActivationRole.actor => copyWith(
+          updatedAt: activatedAtIso,
+          activeActorModelInstallationId: installationId,
+          lastKnownGoodActorModelInstallationId: installationId,
+        ),
+      ModelActivationRole.evaluator => copyWith(
+          updatedAt: activatedAtIso,
+          activeEvaluatorModelInstallationId: installationId,
+          lastKnownGoodEvaluatorModelInstallationId: installationId,
+        ),
+    };
+  }
+
+  /// Disattiva il binding attivo per il ruolo indicato.
+  ActivationState deactivateBinding(ModelActivationRole role) {
+    return switch (role) {
+      ModelActivationRole.actor => copyWith(
+          activeActorModelInstallationId: null,
+        ),
+      ModelActivationRole.evaluator => copyWith(
+          activeEvaluatorModelInstallationId: null,
+        ),
+    };
+  }
 }

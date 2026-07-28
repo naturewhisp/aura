@@ -1,15 +1,19 @@
 import 'package:meta/meta.dart';
 
+import '../domain/catalog_acquisition_models.dart';
 import '../domain/catalog_artifact_snapshot.dart';
 import '../domain/catalog_manifest.dart';
 import '../domain/download_cancellation_token.dart';
 import '../domain/download_request.dart';
-
+import '../domain/installation_record.dart';
+import '../domain/model_lifecycle_models.dart';
 import '../domain/provisioning_cancellation_token.dart';
 import '../domain/provisioning_clock.dart';
 import '../domain/provisioning_options.dart';
+import '../domain/release_version_comparer.dart';
 import '../domain/validated_catalog_candidate.dart';
 import '../validation/artifact_import_inspector.dart';
+import '../validation/installed_artifact_verifier.dart';
 import 'artifact_download_engine.dart';
 import 'download_checkpoint_repository.dart';
 import 'provisioning_coordinator.dart';
@@ -124,6 +128,34 @@ abstract interface class ModelProvisioningService {
     required String filePath,
     required CatalogManifest manifest,
   });
+
+  /// Ripara un'installazione esistente preservando l'installationId originale.
+  Future<ModelRepairResult> repairModel({
+    required RepairModelRequest request,
+    ProvisioningCancellationToken? cancellationToken,
+    void Function(double progressFraction)? onProgress,
+  });
+
+  /// Verifica ed aggiorna un modello rispetto ad un candidato di catalogo,
+  /// conservando l'installazione precedente per consentire il rollback.
+  Future<ModelUpdateResult> updateModel({
+    required UpdateModelRequest request,
+    ProvisioningCancellationToken? cancellationToken,
+    void Function(double progressFraction)? onProgress,
+  });
+
+  /// Esegue il rollback dell'attivazione verso un'installazione precedente verified.
+  Future<ModelRollbackResult> rollbackModel({
+    required RollbackModelRequest request,
+  });
+
+  /// Esegue la rimozione sicura (purge) di un'installazione con gestione compensata delle policy attive.
+  Future<ModelPurgeResult> purgeInstallation({
+    required PurgeInstallationRequest request,
+  });
+
+  /// Esegue la riconciliazione delle transazioni di ciclo di vita (state machine 6.4e).
+  Future<ModelLifecycleReconciliationResult> reconcileLifecycleTransactions();
 }
 
 /// Implementazione privata del servizio di orchestrazione del provisioning modelli.
@@ -136,6 +168,8 @@ final class _DefaultModelProvisioningService
   final ArtifactImportInspector _importInspector;
   final DownloadCheckpointRepository _checkpointRepository;
   final ProvisioningClock _clock;
+  final ProvisioningFileSystem _fileSystem;
+  final ProvisioningPathResolver _pathResolver;
 
   _DefaultModelProvisioningService({
     required ProvisioningEnvironment environment,
@@ -143,6 +177,8 @@ final class _DefaultModelProvisioningService
         _coordinator = environment.coordinator,
         _checkpointRepository = environment.checkpointRepository,
         _clock = environment.clock,
+        _fileSystem = environment.fileSystem,
+        _pathResolver = environment.pathResolver,
         _ingestionEngine = SinglePassArtifactIngestionEngine(
           fileSystem: environment.fileSystem,
           pathResolver: environment.pathResolver,
@@ -348,7 +384,340 @@ final class _DefaultModelProvisioningService
           sanitizedMessage: e.message,
         );
       }
-      rethrow;
+      return ProvisioningResult.failure(
+        operationId: importRequest.operationId,
+        artifactId: importRequest.preferredArtifactId ?? 'unknown',
+        sourceKind: ProvisioningSourceKind.localImport,
+        failureReason: ProvisioningFailureReason.installationRecordWriteFailed,
+        sanitizedMessage: 'Errore imprevisto durante l\'importazione locale.',
+      );
     }
   }
+
+  @override
+  Future<ModelRepairResult> repairModel({
+    required RepairModelRequest request,
+    ProvisioningCancellationToken? cancellationToken,
+    void Function(double progressFraction)? onProgress,
+  }) async {
+    final record = await _coordinator.getInstallationRecord();
+    final targetDescriptor =
+        record.findInstallation(request.targetInstallationId);
+
+    if (targetDescriptor == null) {
+      return ModelRepairResult(
+        operationId: request.operationId,
+        artifactId: 'unknown',
+        installationId: request.targetInstallationId,
+        status: ModelRepairStatus.repairMetadataMissing,
+        failureReason: ProvisioningFailureReason.installationRecordReadFailed,
+        message:
+            'Installazione target "${request.targetInstallationId}" non trovata nel registro.',
+      );
+    }
+
+    final verifier = LocalInstalledArtifactVerifier(fileSystem: _fileSystem);
+    final isHealthy = await verifier.verifyPhysicalIntegrity(
+      targetDescriptor,
+      pathResolver: _pathResolver,
+    );
+
+    if (isHealthy) {
+      return ModelRepairResult(
+        operationId: request.operationId,
+        artifactId: targetDescriptor.artifactId,
+        installationId: request.targetInstallationId,
+        status: ModelRepairStatus.noRepairNeeded,
+        filesystemCommitted: true,
+        recordCommitted: true,
+        activationCommitted: true,
+      );
+    }
+
+    if (request.candidate == null) {
+      return ModelRepairResult(
+        operationId: request.operationId,
+        artifactId: targetDescriptor.artifactId,
+        installationId: request.targetInstallationId,
+        status: ModelRepairStatus.repairSourceUnavailable,
+        failureReason: ProvisioningFailureReason.invalidSourceUri,
+        message:
+            'Candidato di catalogo non fornito per riscaricare l\'artefatto danneggiato.',
+      );
+    }
+
+    final catalogArtifact =
+        request.candidate!.manifest.findArtifact(targetDescriptor.artifactId);
+    if (catalogArtifact == null || catalogArtifact.downloadUri == null) {
+      return ModelRepairResult(
+        operationId: request.operationId,
+        artifactId: targetDescriptor.artifactId,
+        installationId: request.targetInstallationId,
+        status: ModelRepairStatus.repairSourceUnavailable,
+        failureReason: ProvisioningFailureReason.artifactIdNotFound,
+        message:
+            'URI di download non disponibile nel manifesto per la riparazione.',
+      );
+    }
+
+    final downloadRequest = DownloadRequest(
+      operationId: request.operationId,
+      artifactId: catalogArtifact.artifactId,
+      sourceUri: Uri.parse(catalogArtifact.downloadUri!),
+      expectedSizeBytes: catalogArtifact.sizeBytes,
+    );
+
+    DownloadCancellationToken? downloadToken;
+    if (cancellationToken != null) {
+      downloadToken = DownloadCancellationToken();
+      if (cancellationToken.isCancellationRequested) {
+        downloadToken.cancel('Riparazione annullata.');
+      } else {
+        cancellationToken.whenCancelled.then((_) {
+          downloadToken?.cancel('Riparazione annullata.');
+        });
+      }
+    }
+
+    final downloadResult = await _downloadEngine.downloadArtifact(
+      request: downloadRequest,
+      cancellationToken: downloadToken,
+      onProgress: (p) => onProgress?.call(p.fraction),
+    );
+
+    if (downloadResult.isFailure) {
+      return ModelRepairResult(
+        operationId: request.operationId,
+        artifactId: targetDescriptor.artifactId,
+        installationId: request.targetInstallationId,
+        status: ModelRepairStatus.failed,
+        failureReason: ProvisioningFailureReason.downloadNotAllowed,
+        message: downloadResult.message ??
+            'Errore durante il download per riparazione.',
+      );
+    }
+
+    final provenanceSnapshot = CatalogArtifactSnapshot.fromCandidate(
+      candidate: request.candidate!,
+      artifact: catalogArtifact,
+      acquiredAtUtc: _clock.nowUtc(),
+    );
+
+    final prepared = await _ingestionEngine.ingestAndVerifyToTemporaryStore(
+      sourceFilePath: downloadResult.stagingArtifact!.stagingPath,
+      operationId: request.operationId,
+      provenanceSnapshot: provenanceSnapshot,
+      sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      cancellationToken: cancellationToken,
+    );
+
+    return await _coordinator.repairVerifiedArtifact(
+      targetInstallationId: request.targetInstallationId,
+      replacement: prepared,
+      operationId: request.operationId,
+    );
+  }
+
+  @override
+  Future<ModelUpdateResult> updateModel({
+    required UpdateModelRequest request,
+    ProvisioningCancellationToken? cancellationToken,
+    void Function(double progressFraction)? onProgress,
+  }) async {
+    final record = await _coordinator.getInstallationRecord();
+    final installedList =
+        record.findInstallationsForArtifact(request.artifactId);
+
+    CatalogArtifactSnapshot? latestInstalledSnapshot;
+    for (final inst in installedList) {
+      if (inst.status == InstallationStatus.verified) {
+        final snap = CatalogArtifactSnapshot(
+          catalogId: inst.artifactId,
+          catalogRevision: 0,
+          catalogSchemaVersion: '1.0',
+          signingKeyId: 'installed',
+          trustLevel: CatalogTrustLevel.signatureVerified,
+          artifactId: inst.artifactId,
+          artifactVersion: inst.version,
+          buildId: inst.buildId,
+          fileName: inst.entryFileName ?? '',
+          sizeBytes: inst.sizeBytes,
+          sha256: inst.sha256,
+          acquiredAtUtc: _clock.nowUtc(),
+        );
+        if (latestInstalledSnapshot == null ||
+            ReleaseVersionComparer.compareSnapshots(
+                  current: latestInstalledSnapshot,
+                  candidate: snap,
+                ) <
+                0) {
+          latestInstalledSnapshot = snap;
+        }
+      }
+    }
+
+    final candidateArtifact =
+        request.candidate.manifest.findArtifact(request.artifactId);
+    if (candidateArtifact == null || candidateArtifact.downloadUri == null) {
+      return ModelUpdateResult(
+        operationId: request.operationId,
+        artifactId: request.artifactId,
+        status: ModelUpdateStatus.updateConflict,
+        failureReason: ProvisioningFailureReason.artifactIdNotFound,
+        message:
+            'Artefatto per l\'aggiornamento non trovato nel candidato catalogo.',
+      );
+    }
+
+    if (latestInstalledSnapshot != null) {
+      final isNewer = ReleaseVersionComparer.compareSnapshotWithArtifact(
+        current: latestInstalledSnapshot,
+        candidateArtifact: candidateArtifact,
+        candidateCatalogRevision: request.candidate.catalogRevision,
+      );
+
+      if (isNewer <= 0) {
+        return ModelUpdateResult(
+          operationId: request.operationId,
+          artifactId: request.artifactId,
+          status: ModelUpdateStatus.alreadyLatest,
+          message:
+              'L\'installazione corrente è già aggiornata alla release più recente.',
+        );
+      }
+    }
+
+    final provReq = ProvisioningRequest(
+      operationId: request.operationId,
+      catalogId: request.candidate.catalogId,
+      artifactId: request.artifactId,
+      expectedPlatform: 'any',
+      expectedArchitecture: 'any',
+    );
+
+    final provResult = await provisionRemoteModel(
+      request: provReq,
+      candidate: request.candidate,
+      artifact: candidateArtifact,
+      cancellationToken: cancellationToken,
+      onProgress: onProgress,
+    );
+
+    if (provResult.status == ProvisioningStatus.failed) {
+      return ModelUpdateResult(
+        operationId: request.operationId,
+        artifactId: request.artifactId,
+        status: ModelUpdateStatus.failed,
+        failureReason: provResult.failureReason,
+        message: provResult.sanitizedMessage,
+      );
+    }
+
+    final newInstId = provResult.installationId!;
+    final prevInstId = latestInstalledSnapshot != null
+        ? record
+            .findLatestVerifiedInstallation(request.artifactId)
+            ?.installationId
+        : null;
+
+    final currentState = await _coordinator.getActivationState();
+    bool shouldActivate = false;
+
+    switch (request.activationPolicy) {
+      case UpdateActivationPolicy.activateNew:
+        shouldActivate = true;
+        break;
+      case UpdateActivationPolicy.keepCurrent:
+        shouldActivate = false;
+        break;
+      case UpdateActivationPolicy.followActiveArtifact:
+        if (prevInstId != null &&
+            (currentState.activeActorModelInstallationId == prevInstId ||
+                currentState.activeEvaluatorModelInstallationId ==
+                    prevInstId)) {
+          shouldActivate = true;
+        }
+        break;
+    }
+
+    if (shouldActivate) {
+      ModelActivationRole roleToActivate;
+      if (prevInstId != null &&
+          currentState.activeEvaluatorModelInstallationId == prevInstId) {
+        roleToActivate = ModelActivationRole.evaluator;
+      } else {
+        roleToActivate = ModelActivationRole.actor;
+      }
+
+      final rollRes = await _coordinator.rollbackInstallation(
+        operationId: request.operationId,
+        artifactId: request.artifactId,
+        modelRole: roleToActivate,
+        targetInstallationId: newInstId,
+      );
+
+      if (rollRes.isSuccess) {
+        return ModelUpdateResult(
+          operationId: request.operationId,
+          artifactId: request.artifactId,
+          previousInstallationId: prevInstId,
+          newInstallationId: newInstId,
+          status: ModelUpdateStatus.installedAndActivated,
+          filesystemCommitted: true,
+          recordCommitted: true,
+          activationCommitted: true,
+        );
+      } else {
+        return ModelUpdateResult(
+          operationId: request.operationId,
+          artifactId: request.artifactId,
+          previousInstallationId: prevInstId,
+          newInstallationId: newInstId,
+          status: ModelUpdateStatus.installedActivationPending,
+          filesystemCommitted: true,
+          recordCommitted: true,
+          activationCommitted: false,
+          message:
+              'Nuova versione installata, ma l\'attivazione automatica è fallita: ${rollRes.message}',
+        );
+      }
+    }
+
+    return ModelUpdateResult(
+      operationId: request.operationId,
+      artifactId: request.artifactId,
+      previousInstallationId: prevInstId,
+      newInstallationId: newInstId,
+      status: ModelUpdateStatus.installed,
+      filesystemCommitted: true,
+      recordCommitted: true,
+      activationCommitted: false,
+    );
+  }
+
+  @override
+  Future<ModelRollbackResult> rollbackModel({
+    required RollbackModelRequest request,
+  }) =>
+      _coordinator.rollbackInstallation(
+        operationId: request.operationId,
+        artifactId: request.artifactId,
+        modelRole: request.modelRole,
+        targetInstallationId: request.targetInstallationId,
+        expectedCurrentInstallationId: request.expectedCurrentInstallationId,
+      );
+
+  @override
+  Future<ModelPurgeResult> purgeInstallation({
+    required PurgeInstallationRequest request,
+  }) =>
+      _coordinator.purgeInstallation(
+        operationId: request.operationId,
+        installationId: request.installationId,
+        activePurgePolicy: request.activePurgePolicy,
+      );
+
+  @override
+  Future<ModelLifecycleReconciliationResult> reconcileLifecycleTransactions() =>
+      _coordinator.reconcileLifecycleTransactions();
 }

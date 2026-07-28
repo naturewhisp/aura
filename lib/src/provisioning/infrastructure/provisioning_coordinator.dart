@@ -1921,9 +1921,13 @@ final class ProvisioningCoordinator {
       final recordMap = jsonDecode(recordStr) as Map<String, dynamic>;
       final localDescriptor = InstalledArtifactDescriptor.fromJson(recordMap);
 
-      if (localDescriptor.artifactId != expectedDescriptor.artifactId ||
+      if (localDescriptor.installationId != expectedDescriptor.installationId ||
+          localDescriptor.artifactId != expectedDescriptor.artifactId ||
           localDescriptor.version != expectedDescriptor.version ||
           localDescriptor.buildId != expectedDescriptor.buildId ||
+          localDescriptor.artifactType != expectedDescriptor.artifactType ||
+          localDescriptor.entryFileName != expectedDescriptor.entryFileName ||
+          localDescriptor.installedAt != expectedDescriptor.installedAt ||
           localDescriptor.sha256.toLowerCase() !=
               expectedDescriptor.sha256.toLowerCase() ||
           localDescriptor.sizeBytes != expectedDescriptor.sizeBytes ||
@@ -1937,12 +1941,18 @@ final class ProvisioningCoordinator {
 
       final markerSchema = markerMap['schemaVersion'] as String?;
       final markerArtifactId = markerMap['artifactId'] as String?;
+      final markerVersion = markerMap['artifactVersion'] as String?;
+      final markerBuildId = markerMap['buildId'] as String?;
       final markerSha256 = markerMap['sha256'] as String?;
       final markerSizeBytes = markerMap['sizeBytes'] as int?;
       final markerPreparedAtIso = markerMap['preparedAtUtc'] as String?;
 
       if (markerSchema != '1.0' ||
           markerArtifactId != expectedDescriptor.artifactId ||
+          (markerVersion != null &&
+              markerVersion != expectedDescriptor.version) ||
+          (markerBuildId != null &&
+              markerBuildId != expectedDescriptor.buildId) ||
           markerSha256?.toLowerCase() !=
               expectedDescriptor.sha256.toLowerCase() ||
           markerSizeBytes != expectedDescriptor.sizeBytes ||

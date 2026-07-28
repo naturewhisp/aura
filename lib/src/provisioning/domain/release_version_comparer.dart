@@ -1,33 +1,62 @@
 import 'catalog_artifact_snapshot.dart';
 import 'catalog_manifest.dart';
+import 'provisioning_options.dart';
 
 /// Comparatore canonico di release per determinare se un candidato di catalogo
 /// rappresenta un aggiornamento rispetto ad uno snapshot/installazione esistente.
 ///
-/// Algoritmo di confronto:
+/// Algoritmo di confronto (Strict SemVer 2.0.0):
 /// 1. SemVer parsing su [CatalogArtifact.version] o [CatalogArtifactSnapshot.artifactVersion].
-///    Supporta Major.Minor.Patch e tag PreRelease (es. 2.0.0-beta.1 < 2.0.0-beta.2 < 2.0.0).
+///    Richiede formato strict Major.Minor.Patch (es. 1.0.0, 2.0.0-beta.1).
+///    Lancia [ProvisioningException] con ragione [ProvisioningFailureReason.invalidCatalog] se la versione è sintatticamente non valida.
 /// 2. Se la versione SemVer del candidato è strettamente maggiore → Update (> 0).
 /// 3. Se la versione SemVer del candidato è strettamente minore → Downgrade (< 0).
 /// 4. Se la versione SemVer è identica:
 ///    - Se `buildId` e `sha256` sono uguali → Stesso artefatto (0).
-///    - Se `buildId` o `sha256` differiscono → Si confronta `catalogRevision`:
-///      se `candidate.catalogRevision > current.catalogRevision` → Repack/New Build (> 0),
-///      altrimenti non idoneo (<= 0).
+///    - Se `buildId` o `sha256` differiscono:
+///      - Se `candidate.catalogRevision > current.catalogRevision` → Repack/New Build (> 0).
+///      - Se `candidate.catalogRevision == current.catalogRevision` → Conflitto di Fingerprint a parità di versione e revisione (restituisce -2).
+///      - Se `candidate.catalogRevision < current.catalogRevision` → Downgrade/revisione precedente (< 0).
 final class ReleaseVersionComparer {
   const ReleaseVersionComparer._();
+
+  /// Codice restituito da [compareSnapshots] e [compareSnapshotWithArtifact]
+  /// quando due release hanno identica versione SemVer ed identica [catalogRevision],
+  /// ma fingerprint (SHA-256 / buildId) differenti.
+  static const int sameVersionFingerprintConflict = -2;
+
+  /// Valida sintatticamente una stringa di versione secondo la specifica SemVer 2.0.0 strict.
+  static bool isValidSemVer(String versionStr) {
+    return _ParsedSemVer.tryParse(versionStr) != null;
+  }
 
   /// Confronta la release corrente con una release candidata dal catalogo.
   /// Restituisce:
   /// - `> 0` se [candidate] è un aggiornamento idoneo rispetto a [current].
-  /// - `== 0` se sono identici.
+  /// - `== 0` se sono identici (stessa versione, stesso sha256 e buildId).
+  /// - `== sameVersionFingerprintConflict (-2)` se versione e catalogRevision sono uguali ma il fingerprint differisce.
   /// - `< 0` se [candidate] è precedente o non idoneo come update.
   static int compareSnapshots({
     required CatalogArtifactSnapshot current,
     required CatalogArtifactSnapshot candidate,
   }) {
-    final vCurrent = _ParsedSemVer.parse(current.artifactVersion);
-    final vCandidate = _ParsedSemVer.parse(candidate.artifactVersion);
+    final vCurrent = _ParsedSemVer.tryParse(current.artifactVersion);
+    if (vCurrent == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Versione SemVer non valida per l\'installazione corrente: "${current.artifactVersion}".',
+      );
+    }
+
+    final vCandidate = _ParsedSemVer.tryParse(candidate.artifactVersion);
+    if (vCandidate == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Versione SemVer non valida per il candidato: "${candidate.artifactVersion}".',
+      );
+    }
 
     final semVerComp = vCandidate.compareTo(vCurrent);
     if (semVerComp != 0) {
@@ -42,6 +71,10 @@ final class ReleaseVersionComparer {
     }
 
     // Build/sha differenti a parità di SemVer: usiamo catalogRevision come tie-breaker
+    if (candidate.catalogRevision == current.catalogRevision) {
+      return sameVersionFingerprintConflict;
+    }
+
     return candidate.catalogRevision.compareTo(current.catalogRevision);
   }
 
@@ -51,8 +84,23 @@ final class ReleaseVersionComparer {
     required CatalogArtifact candidateArtifact,
     required int candidateCatalogRevision,
   }) {
-    final vCurrent = _ParsedSemVer.parse(current.artifactVersion);
-    final vCandidate = _ParsedSemVer.parse(candidateArtifact.version);
+    final vCurrent = _ParsedSemVer.tryParse(current.artifactVersion);
+    if (vCurrent == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Versione SemVer non valida per l\'installazione corrente: "${current.artifactVersion}".',
+      );
+    }
+
+    final vCandidate = _ParsedSemVer.tryParse(candidateArtifact.version);
+    if (vCandidate == null) {
+      throw ProvisioningException(
+        reason: ProvisioningFailureReason.invalidCatalog,
+        message:
+            'Versione SemVer non valida per l\'artefatto candidato: "${candidateArtifact.version}".',
+      );
+    }
 
     final semVerComp = vCandidate.compareTo(vCurrent);
     if (semVerComp != 0) {
@@ -66,12 +114,20 @@ final class ReleaseVersionComparer {
       return 0;
     }
 
+    if (candidateCatalogRevision == current.catalogRevision) {
+      return sameVersionFingerprintConflict;
+    }
+
     return candidateCatalogRevision.compareTo(current.catalogRevision);
   }
 }
 
-/// Helper interno per il parsing ed il confronto conforme alla specifica Semantic Versioning 2.0.0.
+/// Helper interno per il parsing ed il confronto conforme alla specifica Semantic Versioning 2.0.0 strict.
 final class _ParsedSemVer implements Comparable<_ParsedSemVer> {
+  static final RegExp _semVerRegex = RegExp(
+    r'^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$',
+  );
+
   final int major;
   final int minor;
   final int patch;
@@ -84,46 +140,25 @@ final class _ParsedSemVer implements Comparable<_ParsedSemVer> {
     this.preRelease = const [],
   });
 
-  static _ParsedSemVer parse(String versionStr) {
+  static _ParsedSemVer? tryParse(String versionStr) {
     final trimmed = versionStr.trim();
     if (trimmed.isEmpty) {
-      return const _ParsedSemVer(major: 0, minor: 0, patch: 0);
+      return null;
     }
 
-    // Estrae pre-release (dopo il primo '-')
-    final dashIndex = trimmed.indexOf('-');
-    String mainPart = trimmed;
+    final match = _semVerRegex.firstMatch(trimmed);
+    if (match == null) {
+      return null;
+    }
+
+    final maj = int.parse(match.group(1)!);
+    final min = int.parse(match.group(2)!);
+    final pat = int.parse(match.group(3)!);
+
+    final preReleaseGroup = match.group(4);
     List<String> preParts = const [];
-
-    if (dashIndex != -1) {
-      mainPart = trimmed.substring(0, dashIndex);
-      final prePartStr = trimmed.substring(dashIndex + 1);
-      // Rimuove eventuale build metadata (dopo '+')
-      final plusIndexInPre = prePartStr.indexOf('+');
-      final cleanPre = plusIndexInPre != -1
-          ? prePartStr.substring(0, plusIndexInPre)
-          : prePartStr;
-      preParts = cleanPre.split('.').where((p) => p.isNotEmpty).toList();
-    } else {
-      final plusIndex = trimmed.indexOf('+');
-      if (plusIndex != -1) {
-        mainPart = trimmed.substring(0, plusIndex);
-      }
-    }
-
-    final numericSegments = mainPart.split('.');
-    int maj = 0;
-    int min = 0;
-    int pat = 0;
-
-    if (numericSegments.isNotEmpty) {
-      maj = int.tryParse(_cleanDigits(numericSegments[0])) ?? 0;
-    }
-    if (numericSegments.length > 1) {
-      min = int.tryParse(_cleanDigits(numericSegments[1])) ?? 0;
-    }
-    if (numericSegments.length > 2) {
-      pat = int.tryParse(_cleanDigits(numericSegments[2])) ?? 0;
+    if (preReleaseGroup != null && preReleaseGroup.isNotEmpty) {
+      preParts = preReleaseGroup.split('.');
     }
 
     return _ParsedSemVer(
@@ -132,11 +167,6 @@ final class _ParsedSemVer implements Comparable<_ParsedSemVer> {
       patch: pat,
       preRelease: preParts,
     );
-  }
-
-  static String _cleanDigits(String str) {
-    final matches = RegExp(r'^\d+').firstMatch(str);
-    return matches != null ? matches.group(0)! : '0';
   }
 
   @override

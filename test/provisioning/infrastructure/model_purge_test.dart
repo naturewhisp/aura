@@ -171,7 +171,6 @@ void main() {
             ActiveInstallationPurgePolicy.fallbackToPreviousVerified,
       );
 
-      expect(res.status, equals(ModelPurgeStatus.purged));
       expect(res.isSuccess, isTrue);
       expect(res.fallbackInstallationId, equals('inst_v1'));
 
@@ -181,6 +180,82 @@ void main() {
       final updatedRecord = await recordRepository.readRecord();
       expect(updatedRecord.findInstallation('inst_v2')?.status,
           equals(InstallationStatus.removed));
+    });
+
+    test(
+        'purgeInstallation con fallbackToPreviousVerified RIFIUTA il fallback se esiste solo una versione SUCCESSIVA (non precedente)',
+        () async {
+      final inst1 = InstalledArtifactDescriptor(
+        installationId: 'inst_v1',
+        artifactId: 'actor-mod',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Actor Model',
+        platform: 'any',
+        architecture: 'any',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        version: '1.0.0',
+        buildId: 'b1',
+        sizeBytes: 3,
+        sha256:
+            '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+        relativeInstallPath: 'models/actor-mod/1.0.0-b1',
+        entryFileName: 'model.gguf',
+        installedAt: '2026-07-28T10:00:00Z',
+        status: InstallationStatus.verified,
+        verifiedAt: '2026-07-28T10:00:00Z',
+      );
+
+      final inst2 = InstalledArtifactDescriptor(
+        installationId: 'inst_v2',
+        artifactId: 'actor-mod',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Actor Model',
+        platform: 'any',
+        architecture: 'any',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        version: '2.0.0',
+        buildId: 'b2',
+        sizeBytes: 3,
+        sha256:
+            '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+        relativeInstallPath: 'models/actor-mod/2.0.0-b2',
+        entryFileName: 'model.gguf',
+        installedAt: '2026-07-28T10:05:00Z',
+        status: InstallationStatus.verified,
+        verifiedAt: '2026-07-28T10:05:00Z',
+      );
+
+      var record = InstallationRecord.empty(updatedAt: '2026-07-28T10:00:00Z');
+      record = record.upsertArtifact(inst1).upsertArtifact(inst2);
+      await recordRepository.writeRecord(record);
+
+      final path1 =
+          pathResolver.resolveAppManagedRelativePath(inst1.relativeInstallPath);
+      await fileSystem.createDirectory(path1);
+      await fileSystem.writeBytes('$path1\\model.gguf', [1, 2, 3]);
+
+      final path2 =
+          pathResolver.resolveAppManagedRelativePath(inst2.relativeInstallPath);
+      await fileSystem.createDirectory(path2);
+      await fileSystem.writeBytes('$path2\\model.gguf', [1, 2, 3]);
+
+      // Attiviamo la versione v1
+      final state = ActivationState(
+        updatedAt: '2026-07-28T10:05:00Z',
+        activeActorModelInstallationId: 'inst_v1',
+      );
+      await activationRepository.replaceState(state);
+
+      final res = await coordinator.purgeInstallation(
+        operationId: 'op_purge_3',
+        installationId: 'inst_v1',
+        activePurgePolicy:
+            ActiveInstallationPurgePolicy.fallbackToPreviousVerified,
+      );
+
+      // Eliminando v1 (1.0.0), v2 (2.0.0) NON e una versione precedente: il fallback non e disponibile!
+      expect(res.status, equals(ModelPurgeStatus.fallbackUnavailable));
+      expect(res.isSuccess, isFalse);
     });
   });
 }

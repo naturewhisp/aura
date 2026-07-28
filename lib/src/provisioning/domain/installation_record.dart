@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 import 'catalog_manifest.dart';
+import 'catalog_acquisition_models.dart';
+import 'catalog_artifact_snapshot.dart';
 import 'json_safe_value.dart';
 import 'provisioning_options.dart';
 
@@ -139,10 +141,27 @@ final class InstalledArtifactDescriptor {
       throw const ProvisioningException(
         reason: ProvisioningFailureReason.catalogMalformed,
         message:
-            'Un artefatto non in stato "verified" non può contenere un timestamp verifiedAt.',
+            'Un artefatto non in stato "verified" non puo possedere un timestamp verifiedAt.',
       );
     }
   }
+
+  /// Converte il descrittore di installazione in uno [CatalogArtifactSnapshot] per comparazioni di release.
+  CatalogArtifactSnapshot toSnapshot([DateTime? acquiredAtUtc]) =>
+      CatalogArtifactSnapshot(
+        catalogId: artifactId,
+        catalogRevision: 0,
+        catalogSchemaVersion: '1.0',
+        signingKeyId: 'installed',
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        artifactId: artifactId,
+        artifactVersion: version,
+        buildId: buildId,
+        fileName: entryFileName ?? '',
+        sizeBytes: sizeBytes,
+        sha256: sha256,
+        acquiredAtUtc: acquiredAtUtc ?? DateTime.now().toUtc(),
+      );
 
   factory InstalledArtifactDescriptor.fromJson(Map<String, dynamic> json) {
     try {

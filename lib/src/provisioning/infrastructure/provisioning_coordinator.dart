@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import '../domain/activation_state.dart';
-import '../domain/catalog_acquisition_models.dart';
 import '../domain/catalog_artifact_snapshot.dart';
 import '../domain/catalog_manifest.dart';
 import '../domain/installation_record.dart';
@@ -1045,13 +1044,20 @@ final class ProvisioningCoordinator {
         await _fileSystem.renameDirectoryWithoutFallback(prepPath, targetPath);
         prepMoved = true;
 
-        // 3. Aggiorna record mantenendo l'installationId originale ed incrementando repairCount
+        // 3. Aggiorna sia il file local self-describing installation_record.json sia il registro globale
         final nowIso = _clock.nowUtc().toIso8601String();
         final updatedDescriptor = targetDescriptor.copyWith(
           status: InstallationStatus.verified,
           verifiedAt: nowIso,
           repairCount: targetDescriptor.repairCount + 1,
           lastRepairedAt: nowIso,
+        );
+
+        final localRecordJsonPath = '$targetPath\\installation_record.json';
+        await _fileSystem.writeStringRecoverably(
+          localRecordJsonPath,
+          const JsonEncoder.withIndent('  ')
+              .convert(updatedDescriptor.toJson()),
         );
 
         final updatedRecord = currentRecord.upsertArtifact(updatedDescriptor);
@@ -1220,19 +1226,20 @@ final class ProvisioningCoordinator {
         return ModelPurgeResult(
           operationId: operationId,
           installationId: installationId,
-          status: ModelPurgeStatus.purgeConflict,
-          failureReason: ProvisioningFailureReason.installationRecordReadFailed,
-          message: 'Installazione "$installationId" non trovata o già rimossa.',
+          status: ModelPurgeStatus.filesystemAlreadyAbsent,
+          filesystemCommitted: true,
+          recordCommitted: true,
+          message: 'L\'installazione indicata non e presente nel registro.',
         );
       }
 
-      // Controlla se l'installazione è attiva in un qualsiasi ruolo
+      // Identifica se l'installazione è attualmente attiva
       ModelActivationRole? activeRole;
-      if (currentState.activeActorModelInstallationId == installationId) {
-        activeRole = ModelActivationRole.actor;
-      } else if (currentState.activeEvaluatorModelInstallationId ==
-          installationId) {
-        activeRole = ModelActivationRole.evaluator;
+      for (final role in ModelActivationRole.values) {
+        if (currentState.getActiveInstallationId(role) == installationId) {
+          activeRole = role;
+          break;
+        }
       }
 
       final isActive = activeRole != null;
@@ -1245,9 +1252,10 @@ final class ProvisioningCoordinator {
               operationId: operationId,
               installationId: installationId,
               status: ModelPurgeStatus.purgeRejectedActive,
-              failureReason: ProvisioningFailureReason.installationConflict,
+              failureReason:
+                  ProvisioningFailureReason.activationStateWriteFailed,
               message:
-                  'Impossibile eliminare l\'installazione "$installationId": è attualmente attiva per il ruolo $activeRole.',
+                  'Impossibile eliminare l\'installazione: e attualmente attiva e la policy di purge e set a reject.',
             );
 
           case ActiveInstallationPurgePolicy.fallbackToPreviousVerified:
@@ -1258,40 +1266,27 @@ final class ProvisioningCoordinator {
                     a.status == InstallationStatus.verified)
                 .toList();
 
+            // Filtro rigido: sceglie esclusivamente release con versione STRETTAMENTE INFERIORE (<)
+            final previousVerified = available.where((cand) {
+              try {
+                final comp = ReleaseVersionComparer.compareSnapshots(
+                  current: descriptor.toSnapshot(_clock.nowUtc()),
+                  candidate: cand.toSnapshot(_clock.nowUtc()),
+                );
+                return comp < 0; // cand è precedente/inferiore
+              } catch (_) {
+                return false;
+              }
+            }).toList();
+
             InstalledArtifactDescriptor? bestFallback;
-            for (final cand in available) {
+            for (final cand in previousVerified) {
               if (await _verifier.verifyPhysicalIntegrity(cand,
                   pathResolver: _pathResolver)) {
                 if (bestFallback == null ||
                     ReleaseVersionComparer.compareSnapshots(
-                          current: CatalogArtifactSnapshot(
-                            catalogId: cand.artifactId,
-                            catalogRevision: 0,
-                            catalogSchemaVersion: '1.0',
-                            signingKeyId: 'fallback',
-                            trustLevel: CatalogTrustLevel.signatureVerified,
-                            artifactId: cand.artifactId,
-                            artifactVersion: cand.version,
-                            buildId: cand.buildId,
-                            fileName: cand.entryFileName ?? '',
-                            sizeBytes: cand.sizeBytes,
-                            sha256: cand.sha256,
-                            acquiredAtUtc: _clock.nowUtc(),
-                          ),
-                          candidate: CatalogArtifactSnapshot(
-                            catalogId: bestFallback.artifactId,
-                            catalogRevision: 0,
-                            catalogSchemaVersion: '1.0',
-                            signingKeyId: 'fallback',
-                            trustLevel: CatalogTrustLevel.signatureVerified,
-                            artifactId: bestFallback.artifactId,
-                            artifactVersion: bestFallback.version,
-                            buildId: bestFallback.buildId,
-                            fileName: bestFallback.entryFileName ?? '',
-                            sizeBytes: bestFallback.sizeBytes,
-                            sha256: bestFallback.sha256,
-                            acquiredAtUtc: _clock.nowUtc(),
-                          ),
+                          current: cand.toSnapshot(_clock.nowUtc()),
+                          candidate: bestFallback.toSnapshot(_clock.nowUtc()),
                         ) <
                         0) {
                   bestFallback = cand;
@@ -1306,7 +1301,7 @@ final class ProvisioningCoordinator {
                 status: ModelPurgeStatus.fallbackUnavailable,
                 failureReason: ProvisioningFailureReason.artifactNotVerified,
                 message:
-                    'Nessun\'altra versione installata e verificata disponibile per il fallback.',
+                    'Nessun\'altra versione installata e verificata precedente disponibile per il fallback.',
               );
             }
             fallbackId = bestFallback.installationId;
@@ -1323,10 +1318,12 @@ final class ProvisioningCoordinator {
       final trashPath = '$trashDir\\${installationId}_$operationId';
 
       bool trashMoved = false;
+      bool targetExisted = false;
 
       try {
         await _fileSystem.createDirectory(trashDir);
         if (await _fileSystem.directoryExists(targetPath)) {
+          targetExisted = true;
           await _fileSystem.renameDirectoryWithoutFallback(
               targetPath, trashPath);
           trashMoved = true;
@@ -1355,13 +1352,17 @@ final class ProvisioningCoordinator {
           trashCleaned = await _fileSystem.deleteDirectoryBestEffort(trashPath);
         }
 
+        final purgeStatus = !targetExisted
+            ? ModelPurgeStatus.filesystemAlreadyAbsent
+            : (trashMoved && trashCleaned)
+                ? ModelPurgeStatus.filesystemMovedToTrash
+                : ModelPurgeStatus.purgedCleanupPending;
+
         return ModelPurgeResult(
           operationId: operationId,
           installationId: installationId,
           fallbackInstallationId: fallbackId,
-          status: trashCleaned
-              ? ModelPurgeStatus.purged
-              : ModelPurgeStatus.purgedCleanupPending,
+          status: purgeStatus,
           filesystemCommitted: true,
           recordCommitted: true,
           activationCommitted: isActive,
@@ -1400,6 +1401,8 @@ final class ProvisioningCoordinator {
       int purgedTrashCount = 0;
       int cleanedStaleTempCount = 0;
       int resolvedDanglingActivationsCount = 0;
+      int deactivatedNoFallbackCount = 0;
+      int unresolvedRoleMismatchCount = 0;
 
       final modelsRoot = '${_pathResolver.appManagedRoot}\\models';
       final trashRoot = '${_pathResolver.appManagedRoot}\\staging\\trash';
@@ -1411,7 +1414,7 @@ final class ProvisioningCoordinator {
       final replacedPattern = RegExp(r'\.replaced-[^\\/]+$');
       final failedRepairPattern = RegExp(r'\.failed-repair-[^\\/]+$');
 
-      // 1. Bonifica directory residue in modelsRoot
+      // 1. Bonifica directory residue in modelsRoot basata su verifier ed autorevolezza
       if (await _fileSystem.directoryExists(modelsRoot)) {
         final artifactDirs = await _fileSystem.listDirectory(modelsRoot);
         for (final artifactSub in artifactDirs) {
@@ -1431,9 +1434,33 @@ final class ProvisioningCoordinator {
 
             if (replacedPattern.hasMatch(versionSub)) {
               final targetDir = versionDir.replaceFirst(replacedPattern, '');
-              if (await _fileSystem.directoryExists(targetDir)) {
-                await _fileSystem.deleteDirectoryBestEffort(versionDir);
-                repairedCount++;
+              final targetExists = await _fileSystem.directoryExists(targetDir);
+
+              if (targetExists) {
+                // Tenta di identificare il descrittore nel registro globale
+                final targetRelPath =
+                    'models/$artifactSub/${versionSub.replaceFirst(replacedPattern, '')}';
+                final desc = currentRecord.installedArtifacts
+                    .where((a) => a.relativeInstallPath == targetRelPath)
+                    .firstOrNull;
+
+                bool targetHealthy = false;
+                if (desc != null) {
+                  targetHealthy = await _verifier.verifyPhysicalIntegrity(desc,
+                      pathResolver: _pathResolver);
+                }
+
+                if (targetHealthy) {
+                  // Il target è integro: eliminiamo in sicurezza la directory di backup .replaced-*
+                  await _fileSystem.deleteDirectoryBestEffort(versionDir);
+                  repairedCount++;
+                } else {
+                  // Il target è assente o corrotto: ripristiniamo la directory di backup .replaced-* sul target
+                  await _fileSystem.deleteDirectoryBestEffort(targetDir);
+                  await _fileSystem.renameDirectoryWithoutFallback(
+                      versionDir, targetDir);
+                  repairedCount++;
+                }
               } else {
                 await _fileSystem.renameDirectoryWithoutFallback(
                     versionDir, targetDir);
@@ -1470,32 +1497,58 @@ final class ProvisioningCoordinator {
         }
       }
 
-      // 3. Risoluzione dangling activation bindings
+      // 3. Risoluzione dangling activation bindings in modo rigoroso (Ruolo + Artifact Family Aware)
       ActivationState nextState = currentState;
       for (final role in ModelActivationRole.values) {
         final activeInstId = currentState.getActiveInstallationId(role);
         if (activeInstId != null) {
           final desc = currentRecord.findInstallation(activeInstId);
-          if (desc == null || desc.status == InstallationStatus.removed) {
-            // Dangling pointer! Proviamo a risolvere verso un fallback verified valido
-            final fallback = currentRecord.installedArtifacts
-                .where((a) =>
-                    a.status == InstallationStatus.verified &&
-                    a.installationId != activeInstId)
-                .firstOrNull;
 
-            if (fallback != null &&
-                await _verifier.verifyPhysicalIntegrity(fallback,
-                    pathResolver: _pathResolver)) {
+          if (desc == null || desc.status != InstallationStatus.verified) {
+            // Dangling pointer rilevato! Cerca un fallback verificato dello STESSO artifactId (famiglia)
+            final targetArtifactId = desc?.artifactId;
+
+            List<InstalledArtifactDescriptor> candidates = const [];
+            if (targetArtifactId != null) {
+              candidates = currentRecord
+                  .findInstallationsForArtifact(targetArtifactId)
+                  .where((a) =>
+                      a.installationId != activeInstId &&
+                      a.status == InstallationStatus.verified)
+                  .toList();
+            }
+
+            InstalledArtifactDescriptor? validFallback;
+            for (final cand in candidates) {
+              if (await _verifier.verifyPhysicalIntegrity(cand,
+                  pathResolver: _pathResolver)) {
+                if (validFallback == null ||
+                    ReleaseVersionComparer.compareSnapshots(
+                          current: cand.toSnapshot(_clock.nowUtc()),
+                          candidate: validFallback.toSnapshot(_clock.nowUtc()),
+                        ) <
+                        0) {
+                  validFallback = cand;
+                }
+              }
+            }
+
+            if (validFallback != null) {
               nextState = nextState.activateBinding(
                 role: role,
-                installationId: fallback.installationId,
+                installationId: validFallback.installationId,
                 activatedAtIso: _clock.nowUtc().toIso8601String(),
               );
+              resolvedDanglingActivationsCount++;
             } else {
+              // Nessun fallback valido dello stesso artifactId: disattiva il ruolo in sicurezza
               nextState = nextState.deactivateBinding(role);
+              if (targetArtifactId == null) {
+                unresolvedRoleMismatchCount++;
+              } else {
+                deactivatedNoFallbackCount++;
+              }
             }
-            resolvedDanglingActivationsCount++;
           }
         }
       }
@@ -1509,6 +1562,166 @@ final class ProvisioningCoordinator {
         purgedTrashCount: purgedTrashCount,
         cleanedStaleTempCount: cleanedStaleTempCount,
         resolvedDanglingActivationsCount: resolvedDanglingActivationsCount,
+        deactivatedNoFallbackCount: deactivatedNoFallbackCount,
+        unresolvedRoleMismatchCount: unresolvedRoleMismatchCount,
+      );
+    });
+  }
+
+  /// Esegue il commit atomico sotto lock per la Fase 2 dell'aggiornamento di un modello.
+  Future<ModelUpdateResult> commitLifecycleUpdate({
+    required String operationId,
+    required String artifactId,
+    required ModelActivationRole modelRole,
+    required PreparedArtifactInstallation preparedArtifact,
+    required UpdateActivationPolicy activationPolicy,
+    required LifecyclePrecondition precondition,
+  }) async {
+    return _lock.synchronized(_lockKey, () async {
+      final currentRecord = await _recordRepository.readRecord();
+      final currentState = await _activationRepository.readState();
+
+      final currentIds = currentRecord
+          .findInstallationsForArtifact(artifactId)
+          .map((a) => a.installationId)
+          .toSet();
+
+      if (!currentIds.containsAll(precondition.expectedInstallationIds)) {
+        await _fileSystem
+            .deleteDirectoryBestEffort(preparedArtifact.temporaryInstallPath);
+        return ModelUpdateResult(
+          operationId: operationId,
+          artifactId: artifactId,
+          status: ModelUpdateStatus.stalePrecondition,
+          failureReason: ProvisioningFailureReason.installationConflict,
+          message:
+              'Le precondizioni di aggiornamento risultano superate o modificate.',
+        );
+      }
+
+      final latestVerified =
+          currentRecord.findLatestVerifiedInstallation(artifactId);
+      if (latestVerified != null) {
+        final comp = ReleaseVersionComparer.compareSnapshots(
+          current: latestVerified.toSnapshot(_clock.nowUtc()),
+          candidate: preparedArtifact.provenance,
+        );
+        if (comp <= 0) {
+          await _fileSystem
+              .deleteDirectoryBestEffort(preparedArtifact.temporaryInstallPath);
+          return ModelUpdateResult(
+            operationId: operationId,
+            artifactId: artifactId,
+            previousInstallationId: latestVerified.installationId,
+            status: ModelUpdateStatus.alreadyLatest,
+            message:
+                'Un aggiornamento piu recente e gia stato registrato sotto lock.',
+          );
+        }
+      }
+
+      final prevInstId = latestVerified?.installationId;
+      final finalPath = preparedArtifact.finalInstallPath;
+      final relInstallPath = _pathResolver.resolveRelativeInstallPath(
+        artifactType: CatalogArtifactType.model,
+        artifactId: preparedArtifact.provenance.artifactId,
+        buildOrVersionId:
+            '${preparedArtifact.provenance.artifactVersion}-${preparedArtifact.provenance.buildId}',
+      );
+
+      if (await _fileSystem.directoryExists(finalPath)) {
+        await _fileSystem
+            .deleteDirectoryBestEffort(preparedArtifact.temporaryInstallPath);
+        return ModelUpdateResult(
+          operationId: operationId,
+          artifactId: artifactId,
+          previousInstallationId: prevInstId,
+          status: ModelUpdateStatus.updateConflict,
+          failureReason: ProvisioningFailureReason.installationConflict,
+          message:
+              'La destinazione di installazione esiste gia sul filesystem.',
+        );
+      }
+
+      await _fileSystem.renameDirectoryWithoutFallback(
+        preparedArtifact.temporaryInstallPath,
+        finalPath,
+      );
+
+      final nowIso = _clock.nowUtc().toIso8601String();
+      final descriptor = InstalledArtifactDescriptor(
+        installationId: 'inst-$operationId',
+        artifactId: preparedArtifact.provenance.artifactId,
+        artifactType: CatalogArtifactType.model,
+        displayName: preparedArtifact.provenance.artifactId,
+        version: preparedArtifact.provenance.artifactVersion,
+        buildId: preparedArtifact.provenance.buildId,
+        platform: 'all',
+        architecture: 'gguf',
+        relativeInstallPath: relInstallPath,
+        entryFileName: preparedArtifact.provenance.fileName,
+        installedAt: nowIso,
+        verifiedAt: nowIso,
+        sizeBytes: preparedArtifact.provenance.sizeBytes,
+        sha256: preparedArtifact.provenance.sha256,
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        status: InstallationStatus.verified,
+      );
+
+      final localRecordJsonPath = '$finalPath\\installation_record.json';
+      await _fileSystem.writeStringRecoverably(
+        localRecordJsonPath,
+        const JsonEncoder.withIndent('  ').convert(descriptor.toJson()),
+      );
+
+      final updatedRecord = currentRecord.upsertArtifact(descriptor);
+      await _recordRepository.writeRecord(updatedRecord);
+
+      bool shouldActivate = false;
+      switch (activationPolicy) {
+        case UpdateActivationPolicy.activateNew:
+          shouldActivate = true;
+          break;
+        case UpdateActivationPolicy.keepCurrent:
+          shouldActivate = false;
+          break;
+        case UpdateActivationPolicy.followActiveArtifact:
+          final activeId = currentState.getActiveInstallationId(modelRole);
+          if (activeId == null || activeId == prevInstId) {
+            shouldActivate = true;
+          }
+          break;
+      }
+
+      if (shouldActivate) {
+        final updatedState = currentState.activateBinding(
+          role: modelRole,
+          installationId: descriptor.installationId,
+          activatedAtIso: nowIso,
+        );
+        await _activationRepository.replaceState(updatedState);
+
+        return ModelUpdateResult(
+          operationId: operationId,
+          artifactId: artifactId,
+          previousInstallationId: prevInstId,
+          newInstallationId: descriptor.installationId,
+          status: ModelUpdateStatus.installedAndActivated,
+          filesystemCommitted: true,
+          recordCommitted: true,
+          activationCommitted: true,
+        );
+      }
+
+      return ModelUpdateResult(
+        operationId: operationId,
+        artifactId: artifactId,
+        previousInstallationId: prevInstId,
+        newInstallationId: descriptor.installationId,
+        status: ModelUpdateStatus.installed,
+        filesystemCommitted: true,
+        recordCommitted: true,
+        activationCommitted: false,
       );
     });
   }

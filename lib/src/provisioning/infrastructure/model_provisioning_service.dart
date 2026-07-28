@@ -1,6 +1,5 @@
 import 'package:meta/meta.dart';
 
-import '../domain/catalog_acquisition_models.dart';
 import '../domain/catalog_artifact_snapshot.dart';
 import '../domain/catalog_manifest.dart';
 import '../domain/download_cancellation_token.dart';
@@ -446,8 +445,23 @@ final class _DefaultModelProvisioningService
       );
     }
 
-    final catalogArtifact =
-        request.candidate!.manifest.findArtifact(targetDescriptor.artifactId);
+    CatalogArtifact? catalogArtifact;
+    if (request.candidate != null) {
+      for (final candArt in request.candidate!.manifest.artifacts) {
+        if (candArt.artifactId == targetDescriptor.artifactId &&
+            candArt.version == targetDescriptor.version &&
+            candArt.buildId == targetDescriptor.buildId &&
+            candArt.sha256.toLowerCase() ==
+                targetDescriptor.sha256.toLowerCase() &&
+            candArt.sizeBytes == targetDescriptor.sizeBytes) {
+          catalogArtifact = candArt;
+          break;
+        }
+      }
+      catalogArtifact ??=
+          request.candidate!.manifest.findArtifact(targetDescriptor.artifactId);
+    }
+
     if (catalogArtifact == null || catalogArtifact.downloadUri == null) {
       return ModelRepairResult(
         operationId: request.operationId,
@@ -524,27 +538,26 @@ final class _DefaultModelProvisioningService
     ProvisioningCancellationToken? cancellationToken,
     void Function(double progressFraction)? onProgress,
   }) async {
+    // ------------------------------------------------------------------------
+    // FASE 1 (UN-LOCKED): Lettura snapshot, verifica SemVer e Ingestione Staging
+    // ------------------------------------------------------------------------
     final record = await _coordinator.getInstallationRecord();
+    final activationState = await _coordinator.getActivationState();
+
+    final precondition = LifecyclePrecondition.capture(
+      artifactId: request.artifactId,
+      record: record,
+      activationState: activationState,
+      role: request.modelRole,
+    );
+
     final installedList =
         record.findInstallationsForArtifact(request.artifactId);
 
     CatalogArtifactSnapshot? latestInstalledSnapshot;
     for (final inst in installedList) {
       if (inst.status == InstallationStatus.verified) {
-        final snap = CatalogArtifactSnapshot(
-          catalogId: inst.artifactId,
-          catalogRevision: 0,
-          catalogSchemaVersion: '1.0',
-          signingKeyId: 'installed',
-          trustLevel: CatalogTrustLevel.signatureVerified,
-          artifactId: inst.artifactId,
-          artifactVersion: inst.version,
-          buildId: inst.buildId,
-          fileName: inst.entryFileName ?? '',
-          sizeBytes: inst.sizeBytes,
-          sha256: inst.sha256,
-          acquiredAtUtc: _clock.nowUtc(),
-        );
+        final snap = inst.toSnapshot(_clock.nowUtc());
         if (latestInstalledSnapshot == null ||
             ReleaseVersionComparer.compareSnapshots(
                   current: latestInstalledSnapshot,
@@ -587,111 +600,68 @@ final class _DefaultModelProvisioningService
       }
     }
 
-    final provReq = ProvisioningRequest(
+    // Download in streaming sbloccato (Phase 1)
+    final downloadRequest = DownloadRequest(
       operationId: request.operationId,
-      catalogId: request.candidate.catalogId,
-      artifactId: request.artifactId,
-      expectedPlatform: 'any',
-      expectedArchitecture: 'any',
+      artifactId: candidateArtifact.artifactId,
+      sourceUri: Uri.parse(candidateArtifact.downloadUri!),
+      expectedSizeBytes: candidateArtifact.sizeBytes,
     );
 
-    final provResult = await provisionRemoteModel(
-      request: provReq,
-      candidate: request.candidate,
-      artifact: candidateArtifact,
-      cancellationToken: cancellationToken,
-      onProgress: onProgress,
+    DownloadCancellationToken? downloadToken;
+    if (cancellationToken != null) {
+      downloadToken = DownloadCancellationToken();
+      if (cancellationToken.isCancellationRequested) {
+        downloadToken.cancel('Aggiornamento annullato.');
+      } else {
+        cancellationToken.whenCancelled.then((_) {
+          downloadToken?.cancel('Aggiornamento annullato.');
+        });
+      }
+    }
+
+    final downloadResult = await _downloadEngine.downloadArtifact(
+      request: downloadRequest,
+      cancellationToken: downloadToken,
+      onProgress: (p) => onProgress?.call(p.fraction),
     );
 
-    if (provResult.status == ProvisioningStatus.failed) {
+    if (downloadResult.isFailure) {
       return ModelUpdateResult(
         operationId: request.operationId,
         artifactId: request.artifactId,
         status: ModelUpdateStatus.failed,
-        failureReason: provResult.failureReason,
-        message: provResult.sanitizedMessage,
+        failureReason: ProvisioningFailureReason.downloadNotAllowed,
+        message: downloadResult.message ??
+            'Errore durante il download dell\'aggiornamento.',
       );
     }
 
-    final newInstId = provResult.installationId!;
-    final prevInstId = latestInstalledSnapshot != null
-        ? record
-            .findLatestVerifiedInstallation(request.artifactId)
-            ?.installationId
-        : null;
+    final provenanceSnapshot = CatalogArtifactSnapshot.fromCandidate(
+      candidate: request.candidate,
+      artifact: candidateArtifact,
+      acquiredAtUtc: _clock.nowUtc(),
+    );
 
-    final currentState = await _coordinator.getActivationState();
-    bool shouldActivate = false;
+    final preparedArtifact =
+        await _ingestionEngine.ingestAndVerifyToTemporaryStore(
+      sourceFilePath: downloadResult.stagingArtifact!.stagingPath,
+      operationId: request.operationId,
+      provenanceSnapshot: provenanceSnapshot,
+      sourceOwnership: ArtifactSourceOwnership.managedStaging,
+      cancellationToken: cancellationToken,
+    );
 
-    switch (request.activationPolicy) {
-      case UpdateActivationPolicy.activateNew:
-        shouldActivate = true;
-        break;
-      case UpdateActivationPolicy.keepCurrent:
-        shouldActivate = false;
-        break;
-      case UpdateActivationPolicy.followActiveArtifact:
-        if (prevInstId != null &&
-            (currentState.activeActorModelInstallationId == prevInstId ||
-                currentState.activeEvaluatorModelInstallationId ==
-                    prevInstId)) {
-          shouldActivate = true;
-        }
-        break;
-    }
-
-    if (shouldActivate) {
-      ModelActivationRole roleToActivate;
-      if (prevInstId != null &&
-          currentState.activeEvaluatorModelInstallationId == prevInstId) {
-        roleToActivate = ModelActivationRole.evaluator;
-      } else {
-        roleToActivate = ModelActivationRole.actor;
-      }
-
-      final rollRes = await _coordinator.rollbackInstallation(
-        operationId: request.operationId,
-        artifactId: request.artifactId,
-        modelRole: roleToActivate,
-        targetInstallationId: newInstId,
-      );
-
-      if (rollRes.isSuccess) {
-        return ModelUpdateResult(
-          operationId: request.operationId,
-          artifactId: request.artifactId,
-          previousInstallationId: prevInstId,
-          newInstallationId: newInstId,
-          status: ModelUpdateStatus.installedAndActivated,
-          filesystemCommitted: true,
-          recordCommitted: true,
-          activationCommitted: true,
-        );
-      } else {
-        return ModelUpdateResult(
-          operationId: request.operationId,
-          artifactId: request.artifactId,
-          previousInstallationId: prevInstId,
-          newInstallationId: newInstId,
-          status: ModelUpdateStatus.installedActivationPending,
-          filesystemCommitted: true,
-          recordCommitted: true,
-          activationCommitted: false,
-          message:
-              'Nuova versione installata, ma l\'attivazione automatica è fallita: ${rollRes.message}',
-        );
-      }
-    }
-
-    return ModelUpdateResult(
+    // ------------------------------------------------------------------------
+    // FASE 2 (LOCKED): Commit atomico e verifica delle LifecyclePrecondition
+    // ------------------------------------------------------------------------
+    return await _coordinator.commitLifecycleUpdate(
       operationId: request.operationId,
       artifactId: request.artifactId,
-      previousInstallationId: prevInstId,
-      newInstallationId: newInstId,
-      status: ModelUpdateStatus.installed,
-      filesystemCommitted: true,
-      recordCommitted: true,
-      activationCommitted: false,
+      modelRole: request.modelRole,
+      preparedArtifact: preparedArtifact,
+      activationPolicy: request.activationPolicy,
+      precondition: precondition,
     );
   }
 

@@ -157,5 +157,55 @@ void main() {
         greaterThan(0),
       );
     });
+
+    test('Strict SemVer 2.0.0 parser rifiuta stringhe invalide', () {
+      expect(ReleaseVersionComparer.isValidSemVer('foo'), isFalse);
+      expect(ReleaseVersionComparer.isValidSemVer('1.x.3'), isFalse);
+      expect(ReleaseVersionComparer.isValidSemVer('01.02.03'), isFalse);
+      expect(ReleaseVersionComparer.isValidSemVer('1.0.0'), isTrue);
+      expect(ReleaseVersionComparer.isValidSemVer('2.0.0-beta.1'), isTrue);
+    });
+
+    test(
+        'Fingerprint conflict a parità di SemVer e catalogRevision restituisce sameVersionFingerprintConflict',
+        () {
+      final snap1 = CatalogArtifactSnapshot(
+        catalogId: 'cat_1',
+        catalogRevision: 5,
+        catalogSchemaVersion: '1.0',
+        signingKeyId: 'key1',
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        artifactId: 'actor-mod',
+        artifactVersion: '1.0.0',
+        buildId: 'b1',
+        fileName: 'model.gguf',
+        sizeBytes: 1000,
+        sha256: 'abc',
+        acquiredAtUtc: DateTime.now().toUtc(),
+      );
+
+      final snap2 = CatalogArtifactSnapshot(
+        catalogId: 'cat_1',
+        catalogRevision: 5,
+        catalogSchemaVersion: '1.0',
+        signingKeyId: 'key1',
+        trustLevel: CatalogTrustLevel.signatureVerified,
+        artifactId: 'actor-mod',
+        artifactVersion: '1.0.0',
+        buildId: 'b2',
+        fileName: 'model.gguf',
+        sizeBytes: 1000,
+        sha256: 'def',
+        acquiredAtUtc: DateTime.now().toUtc(),
+      );
+
+      expect(
+        ReleaseVersionComparer.compareSnapshots(
+          current: snap1,
+          candidate: snap2,
+        ),
+        equals(ReleaseVersionComparer.sameVersionFingerprintConflict),
+      );
+    });
   });
 }

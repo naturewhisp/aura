@@ -167,6 +167,12 @@ void main() {
       expect(repairedDesc?.installedAt, equals('2026-07-28T10:00:00Z'));
       expect(repairedDesc?.repairCount, equals(1));
       expect(repairedDesc?.lastRepairedAt, isNotNull);
+
+      // Verifica che anche l'installation_record.json locale sia stato riscritto con l'identità originale
+      final localRecordPath = '$originalPath\\installation_record.json';
+      final localContent = await fileSystem.readAsString(localRecordPath);
+      expect(localContent, contains('inst_repair_target'));
+      expect(localContent, contains('2026-07-28T10:00:00Z'));
     });
   });
 }

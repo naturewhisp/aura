@@ -148,12 +148,14 @@ enum ModelUpdateStatus {
 final class UpdateModelRequest {
   final String operationId;
   final String artifactId;
+  final ModelActivationRole modelRole;
   final ValidatedCatalogCandidate candidate;
   final UpdateActivationPolicy activationPolicy;
 
   const UpdateModelRequest({
     required this.operationId,
     required this.artifactId,
+    required this.modelRole,
     required this.candidate,
     this.activationPolicy = UpdateActivationPolicy.followActiveArtifact,
   });
@@ -267,6 +269,8 @@ enum ModelPurgeStatus {
   fallbackUnavailable,
   purgeConflict,
   purgeCommitIndeterminate,
+  filesystemAlreadyAbsent,
+  filesystemMovedToTrash,
   failed,
 }
 
@@ -313,7 +317,9 @@ final class ModelPurgeResult {
 
   bool get isSuccess =>
       status == ModelPurgeStatus.purged ||
-      status == ModelPurgeStatus.purgedCleanupPending;
+      status == ModelPurgeStatus.purgedCleanupPending ||
+      status == ModelPurgeStatus.filesystemAlreadyAbsent ||
+      status == ModelPurgeStatus.filesystemMovedToTrash;
 }
 
 // ============================================================================
@@ -327,17 +333,23 @@ final class ModelLifecycleReconciliationResult {
   final int purgedTrashCount;
   final int cleanedStaleTempCount;
   final int resolvedDanglingActivationsCount;
+  final int deactivatedNoFallbackCount;
+  final int unresolvedRoleMismatchCount;
 
   const ModelLifecycleReconciliationResult({
     required this.repairedCount,
     required this.purgedTrashCount,
     required this.cleanedStaleTempCount,
     required this.resolvedDanglingActivationsCount,
+    this.deactivatedNoFallbackCount = 0,
+    this.unresolvedRoleMismatchCount = 0,
   });
 
   int get totalActionsPerformed =>
       repairedCount +
       purgedTrashCount +
       cleanedStaleTempCount +
-      resolvedDanglingActivationsCount;
+      resolvedDanglingActivationsCount +
+      deactivatedNoFallbackCount +
+      unresolvedRoleMismatchCount;
 }

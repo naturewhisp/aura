@@ -160,6 +160,7 @@ void main() {
       final updateReq = UpdateModelRequest(
         operationId: 'op_update_1',
         artifactId: 'actor-mod',
+        modelRole: ModelActivationRole.actor,
         candidate: candidate,
       );
 

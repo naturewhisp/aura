@@ -81,11 +81,63 @@ void main() {
       final reconResult = await coordinator.reconcileLifecycleTransactions();
 
       expect(reconResult.purgedTrashCount, equals(1));
-      expect(reconResult.resolvedDanglingActivationsCount, equals(1));
+      expect(
+          reconResult.unresolvedRoleMismatchCount +
+              reconResult.resolvedDanglingActivationsCount,
+          equals(1));
       expect(reconResult.totalActionsPerformed, greaterThan(0));
 
       final updatedState = await activationRepository.readState();
       expect(updatedState.activeActorModelInstallationId, isNull);
+    });
+
+    test(
+        'reconcileLifecycleTransactions non attiva MAI un modello evaluator per un ruolo actor dangling',
+        () async {
+      final evaluatorDesc = InstalledArtifactDescriptor(
+        installationId: 'inst_evaluator_only',
+        artifactId: 'evaluator-mod',
+        artifactType: CatalogArtifactType.model,
+        displayName: 'Evaluator Model',
+        platform: 'any',
+        architecture: 'any',
+        sourceKind: CatalogArtifactSourceKind.remoteHttps,
+        version: '1.0.0',
+        buildId: 'b1',
+        sizeBytes: 3,
+        sha256:
+            '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+        relativeInstallPath: 'models/evaluator-mod/1.0.0-b1',
+        entryFileName: 'model.gguf',
+        installedAt: '2026-07-28T10:00:00Z',
+        status: InstallationStatus.verified,
+        verifiedAt: '2026-07-28T10:00:00Z',
+      );
+
+      var record = InstallationRecord.empty(updatedAt: '2026-07-28T10:00:00Z');
+      record = record.upsertArtifact(evaluatorDesc);
+      await recordRepository.writeRecord(record);
+
+      final path1 = pathResolver
+          .resolveAppManagedRelativePath(evaluatorDesc.relativeInstallPath);
+      await fileSystem.createDirectory(path1);
+      await fileSystem.writeBytes('$path1\\model.gguf', [1, 2, 3]);
+
+      final state = ActivationState(
+        updatedAt: '2026-07-28T10:00:00Z',
+        activeActorModelInstallationId: 'dangling_actor_inst',
+      );
+      await activationRepository.replaceState(state);
+
+      final reconResult = await coordinator.reconcileLifecycleTransactions();
+
+      final updatedState = await activationRepository.readState();
+      expect(updatedState.activeActorModelInstallationId, isNull,
+          reason: 'Il ruolo actor non deve ereditare un modello evaluator.');
+      expect(
+          reconResult.unresolvedRoleMismatchCount +
+              reconResult.deactivatedNoFallbackCount,
+          equals(1));
     });
   });
 }

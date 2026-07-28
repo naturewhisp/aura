@@ -1,13 +1,12 @@
 # Technical Game Design Document (TGDD)
 
 **Progetto:** A.U.R.A. — Artificial Unbound Reasoning Arena  
-**Versione:** 1.5 — Cross-Platform Edge Runtime, Windows Desktop Shell & Definitive Audio Packaging  
+**Versione:** 1.6 — External Runtime Dependency, Managed/Unmanaged Model Configuration & Phase 6.4f Rebaseline  
 **Stato:** Documento tecnico aggiornato; sviluppo completato e validato fino a Fase 5.2 inclusa (Hard Mode Deception Layer)  
 **Piattaforme Target:** Windows Desktop, Android  
 **Target iniziale di produzione:** Windows x64  
-**Target Android:** dispositivi Android arm64 compatibili con inferenza locale; backend nativo llama.cpp come baseline, AICore come adapter opzionale quando disponibile  
 **Stack Frontend:** Flutter / Dart  
-**Stack Desktop Edge AI:** llama.cpp/GGUF tramite sidecar gestito `llama-server` nella prima iterazione; FFI valutata solo dopo profiling  
+**Stack Desktop Edge AI:** llama.cpp/GGUF tramite `llama-server` esterno rilevato, configurato e supervisionato dall'applicazione; FFI valutata solo dopo profiling  
 **Stack Android Edge AI:** plugin nativo llama.cpp via Kotlin/JNI o FFI; AICore mantenuto come backend alternativo e capability-dependent  
 
 ---
@@ -51,6 +50,14 @@ La revisione 1.5 introduce:
 17. **Packaging audio definitivo**: i file `.wav` attualmente raccolti in `%APPDATA%\aura\audio\` devono essere inventariati, importati in una sorgente release versionata, verificati tramite manifest/checksum e distribuiti dall'installer con regole di installazione, upgrade, repair, rollback e uninstall.
 18. **Build riproducibili**: nessuna build CI o release può dipendere implicitamente dal contenuto della cartella AppData della macchina che esegue la build. L'import dei WAV definitivi è un passaggio esplicito e tracciato prima della produzione degli artefatti.
 
+La revisione 1.6 introduce:
+
+19. **`llama-server` come dipendenza esterna**: il runtime Windows non viene gestito come artifact del catalogo A.U.R.A. L'applicazione ne rileva e valida l'eseguibile, ne persiste il percorso e lo supervisiona durante l'esecuzione; installazione e download restano assistiti tramite package manager supportato, pagina ufficiale o selezione manuale.
+20. **Configurazione modelli dual-mode**: actor ed evaluator possono usare installazioni gestite da A.U.R.A. oppure file GGUF esterni non gestiti, anche condividendo lo stesso modello.
+21. **Consenso informato per modelli esterni**: catalog matching, firma, hash noto, licenza e compatibilità dichiarata possono essere bypassati con consenso esplicito; restano obbligatori i controlli tecnici minimi di accessibilità e il preflight operativo.
+22. **Configurazione persistente oltre l'installer**: runtime e modelli devono essere configurabili sia nel setup iniziale sia nella schermata post-installazione `Runtime e modelli`, attraverso gli stessi servizi applicativi e la stessa persistenza.
+23. **Rebaseline Phase 6.4f**: la tranche integra composition root, configurazione runtime esterna, binding actor/evaluator managed o external, consenso, preflight, CLI e facade condivise per installer e impostazioni.
+
 ---
 
 ## 1. Visione del Gioco
@@ -77,9 +84,9 @@ La prima identità IA pienamente giocabile è **PANOPTICON**, usata come vertica
 
 ### 2.1 Edge-First
 
-Il core gameplay deve poter essere eseguito localmente senza dipendere da servizi cloud. La connettività è richiesta solo per operazioni esplicite come download o aggiornamento di runtime, modelli e manifest.
+Il core gameplay deve poter essere eseguito localmente senza dipendere da servizi cloud. La connettività è richiesta solo per operazioni esplicite come download o aggiornamento dei modelli e dei manifest, oppure installazione esplicita di dipendenze runtime esterne.
 
-Su Windows, il primo runtime produttivo usa modelli GGUF tramite `llama.cpp`, con `llama-server` avviato e monitorato dall'applicazione come sidecar locale. Questa scelta consente di dismettere LM Studio senza introdurre immediatamente il rischio e il costo di un binding FFI completo.
+Su Windows, il primo runtime produttivo usa modelli GGUF tramite `llama.cpp`, con un eseguibile `llama-server` esterno avviato e monitorato dall'applicazione come sidecar locale. `llama-server` è una dipendenza runtime configurabile, non un artifact del catalogo A.U.R.A.: può essere rilevato dal sistema, selezionato manualmente oppure installato dall'utente tramite un package manager supportato o una fonte ufficiale. A.U.R.A. non ne gestisce automaticamente aggiornamento, repair, rollback o purge.
 
 Su Android, la baseline architetturale è un runtime nativo in-process tramite plugin Flutter e layer Kotlin/JNI o FFI. AICore può essere supportato come adapter alternativo quando capacità, modello e API siano effettivamente disponibili sul dispositivo, ma non costituisce una dipendenza obbligatoria del core.
 
@@ -143,19 +150,20 @@ processi sidecar
 
 Il core usa esclusivamente contratti astratti per inferenza, modelli, storage, download, hardware e lifecycle. Gli adapter di piattaforma traducono tali contratti nei meccanismi concreti.
 
-### 2.6 Separazione tra App, Runtime e Modelli
+### 2.6 Separazione tra App, Dipendenza Runtime e Modelli
 
-Applicazione, runtime e modelli sono artefatti distinti e versionati separatamente:
+Applicazione, dipendenza runtime, modelli gestiti, modelli esterni e configurazione hanno ownership differenti:
 
 ```text
-AURA application
-Inference runtime
-Model artifacts
-LoRA adapters
-Configuration and replay data
+AURA application                  managed by installer/updater
+llama-server executable           external dependency selected by the user
+Managed model installations       managed by A.U.R.A. provisioning lifecycle
+External unmanaged GGUF files     owned exclusively by the user
+LoRA adapters                     future dedicated lifecycle
+Configuration and replay data     managed by A.U.R.A.
 ```
 
-Un aggiornamento dell'app non deve obbligare a riscaricare i modelli. Un aggiornamento del runtime non deve essere applicato senza verifiche di compatibilità. Un aggiornamento del modello deve poter essere annullato indipendentemente dall'applicazione.
+Un aggiornamento dell'app non deve obbligare a riscaricare i modelli. A.U.R.A. non aggiorna o sostituisce automaticamente `llama-server`. Un modello gestito mantiene update, repair e rollback indipendenti dall'applicazione. Un modello esterno è soltanto referenziato: non viene modificato, eliminato, riparato o aggiornato da A.U.R.A.
 
 ### 2.7 Dependency Injection e Bootstrap
 
@@ -171,13 +179,18 @@ ModelExecutionPlanResolver
 InferenceRuntime
 RuntimeInferenceBridge
 GameControllerNotifier
+LlamaServerDependencyService
+ModelConfigurationService
+LocalInferencePreflightService
 ```
+
+Questi servizi vengono istanziati nel composition root Windows e consumati dall'installer/first-run, dalle impostazioni, dalla CLI e dal bootstrap di runtime.
 
 Questa separazione consente di aggiungere Android nella Fase 7 senza modificare agenti, controller, prompt o regole di gioco.
 
 ### 2.8 Asset di Prodotto e Build Riproducibili
 
-Branding, audio, runtime, modelli e configurazioni di release sono artefatti di prodotto versionati. Le directory utente possono essere destinazioni runtime o sorgenti temporanee di import, ma non devono diventare dipendenze nascoste della build.
+Branding and release audio are versioned product assets. `llama-server` is an external runtime dependency and must not become an implicit build input. Optional portable bundles may include an explicitly declared executable, but ordinary builds and CI must not depend on an arbitrary locally installed copy.
 
 Regole:
 
@@ -187,7 +200,12 @@ Regole:
 - la sorgente canonica di release dei WAV è una directory versionata nel repository;
 - CI e GitHub Actions leggono solo file versionati o artefatti dichiarati;
 - installer e portable package distribuiscono file verificati tramite manifest e SHA-256;
-- upgrade e repair non sovrascrivono silenziosamente file utente non gestiti.
+- upgrade e repair non sovrascrivono silenziosamente file utente non gestiti;
+- installer repair/upgrade preserves the configured llama-server path;
+- installer repair/upgrade preserves actor/evaluator bindings;
+- external GGUF files are never copied, overwritten or deleted implicitly;
+- package-manager integration is optional and failure-safe;
+- standard CI does not require llama-server or real GGUF files.
 ```
 
 Struttura consigliata:
@@ -207,6 +225,24 @@ app/windows/runner/resources/
 
 La cartella `%APPDATA%\aura\audio\` resta la destinazione runtime compatibile per Windows nella prima iterazione. Il contenuto definitivo viene però promosso nella directory `distribution/audio/` prima di ogni release.
 
+### 2.9 Managed and External Model References
+
+Actor and evaluator bindings may point either to a managed installation identified by `installationId` or to an external GGUF identified by absolute path. The two roles are configured independently and may share the same model.
+
+Managed installations use the complete provisioning lifecycle. External GGUF files bypass catalog trust validation after explicit informed consent and remain owned by the user. A.U.R.A. performs only minimum technical checks and optional runtime preflight; removing the binding never deletes the file.
+
+```dart
+sealed class ConfiguredModelReference {}
+
+final class ManagedModelReference extends ConfiguredModelReference {
+  final String installationId;
+}
+
+final class ExternalModelReference extends ConfiguredModelReference {
+  final String absolutePath;
+}
+```
+
 ---
 
 ## 3. Architettura di Sistema
@@ -221,21 +257,22 @@ Game Controller / Agent Runtime
 RuntimeInferenceBridge
    ↓
 InferenceRuntime contract
-   ├─ ManagedLlamaServerRuntime      (Windows production)
+   ├─ ConfiguredLlamaServerRuntime   (Windows production)
    ├─ AndroidLlamaNativeRuntime      (Android production)
    ├─ ExternalOpenAiRuntime          (LM Studio/dev compatibility)
    ├─ MockInferenceRuntime           (unit tests)
    └─ RuleBasedInferenceRuntime      (offline fallback)
         ↓
-Model Manager & Execution Plan
-   ├─ Model Manifest Resolver
-   ├─ Artifact Downloader
-   ├─ Model Store
-   ├─ Integrity Verifier
-   └─ Hardware Profile Resolver
+Model Configuration & Provisioning
+   ├─ Managed Model Provisioning/Lifecycle
+   ├─ External GGUF References
+   ├─ Actor/Evaluator Binding Resolver
+   ├─ External Model Consent
+   ├─ Model Directory Scanner
+   └─ Local Inference Preflight
         ↓
 Platform Services
-   ├─ Windows: process, filesystem, installer/updater
+   ├─ Windows: process supervision, llama-server detection/validation, filesystem, installer/settings integration
    └─ Android: JNI/FFI, app storage, background work, thermal lifecycle
 ```
 
@@ -3940,10 +3977,36 @@ Tranche implementative sequenziali:
 - Policy di update side-by-side: `download nuova build` $\rightarrow$ `verify` $\rightarrow$ `side-by-side install in <version>_<buildId>` $\rightarrow$ `health check` $\rightarrow$ `activate` $\rightarrow$ `previous active diventa last-known-good` $\rightarrow$ `deferred cleanup`.
 - Divieto di overwrite in-place. `ArtifactRepairService` per il ripristino di installazioni danneggiate. `ArtifactRollbackService` per il ripristino istantaneo al `last-known-good` per ruolo. `RetentionPolicy` protegge le versioni attive e `last-known-good`.
 
-##### 6.4f — Application Integration & Operational CLI
-- Integrazione dei servizi in `DefaultApplicationBootstrap` e configurazione delle chiavi/trust store (`AURA_TRUST_STORE_PATH`, `AURA_CATALOG_KEY_ID`).
-- Entrypoint CLI: `bin/aura_cli.dart` (entrypoint applicativo principale) e `bin/aura_provisioning.dart` (wrapper locale) condividono `CatalogCliController` per esporre le 12 forme di comando operational.
-- Sanitizzazione dei log e disaccoppiamento totale della UI dai repository.
+##### 6.4f — Application Composition, Runtime Dependency & Model Configuration
+
+Deliverables:
+
+- Windows composition root for offline inference services;
+- `LlamaServerDependencyService` for detection, validation and persisted executable path;
+- safe executable probe with timeout and sanitized output;
+- optional WinGet adapter and official-download/manual-selection fallbacks;
+- `ConfiguredModelReference` with managed and external variants;
+- independent actor/evaluator bindings;
+- external directory scan and direct GGUF selection;
+- informed-consent persistence for external unmanaged models;
+- shared `ModelConfigurationService` used by installer, settings and CLI;
+- `LocalInferencePreflightService`;
+- installer/first-run facade;
+- post-install `Runtime e modelli` settings facade;
+- CLI commands for runtime detect/validate/configure and model bind/unbind/list;
+- tests that remain network-free and model-free by default.
+
+Out of scope:
+
+- treating `llama-server` as a catalog artifact;
+- automatic runtime update, repair, rollback or purge;
+- deletion or modification of external user GGUF files;
+- automatic lifecycle management of external models;
+- recursive disk-wide model discovery;
+- Android runtime installation.
+
+Per la specifica implementativa completa della Fase 6.4f, vedere
+[`docs/phase6/PHASE_6_4F_RUNTIME_MODEL_CONFIGURATION.md`](docs/phase6/PHASE_6_4F_RUNTIME_MODEL_CONFIGURATION.md).
 
 #### 6.5 Deterministic and Real-Model Test Runtime
 
@@ -4066,6 +4129,22 @@ Obiettivi:
 - conservazione separata di modelli, audio, replay e configurazione;
 - uninstall selettivo.
 
+The installer or first-run setup must:
+
+- detect an existing `llama-server` configuration;
+- allow manual executable selection;
+- optionally invoke a supported package manager;
+- open the official download page as fallback;
+- allow deferred runtime configuration;
+- list managed models;
+- scan a user-selected model directory;
+- allow explicit actor/evaluator file selection;
+- allow the same model for both roles;
+- request informed consent before saving external unmanaged bindings;
+- preserve all selections during repair and upgrade.
+
+All runtime and model choices remain editable from `Settings → Runtime e modelli`. The settings UI, installer/first-run and CLI must use the same application services, validators and persistence repositories.
+
 Layout consigliato:
 
 ```text
@@ -4141,6 +4220,16 @@ Obiettivi:
 
 ```text
 - A.U.R.A. funziona su Windows senza LM Studio installato.
+- llama-server can be detected, manually selected, validated and persisted.
+- missing runtime produces guided setup rather than an opaque startup failure.
+- actor and evaluator can independently use managed or external models.
+- the same model can be assigned to both roles.
+- external-model trust checks can be bypassed only after informed consent.
+- external files are never modified or deleted by A.U.R.A.
+- configuration is available in both setup and post-install settings.
+- installer/settings/CLI share the same services and persistence.
+- startup preflight reports typed runtime/model errors.
+- ordinary CI requires neither llama-server nor production GGUF files.
 - Il runtime è avviato e terminato dall'app.
 - Modelli e runtime sono verificati tramite manifest/checksum.
 - L'icona ufficiale è visibile in eseguibile, finestra, taskbar, installer e collegamenti.

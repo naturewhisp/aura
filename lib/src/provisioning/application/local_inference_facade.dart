@@ -1,8 +1,11 @@
 import 'dart:async';
 
+import '../domain/catalog_manifest.dart';
+import '../domain/installation_record.dart';
 import '../domain/local_inference_preflight_models.dart';
 import '../domain/model_configuration_models.dart';
 import '../domain/runtime_dependency_models.dart';
+import '../infrastructure/installation_record_repository.dart';
 import '../infrastructure/llama_server_dependency_service.dart';
 import '../infrastructure/local_inference_preflight_engine.dart';
 import '../infrastructure/model_configuration_service.dart';
@@ -26,6 +29,9 @@ abstract interface class LocalInferenceFacade {
   Future<List<ExternalModelCandidate>> scanExternalCandidates({
     String? customPath,
   });
+
+  /// Elenca le installazioni di modelli gestiti verificati presenti nello store locale.
+  Future<List<InstalledArtifactDescriptor>> listManagedModels();
 }
 
 /// Implementazione predefinita della facade di inferenza locale.
@@ -33,14 +39,17 @@ final class DefaultLocalInferenceFacade implements LocalInferenceFacade {
   final LocalInferencePreflightEngine _preflightEngine;
   final LlamaServerDependencyService _dependencyService;
   final ModelConfigurationService _modelConfigurationService;
+  final InstallationRecordRepository _installationRecordRepository;
 
   DefaultLocalInferenceFacade({
     required LocalInferencePreflightEngine preflightEngine,
     required LlamaServerDependencyService dependencyService,
     required ModelConfigurationService modelConfigurationService,
+    required InstallationRecordRepository installationRecordRepository,
   })  : _preflightEngine = preflightEngine,
         _dependencyService = dependencyService,
-        _modelConfigurationService = modelConfigurationService;
+        _modelConfigurationService = modelConfigurationService,
+        _installationRecordRepository = installationRecordRepository;
 
   @override
   Future<LocalInferenceSnapshot> getSnapshot() async {
@@ -76,5 +85,15 @@ final class DefaultLocalInferenceFacade implements LocalInferenceFacade {
     return _modelConfigurationService.scanExternalModelCandidates(
       customDirectoryPath: customPath,
     );
+  }
+
+  @override
+  Future<List<InstalledArtifactDescriptor>> listManagedModels() async {
+    final record = await _installationRecordRepository.readRecord();
+    return record.installedArtifacts
+        .where((artifact) =>
+            artifact.status == InstallationStatus.verified &&
+            artifact.artifactType == CatalogArtifactType.model)
+        .toList();
   }
 }

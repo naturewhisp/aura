@@ -72,6 +72,10 @@ final class ControllableLocalInferenceFacade implements LocalInferenceFacade {
   Future<List<ExternalModelCandidate>> scanExternalCandidates(
           {String? customPath}) async =>
       const [];
+
+  @override
+  Future<List<InstalledArtifactDescriptor>> listManagedModels() async =>
+      const [];
 }
 
 void main() {
@@ -146,6 +150,7 @@ void main() {
       preflightEngine: preflightEngine,
       dependencyService: dependencyService,
       modelConfigurationService: modelService,
+      installationRecordRepository: installRepo,
     );
 
     settingsFacade = DefaultRuntimeModelSettingsFacade(

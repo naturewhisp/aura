@@ -1,16 +1,18 @@
 import 'package:aura_core/aura_offline.dart';
 import 'package:flutter/material.dart';
 
-import '../widgets/external_model_consent_dialog.dart';
+enum OnboardingModelMode { managed, external }
 
 /// Schermata di onboarding guidato (First-Run Wizard) per la configurazione dell'inferenza locale.
 class FirstRunModelSetupScreen extends StatefulWidget {
   final FirstRunModelSetupFacade firstRunFacade;
+  final LocalInferenceFacade inferenceFacade;
   final VoidCallback onComplete;
 
   const FirstRunModelSetupScreen({
     super.key,
     required this.firstRunFacade,
+    required this.inferenceFacade,
     required this.onComplete,
   });
 
@@ -22,7 +24,19 @@ class FirstRunModelSetupScreen extends StatefulWidget {
 class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
   final TextEditingController _inputController = TextEditingController();
   FirstRunSetupState? _state;
+  List<InstalledArtifactDescriptor> _managedModels = [];
   bool _isLoading = false;
+  String? _errorMessage;
+
+  OnboardingModelMode _actorMode = OnboardingModelMode.external;
+  OnboardingModelMode _evaluatorMode = OnboardingModelMode.external;
+
+  String? _selectedActorManagedId;
+  String? _selectedEvaluatorManagedId;
+
+  // Preserva il riferimento del modello esterno in caso di passaggio a consentRequired
+  ExternalModelReference? _pendingConsentReference;
+  ModelActivationRole? _pendingConsentRole;
 
   @override
   void initState() {
@@ -37,12 +51,28 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
   }
 
   Future<void> _initSetup() async {
-    setState(() => _isLoading = true);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final state = await widget.firstRunFacade.evaluateInitialState();
-      setState(() => _state = state);
+      final managed = await widget.inferenceFacade.listManagedModels();
+
+      if (!mounted) return;
+      setState(() {
+        _state = state;
+        _managedModels = managed;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Errore inizializzazione setup: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -50,103 +80,181 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     final path = _inputController.text.trim();
     if (path.isEmpty) return;
 
-    setState(() => _isLoading = true);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final newState = await widget.firstRunFacade.configureRuntime(path);
+      if (!mounted) return;
+
       setState(() {
         _state = newState;
         _inputController.clear();
       });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Errore configurazione runtime: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _submitActor() async {
-    final path = _inputController.text.trim();
-    if (path.isEmpty) return;
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
-    setState(() => _isLoading = true);
     try {
-      final ref = ExternalModelReference(absolutePath: path);
-      final newState = await widget.firstRunFacade.selectActorModel(ref);
-
-      if (newState.step == FirstRunSetupStep.consentRequired) {
-        if (!mounted) return;
-        final accepted = await ExternalModelConsentDialog.show(
-          context,
-          modelPath: path,
-        );
-
-        if (accepted == true) {
-          final retriedState =
-              await widget.firstRunFacade.acceptConsentAndRetry(
-            role: ModelActivationRole.actor,
-            reference: ref,
-          );
-          setState(() {
-            _state = retriedState;
-            _inputController.clear();
-          });
+      ConfiguredModelReference ref;
+      if (_actorMode == OnboardingModelMode.managed) {
+        if (_selectedActorManagedId == null) {
+          setState(() =>
+              _errorMessage = 'Selezionare un modello gestito per Actor.');
           return;
         }
+        ref = ManagedModelReference(installationId: _selectedActorManagedId!);
+      } else {
+        final path = _inputController.text.trim();
+        if (path.isEmpty) return;
+        ref = ExternalModelReference(absolutePath: path);
+      }
+
+      final newState = await widget.firstRunFacade.selectActorModel(ref);
+      if (!mounted) return;
+
+      if (newState.step == FirstRunSetupStep.consentRequired &&
+          ref is ExternalModelReference) {
+        setState(() {
+          _state = newState;
+          _pendingConsentReference = ref as ExternalModelReference;
+          _pendingConsentRole = ModelActivationRole.actor;
+        });
+        return;
       }
 
       setState(() {
         _state = newState;
         _inputController.clear();
       });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Errore selezione modello Actor: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _submitEvaluator() async {
-    final path = _inputController.text.trim();
-    if (path.isEmpty) return;
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
-    setState(() => _isLoading = true);
     try {
-      final ref = ExternalModelReference(absolutePath: path);
-      final newState = await widget.firstRunFacade.selectEvaluatorModel(ref);
-
-      if (newState.step == FirstRunSetupStep.consentRequired) {
-        if (!mounted) return;
-        final accepted = await ExternalModelConsentDialog.show(
-          context,
-          modelPath: path,
-        );
-
-        if (accepted == true) {
-          final retriedState =
-              await widget.firstRunFacade.acceptConsentAndRetry(
-            role: ModelActivationRole.evaluator,
-            reference: ref,
-          );
-          setState(() {
-            _state = retriedState;
-            _inputController.clear();
-          });
+      ConfiguredModelReference ref;
+      if (_evaluatorMode == OnboardingModelMode.managed) {
+        if (_selectedEvaluatorManagedId == null) {
+          setState(() =>
+              _errorMessage = 'Selezionare un modello gestito per Evaluator.');
           return;
         }
+        ref =
+            ManagedModelReference(installationId: _selectedEvaluatorManagedId!);
+      } else {
+        final path = _inputController.text.trim();
+        if (path.isEmpty) return;
+        ref = ExternalModelReference(absolutePath: path);
+      }
+
+      final newState = await widget.firstRunFacade.selectEvaluatorModel(ref);
+      if (!mounted) return;
+
+      if (newState.step == FirstRunSetupStep.consentRequired &&
+          ref is ExternalModelReference) {
+        setState(() {
+          _state = newState;
+          _pendingConsentReference = ref as ExternalModelReference;
+          _pendingConsentRole = ModelActivationRole.evaluator;
+        });
+        return;
       }
 
       setState(() {
         _state = newState;
         _inputController.clear();
       });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Errore selezione modello Evaluator: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _acceptConsentAndRetryPending() async {
+    final pendingRef = _pendingConsentReference;
+    final pendingRole = _pendingConsentRole;
+    if (pendingRef == null || pendingRole == null) return;
+
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final newState = await widget.firstRunFacade.acceptConsentAndRetry(
+        role: pendingRole,
+        reference: pendingRef,
+      );
+      if (!mounted) return;
+
+      setState(() {
+        _state = newState;
+        _pendingConsentReference = null;
+        _pendingConsentRole = null;
+        _inputController.clear();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Errore accettazione consenso: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   Future<void> _runProbe() async {
-    setState(() => _isLoading = true);
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
     try {
       final newState = await widget.firstRunFacade.runFinalPreflight();
+      if (!mounted) return;
       setState(() => _state = newState);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Errore esecuzione probe finale: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -155,6 +263,26 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     if (currentState == null || _isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFF00FFC8)),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 40),
+          const SizedBox(height: 12),
+          Text(
+            _errorMessage!,
+            style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton(
+            onPressed: _isLoading ? null : _initSetup,
+            child: const Text('RIPARTICI / RITENTA'),
+          ),
+        ],
       );
     }
 
@@ -170,6 +298,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             currentState.runtimeDetectionResult?.effectiveCandidate;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
               'PASSAGGIO 1: SELEZIONE RUNTIME LLAMA-SERVER',
@@ -224,6 +353,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       case FirstRunSetupStep.actorSelection:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
               'PASSAGGIO 2: MODELLO ACTOR (PANOPTICON)',
@@ -234,24 +364,64 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Inserire il percorso assoluto al file .gguf del modello Actor (es. Gemma 4 12B).',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SegmentedButton<OnboardingModelMode>(
+                  segments: const [
+                    ButtonSegment(
+                        value: OnboardingModelMode.managed,
+                        label: Text('MANAGED')),
+                    ButtonSegment(
+                        value: OnboardingModelMode.external,
+                        label: Text('EXTERNAL')),
+                  ],
+                  selected: {_actorMode},
+                  onSelectionChanged: _isLoading
+                      ? null
+                      : (s) => setState(() => _actorMode = s.first),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _inputController,
-              enabled: !_isLoading,
-              style:
-                  const TextStyle(color: Colors.white, fontFamily: 'monospace'),
-              decoration: const InputDecoration(
-                filled: true,
-                fillColor: Color(0xFF1E293B),
-                border: OutlineInputBorder(),
-                hintText: r'C:\Models\actor.gguf',
-                hintStyle: TextStyle(color: Color(0xFF64748B)),
+            const SizedBox(height: 12),
+            if (_actorMode == OnboardingModelMode.managed)
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _selectedActorManagedId,
+                items: _managedModels.map((m) {
+                  return DropdownMenuItem(
+                    value: m.installationId,
+                    child: Text(
+                      '${m.displayName} (${m.version})',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (v) => setState(() => _selectedActorManagedId = v),
+                decoration: const InputDecoration(
+                  filled: true,
+                  fillColor: Color(0xFF1E293B),
+                  border: OutlineInputBorder(),
+                  hintText: 'Seleziona modello gestito Actor...',
+                ),
+                dropdownColor: const Color(0xFF1E293B),
+              )
+            else
+              TextField(
+                controller: _inputController,
+                enabled: !_isLoading,
+                style: const TextStyle(
+                    color: Colors.white, fontFamily: 'monospace'),
+                decoration: const InputDecoration(
+                  filled: true,
+                  fillColor: Color(0xFF1E293B),
+                  border: OutlineInputBorder(),
+                  hintText: r'C:\Models\actor.gguf',
+                  hintStyle: TextStyle(color: Color(0xFF64748B)),
+                ),
               ),
-            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isLoading ? null : _submitActor,
@@ -263,6 +433,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       case FirstRunSetupStep.evaluatorSelection:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
               'PASSAGGIO 3: MODELLO EVALUATOR (VALUTATORE)',
@@ -273,24 +444,65 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Inserire il percorso assoluto al file .gguf del modello Evaluator (es. Ministral 3B).',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                SegmentedButton<OnboardingModelMode>(
+                  segments: const [
+                    ButtonSegment(
+                        value: OnboardingModelMode.managed,
+                        label: Text('MANAGED')),
+                    ButtonSegment(
+                        value: OnboardingModelMode.external,
+                        label: Text('EXTERNAL')),
+                  ],
+                  selected: {_evaluatorMode},
+                  onSelectionChanged: _isLoading
+                      ? null
+                      : (s) => setState(() => _evaluatorMode = s.first),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _inputController,
-              enabled: !_isLoading,
-              style:
-                  const TextStyle(color: Colors.white, fontFamily: 'monospace'),
-              decoration: const InputDecoration(
-                filled: true,
-                fillColor: Color(0xFF1E293B),
-                border: OutlineInputBorder(),
-                hintText: r'C:\Models\evaluator.gguf',
-                hintStyle: TextStyle(color: Color(0xFF64748B)),
+            const SizedBox(height: 12),
+            if (_evaluatorMode == OnboardingModelMode.managed)
+              DropdownButtonFormField<String>(
+                isExpanded: true,
+                initialValue: _selectedEvaluatorManagedId,
+                items: _managedModels.map((m) {
+                  return DropdownMenuItem(
+                    value: m.installationId,
+                    child: Text(
+                      '${m.displayName} (${m.version})',
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  );
+                }).toList(),
+                onChanged: (v) =>
+                    setState(() => _selectedEvaluatorManagedId = v),
+                decoration: const InputDecoration(
+                  filled: true,
+                  fillColor: Color(0xFF1E293B),
+                  border: OutlineInputBorder(),
+                  hintText: 'Seleziona modello gestito Evaluator...',
+                ),
+                dropdownColor: const Color(0xFF1E293B),
+              )
+            else
+              TextField(
+                controller: _inputController,
+                enabled: !_isLoading,
+                style: const TextStyle(
+                    color: Colors.white, fontFamily: 'monospace'),
+                decoration: const InputDecoration(
+                  filled: true,
+                  fillColor: Color(0xFF1E293B),
+                  border: OutlineInputBorder(),
+                  hintText: r'C:\Models\evaluator.gguf',
+                  hintStyle: TextStyle(color: Color(0xFF64748B)),
+                ),
               ),
-            ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isLoading ? null : _submitEvaluator,
@@ -300,10 +512,83 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         );
 
       case FirstRunSetupStep.consentRequired:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.warning_amber_rounded,
+                    color: Color(0xFFF59E0B), size: 32),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'CONSENSO INFORMATO RICHIESTO',
+                    style: TextStyle(
+                      color: Color(0xFFF59E0B),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'L\'utilizzo del modello esterno GGUF per il ruolo "${_pendingConsentRole?.name.toUpperCase()}" richiede la presa visione ed il consenso dell\'utente.',
+              style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
+            ),
+            if (_pendingConsentReference != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: SelectableText(
+                  _pendingConsentReference!.absolutePath,
+                  style: const TextStyle(
+                    color: Color(0xFF00FFC8),
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF59E0B),
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: _isLoading ? null : _acceptConsentAndRetryPending,
+                  child: const Text(
+                    'ACCETTA E RITENTA BINDING',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                OutlinedButton(
+                  onPressed: _isLoading ? null : _initSetup,
+                  child: const Text('ANNULLA / RIESEGUI'),
+                ),
+              ],
+            ),
+          ],
+        );
+
       case FirstRunSetupStep.preflightCheck:
         return Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(color: Color(0xFF00FFC8)),
+            if (_isLoading)
+              const CircularProgressIndicator(color: Color(0xFF00FFC8))
+            else
+              const Icon(Icons.speed, color: Color(0xFF00FFC8), size: 48),
             const SizedBox(height: 16),
             const Text(
               'Verifica probe in corso...',
@@ -319,6 +604,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
 
       case FirstRunSetupStep.complete:
         return Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.check_circle_outline,
                 color: Color(0xFF10B981), size: 48),
@@ -348,6 +634,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
 
       case FirstRunSetupStep.failed:
         return Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 48),
             const SizedBox(height: 12),
@@ -374,7 +661,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         backgroundColor: const Color(0xFF0F172A),
         title: const Text('A.U.R.A. — Configurazione Iniziale'),
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24.0),
         child: Center(
           child: ConstrainedBox(

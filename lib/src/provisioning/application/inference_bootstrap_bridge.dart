@@ -205,12 +205,18 @@ final class InferenceBootstrapBridge {
         );
       }
 
-      // Costruisce la topologia dual-role.
+      final appManagedRoot = environment.appManagedRoot;
+      final actorLogPath =
+          '$appManagedRoot/runtime/logs/actor_llama_server.log';
+      final evaluatorLogPath =
+          '$appManagedRoot/runtime/logs/evaluator_llama_server.log';
+
       final actorConfig = ManagedLlamaServerConfiguration(
         executablePath: runtime.executablePath,
         modelPath: actorPath ?? actorInstallId ?? '',
         modelAlias: 'aura.actor.primary',
         gpuLayers: 99,
+        logFilePath: actorLogPath,
         startupTimeout: const Duration(seconds: 60),
         shutdownTimeout: const Duration(seconds: 15),
         apiKey: 'managed-actor-secret',
@@ -222,6 +228,7 @@ final class InferenceBootstrapBridge {
         modelPath: evaluatorPath ?? evaluatorInstallId ?? '',
         modelAlias: 'aura.evaluator.primary',
         gpuLayers: 99,
+        logFilePath: evaluatorLogPath,
         startupTimeout: const Duration(seconds: 45),
         shutdownTimeout: const Duration(seconds: 10),
         apiKey: 'managed-evaluator-secret',

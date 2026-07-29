@@ -145,6 +145,7 @@ final class DefaultFirstRunModelSetupFacade
   @override
   Future<FirstRunSetupState> evaluateInitialState() async {
     final preflight = await _preflightEngine.check(depth: PreflightDepth.quick);
+    final detection = await _dependencyService.detect();
 
     if (preflight.isReady) {
       final probeResult =
@@ -153,17 +154,17 @@ final class DefaultFirstRunModelSetupFacade
         return FirstRunSetupState(
           step: FirstRunSetupStep.complete,
           preflightResult: probeResult,
+          runtimeDetectionResult: detection,
         );
       } else {
         return FirstRunSetupState(
           step: FirstRunSetupStep.failed,
           preflightResult: probeResult,
+          runtimeDetectionResult: detection,
           errorMessage: probeResult.sanitizedMessage,
         );
       }
     }
-
-    final detection = await _dependencyService.detect();
 
     // Se preflight individua il ruolo specifico che necessita di intervento:
     if (preflight.affectedRole == ModelActivationRole.actor) {

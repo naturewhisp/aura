@@ -129,6 +129,15 @@ L'integrazione di A.U.R.A. con i Large Language Models è astratta tramite l'int
 ### 4.2 RuleBasedEvaluatorBridge
 È il bridge deterministico di ripiego offline. Utilizza regex semantiche e dizionari di parole chiave per simulare l'output strutturato del valutatore senza richiedere un'inferenza neurale attiva.
 
+### 4.3 ManagedLlamaServer, CUDA Vendor DLL Injection & Strategia Installer
+Gestisce il processo autonomo `llama-server.exe` senza dipendere da server terzi:
+1. **Accelerazione Hardware CUDA / Vulkan**: `LlamaServerProcessSupervisor` e `LlamaServerDependencyService` iniettano automaticamente nel `PATH` del processo i percorsi alle librerie vendor dinamiche CUDA (es. `win-llama-cuda12-vendor-v2` contenente `cudart64_12.dll`). Questo garantisce l'esecuzione nativa su GPU NVIDIA RTX con prestazioni ottimali (fino a 190+ tok/s in prompt eval e 20+ tok/s in generazione).
+2. **Disattivazione del Reasoning a Livello Server**: I processi gestiti vengono avviati con i flag `--reasoning off` e `--chat-template-kwargs '{"enable_thinking": false}'` per azzerare le latenze CoT sui modelli ibridi.
+3. **Log di Diagnosi Fisici su Disco**: Ogni riga di STDOUT/STDERR prodotta dal backend viene registrata in tempo reale su file di log dedicati (`actor_llama_server.log` e `evaluator_llama_server.log`).
+4. **Strategia per First Run e Installer Standalone**:
+   - **First Run / Discovery**: Alla prima esecuzione, `LlamaServerDependencyService` scansiona i binari `llama-server` disponibili sul sistema e ne valida le funzionalità tramite probe arricchito con le dipendenze vendor.
+   - **Installer Standalone Futuro**: Nei pacchetti di distribuzione (MSI / NSIS / ZIP), il binario `llama-server.exe` e le relative DLL CUDA (`cudart64_12.dll`) saranno inclusi nella cartella `runtime/bin/` e `runtime/bin/vendor/`. Il supervisor configurerà `workingDirectory` e `PATH` in modo completamente trasparente all'utente finale.
+
 ---
 
 ## 5. Model Catalog & Routing dei Modelli

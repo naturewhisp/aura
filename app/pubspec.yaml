@@ -16,6 +16,8 @@ dependencies:
   # Dipendenza locale per importare il core di gioco deterministico
   aura_core:
     path: ../
+  file_picker: ^11.0.2
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:

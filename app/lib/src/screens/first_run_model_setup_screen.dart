@@ -1,5 +1,7 @@
 import 'package:aura_core/aura_offline.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 enum OnboardingModelMode { managed, external }
 
@@ -8,12 +10,14 @@ class FirstRunModelSetupScreen extends StatefulWidget {
   final FirstRunModelSetupFacade firstRunFacade;
   final LocalInferenceFacade inferenceFacade;
   final VoidCallback onComplete;
+  final bool forceReconfigure;
 
   const FirstRunModelSetupScreen({
     super.key,
     required this.firstRunFacade,
     required this.inferenceFacade,
     required this.onComplete,
+    this.forceReconfigure = false,
   });
 
   @override
@@ -58,8 +62,23 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     });
 
     try {
-      final state = await widget.firstRunFacade.evaluateInitialState();
+      var state = await widget.firstRunFacade.evaluateInitialState();
+      if (widget.forceReconfigure && state.step == FirstRunSetupStep.complete) {
+        state = state.copyWith(step: FirstRunSetupStep.runtimeSelection);
+      }
       final managed = await widget.inferenceFacade.listManagedModels();
+      final snapshot = await widget.inferenceFacade.getSnapshot();
+
+      final configuredExec = snapshot.runtimeConfiguration?.executablePath;
+      final detectedExec = state.runtimeDetectionResult?.effectiveCandidate;
+      final candidate =
+          (configuredExec != null && configuredExec.trim().isNotEmpty)
+              ? configuredExec.trim()
+              : detectedExec;
+
+      if (candidate != null && candidate.trim().isNotEmpty) {
+        _inputController.text = candidate;
+      }
 
       if (!mounted) return;
       setState(() {
@@ -76,6 +95,98 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     }
   }
 
+  Future<void> _openLlamaReleases() async {
+    final uri = Uri.parse('https://github.com/ggerganov/llama.cpp/releases');
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage = 'Impossibile aprire il browser: $e');
+    }
+  }
+
+  Future<void> _pickFileForRuntime() async {
+    try {
+      final result = await FilePicker.pickFiles(
+        dialogTitle: 'Seleziona eseguibile llama-server.exe',
+        type: FileType.custom,
+        allowedExtensions: ['exe'],
+      );
+      if (result != null && result.files.single.path != null) {
+        setState(() {
+          _inputController.text = result.files.single.path!;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(
+          () => _errorMessage = 'Impossibile aprire il selettore di file: $e');
+    }
+  }
+
+  Future<void> _pickFileForModel(ModelActivationRole role) async {
+    try {
+      final roleName = role == ModelActivationRole.actor
+          ? "Actor (PANOPTICON)"
+          : "Evaluator (Valutatore)";
+      final result = await FilePicker.pickFiles(
+        dialogTitle: 'Seleziona file modello GGUF per $roleName',
+        type: FileType.custom,
+        allowedExtensions: ['gguf'],
+      );
+      if (result != null && result.files.single.path != null) {
+        setState(() {
+          _inputController.text = result.files.single.path!;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(
+          () => _errorMessage = 'Impossibile aprire il selettore di file: $e');
+    }
+  }
+
+  Future<void> _prepareStepFields(FirstRunSetupStep step) async {
+    try {
+      final snapshot = await widget.inferenceFacade.getSnapshot();
+      final actorRef = snapshot.modelConfiguration.actor;
+      final evalRef = snapshot.modelConfiguration.evaluator;
+
+      switch (step) {
+        case FirstRunSetupStep.actorSelection:
+          if (actorRef is ManagedModelReference) {
+            _actorMode = OnboardingModelMode.managed;
+            _selectedActorManagedId = actorRef.installationId;
+            _inputController.clear();
+          } else if (actorRef is ExternalModelReference) {
+            _actorMode = OnboardingModelMode.external;
+            _inputController.text = actorRef.absolutePath;
+          } else {
+            _inputController.clear();
+          }
+          break;
+
+        case FirstRunSetupStep.evaluatorSelection:
+          if (evalRef is ManagedModelReference) {
+            _evaluatorMode = OnboardingModelMode.managed;
+            _selectedEvaluatorManagedId = evalRef.installationId;
+            _inputController.clear();
+          } else if (evalRef is ExternalModelReference) {
+            _evaluatorMode = OnboardingModelMode.external;
+            _inputController.text = evalRef.absolutePath;
+          } else {
+            _inputController.clear();
+          }
+          break;
+
+        default:
+          break;
+      }
+    } catch (_) {}
+  }
+
   Future<void> _submitRuntime() async {
     final path = _inputController.text.trim();
     if (path.isEmpty) return;
@@ -87,12 +198,17 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     });
 
     try {
-      final newState = await widget.firstRunFacade.configureRuntime(path);
+      var newState = await widget.firstRunFacade.configureRuntime(path);
       if (!mounted) return;
+
+      if (newState.step == FirstRunSetupStep.complete) {
+        newState = newState.copyWith(step: FirstRunSetupStep.actorSelection);
+      }
+
+      await _prepareStepFields(newState.step);
 
       setState(() {
         _state = newState;
-        _inputController.clear();
       });
     } catch (e) {
       if (!mounted) return;
@@ -126,7 +242,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         ref = ExternalModelReference(absolutePath: path);
       }
 
-      final newState = await widget.firstRunFacade.selectActorModel(ref);
+      var newState = await widget.firstRunFacade.selectActorModel(ref);
       if (!mounted) return;
 
       if (newState.step == FirstRunSetupStep.consentRequired &&
@@ -139,9 +255,15 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         return;
       }
 
+      if (newState.step == FirstRunSetupStep.complete) {
+        newState =
+            newState.copyWith(step: FirstRunSetupStep.evaluatorSelection);
+      }
+
+      await _prepareStepFields(newState.step);
+
       setState(() {
         _state = newState;
-        _inputController.clear();
       });
     } catch (e) {
       if (!mounted) return;
@@ -176,7 +298,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         ref = ExternalModelReference(absolutePath: path);
       }
 
-      final newState = await widget.firstRunFacade.selectEvaluatorModel(ref);
+      var newState = await widget.firstRunFacade.selectEvaluatorModel(ref);
       if (!mounted) return;
 
       if (newState.step == FirstRunSetupStep.consentRequired &&
@@ -189,9 +311,14 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         return;
       }
 
+      if (newState.step == FirstRunSetupStep.complete) {
+        newState = newState.copyWith(step: FirstRunSetupStep.preflightCheck);
+      }
+
+      await _prepareStepFields(newState.step);
+
       setState(() {
         _state = newState;
-        _inputController.clear();
       });
     } catch (e) {
       if (!mounted) return;
@@ -313,6 +440,19 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               'Specificare il percorso dell\'eseguibile llama-server.',
               style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
             ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFF38BDF8)),
+                foregroundColor: const Color(0xFF38BDF8),
+              ),
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text(
+                '🌐 SCARICA LLAMA-SERVER (OFFICIAL GITHUB RELEASES)',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+              onPressed: _openLlamaReleases,
+            ),
             if (detected != null) ...[
               const SizedBox(height: 10),
               Container(
@@ -329,23 +469,41 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
             ],
             const SizedBox(height: 16),
-            TextField(
-              controller: _inputController,
-              enabled: !_isLoading,
-              style:
-                  const TextStyle(color: Colors.white, fontFamily: 'monospace'),
-              decoration: InputDecoration(
-                filled: true,
-                fillColor: const Color(0xFF1E293B),
-                border: const OutlineInputBorder(),
-                hintText: detected ?? r'C:\llama.cpp\llama-server.exe',
-                hintStyle: const TextStyle(color: Color(0xFF64748B)),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _inputController,
+                    enabled: !_isLoading,
+                    style: const TextStyle(
+                        color: Colors.white, fontFamily: 'monospace'),
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: const Color(0xFF1E293B),
+                      border: const OutlineInputBorder(),
+                      hintText: detected ?? r'C:\llama.cpp\llama-server.exe',
+                      hintStyle: const TextStyle(color: Color(0xFF64748B)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF334155),
+                    foregroundColor: const Color(0xFF00FFC8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
+                  ),
+                  onPressed: _isLoading ? null : _pickFileForRuntime,
+                  icon: const Icon(Icons.folder_open, size: 20),
+                  label: const Text('SFOGLIA...'),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isLoading ? null : _submitRuntime,
-              child: const Text('CONFERMA RUNTIME'),
+              child: const Text('CONFERMA RUNTIME  (AVANTI >)'),
             ),
           ],
         );
@@ -385,7 +543,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            if (_actorMode == OnboardingModelMode.managed)
+            if (_actorMode == OnboardingModelMode.managed) ...[
               DropdownButtonFormField<String>(
                 isExpanded: true,
                 initialValue: _selectedActorManagedId,
@@ -407,25 +565,59 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                   hintText: 'Seleziona modello gestito Actor...',
                 ),
                 dropdownColor: const Color(0xFF1E293B),
-              )
-            else
-              TextField(
-                controller: _inputController,
-                enabled: !_isLoading,
-                style: const TextStyle(
-                    color: Colors.white, fontFamily: 'monospace'),
-                decoration: const InputDecoration(
-                  filled: true,
-                  fillColor: Color(0xFF1E293B),
-                  border: OutlineInputBorder(),
-                  hintText: r'C:\Models\actor.gguf',
-                  hintStyle: TextStyle(color: Color(0xFF64748B)),
+              ),
+              if (_managedModels.isEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    '💡 Nessun modello gestito installato nel catalogo locale.\nSeleziona "EXTERNAL" in alto per specificare un file .gguf già presente sul tuo PC.',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  ),
                 ),
+              ],
+            ] else
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _inputController,
+                      enabled: !_isLoading,
+                      style: const TextStyle(
+                          color: Colors.white, fontFamily: 'monospace'),
+                      decoration: const InputDecoration(
+                        filled: true,
+                        fillColor: Color(0xFF1E293B),
+                        border: OutlineInputBorder(),
+                        hintText: r'C:\Models\actor.gguf',
+                        hintStyle: TextStyle(color: Color(0xFF64748B)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF334155),
+                      foregroundColor: const Color(0xFF00FFC8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                    ),
+                    onPressed: _isLoading
+                        ? null
+                        : () => _pickFileForModel(ModelActivationRole.actor),
+                    icon: const Icon(Icons.folder_open, size: 20),
+                    label: const Text('SFOGLIA...'),
+                  ),
+                ],
               ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isLoading ? null : _submitActor,
-              child: const Text('IMPOSTA MODELLO ACTOR'),
+              child: const Text('CONFERMA MODELLO ACTOR  (AVANTI >)'),
             ),
           ],
         );
@@ -465,7 +657,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            if (_evaluatorMode == OnboardingModelMode.managed)
+            if (_evaluatorMode == OnboardingModelMode.managed) ...[
               DropdownButtonFormField<String>(
                 isExpanded: true,
                 initialValue: _selectedEvaluatorManagedId,
@@ -488,25 +680,60 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                   hintText: 'Seleziona modello gestito Evaluator...',
                 ),
                 dropdownColor: const Color(0xFF1E293B),
-              )
-            else
-              TextField(
-                controller: _inputController,
-                enabled: !_isLoading,
-                style: const TextStyle(
-                    color: Colors.white, fontFamily: 'monospace'),
-                decoration: const InputDecoration(
-                  filled: true,
-                  fillColor: Color(0xFF1E293B),
-                  border: OutlineInputBorder(),
-                  hintText: r'C:\Models\evaluator.gguf',
-                  hintStyle: TextStyle(color: Color(0xFF64748B)),
+              ),
+              if (_managedModels.isEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    '💡 Nessun modello gestito installato nel catalogo locale.\nSeleziona "EXTERNAL" in alto per specificare un file .gguf già presente sul tuo PC.',
+                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  ),
                 ),
+              ],
+            ] else
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _inputController,
+                      enabled: !_isLoading,
+                      style: const TextStyle(
+                          color: Colors.white, fontFamily: 'monospace'),
+                      decoration: const InputDecoration(
+                        filled: true,
+                        fillColor: Color(0xFF1E293B),
+                        border: OutlineInputBorder(),
+                        hintText: r'C:\Models\evaluator.gguf',
+                        hintStyle: TextStyle(color: Color(0xFF64748B)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF334155),
+                      foregroundColor: const Color(0xFF00FFC8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                    ),
+                    onPressed: _isLoading
+                        ? null
+                        : () =>
+                            _pickFileForModel(ModelActivationRole.evaluator),
+                    icon: const Icon(Icons.folder_open, size: 20),
+                    label: const Text('SFOGLIA...'),
+                  ),
+                ],
               ),
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _isLoading ? null : _submitEvaluator,
-              child: const Text('IMPOSTA MODELLO EVALUATOR'),
+              child: const Text('CONFERMA MODELLO EVALUATOR  (AVANTI >)'),
             ),
           ],
         );
@@ -618,16 +845,44 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF10B981),
-                foregroundColor: Colors.black,
-              ),
-              onPressed: widget.onComplete,
-              child: const Text(
-                'PROSEGUI AL TERMINALE',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Color(0xFF00FFC8)),
+                  ),
+                  icon: const Icon(Icons.settings_backup_restore,
+                      color: Color(0xFF00FFC8), size: 18),
+                  label: const Text(
+                    'RICONFIGURA DA CAPO',
+                    style: TextStyle(
+                      color: Color(0xFF00FFC8),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _state = const FirstRunSetupState(
+                        step: FirstRunSetupStep.runtimeSelection,
+                      );
+                    });
+                  },
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: Colors.black,
+                  ),
+                  onPressed: widget.onComplete,
+                  child: const Text(
+                    'TORNA ALLE OPZIONI / PROSEGUI',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
             ),
           ],
         );

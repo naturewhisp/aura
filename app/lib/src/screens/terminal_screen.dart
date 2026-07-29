@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:aura_core/aura_core.dart';
@@ -53,9 +52,6 @@ class TerminalScreen extends StatefulWidget {
 /// gli stream audio per alert e glitch, e le animazioni di fine partita (scorrimento esadecimale).
 class _TerminalScreenState extends State<TerminalScreen>
     with SingleTickerProviderStateMixin {
-  FragmentShader? _shader;
-  double _time = 0.0;
-  Timer? _timer;
   late AnimationController _vignetteController;
 
   // Variabili per la gestione della sequenza finale (Endgame)
@@ -79,16 +75,6 @@ class _TerminalScreenState extends State<TerminalScreen>
   @override
   void initState() {
     super.initState();
-    _loadShader();
-
-    // Timer to update time uniform in shader
-    _timer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
-      if (mounted) {
-        setState(() {
-          _time += 0.016;
-        });
-      }
-    });
 
     // Pulse animation controller for the critical vignette warning
     _vignetteController = AnimationController(
@@ -101,23 +87,8 @@ class _TerminalScreenState extends State<TerminalScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) => _onNotifierChanged());
   }
 
-  Future<void> _loadShader() async {
-    // ──────────────────────────────────────────────────────────────────────
-    // SHADER DISABLED (FORCE FALLBACK)
-    //
-    // Fragment shaders using uTexture inside ShaderMask cause native engine
-    // crashes (Access Violation / Lost connection to device) on desktop/mobile
-    // because ShaderMask does not bind the child's texture to the sampler.
-    //
-    // To prevent GPU driver crashes, we always fall back to the safe,
-    // procedural CustomPainter (_RGBShiftPainter).
-    // ──────────────────────────────────────────────────────────────────────
-    _shader = null;
-  }
-
   @override
   void dispose() {
-    _timer?.cancel();
     _hexScrollTimer?.cancel();
     _lockoutTimer?.cancel();
     _vignetteController.dispose();
@@ -1131,25 +1102,11 @@ class _TerminalScreenState extends State<TerminalScreen>
       {required double intensity, required Widget child}) {
     if (intensity <= 0.0 || !widget.notifier.shaderEnabled) return child;
 
-    final shader = _shader;
-    if (shader != null) {
-      return ShaderMask(
-        shaderCallback: (rect) {
-          shader.setFloat(0, rect.width);
-          shader.setFloat(1, rect.height);
-          shader.setFloat(2, _time);
-          shader.setFloat(3, intensity);
-          return shader;
-        },
-        blendMode: BlendMode.dstIn,
-        child: child,
-      );
-    } else {
-      return CustomPaint(
-        foregroundPainter: _RGBShiftPainter(intensity: intensity, time: _time),
-        child: child,
-      );
-    }
+    final double time = DateTime.now().millisecondsSinceEpoch / 1000.0;
+    return CustomPaint(
+      foregroundPainter: _RGBShiftPainter(intensity: intensity, time: time),
+      child: child,
+    );
   }
 }
 

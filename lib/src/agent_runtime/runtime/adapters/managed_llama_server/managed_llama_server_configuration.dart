@@ -24,6 +24,8 @@ class ManagedLlamaServerConfiguration {
   final String? workingDirectory;
   final bool diagnosticMode;
   final String? runtimeInstanceId;
+  final String? logFilePath;
+  final bool disableReasoning;
 
   static const List<String> allowedHosts = ['127.0.0.1', 'localhost', '::1'];
 
@@ -45,6 +47,8 @@ class ManagedLlamaServerConfiguration {
     '-np',
     '--api-key',
     '--seed',
+    '--reasoning',
+    '--chat-template-kwargs',
   };
 
   const ManagedLlamaServerConfiguration({
@@ -69,6 +73,8 @@ class ManagedLlamaServerConfiguration {
     this.workingDirectory,
     this.diagnosticMode = false,
     this.runtimeInstanceId,
+    this.logFilePath,
+    this.disableReasoning = true,
   });
 
   /// Esegue la validazione formale e dei vincoli dei parametri di configurazione.
@@ -240,6 +246,8 @@ class ManagedLlamaServerConfiguration {
     String? workingDirectory,
     bool? diagnosticMode,
     String? runtimeInstanceId,
+    String? logFilePath,
+    bool? disableReasoning,
   }) {
     return ManagedLlamaServerConfiguration(
       executablePath: executablePath ?? this.executablePath,
@@ -263,6 +271,8 @@ class ManagedLlamaServerConfiguration {
       workingDirectory: workingDirectory ?? this.workingDirectory,
       diagnosticMode: diagnosticMode ?? this.diagnosticMode,
       runtimeInstanceId: runtimeInstanceId ?? this.runtimeInstanceId,
+      logFilePath: logFilePath ?? this.logFilePath,
+      disableReasoning: disableReasoning ?? this.disableReasoning,
     );
   }
 }

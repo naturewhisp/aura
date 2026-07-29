@@ -1,3 +1,4 @@
+import '../application/first_run_model_setup_facade.dart';
 import '../application/local_inference_facade.dart';
 import '../application/runtime_model_settings_facade.dart';
 import '../infrastructure/installation_record_repository.dart';
@@ -17,11 +18,13 @@ import 'local_inference_cli_runner.dart';
 final class LocalInferenceServices {
   final LocalInferenceFacade inferenceFacade;
   final RuntimeModelSettingsFacade settingsFacade;
+  final FirstRunModelSetupFacade firstRunFacade;
   final LocalInferenceCliRunner cliRunner;
 
   const LocalInferenceServices({
     required this.inferenceFacade,
     required this.settingsFacade,
+    required this.firstRunFacade,
     required this.cliRunner,
   });
 }
@@ -94,6 +97,12 @@ final class LocalInferenceServiceProvider {
       winGetAdapter: WinGetDependencyAdapter(),
     );
 
+    final firstRunFacade = DefaultFirstRunModelSetupFacade(
+      preflightEngine: preflightEngine,
+      dependencyService: dependencyService,
+      modelService: modelService,
+    );
+
     final cliRunner = LocalInferenceCliRunner(
       inferenceFacade: inferenceFacade,
       settingsFacade: settingsFacade,
@@ -102,6 +111,7 @@ final class LocalInferenceServiceProvider {
     return LocalInferenceServices(
       inferenceFacade: inferenceFacade,
       settingsFacade: settingsFacade,
+      firstRunFacade: firstRunFacade,
       cliRunner: cliRunner,
     );
   }

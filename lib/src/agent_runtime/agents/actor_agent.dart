@@ -77,7 +77,7 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
         modelId: context.modelId,
         messages: messages,
         temperature: 0.7,
-        maxTokens: context.conciseReasoning ? 256 : 384,
+        maxTokens: context.conciseReasoning ? 128 : 192,
         thinking: context.thinking ?? false,
       );
 
@@ -109,6 +109,8 @@ class ActorAgent implements AuraAgent<ActorInput, String> {
       return response.trim();
     } catch (e) {
       stopwatch.stop();
+      print(
+          '[ActorAgent] WARNING: Fallback attivato a causa di un\'eccezione: $e');
       context.actorInferenceLogger.record(
         ActorInferenceLog(
           agentId: id,

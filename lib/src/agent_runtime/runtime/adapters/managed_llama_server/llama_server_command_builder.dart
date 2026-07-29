@@ -44,6 +44,15 @@ class LlamaServerCommandBuilder {
       args.addAll(['--seed', configuration.seed.toString()]);
     }
 
+    if (configuration.disableReasoning) {
+      args.addAll([
+        '--reasoning',
+        'off',
+        '--chat-template-kwargs',
+        '{"enable_thinking": false}',
+      ]);
+    }
+
     for (final extra in configuration.extraArguments) {
       final flag = extra.split('=').first.trim();
       if (!ManagedLlamaServerConfiguration.reservedFlags.contains(flag)) {

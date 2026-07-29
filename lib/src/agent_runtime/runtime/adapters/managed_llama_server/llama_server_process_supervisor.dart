@@ -138,17 +138,33 @@ class LlamaServerProcessSupervisor {
         );
 
         // 4. Lancio del processo
+        final env = Map<String, String>.from(io.Platform.environment);
+        if (_configuration.environmentOverrides.isNotEmpty) {
+          env.addAll(_configuration.environmentOverrides);
+        }
+        final userProfile = env['USERPROFILE'] ?? env['HOME'];
+        if (userProfile != null && userProfile.isNotEmpty) {
+          final vendorDir1 =
+              '$userProfile\\.lmstudio\\extensions\\backends\\vendor\\win-llama-cuda12-vendor-v2';
+          final vendorDir2 =
+              '$userProfile\\.lmstudio\\extensions\\backends\\vendor\\win-llama-cuda-vendor-v2';
+          final existingPath = env['PATH'] ?? '';
+          env['PATH'] = '$vendorDir1;$vendorDir2;$existingPath';
+        }
+
+        final effectiveWorkDir = _configuration.workingDirectory ??
+            io.File(_configuration.executablePath).parent.path;
+
         final launchRequest = ProcessLaunchRequest(
           executable: _configuration.executablePath,
           arguments: args,
-          workingDirectory: _configuration.workingDirectory,
-          environment: _configuration.environmentOverrides.isNotEmpty
-              ? _configuration.environmentOverrides
-              : null,
+          workingDirectory: effectiveWorkDir,
+          environment: env,
         );
 
         try {
           _process = await _processLauncher.start(launchRequest);
+          _initLogFileSink();
         } catch (e) {
           throw ManagedLlamaServerException(
             code: ManagedLlamaServerFailureCode.processLaunchFailed,
@@ -282,13 +298,43 @@ class LlamaServerProcessSupervisor {
     throw lastException!;
   }
 
+  io.IOSink? _logFileSink;
+
+  void _initLogFileSink() {
+    if (_configuration.logFilePath != null &&
+        _configuration.logFilePath!.trim().isNotEmpty &&
+        _fileSystem is LocalFileSystem) {
+      try {
+        final file = io.File(_configuration.logFilePath!);
+        file.parent.createSync(recursive: true);
+        _logFileSink = file.openWrite(mode: io.FileMode.append);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _closeLogFileSink() async {
+    try {
+      await _logFileSink?.flush();
+      await _logFileSink?.close();
+    } catch (_) {
+    } finally {
+      _logFileSink = null;
+    }
+  }
+
   void _appendLogLines(String source, List<int> bytes) {
     try {
       final text = utf8.decode(bytes, allowMalformed: true);
       final lines = text.split('\n');
+      final nowStr = DateTime.now().toIso8601String();
       for (final line in lines) {
         var trimmed = line.trimRight();
         if (trimmed.isNotEmpty) {
+          final rawSanitized =
+              trimmed.replaceAll(RegExp(r'\x1B\[[0-9;]*[a-zA-Z]'), '');
+          final roleTag = _role ?? 'llama-server';
+          _logFileSink?.writeln('[$nowStr] [$roleTag] [$source] $rawSanitized');
+
           if (trimmed.length > _maxLineLength) {
             trimmed = '${trimmed.substring(0, _maxLineLength)}... [TRUNCATED]';
           }
@@ -405,6 +451,7 @@ class LlamaServerProcessSupervisor {
       if (_lastExitCode != null) {
         await _stdoutSub?.cancel();
         await _stderrSub?.cancel();
+        await _closeLogFileSink();
         _stdoutSub = null;
         _stderrSub = null;
         _process = null;

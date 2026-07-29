@@ -11,6 +11,7 @@ void main() {
         modelPath: 'model.gguf',
         host: '127.0.0.1',
         modelAlias: 'test-model',
+        disableReasoning: false,
       );
 
       final args = builder.build(configuration: config, allocatedPort: 8080);
@@ -69,6 +70,10 @@ void main() {
             '2',
             '--seed',
             '42',
+            '--reasoning',
+            'off',
+            '--chat-template-kwargs',
+            '{"enable_thinking": false}',
             '--verbose',
             '--mlock',
           ]));

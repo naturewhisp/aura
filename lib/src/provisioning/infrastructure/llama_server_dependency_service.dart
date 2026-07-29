@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' as io show Directory, File, Platform;
 
 import '../../agent_runtime/runtime/adapters/managed_llama_server/dart_io_process_launcher.dart';
 import '../../agent_runtime/runtime/adapters/managed_llama_server/process_launcher.dart';
@@ -132,7 +133,24 @@ final class DefaultLlamaServerDependencyService
       }
     }
 
-    // 3. Eseguibile individuabile tramite il PATH di sistema (where.exe / where)
+    // 3. Eseguibili individuabili nelle estensioni di LM Studio (priorità GPU: vulkan, cuda, nvidia)
+    final lmCandidates = await _detectFromLmStudioBackends();
+    for (final candidate in lmCandidates) {
+      if (await _fileSystem.fileExists(candidate)) {
+        final validation = await validateExecutable(executablePath: candidate);
+        if (validation.isValid) {
+          return LlamaServerDetectionResult(
+            configuredCandidate: configuredPath,
+            isConfiguredValid: isConfiguredValid,
+            detectedFallback: candidate,
+            effectiveCandidate: candidate,
+            warnings: warnings,
+          );
+        }
+      }
+    }
+
+    // 4. Eseguibile individuabile tramite il PATH di sistema (where.exe / where)
     final pathCandidate = await _detectFromSystemPath();
     if (pathCandidate != null) {
       final validation =
@@ -254,10 +272,25 @@ final class DefaultLlamaServerDependencyService
     List<String> arguments,
   ) async {
     try {
+      final env = Map<String, String>.from(io.Platform.environment);
+      final userProfile = env['USERPROFILE'] ?? env['HOME'];
+      if (userProfile != null && userProfile.isNotEmpty) {
+        final vendorDir1 =
+            '$userProfile\\.lmstudio\\extensions\\backends\\vendor\\win-llama-cuda12-vendor-v2';
+        final vendorDir2 =
+            '$userProfile\\.lmstudio\\extensions\\backends\\vendor\\win-llama-cuda-vendor-v2';
+        final existingPath = env['PATH'] ?? '';
+        env['PATH'] = '$vendorDir1;$vendorDir2;$existingPath';
+      }
+
+      final parentDir = io.File(executablePath).parent.path;
+
       final process = await _processLauncher.start(
         ProcessLaunchRequest(
           executable: executablePath,
           arguments: arguments,
+          workingDirectory: parentDir,
+          environment: env,
           runInShell: false,
         ),
       );
@@ -349,6 +382,52 @@ final class DefaultLlamaServerDependencyService
       }
     } catch (_) {}
     return null;
+  }
+
+  Future<List<String>> _detectFromLmStudioBackends() async {
+    final candidates = <String>[];
+    try {
+      final userProfile = io.Platform.environment['USERPROFILE'] ??
+          io.Platform.environment['HOME'];
+      if (userProfile == null || userProfile.isEmpty) return candidates;
+
+      final lmStudioBackendsDir =
+          '$userProfile\\.lmstudio\\extensions\\backends';
+      if (!await _fileSystem.directoryExists(lmStudioBackendsDir)) {
+        return candidates;
+      }
+
+      final dir = io.Directory(lmStudioBackendsDir);
+      if (!dir.existsSync()) return candidates;
+
+      final found = <String>[];
+      final entities = dir.listSync(recursive: true);
+      for (final entity in entities) {
+        if (entity is io.File &&
+            entity.path.toLowerCase().endsWith('llama-server.exe')) {
+          found.add(entity.path);
+        }
+      }
+
+      found.sort((a, b) {
+        final aLower = a.toLowerCase();
+        final bLower = b.toLowerCase();
+        final aScore = (aLower.contains('vulkan') ||
+                aLower.contains('cuda') ||
+                aLower.contains('nvidia'))
+            ? 0
+            : 1;
+        final bScore = (bLower.contains('vulkan') ||
+                bLower.contains('cuda') ||
+                bLower.contains('nvidia'))
+            ? 0
+            : 1;
+        return aScore.compareTo(bScore);
+      });
+
+      candidates.addAll(found);
+    } catch (_) {}
+    return candidates;
   }
 
   String? _extractVersion(String output) {

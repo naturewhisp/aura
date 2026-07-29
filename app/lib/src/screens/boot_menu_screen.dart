@@ -3,11 +3,12 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:aura_core/aura_core.dart';
+import 'package:aura_core/aura_offline.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
 import '../audio/boot_audio_service.dart';
 import '../widgets/audio_reactive_background.dart';
+import 'first_run_model_setup_screen.dart';
 import 'new_connection_briefing_screen.dart';
 
 /// Schermata iniziale di Boot e Menu Principale dell'applicazione A.U.R.A.
@@ -63,12 +64,6 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   List<FileSystemEntity> _replayFiles = [];
   Map<String, dynamic>? _selectedReplayData;
   String _selectedReplayName = "";
-
-  // Modelli disponibili nel catalogo locale (utilizzati per le opzioni di custom routing)
-  final List<String> _modelsList = const [
-    "gemma-4-12b-it-qat-q4-0",
-    "mistralai/ministral-3-3b"
-  ];
 
   // Indici e chiavi globali per la navigazione del menu ed effetti di lampeggiamento
   int _selectedMenuIndex = 0;
@@ -509,6 +504,19 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         return _buildReplayDetailScreen();
       case "settings":
         return _buildSettingsScreen();
+      case "onboarding":
+        final env = AuraCliEnvironment.fromPlatform();
+        final services = LocalInferenceServiceProvider.create(environment: env);
+        return FirstRunModelSetupScreen(
+          firstRunFacade: services.firstRunFacade,
+          inferenceFacade: services.inferenceFacade,
+          forceReconfigure: true,
+          onComplete: () {
+            setState(() {
+              _subScreen = "settings";
+            });
+          },
+        );
       case "briefing":
         return NewConnectionBriefingScreen(
           notifier: widget.notifier,
@@ -1039,57 +1047,62 @@ class _BootMenuScreenState extends State<BootMenuScreen>
               ),
               const SizedBox(height: 24.0),
 
-              // 1. Evaluator Model selection
-              _buildDropdownSetting(
-                "MODELLO VALUTATORE (EVALUATOR)",
-                widget.notifier.evaluatorModelId,
-                _modelsList,
-                (val) {
-                  if (val != null) {
-                    setState(() {
-                      widget.notifier.updateEvaluatorModel(val);
-                    });
-                  }
-                },
+              // CONFIGURAZIONE INFERENZA & SETUP MODELLI
+              const Text(
+                "CONFIGURAZIONE INFERENZA & TOPOLOGIA MODELLI",
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  color: Color(0xFF00FF66),
+                  fontSize: 15.0,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                ),
               ),
-              const SizedBox(height: 24.0),
-
-              // 2. Actor Model selection
-              _buildDropdownSetting(
-                "MODELLO ATTORE (PANOPTICON)",
-                widget.notifier.actorModelId,
-                _modelsList,
-                (val) {
-                  if (val != null) {
-                    setState(() {
-                      widget.notifier.updateActorModel(val);
-                    });
-                  }
-                },
-              ),
-              const SizedBox(height: 24.0),
-
-              // 3. Chain of Thought toggle
-              _buildToggleSetting(
-                "ABILITA CATENA DI PENSIERO (COT)",
-                "Forza il modello ad elaborare ragionamenti logici prima di rispondere",
-                widget.notifier.reasoningEnabled,
-                (val) {
-                  widget.notifier.toggleReasoning(val);
-                },
-              ),
-              const SizedBox(height: 24.0),
-
-              // 4. Concise CoT toggle (only active if CoT is active)
-              _buildToggleSetting(
-                "COT CONCISO (CoT Budgeting)",
-                "Impone un budget limitato sul ragionamento dell'LLM per velocizzare le risposte",
-                widget.notifier.conciseReasoning,
-                widget.notifier.reasoningEnabled
-                    ? (val) {
-                        widget.notifier.toggleConciseReasoning(val);
-                      }
-                    : null,
+              const SizedBox(height: 12.0),
+              Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFF005522)),
+                  color: const Color(0xFF001104),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "STATO RUNTIME & ACCELERAZIONE HARDWARE:",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF00FF66),
+                        fontSize: 13.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8.0),
+                    Text(
+                      "• Backend di Inferenza: llama-server (Accelerazione CUDA 12 - RTX 3060)\n"
+                      "• Modello Valutatore: ${widget.notifier.evaluatorModelId}\n"
+                      "• Modello Attore (PANOPTICON): ${widget.notifier.actorModelId}\n"
+                      "• Stato Preflight: PRONTO / OPERATIVO (Local IPC 0ms)",
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF88FFB0),
+                        fontSize: 12.0,
+                        height: 1.5,
+                      ),
+                    ),
+                    const SizedBox(height: 16.0),
+                    Center(
+                      child: _buildRetroLinkButton(
+                        "⚙ RIAVVIA CONFIGURAZIONE GUIDATA (MODEL SETUP WIZARD)",
+                        () {
+                          setState(() {
+                            _subScreen = "onboarding";
+                          });
+                        },
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 24.0),
 

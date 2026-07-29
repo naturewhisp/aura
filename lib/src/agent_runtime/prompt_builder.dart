@@ -141,10 +141,10 @@ class PromptBuilder {
         ? ""
         : "\n[HIDDEN STATE BEHAVIORAL DIRECTIVES]\n${hiddenTagsDirectives.join('\n')}\n";
 
-    // Applica restrizioni per Chain of Thought (CoT) corta al fine di ridurre la latenza di inferenza
+    // Applica restrizioni per Chain of Thought (CoT) al fine di disattivare/ridurre la latenza di inferenza
     final String reasoningDirective = conciseReasoning
-        ? "[REASONING CONSTRAINT]\nThink extremely briefly. Limit your internal thinking/reasoning process to 1 or 2 sentences max before generating the final dialogue response. Do not over-analyze.\n\n"
-        : "";
+        ? "<thought off>\n[REASONING CONSTRAINT]\nThink extremely briefly. Limit your internal thinking/reasoning process to 1 or 2 sentences max before generating the final dialogue response. Do not over-analyze.\n\n"
+        : "<thought off>\n";
 
     final systemPrompt = "Sei $identityName.\n"
         "$reasoningDirective"

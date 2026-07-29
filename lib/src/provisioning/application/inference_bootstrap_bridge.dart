@@ -5,6 +5,7 @@ import '../../bootstrap/managed_inference_topology.dart';
 import '../../provisioning/cli/aura_cli_environment.dart';
 import '../../provisioning/cli/local_inference_service_provider.dart';
 import '../../provisioning/domain/configured_model_reference.dart';
+import '../../provisioning/domain/installation_record.dart';
 import '../../provisioning/domain/runtime_dependency_models.dart';
 
 // ---------------------------------------------------------------------------
@@ -175,33 +176,47 @@ final class InferenceBootstrapBridge {
         );
       }
 
-      // Risoluzione percorsi per i riferimenti external (managed → risolto dal bootstrap).
-      final actorPath = actorRef is ExternalModelReference
-          ? actorRef.absolutePath
-          : null; // managed: risolto dall'installationId nel bootstrap
-      final evaluatorPath = evaluatorRef is ExternalModelReference
-          ? evaluatorRef.absolutePath
-          : null;
+      Future<String?> resolveModelPath(ConfiguredModelReference? ref) async {
+        if (ref == null) return null;
+        if (ref is ExternalModelReference) return ref.absolutePath;
+        if (ref is ManagedModelReference) {
+          final record =
+              await services.installationRecordRepository.readRecord();
+          final descriptor = record.findInstallation(ref.installationId);
+          if (descriptor == null ||
+              descriptor.status != InstallationStatus.verified) {
+            return null;
+          }
+          final installDir =
+              services.pathResolver.resolveAppManagedRelativePath(
+            descriptor.relativeInstallPath,
+          );
+          final entryFileName = descriptor.entryFileName ?? '';
+          return '$installDir\\$entryFileName';
+        }
+        return null;
+      }
 
-      final actorInstallId =
-          actorRef is ManagedModelReference ? actorRef.installationId : null;
-      final evaluatorInstallId = evaluatorRef is ManagedModelReference
-          ? evaluatorRef.installationId
-          : null;
+      final actorPath = await resolveModelPath(actorRef);
+      final evaluatorPath = await resolveModelPath(evaluatorRef);
 
-      // Per i riferimenti external: il percorso deve essere non vuoto.
-      if (actorPath != null && actorPath.trim().isEmpty) {
+      if (actorPath == null ||
+          actorPath.trim().isEmpty ||
+          !await services.fileSystem.fileExists(actorPath)) {
         return const InvalidResolution(
           reason: InferenceBootstrapFailureReason.actorModelMissing,
           sanitizedMessage:
-              'Percorso del modello Actor non valido. Riconfigurare con "aura model bind --role actor".',
+              'Percorso del modello Actor non valido o file non presente sul disco. Riconfigurare con "aura model bind --role actor".',
         );
       }
-      if (evaluatorPath != null && evaluatorPath.trim().isEmpty) {
+
+      if (evaluatorPath == null ||
+          evaluatorPath.trim().isEmpty ||
+          !await services.fileSystem.fileExists(evaluatorPath)) {
         return const InvalidResolution(
           reason: InferenceBootstrapFailureReason.evaluatorModelMissing,
           sanitizedMessage:
-              'Percorso del modello Evaluator non valido. Riconfigurare con "aura model bind --role evaluator".',
+              'Percorso del modello Evaluator non valido o file non presente sul disco. Riconfigurare con "aura model bind --role evaluator".',
         );
       }
 
@@ -213,7 +228,7 @@ final class InferenceBootstrapBridge {
 
       final actorConfig = ManagedLlamaServerConfiguration(
         executablePath: runtime.executablePath,
-        modelPath: actorPath ?? actorInstallId ?? '',
+        modelPath: actorPath,
         modelAlias: 'aura.actor.primary',
         gpuLayers: 99,
         logFilePath: actorLogPath,
@@ -225,7 +240,7 @@ final class InferenceBootstrapBridge {
 
       final evaluatorConfig = ManagedLlamaServerConfiguration(
         executablePath: runtime.executablePath,
-        modelPath: evaluatorPath ?? evaluatorInstallId ?? '',
+        modelPath: evaluatorPath,
         modelAlias: 'aura.evaluator.primary',
         gpuLayers: 99,
         logFilePath: evaluatorLogPath,

@@ -541,7 +541,8 @@ class GameControllerNotifier extends ChangeNotifier {
         } catch (_) {}
       }
 
-      onProgress?.call(0.05, 'AURA_INIT> READ MODEL CONFIGURATION RECORD...');
+      onProgress?.call(0.15, 'AURA_INIT> READ MODEL CONFIGURATION RECORD...');
+      await Future.delayed(const Duration(milliseconds: 150));
 
       const bridgeResolver = InferenceBootstrapBridge();
       final resolution = await bridgeResolver.resolve(
@@ -552,7 +553,7 @@ class GameControllerNotifier extends ChangeNotifier {
       ApplicationRuntimeConfiguration runtimeConfig;
       switch (resolution) {
         case ManagedDualResolution(:final topology):
-          onProgress?.call(0.15,
+          onProgress?.call(0.30,
               'AURA_INIT> DUAL TOPOLOGY RESOLVED: ACTOR (GEMMA 12B) + EVALUATOR (MINISTRAL 3B)');
           runtimeConfig = ApplicationRuntimeConfiguration(
             runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
@@ -563,7 +564,7 @@ class GameControllerNotifier extends ChangeNotifier {
           );
         case ExternalResolution(:final endpoint):
           onProgress?.call(
-              0.15, 'AURA_INIT> EXTERNAL OPENAI ENDPOINT RESOLVED: $endpoint');
+              0.30, 'AURA_INIT> EXTERNAL OPENAI ENDPOINT RESOLVED: $endpoint');
           runtimeConfig = ApplicationRuntimeConfiguration(
             runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
             sessionId: gameStateNotifier.value.sessionId,
@@ -571,13 +572,13 @@ class GameControllerNotifier extends ChangeNotifier {
           );
         case RuleBasedResolution():
           onProgress?.call(
-              0.15, 'AURA_INIT> OFFLINE RULE-BASED ENGINE SELECTED.');
+              0.30, 'AURA_INIT> OFFLINE RULE-BASED ENGINE SELECTED.');
           runtimeConfig = ApplicationRuntimeConfiguration(
             runtimeMode: ApplicationRuntimeMode.ruleBased,
             sessionId: gameStateNotifier.value.sessionId,
           );
         case InvalidResolution(:final sanitizedMessage):
-          onProgress?.call(0.15,
+          onProgress?.call(0.30,
               'AURA_INIT> [WARN] CONFIGURATION RESOLUTION FAILED: $sanitizedMessage');
           runtimeConfig = ApplicationRuntimeConfiguration(
             runtimeMode: ApplicationRuntimeMode.ruleBased,
@@ -585,11 +586,14 @@ class GameControllerNotifier extends ChangeNotifier {
           );
       }
 
+      await Future.delayed(const Duration(milliseconds: 200));
+
       if (runtimeConfig.runtimeMode ==
           ApplicationRuntimeMode.managedLlamaServer) {
         onProgress?.call(
-            0.35, 'AURA_INIT> LAUNCHING MANAGED LLAMA-SERVER PROCESSES...');
-        onProgress?.call(0.65,
+            0.50, 'AURA_INIT> LAUNCHING MANAGED LLAMA-SERVER PROCESSES...');
+        await Future.delayed(const Duration(milliseconds: 250));
+        onProgress?.call(0.70,
             'AURA_INIT> LOADING GGUF WEIGHTS INTO VRAM (ACTOR + EVALUATOR)...');
       }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 
 import '../domain/download_cancellation_token.dart';
@@ -400,8 +401,17 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
             )
           : response.stream;
 
+      final writeBuffer = BytesBuilder(copy: false);
+      const writeThresholdBytes = 1 * 1024 * 1024;
+      const checkpointThresholdBytes = 4 * 1024 * 1024;
+      var lastProgressNotifyMs = 0;
+
       await for (final chunk in timedStream) {
         if (cancellationToken != null && cancellationToken.isCancelled) {
+          if (writeBuffer.isNotEmpty) {
+            await _fileSystem.appendBytes(
+                stagingPartPath, writeBuffer.takeBytes());
+          }
           if (activeCheckpoint != null) {
             await _checkpointRepository.saveCheckpoint(activeCheckpoint);
           }
@@ -412,6 +422,10 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
         }
 
         if (downloadedBytes + chunk.length > request.expectedSizeBytes) {
+          if (writeBuffer.isNotEmpty) {
+            await _fileSystem.appendBytes(
+                stagingPartPath, writeBuffer.takeBytes());
+          }
           return DownloadResult.failure(
             reason: DownloadFailureReason.ioFailure,
             message:
@@ -421,13 +435,20 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
           );
         }
 
-        // Scrittura chunk ed avanzamento
-        await _fileSystem.appendBytes(stagingPartPath, chunk);
+        // Bufferizzazione chunk ed avanzamento
+        writeBuffer.add(chunk);
         downloadedBytes += chunk.length;
         bytesSinceLastCheckpoint += chunk.length;
 
-        // Scrittura atomica del checkpoint periodica (ogni ~512KB)
-        if (bytesSinceLastCheckpoint >= 512 * 1024 ||
+        // Scrittura batch su disco ogni ~1 MB o a fine download
+        if (writeBuffer.length >= writeThresholdBytes ||
+            downloadedBytes == request.expectedSizeBytes) {
+          await _fileSystem.appendBytes(
+              stagingPartPath, writeBuffer.takeBytes());
+        }
+
+        // Scrittura atomica del checkpoint periodica (ogni ~4 MB)
+        if (bytesSinceLastCheckpoint >= checkpointThresholdBytes ||
             downloadedBytes == request.expectedSizeBytes) {
           activeCheckpoint = (activeCheckpoint ??
                   DownloadCheckpoint(
@@ -450,9 +471,13 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
           bytesSinceLastCheckpoint = 0;
         }
 
-        // Notifica avanzamento in tempo reale
-        if (onProgress != null) {
-          final elapsedSec = stopwatch.elapsedMilliseconds / 1000.0;
+        // Notifica avanzamento in tempo reale throttled (~100ms)
+        final nowMs = stopwatch.elapsedMilliseconds;
+        if (onProgress != null &&
+            (nowMs - lastProgressNotifyMs >= 100 ||
+                downloadedBytes == request.expectedSizeBytes)) {
+          lastProgressNotifyMs = nowMs;
+          final elapsedSec = nowMs / 1000.0;
           final speed = elapsedSec > 0 ? (downloadedBytes / elapsedSec) : 0.0;
           final fraction =
               (downloadedBytes / request.expectedSizeBytes).clamp(0.0, 1.0);
@@ -470,6 +495,10 @@ final class DefaultArtifactDownloadEngine implements ArtifactDownloadEngine {
             estimatedRemaining: eta,
           ));
         }
+      }
+
+      if (writeBuffer.isNotEmpty) {
+        await _fileSystem.appendBytes(stagingPartPath, writeBuffer.takeBytes());
       }
 
       // 8. Chiusura sessione, controllo finale size ed eliminazione checkpoint

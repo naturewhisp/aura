@@ -1,7 +1,9 @@
+import 'dart:ui';
 import 'package:aura_core/aura_offline.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/audio_reactive_background.dart';
 
 enum OnboardingModelMode { managed, external }
 
@@ -11,6 +13,7 @@ class FirstRunModelSetupScreen extends StatefulWidget {
   final LocalInferenceFacade inferenceFacade;
   final VoidCallback onComplete;
   final bool forceReconfigure;
+  final bool disableBackgroundAnimation;
 
   const FirstRunModelSetupScreen({
     super.key,
@@ -18,6 +21,7 @@ class FirstRunModelSetupScreen extends StatefulWidget {
     required this.inferenceFacade,
     required this.onComplete,
     this.forceReconfigure = false,
+    this.disableBackgroundAnimation = false,
   });
 
   @override
@@ -42,6 +46,11 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
   ExternalModelReference? _pendingConsentReference;
   ModelActivationRole? _pendingConsentRole;
 
+  bool _isDownloading = false;
+  DownloadProgress? _downloadProgress;
+  String? _downloadingArtifactId;
+  DefaultProvisioningCancellationToken? _downloadCancellationToken;
+
   @override
   void initState() {
     super.initState();
@@ -50,8 +59,372 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
 
   @override
   void dispose() {
+    _downloadCancellationToken?.cancel();
     _inputController.dispose();
     super.dispose();
+  }
+
+  void _cancelCatalogDownload() {
+    _downloadCancellationToken?.cancel();
+    if (mounted) {
+      setState(() {
+        _isDownloading = false;
+        _downloadingArtifactId = null;
+        _downloadProgress = null;
+        _downloadCancellationToken = null;
+      });
+    }
+  }
+
+  Future<void> _startCatalogDownload(
+      CatalogArtifact artifact, ModelActivationRole role) async {
+    if (_isDownloading) return;
+    final cancellationToken = DefaultProvisioningCancellationToken();
+    _downloadCancellationToken = cancellationToken;
+
+    setState(() {
+      _isDownloading = true;
+      _downloadingArtifactId = artifact.artifactId;
+      _downloadProgress = null;
+      _errorMessage = null;
+    });
+
+    try {
+      var newState =
+          await widget.firstRunFacade.downloadAndProvisionCatalogArtifact(
+        artifact: artifact,
+        role: role,
+        cancellationToken: cancellationToken,
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() {
+              _downloadProgress = progress;
+            });
+          }
+        },
+      );
+
+      if (!mounted) return;
+
+      final managed = await widget.inferenceFacade.listManagedModels();
+
+      setState(() {
+        _state = newState;
+        _managedModels = managed;
+        if (role == ModelActivationRole.actor) {
+          _actorMode = OnboardingModelMode.managed;
+          final match = managed.cast<InstalledArtifactDescriptor?>().firstWhere(
+                (m) =>
+                    m?.artifactId == artifact.artifactId ||
+                    m?.displayName == artifact.displayName,
+                orElse: () => null,
+              );
+          _selectedActorManagedId =
+              match?.installationId ?? artifact.artifactId;
+        } else {
+          _evaluatorMode = OnboardingModelMode.managed;
+          final match = managed.cast<InstalledArtifactDescriptor?>().firstWhere(
+                (m) =>
+                    m?.artifactId == artifact.artifactId ||
+                    m?.displayName == artifact.displayName,
+                orElse: () => null,
+              );
+          _selectedEvaluatorManagedId =
+              match?.installationId ?? artifact.artifactId;
+        }
+      });
+      await _prepareStepFields(newState.step);
+    } catch (e) {
+      if (!mounted) return;
+      final isCancelled = cancellationToken.isCancellationRequested ||
+          (e is ProvisioningException &&
+              e.reason == ProvisioningFailureReason.operationCancelled) ||
+          e.toString().toLowerCase().contains('annulla');
+
+      if (!isCancelled) {
+        setState(
+            () => _errorMessage = 'Errore durante il download del modello: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDownloading = false;
+          _downloadingArtifactId = null;
+          _downloadProgress = null;
+          _downloadCancellationToken = null;
+        });
+      }
+    }
+  }
+
+  Widget _buildOfficialCatalogCard(
+      CatalogArtifact artifact, ModelActivationRole role) {
+    String formatEta(Duration remaining) {
+      if (remaining.inHours > 0) {
+        final mins = remaining.inMinutes % 60;
+        return '${remaining.inHours}h ${mins}m rimanenti';
+      }
+      if (remaining.inMinutes > 0) {
+        final secs = remaining.inSeconds % 60;
+        return '${remaining.inMinutes}m ${secs}s rimanenti';
+      }
+      return '${remaining.inSeconds}s rimanenti';
+    }
+
+    final matchingModel =
+        _managedModels.cast<InstalledArtifactDescriptor?>().firstWhere(
+              (m) =>
+                  m?.artifactId == artifact.artifactId ||
+                  m?.displayName == artifact.displayName,
+              orElse: () => null,
+            );
+    final isInstalled = matchingModel != null;
+    final isSelected = role == ModelActivationRole.actor
+        ? (_selectedActorManagedId == matchingModel?.installationId ||
+            _selectedActorManagedId == artifact.artifactId)
+        : (_selectedEvaluatorManagedId == matchingModel?.installationId ||
+            _selectedEvaluatorManagedId == artifact.artifactId);
+
+    final isRecommended = (role == ModelActivationRole.actor &&
+            (artifact.metadata['isDefaultActor'] == true ||
+                artifact.artifactId == 'gemma-4-12b-it-qat-q4-0')) ||
+        (role == ModelActivationRole.evaluator &&
+            (artifact.metadata['isDefaultEvaluator'] == true ||
+                artifact.artifactId == 'ministral-3b-instruct'));
+
+    final sizeGb =
+        (artifact.sizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(2);
+    final isCurrentlyDownloading =
+        _isDownloading && _downloadingArtifactId == artifact.artifactId;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        border: Border.all(
+          color: isSelected
+              ? const Color(0xFF00FFC8)
+              : (isRecommended
+                  ? const Color(0xFFF59E0B)
+                  : (isInstalled
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFF334155))),
+          width: (isSelected || isRecommended) ? 1.5 : 1.0,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isRecommended
+                    ? Icons.star_rounded
+                    : (isInstalled
+                        ? Icons.check_circle
+                        : Icons.cloud_download_outlined),
+                color: isRecommended
+                    ? const Color(0xFFF59E0B)
+                    : (isInstalled
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFF00FFC8)),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  artifact.displayName,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (isRecommended) ...[
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF78350F),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Text(
+                    '🌟 RACCOMANDATO',
+                    style: TextStyle(
+                      color: Color(0xFFFBBF24),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isInstalled
+                      ? const Color(0xFF065F46)
+                      : const Color(0xFF334155),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  isInstalled ? '✓ GIÀ PRESENTE' : '$sizeGb GB',
+                  style: TextStyle(
+                    color: isInstalled
+                        ? const Color(0xFF34D399)
+                        : const Color(0xFF94A3B8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            isRecommended
+                ? 'Modello consigliato per ${role == ModelActivationRole.actor ? "PANOPTICON (Actor)" : "Valutatore (Evaluator)"}.'
+                : 'Modello del catalogo ufficiale A.U.R.A.',
+            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          if (isCurrentlyDownloading) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: _downloadProgress?.fraction ?? 0.0,
+                backgroundColor: const Color(0xFF0F172A),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  (_downloadProgress?.isIngesting ?? false)
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFF00FFC8),
+                ),
+                minHeight: 8,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    (_downloadProgress?.isIngesting ?? false)
+                        ? '⚡ Ingestione & Verifica SHA-256: ${_downloadProgress?.percentage ?? 0}% '
+                            '(${((_downloadProgress?.downloadedBytes ?? 0) / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB / $sizeGb GB)'
+                        : '${_downloadProgress?.percentage ?? 0}% '
+                            '(${((_downloadProgress?.downloadedBytes ?? 0) / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB / $sizeGb GB)',
+                    style: TextStyle(
+                      color: (_downloadProgress?.isIngesting ?? false)
+                          ? const Color(0xFF34D399)
+                          : const Color(0xFF00FFC8),
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.bold,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (!(_downloadProgress?.isIngesting ?? false))
+                  Builder(
+                    builder: (context) {
+                      final progress = _downloadProgress;
+                      final eta = progress?.estimatedRemaining;
+                      final speedMb =
+                          ((progress?.bytesPerSecond ?? 0) / (1024 * 1024))
+                              .toStringAsFixed(1);
+                      return Text(
+                        eta != null
+                            ? '$speedMb MB/s • ${formatEta(eta)}'
+                            : 'Calcolo velocità ed ETA...',
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFFCA5A5),
+                  side: const BorderSide(color: Color(0xFFEF4444)),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+                onPressed: _cancelCatalogDownload,
+                icon: const Icon(Icons.cancel_outlined, size: 16),
+                label: const Text(
+                  'ANNULLA DOWNLOAD',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ] else if (isInstalled) ...[
+            SizedBox(
+              width: double.infinity,
+              child: isSelected
+                  ? ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF065F46),
+                        foregroundColor: const Color(0xFF34D399),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onPressed: null,
+                      icon: const Icon(Icons.check, size: 18),
+                      label: const Text('✓ SELEZIONATO PER QUESTO RUOLO'),
+                    )
+                  : OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF00FFC8),
+                        side: const BorderSide(color: Color(0xFF00FFC8)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                      ),
+                      onPressed: _isLoading || _isDownloading
+                          ? null
+                          : () {
+                              final targetId = matchingModel.installationId;
+                              setState(() {
+                                if (role == ModelActivationRole.actor) {
+                                  _selectedActorManagedId = targetId;
+                                } else {
+                                  _selectedEvaluatorManagedId = targetId;
+                                }
+                              });
+                            },
+                      icon: const Icon(Icons.touch_app, size: 18),
+                      label: const Text('🔘 SELEZIONA QUESTO MODELLO'),
+                    ),
+            ),
+          ] else ...[
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isRecommended
+                      ? const Color(0xFF059669)
+                      : const Color(0xFF334155),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: _isLoading || _isDownloading
+                    ? null
+                    : () => _startCatalogDownload(artifact, role),
+                icon: const Icon(Icons.download, size: 18),
+                label: Text('📥 SCARICA ED INSTALLA ($sizeGb GB)'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Future<void> _initSetup() async {
@@ -156,7 +529,11 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
 
       switch (step) {
         case FirstRunSetupStep.actorSelection:
-          if (actorRef is ManagedModelReference) {
+          if (_actorMode == OnboardingModelMode.managed &&
+              _selectedActorManagedId != null &&
+              _selectedActorManagedId!.isNotEmpty) {
+            _inputController.clear();
+          } else if (actorRef is ManagedModelReference) {
             _actorMode = OnboardingModelMode.managed;
             _selectedActorManagedId = actorRef.installationId;
             _inputController.clear();
@@ -169,7 +546,11 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
           break;
 
         case FirstRunSetupStep.evaluatorSelection:
-          if (evalRef is ManagedModelReference) {
+          if (_evaluatorMode == OnboardingModelMode.managed &&
+              _selectedEvaluatorManagedId != null &&
+              _selectedEvaluatorManagedId!.isNotEmpty) {
+            _inputController.clear();
+          } else if (evalRef is ManagedModelReference) {
             _evaluatorMode = OnboardingModelMode.managed;
             _selectedEvaluatorManagedId = evalRef.installationId;
             _inputController.clear();
@@ -407,7 +788,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: _isLoading ? null : _initSetup,
-            child: const Text('RIPARTICI / RITENTA'),
+            child: const Text('RIPARTI / RITENTA'),
           ),
         ],
       );
@@ -509,6 +890,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         );
 
       case FirstRunSetupStep.actorSelection:
+        final catalogArtifacts = CatalogManifest.initialDefault().artifacts;
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -536,7 +919,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                         label: Text('EXTERNAL')),
                   ],
                   selected: {_actorMode},
-                  onSelectionChanged: _isLoading
+                  onSelectionChanged: _isLoading || _isDownloading
                       ? null
                       : (s) => setState(() => _actorMode = s.first),
                 ),
@@ -544,49 +927,38 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             ),
             const SizedBox(height: 12),
             if (_actorMode == OnboardingModelMode.managed) ...[
-              DropdownButtonFormField<String>(
-                isExpanded: true,
-                initialValue: _selectedActorManagedId,
-                items: _managedModels.map((m) {
-                  return DropdownMenuItem(
-                    value: m.installationId,
-                    child: Text(
-                      '${m.displayName} (${m.version})',
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  );
-                }).toList(),
-                onChanged: (v) => setState(() => _selectedActorManagedId = v),
-                decoration: const InputDecoration(
-                  filled: true,
-                  fillColor: Color(0xFF1E293B),
-                  border: OutlineInputBorder(),
-                  hintText: 'Seleziona modello gestito Actor...',
-                ),
-                dropdownColor: const Color(0xFF1E293B),
-              ),
-              if (_managedModels.isEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(6),
+              if (_managedModels.isNotEmpty)
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: _selectedActorManagedId,
+                  items: _managedModels.map((m) {
+                    return DropdownMenuItem(
+                      value: m.installationId,
+                      child: Text(
+                        '${m.displayName} (${m.version})',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (v) => setState(() => _selectedActorManagedId = v),
+                  decoration: const InputDecoration(
+                    filled: true,
+                    fillColor: Color(0xFF1E293B),
+                    border: OutlineInputBorder(),
+                    hintText: 'Seleziona modello gestito Actor...',
                   ),
-                  child: const Text(
-                    '💡 Nessun modello gestito installato nel catalogo locale.\nSeleziona "EXTERNAL" in alto per specificare un file .gguf già presente sul tuo PC.',
-                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                  ),
+                  dropdownColor: const Color(0xFF1E293B),
                 ),
-              ],
+              ...catalogArtifacts.map((artifact) => _buildOfficialCatalogCard(
+                  artifact, ModelActivationRole.actor)),
             ] else
               Row(
                 children: [
                   Expanded(
                     child: TextField(
                       controller: _inputController,
-                      enabled: !_isLoading,
+                      enabled: !_isLoading && !_isDownloading,
                       style: const TextStyle(
                           color: Colors.white, fontFamily: 'monospace'),
                       decoration: const InputDecoration(
@@ -606,7 +978,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 16),
                     ),
-                    onPressed: _isLoading
+                    onPressed: _isLoading || _isDownloading
                         ? null
                         : () => _pickFileForModel(ModelActivationRole.actor),
                     icon: const Icon(Icons.folder_open, size: 20),
@@ -616,13 +988,15 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _isLoading ? null : _submitActor,
+              onPressed: _isLoading || _isDownloading ? null : _submitActor,
               child: const Text('CONFERMA MODELLO ACTOR  (AVANTI >)'),
             ),
           ],
         );
 
       case FirstRunSetupStep.evaluatorSelection:
+        final catalogArtifacts = CatalogManifest.initialDefault().artifacts;
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -650,7 +1024,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                         label: Text('EXTERNAL')),
                   ],
                   selected: {_evaluatorMode},
-                  onSelectionChanged: _isLoading
+                  onSelectionChanged: _isLoading || _isDownloading
                       ? null
                       : (s) => setState(() => _evaluatorMode = s.first),
                 ),
@@ -658,50 +1032,39 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             ),
             const SizedBox(height: 12),
             if (_evaluatorMode == OnboardingModelMode.managed) ...[
-              DropdownButtonFormField<String>(
-                isExpanded: true,
-                initialValue: _selectedEvaluatorManagedId,
-                items: _managedModels.map((m) {
-                  return DropdownMenuItem(
-                    value: m.installationId,
-                    child: Text(
-                      '${m.displayName} (${m.version})',
-                      overflow: TextOverflow.ellipsis,
-                      maxLines: 1,
-                    ),
-                  );
-                }).toList(),
-                onChanged: (v) =>
-                    setState(() => _selectedEvaluatorManagedId = v),
-                decoration: const InputDecoration(
-                  filled: true,
-                  fillColor: Color(0xFF1E293B),
-                  border: OutlineInputBorder(),
-                  hintText: 'Seleziona modello gestito Evaluator...',
-                ),
-                dropdownColor: const Color(0xFF1E293B),
-              ),
-              if (_managedModels.isEmpty) ...[
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    borderRadius: BorderRadius.circular(6),
+              if (_managedModels.isNotEmpty)
+                DropdownButtonFormField<String>(
+                  isExpanded: true,
+                  initialValue: _selectedEvaluatorManagedId,
+                  items: _managedModels.map((m) {
+                    return DropdownMenuItem(
+                      value: m.installationId,
+                      child: Text(
+                        '${m.displayName} (${m.version})',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (v) =>
+                      setState(() => _selectedEvaluatorManagedId = v),
+                  decoration: const InputDecoration(
+                    filled: true,
+                    fillColor: Color(0xFF1E293B),
+                    border: OutlineInputBorder(),
+                    hintText: 'Seleziona modello gestito Evaluator...',
                   ),
-                  child: const Text(
-                    '💡 Nessun modello gestito installato nel catalogo locale.\nSeleziona "EXTERNAL" in alto per specificare un file .gguf già presente sul tuo PC.',
-                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                  ),
+                  dropdownColor: const Color(0xFF1E293B),
                 ),
-              ],
+              ...catalogArtifacts.map((artifact) => _buildOfficialCatalogCard(
+                  artifact, ModelActivationRole.evaluator)),
             ] else
               Row(
                 children: [
                   Expanded(
                     child: TextField(
                       controller: _inputController,
-                      enabled: !_isLoading,
+                      enabled: !_isLoading && !_isDownloading,
                       style: const TextStyle(
                           color: Colors.white, fontFamily: 'monospace'),
                       decoration: const InputDecoration(
@@ -721,7 +1084,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 16),
                     ),
-                    onPressed: _isLoading
+                    onPressed: _isLoading || _isDownloading
                         ? null
                         : () =>
                             _pickFileForModel(ModelActivationRole.evaluator),
@@ -732,7 +1095,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
             const SizedBox(height: 16),
             ElevatedButton(
-              onPressed: _isLoading ? null : _submitEvaluator,
+              onPressed: _isLoading || _isDownloading ? null : _submitEvaluator,
               child: const Text('CONFERMA MODELLO EVALUATOR  (AVANTI >)'),
             ),
           ],
@@ -911,29 +1274,55 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: const Color(0xCC0F172A),
+        elevation: 0,
         title: const Text('A.U.R.A. — Configurazione Iniziale'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 600),
-            child: Card(
-              color: const Color(0xFF0F172A),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Color(0xFF1E293B)),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: _buildStepContent(),
+      body: Stack(
+        children: [
+          // Sfondo animato reattivo visibile in dissolvenza
+          if (!widget.disableBackgroundAnimation)
+            const Positioned.fill(
+              child: AudioReactiveBackground(),
+            ),
+          // Overlay di velatura Cyberpunk
+          const Positioned.fill(
+            child: ColoredBox(color: Color(0x99020617)),
+          ),
+          // Finestra dei controlli con vetro sfumato (Glassmorphism)
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 600),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: const Color(0xDC0F172A),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0x3300FFC8)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x30000000),
+                            blurRadius: 24,
+                            spreadRadius: 4,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(24.0),
+                      child: _buildStepContent(),
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

@@ -3,7 +3,9 @@ import 'package:meta/meta.dart';
 import '../domain/catalog_artifact_snapshot.dart';
 import '../domain/catalog_manifest.dart';
 import '../domain/download_cancellation_token.dart';
+import '../domain/download_progress.dart';
 import '../domain/download_request.dart';
+import '../domain/download_result.dart';
 import '../domain/installation_record.dart';
 import '../domain/model_lifecycle_models.dart';
 import '../domain/provisioning_cancellation_token.dart';
@@ -103,6 +105,7 @@ abstract interface class ModelProvisioningService {
     required CatalogArtifact artifact,
     ProvisioningCancellationToken? cancellationToken,
     void Function(double progressFraction)? onProgress,
+    void Function(DownloadProgress progress)? onProgressDetails,
   });
 
   /// Ispeziona ed importa un file GGUF locale dell'utente preservando il file sorgente.
@@ -204,6 +207,7 @@ final class _DefaultModelProvisioningService
     required CatalogArtifact artifact,
     ProvisioningCancellationToken? cancellationToken,
     void Function(double progressFraction)? onProgress,
+    void Function(DownloadProgress progress)? onProgressDetails,
   }) async {
     final provenanceSnapshot = CatalogArtifactSnapshot.fromCandidate(
       candidate: candidate,
@@ -238,20 +242,29 @@ final class _DefaultModelProvisioningService
       request: downloadRequest,
       cancellationToken: downloadCancellationToken,
       onProgress: (progress) {
+        if (onProgressDetails != null) {
+          onProgressDetails(progress);
+        }
         if (onProgress != null) {
           onProgress(progress.fraction);
         }
       },
     );
 
-    if (downloadResult.isFailure) {
+    if (downloadResult.isFailure || downloadResult.stagingArtifact == null) {
+      final isCancelled = cancellationToken?.isCancellationRequested == true ||
+          downloadResult.failureReason == DownloadFailureReason.cancelled;
+
       return ProvisioningResult.failure(
         operationId: request.operationId,
         artifactId: artifact.artifactId,
         sourceKind: ProvisioningSourceKind.remoteHttps,
-        failureReason: ProvisioningFailureReason.downloadNotAllowed,
-        sanitizedMessage:
-            downloadResult.message ?? 'Errore durante il download.',
+        failureReason: isCancelled
+            ? ProvisioningFailureReason.operationCancelled
+            : ProvisioningFailureReason.downloadNotAllowed,
+        sanitizedMessage: isCancelled
+            ? 'Download annullato dall\'utente.'
+            : (downloadResult.message ?? 'Errore durante il download.'),
       );
     }
 
@@ -268,6 +281,24 @@ final class _DefaultModelProvisioningService
         provenanceSnapshot: provenanceSnapshot,
         sourceOwnership: ArtifactSourceOwnership.managedStaging,
         cancellationToken: cancellationToken,
+        onIngestionProgress: (bytesRead, totalBytes) {
+          final frac =
+              (totalBytes > 0) ? (bytesRead / totalBytes).clamp(0.0, 1.0) : 0.0;
+          final progress = DownloadProgress(
+            operationId: request.operationId,
+            downloadedBytes: bytesRead,
+            totalBytes: totalBytes,
+            bytesPerSecond: 0,
+            fraction: frac,
+            isIngesting: true,
+          );
+          if (onProgressDetails != null) {
+            onProgressDetails(progress);
+          }
+          if (onProgress != null) {
+            onProgress(frac);
+          }
+        },
       );
 
       // 3. Registrazione e Commit Atomico nel Coordinator

@@ -1,3 +1,13 @@
+import 'package:http/http.dart' as http;
+import '../domain/provisioning_clock.dart';
+import '../infrastructure/activation_state_repository.dart';
+import '../infrastructure/artifact_download_engine.dart';
+import '../infrastructure/artifact_ingestion_engine.dart';
+import '../infrastructure/download_checkpoint_repository.dart';
+import '../infrastructure/download_concurrency_controller.dart';
+import '../infrastructure/model_provisioning_service.dart';
+import '../infrastructure/provisioning_coordinator.dart';
+import '../infrastructure/provisioning_http_client.dart';
 import '../application/first_run_model_setup_facade.dart';
 import '../application/local_inference_facade.dart';
 import '../application/runtime_model_settings_facade.dart';
@@ -20,12 +30,18 @@ final class LocalInferenceServices {
   final RuntimeModelSettingsFacade settingsFacade;
   final FirstRunModelSetupFacade firstRunFacade;
   final LocalInferenceCliRunner cliRunner;
+  final InstallationRecordRepository installationRecordRepository;
+  final ProvisioningPathResolver pathResolver;
+  final ProvisioningFileSystem fileSystem;
 
   const LocalInferenceServices({
     required this.inferenceFacade,
     required this.settingsFacade,
     required this.firstRunFacade,
     required this.cliRunner,
+    required this.installationRecordRepository,
+    required this.pathResolver,
+    required this.fileSystem,
   });
 }
 
@@ -97,10 +113,62 @@ final class LocalInferenceServiceProvider {
       winGetAdapter: WinGetDependencyAdapter(),
     );
 
+    final checkpointRepo = JsonDownloadCheckpointRepository(
+      fileSystem: fileSystem,
+      pathResolver: pathResolver,
+      lock: lock,
+    );
+
+    final activationRepo = JsonActivationStateRepository(
+      fileSystem: fileSystem,
+      pathResolver: pathResolver,
+      lock: lock,
+      clock: const SystemProvisioningClock(),
+    );
+
+    final httpClient = http.Client();
+    final downloadEngine = DefaultArtifactDownloadEngine(
+      httpClient: httpClient,
+      fileSystem: fileSystem,
+      pathResolver: pathResolver,
+      checkpointRepository: checkpointRepo,
+      concurrencyController:
+          DownloadConcurrencyController(maxConcurrentDownloads: 1),
+      clock: const SystemProvisioningClock(),
+    );
+
+    final coordinator = ProvisioningCoordinator(
+      lock: lock,
+      recordRepository: installRepo,
+      activationRepository: activationRepo,
+      ingestionEngine: ArtifactIngestionEngine(
+        pathResolver: pathResolver,
+        httpClient: HttpProvisioningHttpClient(client: httpClient),
+        fileSystem: fileSystem,
+      ),
+      pathResolver: pathResolver,
+      fileSystem: fileSystem,
+      clock: const SystemProvisioningClock(),
+    );
+
+    final provisioningEnvironment = ProvisioningEnvironment(
+      downloadEngine: downloadEngine,
+      coordinator: coordinator,
+      checkpointRepository: checkpointRepo,
+      pathResolver: pathResolver,
+      fileSystem: fileSystem,
+      clock: const SystemProvisioningClock(),
+    );
+
+    final provisioningService = ModelProvisioningService(
+      environment: provisioningEnvironment,
+    );
+
     final firstRunFacade = DefaultFirstRunModelSetupFacade(
       preflightEngine: preflightEngine,
       dependencyService: dependencyService,
       modelService: modelService,
+      provisioningService: provisioningService,
     );
 
     final cliRunner = LocalInferenceCliRunner(
@@ -113,6 +181,9 @@ final class LocalInferenceServiceProvider {
       settingsFacade: settingsFacade,
       firstRunFacade: firstRunFacade,
       cliRunner: cliRunner,
+      installationRecordRepository: installRepo,
+      pathResolver: pathResolver,
+      fileSystem: fileSystem,
     );
   }
 }

@@ -21,6 +21,9 @@ final class DownloadProgress {
   /// Tempo stimato rimanente per il completamento.
   final Duration? estimatedRemaining;
 
+  /// Indica se il progresso si riferisce alla fase di ingestione e verifica SHA-256.
+  final bool isIngesting;
+
   const DownloadProgress({
     required this.operationId,
     required this.downloadedBytes,
@@ -28,6 +31,7 @@ final class DownloadProgress {
     required this.bytesPerSecond,
     required this.fraction,
     this.estimatedRemaining,
+    this.isIngesting = false,
   });
 
   /// Calcola la percentuale intera compresa tra `0` e `100`.

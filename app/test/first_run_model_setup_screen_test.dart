@@ -114,6 +114,25 @@ final class FakeFirstRunModelSetupFacade implements FirstRunModelSetupFacade {
   }
 
   @override
+  Future<FirstRunSetupState> downloadAndProvisionCatalogArtifact({
+    required CatalogArtifact artifact,
+    required ModelActivationRole role,
+    ProvisioningCancellationToken? cancellationToken,
+    void Function(DownloadProgress progress)? onProgress,
+  }) async {
+    if (role == ModelActivationRole.actor) {
+      currentState = const FirstRunSetupState(
+        step: FirstRunSetupStep.evaluatorSelection,
+      );
+    } else {
+      currentState = const FirstRunSetupState(
+        step: FirstRunSetupStep.preflightCheck,
+      );
+    }
+    return currentState;
+  }
+
+  @override
   Future<FirstRunSetupState> configureRuntime(String executablePath) async {
     currentState = const FirstRunSetupState(
       step: FirstRunSetupStep.actorSelection,
@@ -181,6 +200,7 @@ void main() {
           firstRunFacade: fakeFirstRunFacade,
           inferenceFacade: fakeInferenceFacade,
           onComplete: () => isCompleted = true,
+          disableBackgroundAnimation: true,
         ),
       ),
     );
@@ -193,7 +213,7 @@ void main() {
         findsOneWidget);
     await tester.enterText(
         find.byType(TextField), r'C:\llama.cpp\llama-server.exe');
-    final confirmRuntimeBtn = find.text('CONFERMA RUNTIME');
+    final confirmRuntimeBtn = find.textContaining('CONFERMA RUNTIME');
     await tester.ensureVisible(confirmRuntimeBtn);
     await tester.tap(confirmRuntimeBtn);
     await tester.pump();
@@ -203,7 +223,7 @@ void main() {
     expect(
         find.text('PASSAGGIO 2: MODELLO ACTOR (PANOPTICON)'), findsOneWidget);
     await tester.enterText(find.byType(TextField), r'C:\Models\actor.gguf');
-    final setActorBtn = find.text('IMPOSTA MODELLO ACTOR');
+    final setActorBtn = find.textContaining('CONFERMA MODELLO ACTOR');
     await tester.ensureVisible(setActorBtn);
     await tester.tap(setActorBtn);
     await tester.pump();
@@ -222,15 +242,22 @@ void main() {
     expect(find.text('PASSAGGIO 3: MODELLO EVALUATOR (VALUTATORE)'),
         findsOneWidget);
     await tester.enterText(find.byType(TextField), r'C:\Models\evaluator.gguf');
-    final setEvalBtn = find.text('IMPOSTA MODELLO EVALUATOR');
+    final setEvalBtn = find.textContaining('CONFERMA MODELLO EVALUATOR');
     await tester.ensureVisible(setEvalBtn);
     await tester.tap(setEvalBtn);
     await tester.pump();
     await tester.pump();
 
-    // 5. Passo Complete
+    // 5. Passo Preflight Check
+    final probeBtn = find.text('AVVIA VERIFICA PROBE');
+    await tester.ensureVisible(probeBtn);
+    await tester.tap(probeBtn);
+    await tester.pump();
+    await tester.pump();
+
+    // 6. Passo Complete
     expect(find.text('CONFIGURAZIONE INFERENZA COMPLETA'), findsOneWidget);
-    final proceedBtn = find.text('PROSEGUI AL TERMINALE');
+    final proceedBtn = find.text('TORNA ALLE OPZIONI / PROSEGUI');
     await tester.ensureVisible(proceedBtn);
     await tester.tap(proceedBtn);
     await tester.pump();
@@ -254,6 +281,7 @@ void main() {
           firstRunFacade: fakeFirstRunFacade,
           inferenceFacade: fakeInferenceFacade,
           onComplete: () {},
+          disableBackgroundAnimation: true,
         ),
       ),
     );
@@ -279,7 +307,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Imposta modello Actor
-    final setActorBtn = find.text('IMPOSTA MODELLO ACTOR');
+    final setActorBtn = find.textContaining('CONFERMA MODELLO ACTOR');
     await tester.ensureVisible(setActorBtn);
     await tester.tap(setActorBtn);
     await tester.pump();
@@ -305,6 +333,7 @@ void main() {
           firstRunFacade: fakeFirstRunFacade,
           inferenceFacade: fakeInferenceFacade,
           onComplete: () {},
+          disableBackgroundAnimation: true,
         ),
       ),
     );

@@ -104,6 +104,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       _appendBootLog("AURA_INIT> FETCHING LOCAL MODEL CATALOG...");
 
       final ModelInitializationResult modelResult;
+      Timer? vramProgressTimer;
+
       if (widget.initializeModels != null) {
         modelResult = await widget.initializeModels!();
       } else {
@@ -114,10 +116,32 @@ class _BootMenuScreenState extends State<BootMenuScreen>
               _bootProgress = progress;
               _bootLines.add(log);
             });
+            if (progress >= 0.65) {
+              vramProgressTimer?.cancel();
+              vramProgressTimer = Timer.periodic(
+                const Duration(milliseconds: 140),
+                (timer) {
+                  if (!mounted) {
+                    timer.cancel();
+                    return;
+                  }
+                  setState(() {
+                    if (_bootProgress < 0.96) {
+                      _bootProgress =
+                          (_bootProgress + 0.01).clamp(0.0, 0.96).toDouble();
+                    }
+                  });
+                },
+              );
+            }
           },
         );
-        if (!mounted) return;
+        if (!mounted) {
+          vramProgressTimer?.cancel();
+          return;
+        }
         modelResult = await widget.notifier.initializeModels();
+        vramProgressTimer?.cancel();
       }
       if (!mounted) return;
 
@@ -144,7 +168,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         _bootProgress = 1.0;
       });
 
-      await Future.delayed(const Duration(milliseconds: 300));
+      // Trattiene il 100% per 600ms per un senso visivo soddisfacente di completamento avvenuto
+      await Future.delayed(const Duration(milliseconds: 600));
       if (!mounted) return;
 
       try {

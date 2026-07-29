@@ -58,6 +58,15 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
   void initState() {
     super.initState();
     _previousHistoryLength = widget.history.length;
+    if (widget.history.isNotEmpty) {
+      final lastMsg = widget.history.last;
+      if (lastMsg.role == 'model') {
+        final messageKey =
+            "${widget.history.length}_${lastMsg.content.hashCode}";
+        _lastTypewrittenMessageId = messageKey;
+        _typedText = lastMsg.content;
+      }
+    }
     _scrollController.addListener(_onScrollChanged);
     // Al primo frame (incluso il resume di una partita salvata), scorri al fondo.
     WidgetsBinding.instance.addPostFrameCallback((_) {

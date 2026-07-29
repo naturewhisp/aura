@@ -108,6 +108,7 @@ final class SinglePassArtifactIngestionEngine {
     required CatalogArtifactSnapshot provenanceSnapshot,
     required ArtifactSourceOwnership sourceOwnership,
     ProvisioningCancellationToken? cancellationToken,
+    void Function(int bytesRead, int totalBytes)? onIngestionProgress,
   }) async {
     final cleanSourcePath = sourceFilePath.trim();
     if (!await _fileSystem.fileExists(cleanSourcePath)) {
@@ -157,11 +158,19 @@ final class SinglePassArtifactIngestionEngine {
       final digestSink = _DigestSink();
       final shaConversion = sha256.startChunkedConversion(digestSink);
 
+      int lastReportMs = 0;
       await for (final chunk in inputStream) {
         cancellationToken?.throwIfCancelled();
         bytesRead += chunk.length;
         shaConversion.add(chunk);
         await _fileSystem.appendBytes(destinationFilePath, chunk);
+
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+        if (nowMs - lastReportMs >= 100 ||
+            bytesRead == provenanceSnapshot.sizeBytes) {
+          lastReportMs = nowMs;
+          onIngestionProgress?.call(bytesRead, provenanceSnapshot.sizeBytes);
+        }
       }
       shaConversion.close();
 

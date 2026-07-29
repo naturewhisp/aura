@@ -33,6 +33,9 @@ class LegacyInferenceRouteResolver {
   const LegacyInferenceRouteResolver({
     this.routes = const {
       'qwen/qwen3.5-9b': ModelRole.actor,
+      'gemma-4-12b-it-qat-q4-0': ModelRole.actor,
+      'google/gemma-4-12b': ModelRole.actor,
+      'gemma-4-12b': ModelRole.actor,
       'mistralai/ministral-3-3b': ModelRole.evaluator,
       'aura.actor.primary': ModelRole.actor,
       'aura.evaluator.primary': ModelRole.evaluator,
@@ -41,16 +44,23 @@ class LegacyInferenceRouteResolver {
 
   ModelRole resolveRole(String legacyModelId) {
     final role = routes[legacyModelId];
-    if (role == null) {
-      throw RuntimeException(
-        RuntimeFailure(
-          code: RuntimeFailureCode.modelMissing,
-          message:
-              'Route non riconosciuta per il model ID legacy: "$legacyModelId".',
-        ),
-      );
+    if (role != null) return role;
+    if (legacyModelId.contains('evaluator') ||
+        legacyModelId.contains('ministral')) {
+      return ModelRole.evaluator;
     }
-    return role;
+    if (legacyModelId.contains('actor') ||
+        legacyModelId.contains('gemma') ||
+        legacyModelId.contains('qwen')) {
+      return ModelRole.actor;
+    }
+    throw RuntimeException(
+      RuntimeFailure(
+        code: RuntimeFailureCode.modelMissing,
+        message:
+            'Route non riconosciuta per il model ID legacy: "$legacyModelId".',
+      ),
+    );
   }
 }
 
@@ -434,6 +444,7 @@ class RuntimeInferenceBridge implements InferenceBridge {
     required List<Map<String, String>> messages,
     required Map<String, dynamic> schema,
     double temperature = 0.0,
+    bool? thinking,
   }) async {
     final role = routeResolver.resolveRole(modelId);
     final plan = planResolver(role);
@@ -448,6 +459,12 @@ class RuntimeInferenceBridge implements InferenceBridge {
             ))
         .toList();
 
+    final thinkingPolicy = switch (thinking) {
+      true => ThinkingPolicy.enabled,
+      false => ThinkingPolicy.disabled,
+      null => ThinkingPolicy.runtimeDefault,
+    };
+
     final request = StructuredGenerationRequest(
       requestId: requestId,
       model: plan.handle,
@@ -459,6 +476,7 @@ class RuntimeInferenceBridge implements InferenceBridge {
       parameters: StructuredGenerationParameters(
         temperature: temperature,
         maxOutputTokens: 512,
+        thinkingPolicy: thinkingPolicy,
       ),
       traceContext: InferenceTraceContext(
         traceId: traceId,

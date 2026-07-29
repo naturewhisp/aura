@@ -76,6 +76,13 @@ final class ControllableLocalInferenceFacade implements LocalInferenceFacade {
   @override
   Future<List<InstalledArtifactDescriptor>> listManagedModels() async =>
       const [];
+
+  @override
+  Future<List<ProcessOwnershipRecord>> listManagedProcesses() async => const [];
+
+  @override
+  Future<List<ProcessOwnershipRecord>> cleanupStaleProcesses() async =>
+      const [];
 }
 
 void main() {
@@ -146,11 +153,17 @@ void main() {
       pathResolver: pathResolver,
     );
 
+    final processOwnershipRegistry = ProcessOwnershipRegistry(
+      pathResolver: pathResolver,
+      lock: InMemoryProvisioningLock(),
+    );
+
     inferenceFacade = DefaultLocalInferenceFacade(
       preflightEngine: preflightEngine,
       dependencyService: dependencyService,
       modelConfigurationService: modelService,
       installationRecordRepository: installRepo,
+      processOwnershipRegistry: processOwnershipRegistry,
     );
 
     settingsFacade = DefaultRuntimeModelSettingsFacade(

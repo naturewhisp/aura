@@ -86,6 +86,8 @@ export 'src/provisioning/infrastructure/json_model_configuration_repository.dart
 export 'src/provisioning/infrastructure/llama_server_dependency_service.dart';
 export 'src/provisioning/infrastructure/local_inference_preflight_engine.dart';
 export 'src/provisioning/infrastructure/model_configuration_service.dart';
+export 'src/provisioning/infrastructure/process_ownership_record.dart';
+export 'src/provisioning/infrastructure/process_ownership_registry.dart';
 export 'src/provisioning/infrastructure/winget_dependency_adapter.dart';
 export 'src/provisioning/cli/aura_cli_environment.dart';
 export 'src/provisioning/cli/local_inference_cli_runner.dart';

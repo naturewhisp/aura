@@ -10,7 +10,7 @@ void main() {
           equals(ApplicationRuntimeMode.legacyExternalOpenAi));
       expect(config.baseUri, isNull);
       expect(config.apiKey, isNull);
-      expect(config.actorModelId, equals('qwen/qwen3.5-9b'));
+      expect(config.actorModelId, equals('gemma-4-12b-it-qat-q4-0'));
       expect(config.evaluatorModelId, equals('mistralai/ministral-3-3b'));
       expect(config.timeout, equals(const Duration(seconds: 30)));
       expect(config.skipHealthCheck, isFalse);

@@ -49,22 +49,16 @@ class ApplicationRuntimeConfiguration {
   final BootstrapFallbackPolicy fallbackPolicy;
 
   /// Configurazione specifica per il runtime gestito `llama-server` (opzionale).
-  ///
-  /// Utilizzato per la modalità single-model (legacy single-process). Non deve essere
-  /// valorizzato contemporaneamente a [managedInferenceTopology].
   final ManagedLlamaServerConfiguration? managedLlamaConfig;
 
   /// Topologia di inferenza dual-role (Actor + Evaluator) per la modalità managed.
-  ///
-  /// Se presente, il bootstrap utilizza due processi `llama-server` distinti.
-  /// Non deve essere valorizzato contemporaneamente a [managedLlamaConfig].
-  ///
-  /// Regole di esclusività:
-  /// - solo [managedLlamaConfig] → modalità single-model;
-  /// - solo [managedInferenceTopology] → modalità dual-role;
-  /// - entrambi presenti → configurazione non valida (errore al bootstrap);
-  /// - nessuno con `runtimeMode == managedLlamaServer` → configurazione incompleta.
   final ManagedInferenceTopology? managedInferenceTopology;
+
+  /// Percorso della root dei dati AURA gestiti dall'app (opzionale).
+  final String? appManagedRoot;
+
+  /// Percorso della root di installazione bundled di AURA (opzionale).
+  final String? bundledRoot;
 
   /// Costruisce un'istanza immutabile di [ApplicationRuntimeConfiguration].
   const ApplicationRuntimeConfiguration({
@@ -81,6 +75,8 @@ class ApplicationRuntimeConfiguration {
     this.fallbackPolicy = BootstrapFallbackPolicy.none,
     this.managedLlamaConfig,
     this.managedInferenceTopology,
+    this.appManagedRoot,
+    this.bundledRoot,
   }) : assert(
           managedLlamaConfig == null || managedInferenceTopology == null,
           'managedLlamaConfig e managedInferenceTopology non possono essere entrambi presenti.',
@@ -249,6 +245,8 @@ class ApplicationRuntimeConfiguration {
     BootstrapFallbackPolicy? fallbackPolicy,
     ManagedLlamaServerConfiguration? managedLlamaConfig,
     ManagedInferenceTopology? managedInferenceTopology,
+    String? appManagedRoot,
+    String? bundledRoot,
   }) {
     return ApplicationRuntimeConfiguration(
       runtimeMode: runtimeMode ?? this.runtimeMode,
@@ -265,6 +263,8 @@ class ApplicationRuntimeConfiguration {
       managedLlamaConfig: managedLlamaConfig ?? this.managedLlamaConfig,
       managedInferenceTopology:
           managedInferenceTopology ?? this.managedInferenceTopology,
+      appManagedRoot: appManagedRoot ?? this.appManagedRoot,
+      bundledRoot: bundledRoot ?? this.bundledRoot,
     );
   }
 }

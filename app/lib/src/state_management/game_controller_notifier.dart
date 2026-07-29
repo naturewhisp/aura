@@ -497,6 +497,8 @@ class GameControllerNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> Function()? _managedBootstrapDispose;
+
   /// Aggiorna il bridge attivo, gli ID dei modelli e la callback di cleanup a seguito del bootstrap managed completato.
   void updateBootstrapResult(ApplicationBootstrapResult result) {
     bridge = result.activeBridge;
@@ -504,10 +506,12 @@ class GameControllerNotifier extends ChangeNotifier {
       actorModelId = result.actorModelId;
       evaluatorModelId = result.evaluatorModelId;
     }
-    onDispose = result.dispose;
+    _managedBootstrapDispose = result.dispose;
     _isBootstrapped = true;
     notifyListeners();
   }
+
+  Future<void>? _activeManagedBootstrapFuture;
 
   /// Esegue il bootstrap asincrono delle dipendenze di inferenza e aggiorna i supervisor dei modelli.
   Future<void> performManagedBootstrap({
@@ -519,69 +523,79 @@ class GameControllerNotifier extends ChangeNotifier {
       return;
     }
 
-    if (onDispose != null) {
-      try {
-        await onDispose!();
-      } catch (_) {}
-      onDispose = null;
+    if (_activeManagedBootstrapFuture != null) {
+      await _activeManagedBootstrapFuture;
+      return;
     }
 
-    onProgress?.call(0.05, 'AURA_INIT> READ MODEL CONFIGURATION RECORD...');
-
-    const bridgeResolver = InferenceBootstrapBridge();
-    final resolution = await bridgeResolver.resolve(
-      sessionId: gameStateNotifier.value.sessionId,
-      environmentOverride: Platform.environment,
-    );
-
-    ApplicationRuntimeConfiguration runtimeConfig;
-    switch (resolution) {
-      case ManagedDualResolution(:final topology):
-        onProgress?.call(0.15,
-            'AURA_INIT> DUAL TOPOLOGY RESOLVED: ACTOR (GEMMA 12B) + EVALUATOR (MINISTRAL 3B)');
-        runtimeConfig = ApplicationRuntimeConfiguration(
-          runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
-          sessionId: gameStateNotifier.value.sessionId,
-          managedInferenceTopology: topology,
-          actorModelId: topology.actor.modelId,
-          evaluatorModelId: topology.evaluator.modelId,
-        );
-      case ExternalResolution(:final endpoint):
-        onProgress?.call(
-            0.15, 'AURA_INIT> EXTERNAL OPENAI ENDPOINT RESOLVED: $endpoint');
-        runtimeConfig = ApplicationRuntimeConfiguration(
-          runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
-          sessionId: gameStateNotifier.value.sessionId,
-          baseUri: endpoint,
-        );
-      case RuleBasedResolution():
-        onProgress?.call(
-            0.15, 'AURA_INIT> OFFLINE RULE-BASED ENGINE SELECTED.');
-        runtimeConfig = ApplicationRuntimeConfiguration(
-          runtimeMode: ApplicationRuntimeMode.ruleBased,
-          sessionId: gameStateNotifier.value.sessionId,
-        );
-      case InvalidResolution(:final sanitizedMessage):
-        onProgress?.call(0.15,
-            'AURA_INIT> [WARN] CONFIGURATION RESOLUTION FAILED: $sanitizedMessage');
-        runtimeConfig = ApplicationRuntimeConfiguration(
-          runtimeMode: ApplicationRuntimeMode.ruleBased,
-          sessionId: gameStateNotifier.value.sessionId,
-        );
-    }
-
-    if (runtimeConfig.runtimeMode ==
-        ApplicationRuntimeMode.managedLlamaServer) {
-      onProgress?.call(
-          0.35, 'AURA_INIT> LAUNCHING MANAGED LLAMA-SERVER PROCESSES...');
-      onProgress?.call(0.65,
-          'AURA_INIT> LOADING GGUF WEIGHTS INTO VRAM (ACTOR + EVALUATOR)...');
-    }
-
-    const bootstrapFactory = ApplicationBootstrapFactory();
-    final bootstrap = bootstrapFactory.create();
+    final completer = Completer<void>();
+    completer.future.ignore();
+    _activeManagedBootstrapFuture = completer.future;
 
     try {
+      if (_managedBootstrapDispose != null) {
+        final disposeFn = _managedBootstrapDispose!;
+        _managedBootstrapDispose = null;
+        try {
+          await disposeFn();
+        } catch (_) {}
+      }
+
+      onProgress?.call(0.05, 'AURA_INIT> READ MODEL CONFIGURATION RECORD...');
+
+      const bridgeResolver = InferenceBootstrapBridge();
+      final resolution = await bridgeResolver.resolve(
+        sessionId: gameStateNotifier.value.sessionId,
+        environmentOverride: Platform.environment,
+      );
+
+      ApplicationRuntimeConfiguration runtimeConfig;
+      switch (resolution) {
+        case ManagedDualResolution(:final topology):
+          onProgress?.call(0.15,
+              'AURA_INIT> DUAL TOPOLOGY RESOLVED: ACTOR (GEMMA 12B) + EVALUATOR (MINISTRAL 3B)');
+          runtimeConfig = ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+            sessionId: gameStateNotifier.value.sessionId,
+            managedInferenceTopology: topology,
+            actorModelId: topology.actor.modelId,
+            evaluatorModelId: topology.evaluator.modelId,
+          );
+        case ExternalResolution(:final endpoint):
+          onProgress?.call(
+              0.15, 'AURA_INIT> EXTERNAL OPENAI ENDPOINT RESOLVED: $endpoint');
+          runtimeConfig = ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.externalOpenAiRuntime,
+            sessionId: gameStateNotifier.value.sessionId,
+            baseUri: endpoint,
+          );
+        case RuleBasedResolution():
+          onProgress?.call(
+              0.15, 'AURA_INIT> OFFLINE RULE-BASED ENGINE SELECTED.');
+          runtimeConfig = ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.ruleBased,
+            sessionId: gameStateNotifier.value.sessionId,
+          );
+        case InvalidResolution(:final sanitizedMessage):
+          onProgress?.call(0.15,
+              'AURA_INIT> [WARN] CONFIGURATION RESOLUTION FAILED: $sanitizedMessage');
+          runtimeConfig = ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.ruleBased,
+            sessionId: gameStateNotifier.value.sessionId,
+          );
+      }
+
+      if (runtimeConfig.runtimeMode ==
+          ApplicationRuntimeMode.managedLlamaServer) {
+        onProgress?.call(
+            0.35, 'AURA_INIT> LAUNCHING MANAGED LLAMA-SERVER PROCESSES...');
+        onProgress?.call(0.65,
+            'AURA_INIT> LOADING GGUF WEIGHTS INTO VRAM (ACTOR + EVALUATOR)...');
+      }
+
+      const bootstrapFactory = ApplicationBootstrapFactory();
+      final bootstrap = bootstrapFactory.create();
+
       final result = await bootstrap.bootstrap(
         ApplicationBootstrapRequest(
           configuration: runtimeConfig,
@@ -591,8 +605,12 @@ class GameControllerNotifier extends ChangeNotifier {
 
       updateBootstrapResult(result);
       onProgress?.call(1.0, 'AURA_INIT> NEURAL INFERENCE ENGINE STABLE.');
+      completer.complete();
     } catch (e) {
       onProgress?.call(1.0, 'AURA_INIT> [WARN] BOOTSTRAP FAILED: $e');
+      completer.completeError(e);
+    } finally {
+      _activeManagedBootstrapFuture = null;
     }
   }
 
@@ -1503,8 +1521,26 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
   }
 
   Future<void> _performShutdown() async {
+    _isBootstrapped = false;
+    if (_managedBootstrapDispose != null) {
+      final disposeFn = _managedBootstrapDispose!;
+      _managedBootstrapDispose = null;
+      try {
+        await disposeFn();
+      } catch (e) {
+        debugPrint(
+            '[NOTIFIER] Errore durante il shutdown del bootstrap managed: $e');
+      }
+    }
     if (onDispose != null) {
-      await onDispose!();
+      final disposeFn = onDispose!;
+      onDispose = null;
+      try {
+        await disposeFn();
+      } catch (e) {
+        debugPrint('[NOTIFIER] Errore durante il shutdown delle risorse: $e');
+        rethrow;
+      }
     }
   }
 
@@ -1521,11 +1557,12 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
     gameStateNotifier.dispose();
     if (_shutdownFuture == null) {
       _shutdownFuture = Future.value();
-      unawaited(
-        Future.sync(() => onDispose?.call()).catchError((Object error) {
-          debugPrint('[NOTIFIER] Shutdown fallback sincrono fallito.');
-        }),
-      );
+      try {
+        _managedBootstrapDispose?.call();
+      } catch (_) {}
+      try {
+        onDispose?.call();
+      } catch (_) {}
     }
     super.dispose();
   }

@@ -29,6 +29,7 @@ final class ControlledInferenceBridge implements InferenceBridge {
     required List<Map<String, String>> messages,
     required Map<String, dynamic> schema,
     double temperature = 0.0,
+    bool? thinking,
   }) async {
     generateStructuredCalls++;
     return structuredCompleter.future;

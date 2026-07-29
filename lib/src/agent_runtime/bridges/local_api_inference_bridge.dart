@@ -95,10 +95,11 @@ class LocalApiInferenceBridge implements InferenceBridge {
     required List<Map<String, String>> messages,
     required Map<String, dynamic> schema,
     double temperature = 0.0,
+    bool? thinking,
   }) async {
     final url = Uri.parse("$baseUrl/v1/chat/completions");
 
-    final body = jsonEncode({
+    final Map<String, dynamic> requestBody = {
       "model": modelId,
       "messages": messages,
       "temperature": temperature,
@@ -110,7 +111,19 @@ class LocalApiInferenceBridge implements InferenceBridge {
           "schema": schema,
         }
       }
-    });
+    };
+
+    if (thinking != null) {
+      requestBody["enable_thinking"] = thinking;
+      requestBody["chat_template_kwargs"] = {
+        "enable_thinking": thinking,
+      };
+      requestBody["thinking"] = {
+        "type": thinking ? "enabled" : "disabled",
+      };
+    }
+
+    final body = jsonEncode(requestBody);
 
     final response = await http
         .post(

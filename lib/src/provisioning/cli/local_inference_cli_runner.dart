@@ -89,6 +89,30 @@ final class LocalInferenceCliRunner {
         }
         return _handleRuntimeClear(jsonOutput: jsonOutput);
 
+      case 'managed-processes':
+        if (args.length > 1) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message:
+                'Argomenti extra non riconosciuti per il comando managed-processes.',
+            jsonOutput: jsonOutput,
+          );
+        }
+        return _handleRuntimeManagedProcesses(jsonOutput: jsonOutput);
+
+      case 'cleanup-stale':
+        if (args.length > 1) {
+          return _errorResult(
+            exitCode: 2,
+            code: 'invalid_argument',
+            message:
+                'Argomenti extra non riconosciuti per il comando cleanup-stale.',
+            jsonOutput: jsonOutput,
+          );
+        }
+        return _handleRuntimeCleanupStale(jsonOutput: jsonOutput);
+
       default:
         return _errorResult(
           exitCode: 2,
@@ -345,6 +369,94 @@ final class LocalInferenceCliRunner {
         exitCode: 1,
         code: 'clear_failed',
         message: 'Impossibile rimuovere la configurazione del runtime.',
+        jsonOutput: jsonOutput,
+      );
+    }
+  }
+
+  Future<CliExecutionResult> _handleRuntimeManagedProcesses(
+      {required bool jsonOutput}) async {
+    try {
+      final records = await _inferenceFacade.listManagedProcesses();
+      if (jsonOutput) {
+        return CliExecutionResult(
+          exitCode: 0,
+          outputText: jsonEncode({
+            'ok': true,
+            'exitCode': 0,
+            'code': 'managed_processes_listed',
+            'count': records.length,
+            'processes': records.map((r) => r.toJson()).toList(),
+          }),
+        );
+      }
+
+      if (records.isEmpty) {
+        return const CliExecutionResult(
+          exitCode: 0,
+          outputText: 'Nessun processo AURA managed attualmente registrato.',
+        );
+      }
+
+      final sb = StringBuffer(
+          'Processi AURA managed registrati (${records.length}):\n');
+      for (final r in records) {
+        sb.writeln(
+            '  - Ruolo: ${r.role} | PID: ${r.pid} | Porta: ${r.port} | Owner: ${r.ownerInstanceId} | Stato: ${r.state}');
+      }
+      return CliExecutionResult(
+        exitCode: 0,
+        outputText: sb.toString().trimRight(),
+      );
+    } catch (e) {
+      return _errorResult(
+        exitCode: 1,
+        code: 'list_processes_failed',
+        message: 'Impossibile elencare i processi managed.',
+        jsonOutput: jsonOutput,
+      );
+    }
+  }
+
+  Future<CliExecutionResult> _handleRuntimeCleanupStale(
+      {required bool jsonOutput}) async {
+    try {
+      final cleaned = await _inferenceFacade.cleanupStaleProcesses();
+      if (jsonOutput) {
+        return CliExecutionResult(
+          exitCode: 0,
+          outputText: jsonEncode({
+            'ok': true,
+            'exitCode': 0,
+            'code': 'stale_processes_cleaned',
+            'count': cleaned.length,
+            'cleaned': cleaned.map((r) => r.toJson()).toList(),
+          }),
+        );
+      }
+
+      if (cleaned.isEmpty) {
+        return const CliExecutionResult(
+          exitCode: 0,
+          outputText: 'Nessun processo AURA stale o orfano da bonificare.',
+        );
+      }
+
+      final sb = StringBuffer(
+          'Bonifica processi AURA stale completata (${cleaned.length}):\n');
+      for (final r in cleaned) {
+        sb.writeln(
+            '  - Bonificato [${r.role}] PID: ${r.pid} (Porta: ${r.port})');
+      }
+      return CliExecutionResult(
+        exitCode: 0,
+        outputText: sb.toString().trimRight(),
+      );
+    } catch (e) {
+      return _errorResult(
+        exitCode: 1,
+        code: 'cleanup_stale_failed',
+        message: 'Errore durante la bonifica dei processi stale.',
         jsonOutput: jsonOutput,
       );
     }

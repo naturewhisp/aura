@@ -11,12 +11,14 @@ import '../agent_runtime/runtime/adapters/external_openai/external_openai_runtim
 import '../agent_runtime/runtime/adapters/managed_llama_server/dart_io_process_launcher.dart';
 import '../agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_runtime.dart';
 import '../agent_runtime/runtime/adapters/rule_based_inference_runtime.dart';
+import '../provisioning/infrastructure/process_ownership_registry.dart';
 import 'managed_inference_topology.dart';
 
 /// Implementazione predefinita del composition root applicativo [ApplicationBootstrap].
 class DefaultApplicationBootstrap implements ApplicationBootstrap {
   bool _bootstrapped = false;
   bool _disposed = false;
+  Future<ApplicationBootstrapResult>? _activeBootstrap;
 
   InferenceRuntime? _activeRuntime;
   ExternalOpenAiClient? _activeClient;
@@ -45,42 +47,55 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       );
     }
 
-    final env = request.environmentOverride ?? {};
-    ApplicationRuntimeConfiguration config = request.configuration;
-    if (env.isNotEmpty) {
-      try {
-        config = ApplicationRuntimeConfiguration.fromEnvironment(
-          env,
-          defaults: config,
-        );
-      } on FormatException catch (e) {
-        throw ApplicationBootstrapException(
-          const ApplicationBootstrapFailure(
-            code: ApplicationBootstrapFailureCode.incompleteConfiguration,
-            message: 'Configurazione di runtime non valida o incompleta.',
-          ),
-          e,
-        );
-      }
+    if (_activeBootstrap != null) {
+      return await _activeBootstrap!;
     }
 
+    final completer = Completer<ApplicationBootstrapResult>();
+    completer.future.ignore();
+    _activeBootstrap = completer.future;
+
     try {
+      final env = request.environmentOverride ?? {};
+      ApplicationRuntimeConfiguration config = request.configuration;
+      if (env.isNotEmpty) {
+        try {
+          config = ApplicationRuntimeConfiguration.fromEnvironment(
+            env,
+            defaults: config,
+          );
+        } on FormatException catch (e) {
+          throw ApplicationBootstrapException(
+            const ApplicationBootstrapFailure(
+              code: ApplicationBootstrapFailureCode.incompleteConfiguration,
+              message: 'Configurazione di runtime non valida o incompleta.',
+            ),
+            e,
+          );
+        }
+      }
+
       final result = await _executeBootstrapPath(request, config);
       _bootstrapped = true;
+      completer.complete(result);
       return result;
     } catch (e) {
       await dispose();
-      if (e is ApplicationBootstrapException) {
-        rethrow;
-      }
-      throw ApplicationBootstrapException(
-        const ApplicationBootstrapFailure(
-          code: ApplicationBootstrapFailureCode.runtimeInitializationFailed,
-          message:
-              'Errore durante l\'inizializzazione del bootstrap applicativo.',
-        ),
-        e,
-      );
+      final bootstrapException = e is ApplicationBootstrapException
+          ? e
+          : ApplicationBootstrapException(
+              const ApplicationBootstrapFailure(
+                code:
+                    ApplicationBootstrapFailureCode.runtimeInitializationFailed,
+                message:
+                    'Errore durante l\'inizializzazione del bootstrap applicativo.',
+              ),
+              e,
+            );
+      completer.completeError(bootstrapException);
+      rethrow;
+    } finally {
+      _activeBootstrap = null;
     }
   }
 
@@ -659,6 +674,22 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
     final healthProbe =
         request.customHealthProbe ?? HttpLlamaServerHealthProbe();
 
+    // ---------- CLEANUP STALE PROCESSES ----------
+    final appManagedRoot = request.appManagedRoot ??
+        config.appManagedRoot ??
+        r'C:\Users\dendo\AppData\Local\AURA\store';
+    final pathResolver = ProvisioningPathResolver(
+      appManagedRoot: appManagedRoot,
+      bundledRoot:
+          request.bundledRoot ?? config.bundledRoot ?? r'C:\Program Files\AURA',
+    );
+    final processRegistry = ProcessOwnershipRegistry(
+      pathResolver: pathResolver,
+    );
+    await processRegistry.cleanupStaleProcesses(
+      currentOwnerInstanceId: sessionId,
+    );
+
     // ---------- ACTOR ----------
     _validateDualRoleConfig(topology.actor.serverConfiguration, fileSystem);
 
@@ -673,6 +704,9 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       portAllocator: portAllocator,
       healthProbe: healthProbe,
       fileSystem: fileSystem,
+      role: 'actor',
+      ownerInstanceId: sessionId,
+      processOwnershipRegistry: processRegistry,
     );
 
     final actorRuntime = ManagedLlamaServerRuntime(
@@ -709,6 +743,9 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       portAllocator: portAllocator,
       healthProbe: healthProbe,
       fileSystem: fileSystem,
+      role: 'evaluator',
+      ownerInstanceId: sessionId,
+      processOwnershipRegistry: processRegistry,
     );
 
     final evaluatorRuntime = ManagedLlamaServerRuntime(

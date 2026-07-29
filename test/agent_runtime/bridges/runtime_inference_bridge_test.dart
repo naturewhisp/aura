@@ -83,6 +83,24 @@ void main() {
     });
 
     test(
+        'Resolves gemma-4-12b-it-qat-q4-0 legacy model ID to Actor role and executes text generation',
+        () async {
+      runtime.textResponse =
+          "<dialogo>PANOPTICON in ascolto. Griglia sotto controllo.</dialogo>";
+
+      final response = await bridge.generateText(
+        modelId: 'gemma-4-12b-it-qat-q4-0',
+        messages: [
+          {'role': 'user', 'content': 'Stato griglia'}
+        ],
+      );
+
+      expect(
+          response, equals('PANOPTICON in ascolto. Griglia sotto controllo.'));
+      expect(runtime.generateTextCalls, equals(1));
+    });
+
+    test(
         'Executes Evaluator text generation without narrative output sanitizer',
         () async {
       runtime.textResponse = 'Evaluator raw text response';

@@ -53,6 +53,28 @@ final class DualModelInferenceBridge implements InferenceBridge {
     required this.evaluatorModelId,
   });
 
+  bool _isActorModel(String requestedId) {
+    if (requestedId == actorModelId) return true;
+    if (actorModelId == 'aura.actor.primary' ||
+        requestedId == 'aura.actor.primary') {
+      return requestedId == 'aura.actor.primary' ||
+          requestedId == 'gemma-4-12b-it-qat-q4-0' ||
+          requestedId == 'google/gemma-4-12b' ||
+          requestedId == 'qwen/qwen3.5-9b';
+    }
+    return false;
+  }
+
+  bool _isEvaluatorModel(String requestedId) {
+    if (requestedId == evaluatorModelId) return true;
+    if (evaluatorModelId == 'aura.evaluator.primary' ||
+        requestedId == 'aura.evaluator.primary') {
+      return requestedId == 'aura.evaluator.primary' ||
+          requestedId == 'mistralai/ministral-3-3b';
+    }
+    return false;
+  }
+
   @override
   Future<String> generateText({
     required String modelId,
@@ -61,7 +83,7 @@ final class DualModelInferenceBridge implements InferenceBridge {
     int maxTokens = 150,
     bool? thinking,
   }) {
-    if (modelId == evaluatorModelId) {
+    if (!_isActorModel(modelId)) {
       throw DualModelRoutingException(
         requestedModelId: modelId,
         actorModelId: actorModelId,
@@ -70,7 +92,7 @@ final class DualModelInferenceBridge implements InferenceBridge {
       );
     }
     return actorBridge.generateText(
-      modelId: actorModelId,
+      modelId: modelId,
       messages: messages,
       temperature: temperature,
       maxTokens: maxTokens,
@@ -84,8 +106,9 @@ final class DualModelInferenceBridge implements InferenceBridge {
     required List<Map<String, String>> messages,
     required Map<String, dynamic> schema,
     double temperature = 0.0,
+    bool? thinking,
   }) {
-    if (modelId == actorModelId) {
+    if (!_isEvaluatorModel(modelId)) {
       throw DualModelRoutingException(
         requestedModelId: modelId,
         actorModelId: actorModelId,
@@ -94,10 +117,11 @@ final class DualModelInferenceBridge implements InferenceBridge {
       );
     }
     return evaluatorBridge.generateStructured(
-      modelId: evaluatorModelId,
+      modelId: modelId,
       messages: messages,
       schema: schema,
       temperature: temperature,
+      thinking: thinking,
     );
   }
 

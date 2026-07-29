@@ -39,6 +39,12 @@ class ApplicationBootstrapRequest {
   /// Mappa di variabili d'ambiente sovrascritte.
   final Map<String, String>? environmentOverride;
 
+  /// Percorso opzionale della root dati AURA gestiti dall'app.
+  final String? appManagedRoot;
+
+  /// Percorso opzionale della root di installazione bundled di AURA.
+  final String? bundledRoot;
+
   /// Costruisce una richiesta di bootstrap.
   const ApplicationBootstrapRequest({
     required this.configuration,
@@ -50,5 +56,7 @@ class ApplicationBootstrapRequest {
     this.customFileSystem,
     this.customDelegateFactory,
     this.environmentOverride,
+    this.appManagedRoot,
+    this.bundledRoot,
   });
 }

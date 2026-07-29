@@ -127,6 +127,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
         messages: messages,
         schema: _getJsonSchema(),
         temperature: 0.0,
+        thinking: context.thinking ?? false,
       );
 
       final rawMap = await _withInferenceTimeout(

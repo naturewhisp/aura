@@ -577,6 +577,21 @@ class ExternalOpenAiRuntime implements InferenceRuntime {
       }
     };
 
+    switch (request.parameters.thinkingPolicy) {
+      case ThinkingPolicy.enabled:
+        payload['enable_thinking'] = true;
+        payload['chat_template_kwargs'] = {'enable_thinking': true};
+        payload['thinking'] = {'type': 'enabled'};
+        break;
+      case ThinkingPolicy.disabled:
+        payload['enable_thinking'] = false;
+        payload['chat_template_kwargs'] = {'enable_thinking': false};
+        payload['thinking'] = {'type': 'disabled'};
+        break;
+      case ThinkingPolicy.runtimeDefault:
+        break;
+    }
+
     final stopwatch = Stopwatch()..start();
 
     try {

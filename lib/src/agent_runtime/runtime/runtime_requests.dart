@@ -236,6 +236,7 @@ class StructuredGenerationParameters {
   final int maxOutputTokens;
   final int? seed;
   final StructuredOutputMode mode;
+  final ThinkingPolicy thinkingPolicy;
   final Map<String, Object?> adapterOptions;
 
   const StructuredGenerationParameters({
@@ -243,6 +244,7 @@ class StructuredGenerationParameters {
     this.maxOutputTokens = 256,
     this.seed,
     this.mode = StructuredOutputMode.automatic,
+    this.thinkingPolicy = ThinkingPolicy.runtimeDefault,
     this.adapterOptions = const {},
   });
 }

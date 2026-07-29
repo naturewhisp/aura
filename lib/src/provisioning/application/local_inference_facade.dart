@@ -9,6 +9,8 @@ import '../infrastructure/installation_record_repository.dart';
 import '../infrastructure/llama_server_dependency_service.dart';
 import '../infrastructure/local_inference_preflight_engine.dart';
 import '../infrastructure/model_configuration_service.dart';
+import '../infrastructure/process_ownership_record.dart';
+import '../infrastructure/process_ownership_registry.dart';
 import 'local_inference_models.dart';
 
 /// Facade applicativa per la consultazione dello stato dell'inferenza locale,
@@ -32,6 +34,12 @@ abstract interface class LocalInferenceFacade {
 
   /// Elenca le installazioni di modelli gestiti verificati presenti nello store locale.
   Future<List<InstalledArtifactDescriptor>> listManagedModels();
+
+  /// Elenca i record dei processi managed attivi o registrati su disco.
+  Future<List<ProcessOwnershipRecord>> listManagedProcesses();
+
+  /// Esegue la bonifica deterministica dei processi AURA stale registrati.
+  Future<List<ProcessOwnershipRecord>> cleanupStaleProcesses();
 }
 
 /// Implementazione predefinita della facade di inferenza locale.
@@ -40,16 +48,19 @@ final class DefaultLocalInferenceFacade implements LocalInferenceFacade {
   final LlamaServerDependencyService _dependencyService;
   final ModelConfigurationService _modelConfigurationService;
   final InstallationRecordRepository _installationRecordRepository;
+  final ProcessOwnershipRegistry _processOwnershipRegistry;
 
   DefaultLocalInferenceFacade({
     required LocalInferencePreflightEngine preflightEngine,
     required LlamaServerDependencyService dependencyService,
     required ModelConfigurationService modelConfigurationService,
     required InstallationRecordRepository installationRecordRepository,
+    required ProcessOwnershipRegistry processOwnershipRegistry,
   })  : _preflightEngine = preflightEngine,
         _dependencyService = dependencyService,
         _modelConfigurationService = modelConfigurationService,
-        _installationRecordRepository = installationRecordRepository;
+        _installationRecordRepository = installationRecordRepository,
+        _processOwnershipRegistry = processOwnershipRegistry;
 
   @override
   Future<LocalInferenceSnapshot> getSnapshot() async {
@@ -105,5 +116,15 @@ final class DefaultLocalInferenceFacade implements LocalInferenceFacade {
     });
 
     return models;
+  }
+
+  @override
+  Future<List<ProcessOwnershipRecord>> listManagedProcesses() {
+    return _processOwnershipRegistry.listRecords();
+  }
+
+  @override
+  Future<List<ProcessOwnershipRecord>> cleanupStaleProcesses() {
+    return _processOwnershipRegistry.cleanupStaleProcesses();
   }
 }

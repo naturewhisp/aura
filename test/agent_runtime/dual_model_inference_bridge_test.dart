@@ -41,6 +41,7 @@ class TrackingMockBridge extends MockInferenceBridge {
     required List<Map<String, String>> messages,
     required Map<String, dynamic> schema,
     double temperature = 0.0,
+    bool? thinking,
   }) async {
     generateStructuredCalls++;
     return super.generateStructured(
@@ -48,6 +49,7 @@ class TrackingMockBridge extends MockInferenceBridge {
       messages: messages,
       schema: schema,
       temperature: temperature,
+      thinking: thinking,
     );
   }
 
@@ -98,6 +100,37 @@ void main() {
       expect(res, equals('Risposta Actor OK'));
       expect(actorBridge.generateTextCalls, equals(1));
       expect(evaluatorBridge.generateTextCalls, equals(0));
+    });
+
+    test(
+        'generateText viene inoltrato ad actorBridge per alias fisico di actorId (es. gemma-4-12b-it-qat-q4-0)',
+        () async {
+      final res = await dualBridge.generateText(
+        modelId: 'gemma-4-12b-it-qat-q4-0',
+        messages: [
+          {'role': 'user', 'content': 'ciao'}
+        ],
+      );
+
+      expect(res, equals('Risposta Actor OK'));
+      expect(actorBridge.generateTextCalls, equals(1));
+      expect(evaluatorBridge.generateTextCalls, equals(0));
+    });
+
+    test(
+        'generateStructured viene inoltrato ad evaluatorBridge per alias fisico di evaluatorId (es. mistralai/ministral-3-3b)',
+        () async {
+      final res = await dualBridge.generateStructured(
+        modelId: 'mistralai/ministral-3-3b',
+        messages: [
+          {'role': 'user', 'content': 'test'}
+        ],
+        schema: {},
+      );
+
+      expect(res['delta_alert'], equals(5));
+      expect(evaluatorBridge.generateStructuredCalls, equals(1));
+      expect(actorBridge.generateStructuredCalls, equals(0));
     });
 
     test(

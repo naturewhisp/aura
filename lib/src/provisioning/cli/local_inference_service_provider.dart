@@ -5,6 +5,7 @@ import '../infrastructure/json_model_configuration_repository.dart';
 import '../infrastructure/llama_server_dependency_service.dart';
 import '../infrastructure/local_inference_preflight_engine.dart';
 import '../infrastructure/model_configuration_service.dart';
+import '../infrastructure/process_ownership_registry.dart';
 import '../infrastructure/provisioning_file_system.dart';
 import '../infrastructure/provisioning_lock.dart';
 import '../infrastructure/provisioning_path_resolver.dart';
@@ -74,11 +75,17 @@ final class LocalInferenceServiceProvider {
       pathResolver: pathResolver,
     );
 
+    final processOwnershipRegistry = ProcessOwnershipRegistry(
+      pathResolver: pathResolver,
+      lock: lock,
+    );
+
     final inferenceFacade = DefaultLocalInferenceFacade(
       preflightEngine: preflightEngine,
       dependencyService: dependencyService,
       modelConfigurationService: modelService,
       installationRecordRepository: installRepo,
+      processOwnershipRegistry: processOwnershipRegistry,
     );
 
     final settingsFacade = DefaultRuntimeModelSettingsFacade(

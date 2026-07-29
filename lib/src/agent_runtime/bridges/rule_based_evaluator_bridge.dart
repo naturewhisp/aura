@@ -24,6 +24,7 @@ class RuleBasedEvaluatorBridge implements InferenceBridge {
     required List<Map<String, String>> messages,
     required Map<String, dynamic> schema,
     double temperature = 0.0,
+    bool? thinking,
   }) async {
     // Estrae il testo dell'ultimo messaggio inviato dall'utente
     String userInput = "";

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' show ProcessSignal;
+import 'dart:io' as io;
+import '../../../../provisioning/infrastructure/process_ownership_record.dart';
+import '../../../../provisioning/infrastructure/process_ownership_registry.dart';
 import 'dart_io_process_launcher.dart';
 import 'llama_server_command_builder.dart';
 import 'llama_server_health_probe.dart';
@@ -29,6 +31,9 @@ class LlamaServerProcessSupervisor {
   final HealthProbe _healthProbe;
   final ManagedFileSystem _fileSystem;
   final LlamaServerCommandBuilder _commandBuilder;
+  final String? _role;
+  final String? _ownerInstanceId;
+  final ProcessOwnershipRegistry? _processOwnershipRegistry;
 
   LlamaServerSupervisorState _state = LlamaServerSupervisorState.idle;
   ManagedProcess? _process;
@@ -57,12 +62,18 @@ class LlamaServerProcessSupervisor {
     ManagedFileSystem fileSystem = const LocalFileSystem(),
     LlamaServerCommandBuilder commandBuilder =
         const LlamaServerCommandBuilder(),
+    String? role,
+    String? ownerInstanceId,
+    ProcessOwnershipRegistry? processOwnershipRegistry,
   })  : _configuration = configuration,
         _processLauncher = processLauncher,
         _portAllocator = portAllocator,
         _healthProbe = healthProbe,
         _fileSystem = fileSystem,
-        _commandBuilder = commandBuilder;
+        _commandBuilder = commandBuilder,
+        _role = role,
+        _ownerInstanceId = ownerInstanceId,
+        _processOwnershipRegistry = processOwnershipRegistry;
 
   LlamaServerSupervisorState get state => _state;
   int? get allocatedPort => _allocatedPort;
@@ -208,6 +219,26 @@ class LlamaServerProcessSupervisor {
         if (ready) {
           _state = LlamaServerSupervisorState.ready;
           _readyAt = DateTime.now();
+
+          if (_role != null && _processOwnershipRegistry != null) {
+            final record = ProcessOwnershipRecord(
+              schemaVersion: 1,
+              pid: _process!.pid,
+              role: _role!,
+              ownerInstanceId: _ownerInstanceId ?? 'unknown-owner',
+              parentPid: io.pid,
+              executablePathHash: ProcessOwnershipRecord.hashPath(
+                  _configuration.executablePath),
+              modelPathHash:
+                  ProcessOwnershipRecord.hashPath(_configuration.modelPath),
+              modelAlias: _configuration.modelAlias,
+              port: _allocatedPort!,
+              startedAt: _startedAt ?? DateTime.now(),
+              state: 'ready',
+            );
+            await _processOwnershipRegistry!.registerRecord(record);
+          }
+
           return _allocatedPort!;
         }
 
@@ -333,8 +364,14 @@ class LlamaServerProcessSupervisor {
     }
 
     try {
+      if (_role != null && _processOwnershipRegistry != null) {
+        try {
+          await _processOwnershipRegistry!.unregisterRecord(_role!);
+        } catch (_) {}
+      }
+
       if (force) {
-        final killed = _process!.kill(ProcessSignal.sigkill);
+        final killed = _process!.kill(io.ProcessSignal.sigkill);
         if (!killed) {
           throw const ManagedLlamaServerException(
             code: ManagedLlamaServerFailureCode.forcedTerminationFailed,
@@ -350,7 +387,7 @@ class LlamaServerProcessSupervisor {
         );
         _lastExitCode = exitCode;
       } else {
-        final killed = _process!.kill(ProcessSignal.sigterm);
+        final killed = _process!.kill(io.ProcessSignal.sigterm);
         if (!killed) {
           await _terminateProcess(force: true);
           return;

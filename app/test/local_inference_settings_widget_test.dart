@@ -4,6 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final class FakeLocalInferenceFacade implements LocalInferenceFacade {
+  @override
+  Future<List<ProcessOwnershipRecord>> cleanupStaleProcesses() async =>
+      const [];
+
+  @override
+  Future<List<ProcessOwnershipRecord>> listManagedProcesses() async => const [];
+
   LocalInferenceSnapshot snapshot = const LocalInferenceSnapshot(
     runtimeConfiguration:
         LlamaServerConfiguration(executablePath: r'C:\llama.exe'),

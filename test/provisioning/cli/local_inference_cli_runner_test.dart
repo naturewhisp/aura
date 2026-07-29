@@ -32,6 +32,16 @@ final class ExceptionThrowingLocalInferenceFacade
   Future<List<InstalledArtifactDescriptor>> listManagedModels() {
     throw Exception('Simulated failure in listManagedModels');
   }
+
+  @override
+  Future<List<ProcessOwnershipRecord>> listManagedProcesses() {
+    throw Exception('Simulated failure in listManagedProcesses');
+  }
+
+  @override
+  Future<List<ProcessOwnershipRecord>> cleanupStaleProcesses() {
+    throw Exception('Simulated failure in cleanupStaleProcesses');
+  }
 }
 
 final class ExceptionThrowingSettingsFacade
@@ -143,11 +153,17 @@ void main() {
         pathResolver: pathResolver,
       );
 
+      final processOwnershipRegistry = ProcessOwnershipRegistry(
+        pathResolver: pathResolver,
+        lock: InMemoryProvisioningLock(),
+      );
+
       inferenceFacade = DefaultLocalInferenceFacade(
         preflightEngine: preflightEngine,
         dependencyService: dependencyService,
         modelConfigurationService: modelService,
         installationRecordRepository: installRepo,
+        processOwnershipRegistry: processOwnershipRegistry,
       );
 
       settingsFacade = DefaultRuntimeModelSettingsFacade(

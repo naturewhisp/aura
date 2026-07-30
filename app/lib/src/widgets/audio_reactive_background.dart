@@ -7,6 +7,8 @@ import 'package:aura_core/aura_core.dart';
 import 'package:aura_app/src/audio/audio_manager.dart';
 import 'package:aura_app/src/state_management/game_controller_notifier.dart';
 
+import 'package:aura_app/src/platform/desktop_shell_provider.dart';
+
 /// Uno sfondo animato tridimensionale a forma di elica DNA a 3 fili (stile Matrix),
 /// che pulsa a tempo di musica ed è reattivo al System Alert Level di A.U.R.A.
 ///
@@ -76,37 +78,59 @@ class _AudioReactiveBackgroundState extends State<AudioReactiveBackground>
   Widget build(BuildContext context) {
     // Ottiene il notifier globale tramite l'InheritedNotifier GameControllerProvider
     final notifier = GameControllerProvider.of(context);
+    final shellController = DesktopShellProvider.maybeOf(context);
 
-    return ListenableBuilder(
-      listenable: notifier,
-      builder: (context, _) {
-        final isTerminal = notifier.currentScreen == "terminal";
-        final state = notifier.gameStateNotifier.value;
+    Widget buildInner() {
+      return ListenableBuilder(
+        listenable: notifier,
+        builder: (context, _) {
+          final isTerminal = notifier.currentScreen == "terminal";
+          final state = notifier.gameStateNotifier.value;
 
-        final int alertLevel;
-        final GameOutcome outcome;
+          final int alertLevel;
+          final GameOutcome outcome;
 
-        if (isTerminal) {
-          alertLevel = state.metrics.alertLevel;
-          outcome = notifier.controller.checkOutcome(state);
-        } else {
-          alertLevel = 0;
-          outcome = GameOutcome.ongoing;
-        }
+          if (isTerminal) {
+            alertLevel = state.metrics.alertLevel;
+            outcome = notifier.controller.checkOutcome(state);
+          } else {
+            alertLevel = 0;
+            outcome = GameOutcome.ongoing;
+          }
 
-        return RepaintBoundary(
-          child: CustomPaint(
-            painter: DnaHelixPainter(
-              repaintListenable: _controller,
-              motionSecondsProvider: () => _motionSeconds,
-              alertLevel: alertLevel,
-              outcome: outcome,
-              cache: _renderCache,
+          final bool reduceGraphics = shellController != null &&
+              (shellController.state.reduceGraphicEffects ||
+                  (shellController.state.reduceAnimationsOnUnfocus &&
+                      (!shellController.state.focused ||
+                          shellController.state.minimized)));
+
+          if (reduceGraphics) {
+            return Container(color: const Color(0xFF000802));
+          }
+
+          return RepaintBoundary(
+            child: CustomPaint(
+              painter: DnaHelixPainter(
+                repaintListenable: _controller,
+                motionSecondsProvider: () => _motionSeconds,
+                alertLevel: alertLevel,
+                outcome: outcome,
+                cache: _renderCache,
+              ),
             ),
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
+    }
+
+    if (shellController != null) {
+      return ListenableBuilder(
+        listenable: shellController,
+        builder: (context, _) => buildInner(),
+      );
+    }
+
+    return buildInner();
   }
 }
 

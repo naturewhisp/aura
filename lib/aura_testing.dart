@@ -25,6 +25,7 @@ export 'src/testing/test_execution_configuration.dart';
 export 'src/testing/forbidden_process_launcher.dart';
 export 'src/testing/forbidden_http_transport.dart';
 export 'src/testing/fake_llama_server_dependency_service.dart';
+export 'src/testing/fake_desktop_window_controller.dart';
 
 // Provisioning Ingestion Engine & Internal Testing Types (Phase 6.4d)
 // Esportati SOLO tramite aura_testing.dart per i test unitari dell'engine.

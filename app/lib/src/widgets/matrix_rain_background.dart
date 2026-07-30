@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:aura_app/src/platform/desktop_shell_provider.dart';
 
 /// Un widget che renderizza un effetto pioggia in stile Matrix (Matrix Rain).
 ///
@@ -64,47 +65,70 @@ class _MatrixRainBackgroundState extends State<MatrixRainBackground>
   Widget build(BuildContext context) {
     if (widget.opacity <= 0.0) return const SizedBox.shrink();
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        _initializeColumns(constraints.maxWidth);
-        return AnimatedBuilder(
-          animation: _controller,
-          builder: (context, child) {
-            const textStyle = TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 12.0,
-              fontWeight: FontWeight.bold,
-              height: 14.0 / 12.0, // Exactly 14.0 pixels line height
-            );
+    final shellController = DesktopShellProvider.maybeOf(context);
 
-            // Update column positions
-            for (var col in _columns) {
-              col.y += col.speed;
-              if (col.y > constraints.maxHeight) {
-                col.y = -200.0 - _random.nextDouble() * 300.0;
-                col.speed = 2.0 + _random.nextDouble() * 4.0;
-              }
-              // Mutate characters occasionally
-              if (_random.nextDouble() < 0.1) {
-                col.chars[_random.nextInt(col.chars.length)] =
-                    String.fromCharCode(33 + _random.nextInt(93));
-                col.clearPainter();
-              }
-              // Pre-compute/update painter layout in the build phase
-              col.updatePainter(widget.opacity, textStyle);
-            }
+    Widget buildInner() {
+      final bool reduceGraphics = shellController != null &&
+          (shellController.state.reduceGraphicEffects ||
+              (shellController.state.reduceAnimationsOnUnfocus &&
+                  (!shellController.state.focused ||
+                      shellController.state.minimized)));
 
-            return CustomPaint(
-              size: Size(constraints.maxWidth, constraints.maxHeight),
-              painter: _MatrixRainPainter(
-                columns: _columns,
-                opacity: widget.opacity,
-              ),
-            );
-          },
-        );
-      },
-    );
+      if (reduceGraphics) {
+        return const SizedBox.shrink();
+      }
+
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          _initializeColumns(constraints.maxWidth);
+          return AnimatedBuilder(
+            animation: _controller,
+            builder: (context, child) {
+              const textStyle = TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12.0,
+                fontWeight: FontWeight.bold,
+                height: 14.0 / 12.0, // Exactly 14.0 pixels line height
+              );
+
+              // Update column positions
+              for (var col in _columns) {
+                col.y += col.speed;
+                if (col.y > constraints.maxHeight) {
+                  col.y = -200.0 - _random.nextDouble() * 300.0;
+                  col.speed = 2.0 + _random.nextDouble() * 4.0;
+                }
+                // Mutate characters occasionally
+                if (_random.nextDouble() < 0.1) {
+                  col.chars[_random.nextInt(col.chars.length)] =
+                      String.fromCharCode(33 + _random.nextInt(93));
+                  col.clearPainter();
+                }
+                // Pre-compute/update painter layout in the build phase
+                col.updatePainter(widget.opacity, textStyle);
+              }
+
+              return CustomPaint(
+                size: Size(constraints.maxWidth, constraints.maxHeight),
+                painter: _MatrixRainPainter(
+                  columns: _columns,
+                  opacity: widget.opacity,
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
+
+    if (shellController != null) {
+      return ListenableBuilder(
+        listenable: shellController,
+        builder: (context, _) => buildInner(),
+      );
+    }
+
+    return buildInner();
   }
 }
 

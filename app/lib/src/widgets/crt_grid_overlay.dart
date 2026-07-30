@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
+import 'package:aura_app/src/platform/desktop_shell_provider.dart';
+
 /// Un widget che renderizza una griglia CRT con scanline e flicker opzionale.
 ///
 /// Quando [flicker] è `true`, l'opacità delle scanline oscilla in modo
@@ -46,31 +48,54 @@ class _CrtGridOverlayState extends State<CrtGridOverlay>
 
   @override
   Widget build(BuildContext context) {
-    final bool isFlickering = widget.flicker;
+    final shellController = DesktopShellProvider.maybeOf(context);
 
-    return AnimatedBuilder(
-      animation: _flickerController,
-      builder: (context, child) {
-        double gridOpacity = 0.08; // Base opacity of scanlines
+    Widget buildInner() {
+      final bool reduceGraphics =
+          shellController != null && shellController.state.reduceGraphicEffects;
+      final bool unfocusedReduce = shellController != null &&
+          shellController.state.reduceAnimationsOnUnfocus &&
+          (!shellController.state.focused || shellController.state.minimized);
 
-        if (isFlickering) {
-          // Clean, dry flicker: scanlines shift opacity to show loss of stability
-          final double flickerNoise = _random.nextDouble();
-          if (flickerNoise < 0.4) {
-            gridOpacity = 0.08 + (_random.nextDouble() * 0.12);
-          } else if (flickerNoise < 0.7) {
-            gridOpacity = 0.08 - (_random.nextDouble() * 0.06);
+      if (reduceGraphics) {
+        return const SizedBox.shrink();
+      }
+
+      final bool isFlickering = widget.flicker && !unfocusedReduce;
+
+      return AnimatedBuilder(
+        animation: _flickerController,
+        builder: (context, child) {
+          double gridOpacity = 0.08; // Base opacity of scanlines
+
+          if (isFlickering) {
+            // Clean, dry flicker: scanlines shift opacity to show loss of stability
+            final double flickerNoise = _random.nextDouble();
+            if (flickerNoise < 0.4) {
+              gridOpacity = 0.08 + (_random.nextDouble() * 0.12);
+            } else if (flickerNoise < 0.7) {
+              gridOpacity = 0.08 - (_random.nextDouble() * 0.06);
+            }
           }
-        }
 
-        return IgnorePointer(
-          child: CustomPaint(
-            size: Size.infinite,
-            painter: _CrtGridPainter(opacity: gridOpacity),
-          ),
-        );
-      },
-    );
+          return IgnorePointer(
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: _CrtGridPainter(opacity: gridOpacity),
+            ),
+          );
+        },
+      );
+    }
+
+    if (shellController != null) {
+      return ListenableBuilder(
+        listenable: shellController,
+        builder: (context, _) => buildInner(),
+      );
+    }
+
+    return buildInner();
   }
 }
 

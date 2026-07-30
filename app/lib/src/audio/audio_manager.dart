@@ -71,6 +71,8 @@ class AudioManager {
 
   bool _initialized = false;
   bool _audioEnabled = true;
+  bool _musicEnabled = true;
+  bool _sfxEnabled = true;
   bool _playersCreated = false;
   bool _sfxPlayersCreated = false;
   bool _disposed = false;
@@ -108,8 +110,14 @@ class AudioManager {
   /// Indica se il gestore audio è stato correttamente inizializzato.
   bool get isInitialized => _initialized;
 
-  /// Indica se la riproduzione audio è abilitata.
+  /// Indica se la riproduzione audio globale è abilitata.
   bool get audioEnabled => _audioEnabled;
+
+  /// Indica se la musica di sottofondo (BGM) è abilitata.
+  bool get musicEnabled => _musicEnabled;
+
+  /// Indica se gli effetti sonori (SFX) sono abilitati.
+  bool get sfxEnabled => _sfxEnabled;
 
   /// Restituisce i BPM effettivi della traccia in esecuzione ricavati dal profilo attivo.
   double get currentBpm {
@@ -246,17 +254,46 @@ class AudioManager {
     }
   }
 
+  bool _focusDucked = false;
+
   /// Abilita o disabilita dinamicamente l'audio globale.
   Future<void> setAudioEnabled(bool enabled) async {
     if (_disposed || !_playersCreated) return;
     if (_audioEnabled == enabled) return;
     _audioEnabled = enabled;
 
-    if (!_audioEnabled) {
+    if (!_audioEnabled || !_musicEnabled) {
       await _machine.suspendAudio();
     } else {
       await _machine.resumeAudio();
     }
+  }
+
+  /// Abilita o disabilita separatamente la musica di sottofondo (BGM).
+  Future<void> setMusicEnabled(bool enabled) async {
+    if (_disposed || !_playersCreated) return;
+    if (_musicEnabled == enabled) return;
+    _musicEnabled = enabled;
+
+    if (!_musicEnabled) {
+      await _machine.suspendAudio();
+    } else if (_audioEnabled) {
+      await _machine.resumeAudio();
+    }
+  }
+
+  /// Abilita o disabilita separatamente gli effetti sonori (SFX).
+  Future<void> setSfxEnabled(bool enabled) async {
+    if (_disposed) return;
+    _sfxEnabled = enabled;
+  }
+
+  /// Applica o rimuove l'attenuazione audio (ducking) in risposta alla perdita di focus della finestra.
+  Future<void> setFocusDucked(bool ducked) async {
+    if (_disposed || !_playersCreated) return;
+    if (_focusDucked == ducked) return;
+    _focusDucked = ducked;
+    await _machine.setDucked(_focusDucked);
   }
 
   /// Avvia la transizione verso uno stato della scena musicale.
@@ -284,7 +321,13 @@ class AudioManager {
 
   /// Esegue la riproduzione interna di un file SFX in modalità Fire-and-Forget.
   void _playSfx(AudioPlayer player, String? path, {double volume = 1.0}) {
-    if (_disposed || !_playersCreated || !_audioEnabled || path == null) return;
+    if (_disposed ||
+        !_playersCreated ||
+        !_audioEnabled ||
+        !_sfxEnabled ||
+        path == null) {
+      return;
+    }
     player.stop().then((_) {
       player.play(DeviceFileSource(path)).then((_) {
         player.setVolume(volume);

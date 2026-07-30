@@ -10,6 +10,7 @@ import '../audio/boot_audio_service.dart';
 import '../widgets/audio_reactive_background.dart';
 import 'first_run_model_setup_screen.dart';
 import 'new_connection_briefing_screen.dart';
+import '../platform/desktop_shell_provider.dart';
 
 /// Schermata iniziale di Boot e Menu Principale dell'applicazione A.U.R.A.
 ///
@@ -27,15 +28,19 @@ class BootMenuScreen extends StatefulWidget {
   /// Callback opzionale per l'inizializzazione dei modelli nei test.
   final Future<ModelInitializationResult> Function()? initializeModels;
 
-  final LlamaServerDependencyService? dependencyService;
+  final LlamaServerDependencyService dependencyService;
+
+  /// Sotto-schermata iniziale per il testing ("boot", "settings", ecc.).
+  final String initialSubScreen;
 
   /// Costruisce una schermata [BootMenuScreen] a partire dal notifier.
   const BootMenuScreen({
     super.key,
     required this.notifier,
+    required this.dependencyService,
     this.audioService = const AudioManagerBootService(),
     this.initializeModels,
-    this.dependencyService,
+    this.initialSubScreen = "boot",
   });
 
   @override
@@ -76,7 +81,12 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   @override
   void initState() {
     super.initState();
-    _bootFuture ??= _runBootSequence();
+    _subScreen = widget.initialSubScreen;
+    if (_subScreen == "boot") {
+      _bootFuture ??= _runBootSequence();
+    } else {
+      _bootCompleted = true;
+    }
     _focusNode.requestFocus();
   }
 
@@ -96,21 +106,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
-      final depService = widget.dependencyService ??
-          DefaultLlamaServerDependencyService(
-            configurationRepository: JsonModelConfigurationRepository(
-              storeDirectoryPath: widget.notifier.appDataPath,
-              fileSystem: const LocalProvisioningFileSystem(),
-              lock: FileBasedProvisioningLock(
-                lockDirectory: widget.notifier.appDataPath,
-              ),
-            ),
-            fileSystem: const LocalProvisioningFileSystem(),
-            pathResolver: ProvisioningPathResolver(
-              appManagedRoot: widget.notifier.appDataPath,
-              bundledRoot: widget.notifier.appDataPath,
-            ),
-          );
+      final depService = widget.dependencyService;
 
       final detection = await depService.detect();
 
@@ -1040,13 +1036,15 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              "MODIFICA I PARAMETRI DEL PROFILO ROUTER (ESC per uscire):",
-              style: TextStyle(
-                fontFamily: 'monospace',
-                color: Color(0xFF00FF66),
-                fontSize: 14.0,
-                fontWeight: FontWeight.bold,
+            const Expanded(
+              child: Text(
+                "MODIFICA I PARAMETRI DEL PROFILO ROUTER (ESC per uscire):",
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  color: Color(0xFF00FF66),
+                  fontSize: 14.0,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
             _buildRetroLinkButton("< SALVA & INDIETRO", _backToMainMenu),
@@ -1071,6 +1069,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
               ),
               const SizedBox(height: 12.0),
               _buildUserDisplayNameSetting(),
+              const SizedBox(height: 24.0),
+              _buildDisplaySettingsSection(),
               const SizedBox(height: 24.0),
 
               // 1. Difficulty Level selection
@@ -1606,6 +1606,339 @@ class _BootMenuScreenState extends State<BootMenuScreen>
               color: Color(0xFF009944),
               fontSize: 11.0,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDisplaySettingsSection() {
+    return Container(
+      padding: const EdgeInsets.all(12.0),
+      decoration: BoxDecoration(
+        border: Border.all(color: const Color(0xFF005522)),
+        color: const Color(0xFF001104),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "--- DISPLAY & FINESTRA ---",
+            style: TextStyle(
+              fontFamily: 'monospace',
+              color: Color(0xFF00FF66),
+              fontSize: 13.0,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 10.0),
+          Builder(
+            builder: (context) {
+              final shellController = DesktopShellProvider.maybeOf(context);
+              if (shellController == null) {
+                return const Text(
+                  "Impostazioni shell non disponibili.",
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    color: Color(0xFFFFB000),
+                    fontSize: 11.0,
+                  ),
+                );
+              }
+              return ListenableBuilder(
+                listenable: shellController,
+                builder: (context, _) {
+                  final state = shellController.state;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "Modalità di avvio:",
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          color: Color(0xFF00FF66),
+                          fontSize: 11.0,
+                        ),
+                      ),
+                      const SizedBox(height: 6.0),
+                      DropdownButton<WindowStartupMode>(
+                        key: const Key('dropdown_window_startup_mode'),
+                        value: state.startupMode,
+                        dropdownColor: Colors.black,
+                        isDense: true,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          color: Color(0xFF00FFFF),
+                          fontSize: 12.0,
+                        ),
+                        onChanged: (newMode) {
+                          if (newMode != null) {
+                            shellController.setStartupMode(newMode);
+                          }
+                        },
+                        items: const [
+                          DropdownMenuItem(
+                            value: WindowStartupMode.restorePrevious,
+                            child: Text("Ripristina precedente"),
+                          ),
+                          DropdownMenuItem(
+                            value: WindowStartupMode.windowed,
+                            child: Text("Finestra"),
+                          ),
+                          DropdownMenuItem(
+                            value: WindowStartupMode.maximized,
+                            child: Text("Massimizzata"),
+                          ),
+                          DropdownMenuItem(
+                            value: WindowStartupMode.borderlessFullscreen,
+                            child: Text("Schermo intero senza bordi"),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12.0),
+                      Row(
+                        children: [
+                          const Text(
+                            "Modalità attiva: ",
+                            style: TextStyle(
+                              fontFamily: 'monospace',
+                              color: Color(0xFF00FF66),
+                              fontSize: 11.0,
+                            ),
+                          ),
+                          Text(
+                            state.activeMode.name.toUpperCase(),
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              color: Color(0xFFFFB000),
+                              fontWeight: FontWeight.bold,
+                              fontSize: 11.0,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8.0),
+                      Row(
+                        children: [
+                          InkWell(
+                            key: const Key('btn_set_windowed'),
+                            onTap: () => shellController.setWindowed(),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                border:
+                                    Border.all(color: const Color(0xFF00FF66)),
+                              ),
+                              child: const Text(
+                                "[ FINESTRA ]",
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  color: Color(0xFF00FF66),
+                                  fontSize: 11.0,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            key: const Key('btn_set_maximized'),
+                            onTap: () => shellController.maximize(),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                border:
+                                    Border.all(color: const Color(0xFF00FF66)),
+                              ),
+                              child: const Text(
+                                "[ MASSIMIZZA ]",
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  color: Color(0xFF00FF66),
+                                  fontSize: 11.0,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            key: const Key('btn_toggle_fullscreen'),
+                            onTap: () =>
+                                shellController.toggleBorderlessFullscreen(),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                border:
+                                    Border.all(color: const Color(0xFFFFB000)),
+                              ),
+                              child: const Text(
+                                "[ FULLSCREEN (F11) ]",
+                                style: TextStyle(
+                                  fontFamily: 'monospace',
+                                  color: Color(0xFFFFB000),
+                                  fontSize: 11.0,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14.0),
+                      Row(
+                        children: [
+                          Checkbox(
+                            key: const Key('checkbox_audio_ducking'),
+                            value: state.audioDuckingOnUnfocus,
+                            activeColor: const Color(0xFF00FF66),
+                            checkColor: Colors.black,
+                            onChanged: (val) {
+                              if (val != null) {
+                                shellController.setAudioDuckingOnUnfocus(val);
+                              }
+                            },
+                          ),
+                          const Expanded(
+                            child: Text(
+                              "Attenua audio in background quando la finestra perde focus",
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: Color(0xFF00FF66),
+                                fontSize: 11.0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Checkbox(
+                            key: const Key('checkbox_reduce_animations'),
+                            value: state.reduceAnimationsOnUnfocus,
+                            activeColor: const Color(0xFF00FF66),
+                            checkColor: Colors.black,
+                            onChanged: (val) {
+                              if (val != null) {
+                                shellController
+                                    .setReduceAnimationsOnUnfocus(val);
+                              }
+                            },
+                          ),
+                          const Expanded(
+                            child: Text(
+                              "Riduci animazioni ed effetti in background quando unfocused",
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: Color(0xFF00FF66),
+                                fontSize: 11.0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16.0),
+                      const Text(
+                        "--- AUDIO & EFFETTI SONORI ---",
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          color: Color(0xFF00FF66),
+                          fontSize: 13.0,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8.0),
+                      Row(
+                        children: [
+                          Checkbox(
+                            key: const Key('checkbox_music_enabled'),
+                            value: state.musicEnabled,
+                            activeColor: const Color(0xFF00FF66),
+                            checkColor: Colors.black,
+                            onChanged: (val) {
+                              if (val != null) {
+                                shellController.setMusicEnabled(val);
+                              }
+                            },
+                          ),
+                          const Expanded(
+                            child: Text(
+                              "Musica di sottofondo (BGM)",
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: Color(0xFF00FF66),
+                                fontSize: 11.0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Checkbox(
+                            key: const Key('checkbox_sfx_enabled'),
+                            value: state.sfxEnabled,
+                            activeColor: const Color(0xFF00FF66),
+                            checkColor: Colors.black,
+                            onChanged: (val) {
+                              if (val != null) {
+                                shellController.setSfxEnabled(val);
+                              }
+                            },
+                          ),
+                          const Expanded(
+                            child: Text(
+                              "Effetti sonori UI e terminale (SFX)",
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: Color(0xFF00FF66),
+                                fontSize: 11.0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16.0),
+                      const Text(
+                        "--- GRAFICA & PRESTAZIONI ---",
+                        style: TextStyle(
+                          fontFamily: 'monospace',
+                          color: Color(0xFF00FF66),
+                          fontSize: 13.0,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8.0),
+                      Row(
+                        children: [
+                          Checkbox(
+                            key: const Key('checkbox_reduce_graphic_effects'),
+                            value: state.reduceGraphicEffects,
+                            activeColor: const Color(0xFF00FF66),
+                            checkColor: Colors.black,
+                            onChanged: (val) {
+                              if (val != null) {
+                                shellController.setReduceGraphicEffects(val);
+                              }
+                            },
+                          ),
+                          const Expanded(
+                            child: Text(
+                              "Disattiva/Riduci effetti grafici avanzati (Low Spec / Risparmio CPU & GPU)",
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: Color(0xFF00FF66),
+                                fontSize: 11.0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
           ),
         ],
       ),

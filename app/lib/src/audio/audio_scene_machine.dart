@@ -632,6 +632,25 @@ class AudioSceneMachine {
     }
   }
 
+  bool _ducked = false;
+
+  /// Restituisce se l'audio è attenuato in background.
+  bool get isDucked => _ducked;
+
+  /// Applica o rimuove l'attenuazione (ducking) del volume.
+  Future<void> setDucked(bool ducked) async {
+    if (_disposed) return;
+    _ducked = ducked;
+    await _enqueue(() async {
+      if (_disposed || _currentTrack == null) return;
+      final player = backend.playerFor(_currentTrack!);
+      final profile = audioSceneProfiles[_currentScene];
+      final baseVol = profile?.volume ?? 1.0;
+      final targetVol = _ducked ? (baseVol * 0.25) : baseVol;
+      await player.setVolume(targetVol);
+    });
+  }
+
   /// Ferma tutti i player fisicamente e resetta lo stato logico completato.
   Future<void> stopBgm() async {
     if (_disposed) return;

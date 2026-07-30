@@ -636,7 +636,10 @@ void main() {
           home: Scaffold(
             body: GameControllerProvider(
               notifier: notifier,
-              child: BootMenuScreen(notifier: notifier),
+              child: BootMenuScreen(
+                notifier: notifier,
+                dependencyService: const FakeLlamaServerDependencyService(),
+              ),
             ),
           ),
         ),

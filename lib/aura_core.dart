@@ -27,6 +27,17 @@ export 'src/override/override_resolver.dart';
 export 'src/replay_logger.dart';
 export 'src/constants.dart';
 
+// Desktop Shell Contracts
+export 'src/desktop_shell/window_mode.dart';
+export 'src/desktop_shell/window_geometry.dart';
+export 'src/desktop_shell/window_preferences.dart';
+export 'src/desktop_shell/display_descriptor.dart';
+export 'src/desktop_shell/desktop_window_event.dart';
+export 'src/desktop_shell/desktop_window_controller.dart';
+export 'src/desktop_shell/window_geometry_validator.dart';
+export 'src/desktop_shell/window_preferences_repository.dart';
+export 'src/desktop_shell/window_geometry_persistence_coordinator.dart';
+
 // Agent Runtime Base
 export 'src/agent_runtime/agent_card.dart';
 export 'src/agent_runtime/inference_bridge.dart';

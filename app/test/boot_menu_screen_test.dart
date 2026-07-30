@@ -49,6 +49,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModels,
@@ -139,6 +140,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModels,
@@ -189,6 +191,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModels,
@@ -240,6 +243,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModels,
@@ -282,6 +286,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModels,
@@ -325,6 +330,7 @@ void main() {
             body: GameControllerProvider(
               notifier: notifier,
               child: BootMenuScreen(
+                dependencyService: const FakeLlamaServerDependencyService(),
                 notifier: notifier,
                 audioService: fakeAudio,
                 initializeModels: fakeInitializeModels,
@@ -373,6 +379,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModels,
@@ -392,6 +399,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModels,
@@ -405,6 +413,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModels,
@@ -430,6 +439,7 @@ void main() {
           home: GameControllerProvider(
             notifier: notifier,
             child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
               notifier: notifier,
               audioService: fakeAudio,
               initializeModels: fakeInitializeModelsWithCrash,

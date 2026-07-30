@@ -4,7 +4,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:aura_core/aura_offline.dart';
-import 'package:aura_core/aura_testing.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
 import '../audio/boot_audio_service.dart';
@@ -98,22 +97,20 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       if (!mounted) return;
 
       final depService = widget.dependencyService ??
-          (widget.initializeModels != null
-              ? const FakeLlamaServerDependencyService()
-              : DefaultLlamaServerDependencyService(
-                  configurationRepository: JsonModelConfigurationRepository(
-                    storeDirectoryPath: widget.notifier.appDataPath,
-                    fileSystem: const LocalProvisioningFileSystem(),
-                    lock: FileBasedProvisioningLock(
-                      lockDirectory: widget.notifier.appDataPath,
-                    ),
-                  ),
-                  fileSystem: const LocalProvisioningFileSystem(),
-                  pathResolver: ProvisioningPathResolver(
-                    appManagedRoot: widget.notifier.appDataPath,
-                    bundledRoot: widget.notifier.appDataPath,
-                  ),
-                ));
+          DefaultLlamaServerDependencyService(
+            configurationRepository: JsonModelConfigurationRepository(
+              storeDirectoryPath: widget.notifier.appDataPath,
+              fileSystem: const LocalProvisioningFileSystem(),
+              lock: FileBasedProvisioningLock(
+                lockDirectory: widget.notifier.appDataPath,
+              ),
+            ),
+            fileSystem: const LocalProvisioningFileSystem(),
+            pathResolver: ProvisioningPathResolver(
+              appManagedRoot: widget.notifier.appDataPath,
+              bundledRoot: widget.notifier.appDataPath,
+            ),
+          );
 
       final detection = await depService.detect();
 

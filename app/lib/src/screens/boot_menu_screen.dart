@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:aura_core/aura_offline.dart';
+import 'package:aura_core/aura_testing.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../audio/audio_manager.dart';
 import '../audio/boot_audio_service.dart';
@@ -27,12 +28,15 @@ class BootMenuScreen extends StatefulWidget {
   /// Callback opzionale per l'inizializzazione dei modelli nei test.
   final Future<ModelInitializationResult> Function()? initializeModels;
 
+  final LlamaServerDependencyService? dependencyService;
+
   /// Costruisce una schermata [BootMenuScreen] a partire dal notifier.
   const BootMenuScreen({
     super.key,
     required this.notifier,
     this.audioService = const AudioManagerBootService(),
     this.initializeModels,
+    this.dependencyService,
   });
 
   @override
@@ -93,20 +97,25 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
-      final detection = await DefaultLlamaServerDependencyService(
-        configurationRepository: JsonModelConfigurationRepository(
-          storeDirectoryPath: widget.notifier.appDataPath,
-          fileSystem: const LocalProvisioningFileSystem(),
-          lock: FileBasedProvisioningLock(
-            lockDirectory: widget.notifier.appDataPath,
-          ),
-        ),
-        fileSystem: const LocalProvisioningFileSystem(),
-        pathResolver: ProvisioningPathResolver(
-          appManagedRoot: widget.notifier.appDataPath,
-          bundledRoot: widget.notifier.appDataPath,
-        ),
-      ).detect();
+      final depService = widget.dependencyService ??
+          (widget.initializeModels != null
+              ? const FakeLlamaServerDependencyService()
+              : DefaultLlamaServerDependencyService(
+                  configurationRepository: JsonModelConfigurationRepository(
+                    storeDirectoryPath: widget.notifier.appDataPath,
+                    fileSystem: const LocalProvisioningFileSystem(),
+                    lock: FileBasedProvisioningLock(
+                      lockDirectory: widget.notifier.appDataPath,
+                    ),
+                  ),
+                  fileSystem: const LocalProvisioningFileSystem(),
+                  pathResolver: ProvisioningPathResolver(
+                    appManagedRoot: widget.notifier.appDataPath,
+                    bundledRoot: widget.notifier.appDataPath,
+                  ),
+                ));
+
+      final detection = await depService.detect();
 
       final accelLabel = switch (detection.acceleration) {
         RuntimeAcceleration.cuda => 'CUDA (NVIDIA GPU ACCELERATED)',

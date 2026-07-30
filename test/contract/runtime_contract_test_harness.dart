@@ -666,6 +666,21 @@ void runInferenceRuntimeContractTests(
             ),
           ),
         );
+
+        expect(
+          () => runtime.initialize(
+            const RuntimeInitializationRequest(
+              instanceId: RuntimeInstanceId('sess-after-dispose'),
+            ),
+          ),
+          throwsA(
+            isA<RuntimeException>().having(
+              (e) => e.failure.code,
+              'code',
+              equals(RuntimeFailureCode.disposed),
+            ),
+          ),
+        );
       });
     });
   });

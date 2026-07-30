@@ -57,6 +57,7 @@ export 'src/agent_runtime/runtime/runtime_results.dart';
 export 'src/agent_runtime/runtime/runtime_events.dart';
 
 // Managed llama-server Contracts & DTOs (Phase 6.2b)
+export 'src/provisioning/domain/runtime_dependency_models.dart';
 export 'src/agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_failure.dart';
 export 'src/agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_configuration.dart';
 export 'src/agent_runtime/runtime/adapters/managed_llama_server/process_launcher.dart';

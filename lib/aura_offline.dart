@@ -53,6 +53,7 @@ export 'src/provisioning/infrastructure/download_checkpoint_repository.dart';
 export 'src/provisioning/infrastructure/download_concurrency_controller.dart';
 
 // Provisioning Ingestion & Service Infrastructure (Phase 6.4d)
+export 'src/provisioning/domain/runtime_manifest.dart';
 export 'src/provisioning/domain/catalog_artifact_snapshot.dart';
 export 'src/provisioning/infrastructure/provisioning_path_resolver.dart'
     show ProvisioningPathResolver;

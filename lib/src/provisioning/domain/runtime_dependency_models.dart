@@ -1,5 +1,17 @@
 import 'package:meta/meta.dart';
 
+/// Tipo di accelerazione hardware rilevato o supportato dal runtime `llama-server`.
+enum RuntimeAcceleration {
+  /// Accelerazione GPU NVIDIA via CUDA Toolkit / cuBLAS.
+  cuda,
+
+  /// Accelerazione GPU cross-platform via Vulkan SDK.
+  vulkan,
+
+  /// Esecuzione standard su CPU senza accelerazione GPU dedicata.
+  cpu,
+}
+
 /// Stato di validazione dell'eseguibile `llama-server`.
 enum LlamaServerValidationStatus {
   unknown,
@@ -17,12 +29,18 @@ final class LlamaServerConfiguration {
   final String? detectedVersion;
   final DateTime? lastValidatedAtUtc;
   final LlamaServerValidationStatus validationStatus;
+  final RuntimeAcceleration acceleration;
+  final String? gpuDeviceName;
+  final int? gpuLayers;
 
   const LlamaServerConfiguration({
     required this.executablePath,
     this.detectedVersion,
     this.lastValidatedAtUtc,
     this.validationStatus = LlamaServerValidationStatus.unknown,
+    this.acceleration = RuntimeAcceleration.cpu,
+    this.gpuDeviceName,
+    this.gpuLayers,
   });
 
   factory LlamaServerConfiguration.fromJson(Map<String, dynamic> json) {
@@ -39,6 +57,12 @@ final class LlamaServerConfiguration {
       orElse: () => LlamaServerValidationStatus.unknown,
     );
 
+    final accelStr = json['acceleration'] as String?;
+    final accel = RuntimeAcceleration.values.firstWhere(
+      (a) => a.name == accelStr,
+      orElse: () => RuntimeAcceleration.cpu,
+    );
+
     final lastValidatedStr = json['lastValidatedAtUtc'] as String?;
     final lastValidated = lastValidatedStr != null
         ? DateTime.tryParse(lastValidatedStr)?.toUtc()
@@ -49,6 +73,9 @@ final class LlamaServerConfiguration {
       detectedVersion: json['detectedVersion'] as String?,
       lastValidatedAtUtc: lastValidated,
       validationStatus: status,
+      acceleration: accel,
+      gpuDeviceName: json['gpuDeviceName'] as String?,
+      gpuLayers: (json['gpuLayers'] as num?)?.toInt(),
     );
   }
 
@@ -59,6 +86,9 @@ final class LlamaServerConfiguration {
       if (lastValidatedAtUtc != null)
         'lastValidatedAtUtc': lastValidatedAtUtc!.toUtc().toIso8601String(),
       'validationStatus': validationStatus.name,
+      'acceleration': acceleration.name,
+      if (gpuDeviceName != null) 'gpuDeviceName': gpuDeviceName,
+      if (gpuLayers != null) 'gpuLayers': gpuLayers,
     };
   }
 
@@ -67,6 +97,9 @@ final class LlamaServerConfiguration {
     Object? detectedVersion = _unset,
     Object? lastValidatedAtUtc = _unset,
     LlamaServerValidationStatus? validationStatus,
+    RuntimeAcceleration? acceleration,
+    Object? gpuDeviceName = _unset,
+    Object? gpuLayers = _unset,
   }) {
     return LlamaServerConfiguration(
       executablePath: executablePath ?? this.executablePath,
@@ -77,6 +110,12 @@ final class LlamaServerConfiguration {
           ? this.lastValidatedAtUtc
           : lastValidatedAtUtc as DateTime?,
       validationStatus: validationStatus ?? this.validationStatus,
+      acceleration: acceleration ?? this.acceleration,
+      gpuDeviceName: identical(gpuDeviceName, _unset)
+          ? this.gpuDeviceName
+          : gpuDeviceName as String?,
+      gpuLayers:
+          identical(gpuLayers, _unset) ? this.gpuLayers : gpuLayers as int?,
     );
   }
 
@@ -90,7 +129,10 @@ final class LlamaServerConfiguration {
           executablePath == other.executablePath &&
           detectedVersion == other.detectedVersion &&
           lastValidatedAtUtc == other.lastValidatedAtUtc &&
-          validationStatus == other.validationStatus;
+          validationStatus == other.validationStatus &&
+          acceleration == other.acceleration &&
+          gpuDeviceName == other.gpuDeviceName &&
+          gpuLayers == other.gpuLayers;
 
   @override
   int get hashCode => Object.hash(
@@ -98,11 +140,14 @@ final class LlamaServerConfiguration {
         detectedVersion,
         lastValidatedAtUtc,
         validationStatus,
+        acceleration,
+        gpuDeviceName,
+        gpuLayers,
       );
 
   @override
   String toString() =>
-      'LlamaServerConfiguration(path: $executablePath, status: ${validationStatus.name}, version: $detectedVersion)';
+      'LlamaServerConfiguration(path: $executablePath, status: ${validationStatus.name}, accel: ${acceleration.name}, version: $detectedVersion)';
 }
 
 /// DTO che racchiude l'esito del processo di discovery deterministica di `llama-server`.
@@ -113,6 +158,7 @@ final class LlamaServerDetectionResult {
   final String? detectedFallback;
   final String? effectiveCandidate;
   final List<String> warnings;
+  final RuntimeAcceleration acceleration;
 
   const LlamaServerDetectionResult({
     this.configuredCandidate,
@@ -120,6 +166,7 @@ final class LlamaServerDetectionResult {
     this.detectedFallback,
     this.effectiveCandidate,
     this.warnings = const [],
+    this.acceleration = RuntimeAcceleration.cpu,
   });
 
   bool get isFound => effectiveCandidate != null;
@@ -132,7 +179,8 @@ final class LlamaServerDetectionResult {
           configuredCandidate == other.configuredCandidate &&
           isConfiguredValid == other.isConfiguredValid &&
           detectedFallback == other.detectedFallback &&
-          effectiveCandidate == other.effectiveCandidate;
+          effectiveCandidate == other.effectiveCandidate &&
+          acceleration == other.acceleration;
 
   @override
   int get hashCode => Object.hash(
@@ -140,11 +188,12 @@ final class LlamaServerDetectionResult {
         isConfiguredValid,
         detectedFallback,
         effectiveCandidate,
+        acceleration,
       );
 
   @override
   String toString() =>
-      'LlamaServerDetectionResult(effective: $effectiveCandidate, configuredValid: $isConfiguredValid)';
+      'LlamaServerDetectionResult(effective: $effectiveCandidate, accel: ${acceleration.name}, configuredValid: $isConfiguredValid)';
 }
 
 /// DTO che racchiude l'esito della validazione operativa del probe processuale di `llama-server`.
@@ -155,6 +204,8 @@ final class LlamaServerValidationResult {
   final String? detectedVersion;
   final DateTime? lastValidatedAtUtc;
   final String? errorMessage;
+  final RuntimeAcceleration acceleration;
+  final String? gpuDeviceName;
 
   const LlamaServerValidationResult({
     required this.status,
@@ -162,6 +213,8 @@ final class LlamaServerValidationResult {
     this.detectedVersion,
     this.lastValidatedAtUtc,
     this.errorMessage,
+    this.acceleration = RuntimeAcceleration.cpu,
+    this.gpuDeviceName,
   });
 
   bool get isValid => status == LlamaServerValidationStatus.valid;
@@ -175,7 +228,9 @@ final class LlamaServerValidationResult {
           executablePath == other.executablePath &&
           detectedVersion == other.detectedVersion &&
           lastValidatedAtUtc == other.lastValidatedAtUtc &&
-          errorMessage == other.errorMessage;
+          errorMessage == other.errorMessage &&
+          acceleration == other.acceleration &&
+          gpuDeviceName == other.gpuDeviceName;
 
   @override
   int get hashCode => Object.hash(
@@ -184,9 +239,11 @@ final class LlamaServerValidationResult {
         detectedVersion,
         lastValidatedAtUtc,
         errorMessage,
+        acceleration,
+        gpuDeviceName,
       );
 
   @override
   String toString() =>
-      'LlamaServerValidationResult(status: ${status.name}, path: $executablePath)';
+      'LlamaServerValidationResult(status: ${status.name}, accel: ${acceleration.name}, path: $executablePath)';
 }

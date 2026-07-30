@@ -76,6 +76,8 @@ final class DefaultLlamaServerDependencyService
       detectedVersion: validation.detectedVersion,
       lastValidatedAtUtc: validation.lastValidatedAtUtc,
       validationStatus: validation.status,
+      acceleration: validation.acceleration,
+      gpuDeviceName: validation.gpuDeviceName,
     );
 
     await _configurationRepository.updateRecord((current) {
@@ -103,6 +105,7 @@ final class DefaultLlamaServerDependencyService
           configuredCandidate: configuredPath,
           isConfiguredValid: true,
           effectiveCandidate: configuredPath,
+          acceleration: validation.acceleration,
         );
       } else {
         warnings.add(
@@ -112,13 +115,22 @@ final class DefaultLlamaServerDependencyService
       }
     }
 
-    // 2. Eseguibile locale all'applicazione (portable bundle)
+    // 2. Eseguibile locale all'applicazione (portable bundle versionato e legacy)
     final portableCandidate1 =
-        '${_pathResolver.appManagedRoot}\\runtime\\llama-server.exe';
+        '${_pathResolver.appManagedRoot}\\runtime\\windows-x64-cuda\\llama-server.exe';
     final portableCandidate2 =
+        '${_pathResolver.appManagedRoot}\\runtime\\llama-server.exe';
+    final portableCandidate3 =
+        '${_pathResolver.bundledRoot}\\runtime\\windows-x64-cuda\\llama-server.exe';
+    final portableCandidate4 =
         '${_pathResolver.bundledRoot}\\runtime\\llama-server.exe';
 
-    for (final candidate in [portableCandidate1, portableCandidate2]) {
+    for (final candidate in [
+      portableCandidate1,
+      portableCandidate2,
+      portableCandidate3,
+      portableCandidate4
+    ]) {
       if (await _fileSystem.fileExists(candidate)) {
         final validation = await validateExecutable(executablePath: candidate);
         if (validation.isValid) {
@@ -128,6 +140,7 @@ final class DefaultLlamaServerDependencyService
             detectedFallback: candidate,
             effectiveCandidate: candidate,
             warnings: warnings,
+            acceleration: validation.acceleration,
           );
         }
       }
@@ -145,6 +158,7 @@ final class DefaultLlamaServerDependencyService
             detectedFallback: candidate,
             effectiveCandidate: candidate,
             warnings: warnings,
+            acceleration: validation.acceleration,
           );
         }
       }
@@ -162,6 +176,7 @@ final class DefaultLlamaServerDependencyService
           detectedFallback: pathCandidate,
           effectiveCandidate: pathCandidate,
           warnings: warnings,
+          acceleration: validation.acceleration,
         );
       }
     }
@@ -236,11 +251,13 @@ final class DefaultLlamaServerDependencyService
     final versionResult = await _runProbe(cleanPath, ['--version']);
     if (versionResult != null && versionResult.isSuccess) {
       final versionStr = _extractVersion(versionResult.output);
+      final accel = _detectAcceleration(versionResult.output);
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,
         executablePath: cleanPath,
         detectedVersion: versionStr,
         lastValidatedAtUtc: now,
+        acceleration: accel,
       );
     }
 
@@ -248,11 +265,13 @@ final class DefaultLlamaServerDependencyService
     final helpResult = await _runProbe(cleanPath, ['--help']);
     if (helpResult != null && helpResult.looksLikeLlamaServerHelp) {
       final versionStr = _extractVersion(helpResult.output) ?? 'unknown';
+      final accel = _detectAcceleration(helpResult.output);
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,
         executablePath: cleanPath,
         detectedVersion: versionStr,
         lastValidatedAtUtc: now,
+        acceleration: accel,
       );
     }
 
@@ -428,6 +447,20 @@ final class DefaultLlamaServerDependencyService
       candidates.addAll(found);
     } catch (_) {}
     return candidates;
+  }
+
+  RuntimeAcceleration _detectAcceleration(String output) {
+    final lower = output.toLowerCase();
+    if (lower.contains('cuda') ||
+        lower.contains('cublas') ||
+        lower.contains('ggml-cuda') ||
+        lower.contains('nvidia')) {
+      return RuntimeAcceleration.cuda;
+    }
+    if (lower.contains('vulkan') || lower.contains('ggml-vulkan')) {
+      return RuntimeAcceleration.vulkan;
+    }
+    return RuntimeAcceleration.cpu;
   }
 
   String? _extractVersion(String output) {

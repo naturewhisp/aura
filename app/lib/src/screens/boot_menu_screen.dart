@@ -93,8 +93,33 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
+      final detection = await DefaultLlamaServerDependencyService(
+        configurationRepository: JsonModelConfigurationRepository(
+          storeDirectoryPath: widget.notifier.appDataPath,
+          fileSystem: const LocalProvisioningFileSystem(),
+          lock: FileBasedProvisioningLock(
+            lockDirectory: widget.notifier.appDataPath,
+          ),
+        ),
+        fileSystem: const LocalProvisioningFileSystem(),
+        pathResolver: ProvisioningPathResolver(
+          appManagedRoot: widget.notifier.appDataPath,
+          bundledRoot: widget.notifier.appDataPath,
+        ),
+      ).detect();
+
+      final accelLabel = switch (detection.acceleration) {
+        RuntimeAcceleration.cuda => 'CUDA (NVIDIA GPU ACCELERATED)',
+        RuntimeAcceleration.vulkan => 'VULKAN (GPU ACCELERATED)',
+        RuntimeAcceleration.cpu => 'CPU (FALLBACK / NO GPU ACCELERATION)',
+      };
+
       _appendBootLog(
-          "AURA_INIT> SCANNING HARDWARE ENGINES (Vulkan/CUDA)... DETECTED");
+          "AURA_INIT> SCANNING HARDWARE ENGINES... DETECTED: $accelLabel");
+      if (detection.acceleration == RuntimeAcceleration.cpu) {
+        _appendBootLog(
+            "AURA_INIT> [WARN] RUNTIME ACTIVE WITHOUT GPU ACCELERATION (CPU FALLBACK)");
+      }
       setState(() {
         _bootProgress = 0.10;
       });

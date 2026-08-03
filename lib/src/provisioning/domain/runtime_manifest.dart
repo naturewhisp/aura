@@ -31,6 +31,17 @@ final class RuntimeFileEntry {
       throw const RuntimeManifestException(
           'Campo "path" mancante o non valido.');
     }
+    final cleanPath = path.trim().replaceAll(r'\', '/');
+
+    // Previene path traversal e percorsi assoluti
+    if (cleanPath.startsWith('/') ||
+        cleanPath.contains(':') ||
+        cleanPath.split('/').contains('..')) {
+      throw RuntimeManifestException(
+        'Percorso non sicuro o assoluto rilevato nel file entry: "$cleanPath".',
+      );
+    }
+
     final sizeBytes = json['sizeBytes'];
     if (sizeBytes is! int || sizeBytes < 0) {
       throw const RuntimeManifestException('Campo "sizeBytes" non valido.');
@@ -38,11 +49,12 @@ final class RuntimeFileEntry {
     final sha256 = json['sha256'];
     if (sha256 is! String || !RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(sha256)) {
       throw const RuntimeManifestException(
-          'Campo "sha256" mancante o non valido.');
+        'Campo "sha256" mancante o non valido (richiesta stringa hex di 64 caratteri).',
+      );
     }
 
     return RuntimeFileEntry(
-      path: path.trim(),
+      path: cleanPath,
       sizeBytes: sizeBytes,
       sha256: sha256.trim().toLowerCase(),
     );
@@ -94,7 +106,8 @@ final class RuntimeVariantDescriptor {
     final id = json['id'];
     if (id is! String || id.trim().isEmpty) {
       throw const RuntimeManifestException(
-          'Campo "id" della variante mancante o non valido.');
+        'Campo "id" della variante mancante o non valido.',
+      );
     }
 
     final accelStr = json['acceleration'];
@@ -107,19 +120,50 @@ final class RuntimeVariantDescriptor {
     final executable = json['executable'];
     if (executable is! String || executable.trim().isEmpty) {
       throw const RuntimeManifestException(
-          'Campo "executable" mancante o non valido.');
+        'Campo "executable" mancante o non valido.',
+      );
+    }
+    final cleanExec = executable.trim().replaceAll(r'\', '/');
+    if (cleanExec.startsWith('/') ||
+        cleanExec.contains(':') ||
+        cleanExec.split('/').contains('..')) {
+      throw RuntimeManifestException(
+        'Executable path non sicuro o assoluto nella variante $id: "$cleanExec".',
+      );
     }
 
     final workingDir = json['workingDirectory'];
     if (workingDir is! String || workingDir.trim().isEmpty) {
       throw const RuntimeManifestException(
-          'Campo "workingDirectory" mancante o non valido.');
+        'Campo "workingDirectory" mancante o non valido.',
+      );
+    }
+    final cleanWorkDir = workingDir.trim().replaceAll(r'\', '/');
+    if (cleanWorkDir.startsWith('/') ||
+        cleanWorkDir.contains(':') ||
+        cleanWorkDir.split('/').contains('..')) {
+      throw RuntimeManifestException(
+        'Working directory non sicura nella variante $id: "$cleanWorkDir".',
+      );
     }
 
     final rawVendors = json['vendorDirectories'];
-    final vendorDirectories = rawVendors is List
-        ? rawVendors.cast<String>().map((e) => e.trim()).toList()
-        : <String>[];
+    final vendorDirectories = <String>[];
+    if (rawVendors is List) {
+      for (final v in rawVendors) {
+        if (v is String && v.trim().isNotEmpty) {
+          final cleanV = v.trim().replaceAll(r'\', '/');
+          if (cleanV.startsWith('/') ||
+              cleanV.contains(':') ||
+              cleanV.split('/').contains('..')) {
+            throw RuntimeManifestException(
+              'Vendor directory non sicura nella variante $id: "$cleanV".',
+            );
+          }
+          vendorDirectories.add(cleanV);
+        }
+      }
+    }
 
     final rawFeatures = json['requiredCpuFeatures'];
     final requiredCpuFeatures = rawFeatures is List
@@ -127,22 +171,32 @@ final class RuntimeVariantDescriptor {
         : <String>[];
 
     final rawFiles = json['files'];
-    if (rawFiles is! List) {
-      throw const RuntimeManifestException(
-          'Campo "files" deve essere una lista.');
+    if (rawFiles is! List || rawFiles.isEmpty) {
+      throw RuntimeManifestException(
+        'La variante $id deve contenere una lista di "files" non vuota.',
+      );
     }
 
-    final files = rawFiles
-        .map((f) => RuntimeFileEntry.fromJson(f as Map<String, dynamic>))
-        .toList();
+    final files = <RuntimeFileEntry>[];
+    final seenPaths = <String>{};
+    for (final f in rawFiles) {
+      final entry = RuntimeFileEntry.fromJson(f as Map<String, dynamic>);
+      if (seenPaths.contains(entry.path)) {
+        throw RuntimeManifestException(
+          'File duplicato "${entry.path}" nella variante $id.',
+        );
+      }
+      seenPaths.add(entry.path);
+      files.add(entry);
+    }
 
     return RuntimeVariantDescriptor(
       id: id.trim(),
       acceleration: accel,
       architecture: (json['architecture'] as String? ?? 'x64').trim(),
       requiredCpuFeatures: List.unmodifiable(requiredCpuFeatures),
-      executable: executable.trim(),
-      workingDirectory: workingDir.trim(),
+      executable: cleanExec,
+      workingDirectory: cleanWorkDir,
       vendorDirectories: List.unmodifiable(vendorDirectories),
       files: List.unmodifiable(files),
     );
@@ -208,22 +262,33 @@ final class RuntimeManifest {
     final runtimeSetId = json['runtimeSetId'];
     if (runtimeSetId is! String || runtimeSetId.trim().isEmpty) {
       throw const RuntimeManifestException(
-          'Campo "runtimeSetId" mancante o vuoto.');
+        'Campo "runtimeSetId" mancante o vuoto.',
+      );
     }
 
     final llamaCppVersion = json['llamaCppVersion'] as String? ?? 'unknown';
     final sourceCommit = json['sourceCommit'] as String? ?? 'unknown';
 
     final rawVariants = json['variants'];
-    if (rawVariants is! List) {
+    if (rawVariants is! List || rawVariants.isEmpty) {
       throw const RuntimeManifestException(
-          'Campo "variants" deve essere una lista.');
+        'Campo "variants" deve essere una lista non vuota.',
+      );
     }
 
-    final variants = rawVariants
-        .map(
-            (v) => RuntimeVariantDescriptor.fromJson(v as Map<String, dynamic>))
-        .toList();
+    final variants = <RuntimeVariantDescriptor>[];
+    final seenIds = <String>{};
+    for (final v in rawVariants) {
+      final variant = RuntimeVariantDescriptor.fromJson(
+        v as Map<String, dynamic>,
+      );
+      if (seenIds.contains(variant.id)) {
+        throw RuntimeManifestException(
+            'ID variante duplicato: "${variant.id}".');
+      }
+      seenIds.add(variant.id);
+      variants.add(variant);
+    }
 
     return RuntimeManifest(
       schemaVersion: schemaVersion,
@@ -250,7 +315,8 @@ final class RuntimeManifest {
   }
 
   RuntimeVariantDescriptor? findVariantByAcceleration(
-      RuntimeAcceleration accel) {
+    RuntimeAcceleration accel,
+  ) {
     for (final v in variants) {
       if (v.acceleration == accel) return v;
     }

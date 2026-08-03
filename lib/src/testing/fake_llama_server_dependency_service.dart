@@ -36,10 +36,12 @@ final class FakeLlamaServerDependencyService
   Future<LlamaServerConfiguration> configureExecutable({
     required String executablePath,
     String? variantId,
+    RuntimeSource? source,
   }) async =>
       LlamaServerConfiguration(
         executablePath: executablePath,
         variantId: variantId,
+        source: source ?? RuntimeSource.external,
         validationStatus: LlamaServerValidationStatus.valid,
         lastValidatedAtUtc: DateTime.now().toUtc(),
         acceleration: detectionResult.acceleration,

@@ -1,6 +1,9 @@
 ; Script di configurazione Inno Setup per l'installer standalone di A.U.R.A. (Artificial Unbound Reasoning Arena)
-#define MyAppName "A.U.R.A."
+#ifndef MyAppVersion
 #define MyAppVersion "0.1.0"
+#endif
+
+#define MyAppName "A.U.R.A."
 #define MyAppPublisher "NatureWhisp"
 #define MyAppURL "https://github.com/naturewhisp/aura"
 #define MyAppExeName "aura_app.exe"
@@ -16,6 +19,7 @@ AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\AURA
 DisableProgramGroupPage=yes
 OutputBaseFilename=aura_setup_v{#MyAppVersion}
+OutputDir=..\release
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -40,16 +44,19 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// Verifica PID-based dell'ownership prima di procedere con l'installazione o la disinstallazione
+// Controlla lo stato di esecuzione dell'applicazione A.U.R.A. e dei relativi processi nativi di inferenza posseduti
+function CheckAuraRunning(): Boolean;
+begin
+  Result := CheckForMutexes('AURA_APPLICATION_SINGLE_INSTANCE_MUTEX');
+end;
+
 function InitializeSetup(): Boolean;
-var
-  ErrorCode: Integer;
 begin
   Result := True;
-  // Se l'applicazione è in esecuzione, richiede all'utente la chiusura controllata
-  if CheckForMutexes('AURA_APPLICATION_SINGLE_INSTANCE_MUTEX') then
+  if CheckAuraRunning() then
   begin
-    MsgBox('A.U.R.A. risulta attualmente in esecuzione. Si prega di chiudere l''applicazione prima di continuare con l''installazione.', mbInformation, MB_OK);
+    MsgBox('A.U.R.A. o i relativi servizi di inferenza risultano attualmente in esecuzione.' + #13#10 +
+           'Si prega di chiudere l''applicazione prima di continuare con l''installazione.', mbInformation, MB_OK);
     Result := False;
   end;
 end;
@@ -57,7 +64,7 @@ end;
 function InitializeUninstall(): Boolean;
 begin
   Result := True;
-  if CheckForMutexes('AURA_APPLICATION_SINGLE_INSTANCE_MUTEX') then
+  if CheckAuraRunning() then
   begin
     MsgBox('A.U.R.A. risulta in esecuzione. Si prega di chiudere l''applicazione prima di procedere con la disinstallazione.', mbCritical, MB_OK);
     Result := False;

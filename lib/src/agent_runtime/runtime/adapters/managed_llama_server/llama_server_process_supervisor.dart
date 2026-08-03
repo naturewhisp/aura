@@ -148,7 +148,7 @@ class LlamaServerProcessSupervisor {
           executablePath: _configuration.executablePath,
           workingDirectory: _configuration.workingDirectory ?? '',
           vendorDirectories: _configuration.vendorDirectories,
-          currentEnvironment: _configuration.environmentOverrides.isNotEmpty
+          environmentOverrides: _configuration.environmentOverrides.isNotEmpty
               ? _configuration.environmentOverrides
               : null,
         );

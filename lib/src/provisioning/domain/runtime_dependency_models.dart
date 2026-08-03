@@ -34,6 +34,7 @@ final class LlamaServerConfiguration {
   final int schemaVersion;
   final RuntimeSource source;
   final String? variantId;
+  final String? runtimeSetId;
   final String? externalExecutablePath;
   final String executablePath;
   final String? detectedVersion;
@@ -45,9 +46,10 @@ final class LlamaServerConfiguration {
 
   const LlamaServerConfiguration({
     this.schemaVersion = 1,
-    this.source = RuntimeSource.bundled,
+    this.source = RuntimeSource.external,
     this.variantId,
-    this.externalExecutablePath,
+    this.runtimeSetId,
+    String? externalExecutablePath,
     required this.executablePath,
     this.detectedVersion,
     this.lastValidatedAtUtc,
@@ -55,19 +57,22 @@ final class LlamaServerConfiguration {
     this.acceleration = RuntimeAcceleration.cpu,
     this.gpuDeviceName,
     this.gpuLayers,
-  });
+  }) : externalExecutablePath = externalExecutablePath ??
+            (source == RuntimeSource.external ? executablePath : null);
 
   factory LlamaServerConfiguration.fromJson(Map<String, dynamic> json) {
     final rawPath = (json['executablePath'] as String?)?.trim() ?? '';
     final rawSourceStr = json['source'] as String?;
     final variantId = json['variantId'] as String?;
+    final runtimeSetId = json['runtimeSetId'] as String?;
     final externalPath = (json['externalExecutablePath'] as String?)?.trim();
 
     RuntimeSource source;
     if (rawSourceStr != null) {
       source = RuntimeSource.values.firstWhere(
         (s) => s.name == rawSourceStr,
-        orElse: () => RuntimeSource.bundled,
+        orElse: () =>
+            variantId != null ? RuntimeSource.bundled : RuntimeSource.external,
       );
     } else {
       // Migrazione automatica da configurazione legacy basata unicamente su executablePath
@@ -110,16 +115,16 @@ final class LlamaServerConfiguration {
         ? DateTime.tryParse(lastValidatedStr)?.toUtc()
         : null;
 
-    final effectivePath = externalPath ??
-        (rawPath.isNotEmpty ? rawPath : (effectiveVariantId ?? ''));
+    final effectiveExternalPath =
+        externalPath ?? (source == RuntimeSource.external ? rawPath : null);
 
     return LlamaServerConfiguration(
       schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 1,
       source: source,
       variantId: effectiveVariantId,
-      externalExecutablePath:
-          externalPath ?? (source == RuntimeSource.external ? rawPath : null),
-      executablePath: effectivePath,
+      runtimeSetId: runtimeSetId,
+      externalExecutablePath: effectiveExternalPath,
+      executablePath: effectiveExternalPath ?? rawPath,
       detectedVersion: json['detectedVersion'] as String?,
       lastValidatedAtUtc: lastValidated,
       validationStatus: status,
@@ -134,9 +139,11 @@ final class LlamaServerConfiguration {
       'schemaVersion': schemaVersion,
       'source': source.name,
       if (variantId != null) 'variantId': variantId,
+      if (runtimeSetId != null) 'runtimeSetId': runtimeSetId,
       if (externalExecutablePath != null)
         'externalExecutablePath': externalExecutablePath,
-      'executablePath': executablePath,
+      if (source == RuntimeSource.external || variantId == null)
+        'executablePath': executablePath,
       if (detectedVersion != null) 'detectedVersion': detectedVersion,
       if (lastValidatedAtUtc != null)
         'lastValidatedAtUtc': lastValidatedAtUtc!.toUtc().toIso8601String(),
@@ -148,6 +155,11 @@ final class LlamaServerConfiguration {
   }
 
   LlamaServerConfiguration copyWith({
+    int? schemaVersion,
+    RuntimeSource? source,
+    Object? variantId = _unset,
+    Object? runtimeSetId = _unset,
+    Object? externalExecutablePath = _unset,
     String? executablePath,
     Object? detectedVersion = _unset,
     Object? lastValidatedAtUtc = _unset,
@@ -157,6 +169,16 @@ final class LlamaServerConfiguration {
     Object? gpuLayers = _unset,
   }) {
     return LlamaServerConfiguration(
+      schemaVersion: schemaVersion ?? this.schemaVersion,
+      source: source ?? this.source,
+      variantId:
+          identical(variantId, _unset) ? this.variantId : variantId as String?,
+      runtimeSetId: identical(runtimeSetId, _unset)
+          ? this.runtimeSetId
+          : runtimeSetId as String?,
+      externalExecutablePath: identical(externalExecutablePath, _unset)
+          ? this.externalExecutablePath
+          : externalExecutablePath as String?,
       executablePath: executablePath ?? this.executablePath,
       detectedVersion: identical(detectedVersion, _unset)
           ? this.detectedVersion
@@ -181,6 +203,11 @@ final class LlamaServerConfiguration {
       identical(this, other) ||
       other is LlamaServerConfiguration &&
           runtimeType == other.runtimeType &&
+          schemaVersion == other.schemaVersion &&
+          source == other.source &&
+          variantId == other.variantId &&
+          runtimeSetId == other.runtimeSetId &&
+          externalExecutablePath == other.externalExecutablePath &&
           executablePath == other.executablePath &&
           detectedVersion == other.detectedVersion &&
           lastValidatedAtUtc == other.lastValidatedAtUtc &&
@@ -191,6 +218,11 @@ final class LlamaServerConfiguration {
 
   @override
   int get hashCode => Object.hash(
+        schemaVersion,
+        source,
+        variantId,
+        runtimeSetId,
+        externalExecutablePath,
         executablePath,
         detectedVersion,
         lastValidatedAtUtc,

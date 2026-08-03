@@ -9,6 +9,8 @@ import '../domain/runtime_dependency_models.dart';
 import 'json_model_configuration_repository.dart';
 import 'provisioning_file_system.dart';
 import 'provisioning_path_resolver.dart';
+import 'runtime_bundle_integrity_verifier.dart';
+import 'runtime_manifest_repository.dart';
 
 /// Contratto astratto per la gestione della dipendenza esterna `llama-server`.
 abstract interface class LlamaServerDependencyService {
@@ -26,6 +28,7 @@ abstract interface class LlamaServerDependencyService {
   Future<LlamaServerConfiguration> configureExecutable({
     required String executablePath,
     String? variantId,
+    RuntimeSource? source,
   });
 
   /// Azzera la configurazione persistita dell'eseguibile.
@@ -43,6 +46,8 @@ final class DefaultLlamaServerDependencyService
   final ProvisioningPathResolver _pathResolver;
   final ProcessLauncher _processLauncher;
   final LlamaRuntimeLaunchEnvironmentResolver _environmentResolver;
+  final RuntimeManifestRepository _manifestRepository;
+  final RuntimeBundleIntegrityVerifier _integrityVerifier;
   final Duration _probeTimeout;
 
   DefaultLlamaServerDependencyService({
@@ -52,12 +57,23 @@ final class DefaultLlamaServerDependencyService
     ProcessLauncher processLauncher = const DartIoProcessLauncher(),
     LlamaRuntimeLaunchEnvironmentResolver environmentResolver =
         const DefaultLlamaRuntimeLaunchEnvironmentResolver(),
+    RuntimeManifestRepository? manifestRepository,
+    RuntimeBundleIntegrityVerifier? integrityVerifier,
     Duration probeTimeout = const Duration(seconds: 5),
   })  : _configurationRepository = configurationRepository,
         _fileSystem = fileSystem,
         _pathResolver = pathResolver,
         _processLauncher = processLauncher,
         _environmentResolver = environmentResolver,
+        _manifestRepository = manifestRepository ??
+            DefaultRuntimeManifestRepository(
+              fileSystem: fileSystem,
+              pathResolver: pathResolver,
+            ),
+        _integrityVerifier = integrityVerifier ??
+            DefaultRuntimeBundleIntegrityVerifier(
+              fileSystem: fileSystem,
+            ),
         _probeTimeout = probeTimeout;
 
   @override
@@ -77,15 +93,28 @@ final class DefaultLlamaServerDependencyService
   Future<LlamaServerConfiguration> configureExecutable({
     required String executablePath,
     String? variantId,
+    RuntimeSource? source,
   }) async {
     final validation = await validateExecutable(
       executablePath: executablePath,
       variantId: variantId,
     );
 
+    final isBundled = executablePath.contains(_pathResolver.bundledRoot) ||
+        executablePath.contains(_pathResolver.appManagedRoot) ||
+        (variantId != null && variantId.isNotEmpty);
+
+    final effectiveSource =
+        source ?? (isBundled ? RuntimeSource.bundled : RuntimeSource.external);
+
     final config = LlamaServerConfiguration(
-      executablePath: executablePath.trim(),
+      schemaVersion: 1,
+      source: effectiveSource,
       variantId: variantId ?? validation.variantId,
+      externalExecutablePath: effectiveSource == RuntimeSource.external
+          ? executablePath.trim()
+          : null,
+      executablePath: executablePath.trim(),
       detectedVersion: validation.detectedVersion,
       lastValidatedAtUtc: validation.lastValidatedAtUtc,
       validationStatus: validation.status,
@@ -104,36 +133,156 @@ final class DefaultLlamaServerDependencyService
   Future<LlamaServerDetectionResult> detect() async {
     final warnings = <String>[];
     String? configuredPath;
-    var isConfiguredValid = false;
 
     // 1. Prova prima la configurazione gestita/persistita precedentemente valida (last-known-good)
     final persistedConfig = await readConfiguration();
-    if (persistedConfig != null &&
-        persistedConfig.executablePath.trim().isNotEmpty) {
-      configuredPath = persistedConfig.executablePath.trim();
-      final validation = await validateExecutable(
-        executablePath: configuredPath,
-        variantId: persistedConfig.variantId,
-      );
-      if (validation.isValid) {
-        return LlamaServerDetectionResult(
-          configuredCandidate: configuredPath,
-          isConfiguredValid: true,
-          effectiveCandidate: configuredPath,
-          variantId: validation.variantId ?? persistedConfig.variantId,
-          declaredAcceleration: validation.declaredAcceleration,
-          acceleration: validation.acceleration,
+    if (persistedConfig != null) {
+      final rawConfigured = persistedConfig.externalExecutablePath ??
+          persistedConfig.executablePath;
+      if (rawConfigured.trim().isNotEmpty) {
+        configuredPath = rawConfigured.trim();
+      }
+
+      if (persistedConfig.source == RuntimeSource.bundled &&
+          persistedConfig.variantId != null) {
+        final manifest = await _manifestRepository.readManifest();
+        if (manifest != null) {
+          final variant = manifest.findVariantById(persistedConfig.variantId!);
+          if (variant != null) {
+            final roots = [
+              '${_pathResolver.bundledRoot}\\runtime',
+              '${_pathResolver.appManagedRoot}\\runtime',
+            ];
+            for (final root in roots) {
+              final integrity = await _integrityVerifier.verifyVariant(
+                variant: variant,
+                runtimeRootPath: root,
+              );
+              if (integrity.isValid) {
+                final resolvedExe =
+                    '$root\\${variant.executable.replaceAll('/', '\\')}';
+                final resolvedVendors = variant.vendorDirectories
+                    .map((v) => '$root\\${v.replaceAll('/', '\\')}')
+                    .toList();
+
+                final validation = await validateExecutable(
+                  executablePath: resolvedExe,
+                  variantId: variant.id,
+                  vendorDirectories: resolvedVendors,
+                );
+
+                if (validation.isValid) {
+                  return LlamaServerDetectionResult(
+                    configuredCandidate: resolvedExe,
+                    isConfiguredValid: true,
+                    effectiveCandidate: resolvedExe,
+                    variantId: variant.id,
+                    declaredAcceleration: variant.acceleration,
+                    acceleration: validation.acceleration,
+                  );
+                }
+              }
+            }
+          }
+        }
+      } else if (configuredPath != null) {
+        final validation = await validateExecutable(
+          executablePath: configuredPath,
+          variantId: persistedConfig.variantId,
         );
-      } else {
-        warnings.add(
-          'La configurazione runtime precedente ("$configuredPath") non è più valida: '
-          '${validation.errorMessage ?? validation.status.name}',
-        );
+        if (validation.isValid) {
+          return LlamaServerDetectionResult(
+            configuredCandidate: configuredPath,
+            isConfiguredValid: true,
+            effectiveCandidate: configuredPath,
+            variantId: validation.variantId ?? persistedConfig.variantId,
+            declaredAcceleration: validation.declaredAcceleration,
+            acceleration: validation.acceleration,
+          );
+        } else {
+          warnings.add(
+            'La configurazione runtime precedente ("$configuredPath") non è più valida: '
+            '${validation.errorMessage ?? validation.status.name}',
+          );
+        }
       }
     }
 
-    // 2. Candidati bundled ufficiali ordinati: win-x64-cuda -> win-x64-vulkan -> win-x64-cpu-avx2
-    final bundledCandidates = [
+    // 2. Discovery guidata dal manifest canonico runtime-manifest.json
+    final manifest = await _manifestRepository.readManifest();
+    String? lastFallbackReason;
+
+    if (manifest != null) {
+      final roots = [
+        '${_pathResolver.bundledRoot}\\runtime',
+        '${_pathResolver.appManagedRoot}\\runtime',
+        _pathResolver.bundledRoot,
+        _pathResolver.appManagedRoot,
+      ];
+
+      // Ordine di priorità variante: win-x64-cuda -> win-x64-vulkan -> win-x64-cpu-avx2
+      final priorityVariantIds = [
+        'win-x64-cuda',
+        'win-x64-vulkan',
+        'win-x64-cpu-avx2',
+      ];
+
+      final sortedVariants = manifest.variants.toList()
+        ..sort((a, b) {
+          final indexA = priorityVariantIds.indexOf(a.id);
+          final indexB = priorityVariantIds.indexOf(b.id);
+          final posA = indexA != -1 ? indexA : 99;
+          final posB = indexB != -1 ? indexB : 99;
+          return posA.compareTo(posB);
+        });
+
+      for (final variant in sortedVariants) {
+        for (final root in roots) {
+          final integrity = await _integrityVerifier.verifyVariant(
+            variant: variant,
+            runtimeRootPath: root,
+          );
+
+          if (integrity.isValid) {
+            final resolvedExe =
+                '$root\\${variant.executable.replaceAll('/', '\\')}';
+            final resolvedVendors = variant.vendorDirectories
+                .map((v) => '$root\\${v.replaceAll('/', '\\')}')
+                .toList();
+
+            final validation = await validateExecutable(
+              executablePath: resolvedExe,
+              variantId: variant.id,
+              vendorDirectories: resolvedVendors,
+            );
+
+            if (validation.isValid) {
+              return LlamaServerDetectionResult(
+                configuredCandidate: configuredPath,
+                isConfiguredValid: false,
+                detectedFallback: resolvedExe,
+                effectiveCandidate: resolvedExe,
+                variantId: variant.id,
+                declaredAcceleration: variant.acceleration,
+                acceleration: validation.acceleration,
+                warnings: warnings,
+              );
+            } else {
+              lastFallbackReason =
+                  'Probe operativo della variante ${variant.id} fallito (${validation.errorMessage}). Ripiego su variante successiva.';
+              warnings.add(lastFallbackReason);
+            }
+          } else {
+            lastFallbackReason =
+                'Verifica integrità SHA-256 della variante ${variant.id} fallita (${integrity.errorMessage}). Ripiego su variante successiva.';
+            warnings.add(lastFallbackReason);
+          }
+        }
+      }
+    }
+
+    // 3. Fallback a candidati legacy hardcoded se manifest non disponibile o non soddisfacente
+    final legacyCandidates = [
       (
         variantId: 'win-x64-cuda',
         accel: RuntimeAcceleration.cuda,
@@ -171,9 +320,7 @@ final class DefaultLlamaServerDependencyService
       ),
     ];
 
-    String? lastFallbackReason;
-
-    for (final candidateGroup in bundledCandidates) {
+    for (final candidateGroup in legacyCandidates) {
       for (final candidate in candidateGroup.paths) {
         if (await _fileSystem.fileExists(candidate)) {
           final vendors = candidateGroup.vendorDirs(candidate);
@@ -185,7 +332,7 @@ final class DefaultLlamaServerDependencyService
           if (validation.isValid) {
             return LlamaServerDetectionResult(
               configuredCandidate: configuredPath,
-              isConfiguredValid: isConfiguredValid,
+              isConfiguredValid: false,
               detectedFallback: candidate,
               effectiveCandidate: candidate,
               variantId: candidateGroup.variantId,
@@ -193,10 +340,6 @@ final class DefaultLlamaServerDependencyService
               acceleration: validation.acceleration,
               warnings: warnings,
             );
-          } else {
-            lastFallbackReason =
-                'Probe della variante ${candidateGroup.variantId} fallito (${validation.errorMessage}). Ripiego sulla variante successiva.';
-            warnings.add(lastFallbackReason);
           }
         }
       }
@@ -210,7 +353,7 @@ final class DefaultLlamaServerDependencyService
       if (validation.isValid) {
         return LlamaServerDetectionResult(
           configuredCandidate: configuredPath,
-          isConfiguredValid: isConfiguredValid,
+          isConfiguredValid: false,
           detectedFallback: pathCandidate,
           effectiveCandidate: pathCandidate,
           acceleration: validation.acceleration,

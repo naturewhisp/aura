@@ -1,15 +1,21 @@
 <#
 .SYNOPSIS
-    Script di staging e preparazione locale delle varianti di runtime llama-server (CUDA, Vulkan, CPU AVX2) per A.U.R.A.
+    Script di staging e preparazione delle varianti di runtime llama-server per A.U.R.A.
 
 .PARAMETER Version
     Versione del pacchetto di rilascio (es. "0.1.0" o "1.0.0").
 
-.PARAMETER SourceCommit
-    SHA-1 o tag del commit sorgente per la tracciabilità del manifest.
+.PARAMETER OutDir
+    Directory di destinazione dello staging per il runtime (di default build/runtime-staging).
+
+.PARAMETER AllowPlaceholders
+    Attiva la generazione di placeholder di test per ambienti di sviluppo headless/CI senza GPU.
+    ATTENZIONE: Questo flag non deve MAI essere utilizzato per le build ufficiali di rilascio!
 #>
 param(
     [string]$Version = "0.1.0",
+    [string]$OutDir = "",
+    [switch]$AllowPlaceholders,
     [string]$SourceCommit = ""
 )
 
@@ -18,11 +24,17 @@ $ErrorActionPreference = "Stop"
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " A.U.R.A. Llama Runtime Staging & Multi-Variant Builder" -ForegroundColor Cyan
 Write-Host " Versione: $Version" -ForegroundColor Cyan
+Write-Host " Placeholders Consentiti: $AllowPlaceholders" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 $projectRoot = Resolve-Path "$PSScriptRoot\.."
-$runtimeRoot = "$projectRoot\runtime"
-$binRoot = "$runtimeRoot\bin"
+if ([string]::IsNullOrWhiteSpace($OutDir)) {
+    $targetRuntimeRoot = "$projectRoot\build\runtime-staging"
+} else {
+    $targetRuntimeRoot = $OutDir
+}
+
+$binRoot = "$targetRuntimeRoot\bin"
 
 if ([string]::IsNullOrWhiteSpace($SourceCommit)) {
     try {
@@ -32,7 +44,7 @@ if ([string]::IsNullOrWhiteSpace($SourceCommit)) {
     }
 }
 
-# Creazione delle directory per le 3 varianti ufficiali
+# Definizione varianti ufficiali
 $variants = @(
     @{
         id = "win-x64-cuda"
@@ -78,16 +90,46 @@ foreach ($v in $variants) {
     }
 }
 
-# Verifica o creazione di stub binaries di staging se non già forniti esternamente
+# Funzione per la validazione formale PE Executable (Header MZ)
+function Test-IsPEExecutable([string]$filePath) {
+    if (-not (Test-Path $filePath)) { return $false }
+    $bytes = Get-Content -Path $filePath -Encoding Byte -TotalCount 2 -ErrorAction SilentlyContinue
+    if ($bytes -and $bytes.Length -eq 2 -and $bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) {
+        return $true
+    }
+    return $false
+}
+
+# Verifica o popolamento degli eseguibili per ogni variante
 foreach ($v in $variants) {
     $exePath = "$($v.dir)\llama-server.exe"
+    
+    # Se esiste un file runtime pre-esistente nella root del repo, sincronizzalo nello staging
+    $sourceRepoExe = "$projectRoot\runtime\bin\$($v.id)\llama-server.exe"
+    if (-not (Test-Path $exePath) -and (Test-Path $sourceRepoExe)) {
+        Copy-Item -Path "$projectRoot\runtime\bin\$($v.id)\*" -Destination $v.dir -Recurse -Force
+    }
+
     if (-not (Test-Path $exePath)) {
-        Write-Host "⚠️ Staging placeholder per $($v.id): $exePath" -ForegroundColor Yellow
-        Set-Content -Path $exePath -Value "AURA_LLAMA_SERVER_PLACEHOLDER_STAGING" -Encoding UTF8
+        if ($AllowPlaceholders) {
+            Write-Host "⚠️ PLACEHOLDER DI SVILUPPO creato per $($v.id): $exePath" -ForegroundColor Yellow
+            # Scrive header MZ minimo per superare i controlli fisici di sviluppo
+            $mzHeader = [byte[]]@(0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00)
+            [System.IO.File]::WriteAllBytes($exePath, $mzHeader)
+        } else {
+            throw "[FALIMENTALE RELEASE] Eseguibile llama-server non trovato per la variante $($v.id) in: $exePath. Per creare un pacchetto di rilascio distribuibile occorre fornire i binari compilati reali o non passare -AllowPlaceholders."
+        }
+    }
+
+    # Verifica formale PE Binary
+    if (-not (Test-IsPEExecutable $exePath)) {
+        if (-not $AllowPlaceholders) {
+            throw "[FALLIMENTO PE VALIDATION] File non valido o non eseguibile Windows PE (Header MZ mancante): $exePath"
+        }
     }
 }
 
-# Calcolo Hash SHA-256 e metadata dei file
+# Calcolo Hash SHA-256 e metadata dei file per il manifest canonico
 $manifestVariants = @()
 
 foreach ($v in $variants) {
@@ -96,7 +138,7 @@ foreach ($v in $variants) {
 
     foreach ($f in $files) {
         $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash.ToLower()
-        $relPath = $f.FullName.Substring($v.dir.Length + 1).Replace("\", "/")
+        $relPath = $f.FullName.Substring($targetRuntimeRoot.Length + 1).Replace("\", "/")
         $fileEntries += @{
             path = $relPath
             sizeBytes = $f.Length
@@ -125,7 +167,7 @@ $manifestObject = [ordered]@{
 }
 
 $jsonOutput = $manifestObject | ConvertTo-Json -Depth 10
-$manifestFile = "$runtimeRoot\runtime-manifest.json"
+$manifestFile = "$targetRuntimeRoot\runtime-manifest.json"
 Set-Content -Path $manifestFile -Value $jsonOutput -Encoding UTF8
 
-Write-Host "✅ Runtime Multi-Variante e Manifest generati con successo in: $manifestFile" -ForegroundColor Green
+Write-Host "✅ Staging Runtime Multi-Variante e Manifest generati in: $targetRuntimeRoot" -ForegroundColor Green

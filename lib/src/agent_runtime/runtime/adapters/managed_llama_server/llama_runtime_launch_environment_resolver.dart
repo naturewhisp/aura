@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'package:collection/collection.dart';
 import 'package:meta/meta.dart';
 
 /// DTO immutabile contenente l'ambiente di lancio isolato process-local per `llama-server`.
@@ -17,10 +18,17 @@ final class RuntimeLaunchEnvironment {
       identical(this, other) ||
       other is RuntimeLaunchEnvironment &&
           runtimeType == other.runtimeType &&
-          workingDirectory == other.workingDirectory;
+          workingDirectory == other.workingDirectory &&
+          const MapEquality<String, String>().equals(
+            environmentOverrides,
+            other.environmentOverrides,
+          );
 
   @override
-  int get hashCode => Object.hash(workingDirectory, environmentOverrides);
+  int get hashCode => Object.hash(
+        workingDirectory,
+        const MapEquality<String, String>().hash(environmentOverrides),
+      );
 }
 
 /// Resolver dell'ambiente di lancio process-local per `llama-server`.
@@ -29,7 +37,8 @@ abstract interface class LlamaRuntimeLaunchEnvironmentResolver {
     required String executablePath,
     required String workingDirectory,
     List<String> vendorDirectories = const [],
-    Map<String, String>? currentEnvironment,
+    Map<String, String>? baseEnvironment,
+    Map<String, String>? environmentOverrides,
   });
 }
 
@@ -43,9 +52,15 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
     required String executablePath,
     required String workingDirectory,
     List<String> vendorDirectories = const [],
-    Map<String, String>? currentEnvironment,
+    Map<String, String>? baseEnvironment,
+    Map<String, String>? environmentOverrides,
   }) {
-    final env = currentEnvironment ?? Platform.environment;
+    // 1. Unione completa dell'ambiente base di sistema con gli overrides specifici
+    final env = <String, String>{
+      ...(baseEnvironment ?? Platform.environment),
+      if (environmentOverrides != null) ...environmentOverrides,
+    };
+
     final pathKey = env.keys.firstWhere(
       (k) => k.toUpperCase() == 'PATH',
       orElse: () => 'PATH',
@@ -53,7 +68,7 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
 
     final rawPath = env[pathKey] ?? '';
 
-    // Separa le voci di PATH esistenti ed elimina riferimenti legacy a LM Studio
+    // 2. Separa le voci di PATH esistenti ed elimina riferimenti legacy a LM Studio
     final pathSeparator = Platform.isWindows ? ';' : ':';
     final existingEntries = rawPath.split(pathSeparator).where((e) {
       final clean = e.toLowerCase().trim();
@@ -62,7 +77,7 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
           !clean.contains('lm-studio');
     }).toList();
 
-    // Raccoglie le directory vendor pulite
+    // 3. Raccoglie le directory vendor pulite
     final newEntries = <String>[];
     for (final vendor in vendorDirectories) {
       if (vendor.trim().isNotEmpty && !newEntries.contains(vendor.trim())) {
@@ -70,18 +85,18 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
       }
     }
 
-    // Aggiunge anche la workingDirectory se contiene librerie o DLL nativi
+    // 4. Aggiunge anche la workingDirectory se contiene librerie o DLL nativi
     if (workingDirectory.trim().isNotEmpty &&
         !newEntries.contains(workingDirectory.trim())) {
       newEntries.add(workingDirectory.trim());
     }
 
-    // Costruisce il nuovo PATH process-local anteponendo le directory vendor
+    // 5. Costruisce il nuovo PATH process-local anteponendo le directory vendor
     final sanitizedPath =
         [...newEntries, ...existingEntries].join(pathSeparator);
 
-    final overrides = Map<String, String>.from(env);
-    overrides[pathKey] = sanitizedPath;
+    final finalEnvironment = Map<String, String>.from(env);
+    finalEnvironment[pathKey] = sanitizedPath;
 
     return RuntimeLaunchEnvironment(
       workingDirectory: workingDirectory.trim().isEmpty
@@ -94,7 +109,7 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
                 ))
               : '.')
           : workingDirectory.trim(),
-      environmentOverrides: Map.unmodifiable(overrides),
+      environmentOverrides: Map.unmodifiable(finalEnvironment),
     );
   }
 }

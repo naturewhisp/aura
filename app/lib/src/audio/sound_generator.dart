@@ -582,13 +582,12 @@ class SoundGenerator {
     }
   }
 
-  /// Scrive un file WAV standard formattando l'intestazione RIFF e iniettando i campioni PCM a 16-bit.
-  static Future<void> _generateWavFile(
-    File file, {
+  /// Genera direttamente in memoria i byte di un file WAV formattato per la traccia specificata.
+  static List<int> generateWavBuffer({
     required int sampleRate,
     required double durationSeconds,
     required double Function(double t) generatePcm,
-  }) async {
+  }) {
     final int numSamples = (sampleRate * durationSeconds).toInt();
     const int numChannels = 1;
     const int bitsPerSample = 16;
@@ -626,7 +625,96 @@ class SoundGenerator {
       builder.add(_int16ToBytes(sampleInt));
     }
 
-    await file.writeAsBytes(builder.toBytes());
+    return builder.toBytes();
+  }
+
+  /// Genera i byte del buffer WAV per una specifica traccia tramite il nome file.
+  static List<int> generateTrackBuffer(String filename) {
+    return switch (filename) {
+      'sfx_click.wav' => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 0.02,
+          generatePcm: (t) {
+            final double freq = 1500.0 - 700.0 * (t / 0.02);
+            final double osc = math.sin(2 * math.pi * freq * t);
+            final double env = math.exp(-180.0 * t);
+            return osc * 0.3 * env;
+          },
+        ),
+      'sfx_alert.wav' => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 0.4,
+          generatePcm: (t) {
+            final double lfo = math.sin(2 * math.pi * 5.0 * t);
+            final double freq = 850.0 + 250.0 * lfo;
+            final double osc =
+                math.sin(2 * math.pi * freq * t) >= 0.0 ? 0.3 : -0.3;
+            final double env =
+                t < 0.02 ? (t / 0.02) : (t > 0.35 ? (0.4 - t) / 0.05 : 1.0);
+            return osc * env;
+          },
+        ),
+      'sfx_glitch.wav' => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 0.15,
+          generatePcm: (t) {
+            final double env = math.exp(-15.0 * t);
+            final double rawNoise = math.Random().nextDouble() * 2.0 - 1.0;
+            final double bitcrushNoise = (rawNoise * 4.0).round() / 4.0;
+            return bitcrushNoise * 0.25 * env;
+          },
+        ),
+      'sfx_chime.wav' => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 0.45,
+          generatePcm: (t) {
+            final double env = math.exp(-4.5 * t);
+            final double fundamental = math.sin(2 * math.pi * 880.0 * t);
+            final double harmonic = math.sin(2 * math.pi * 1760.0 * t);
+            return (fundamental * 0.25 + harmonic * 0.1) * env;
+          },
+        ),
+      'bgm_main.wav' => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 32.0,
+          generatePcm: (t) => 0.1 * math.sin(2 * math.pi * 220.0 * t),
+        ),
+      'bgm_ambient.wav' => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 64.0,
+          generatePcm: (t) => 0.1 * math.sin(2 * math.pi * 110.0 * t),
+        ),
+      'bgm_tense.wav' => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 16.0,
+          generatePcm: (t) => 0.1 * math.sin(2 * math.pi * 130.0 * t),
+        ),
+      'bgm_epic.wav' => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 32.0,
+          generatePcm: (t) => 0.1 * math.sin(2 * math.pi * 176.0 * t),
+        ),
+      _ => generateWavBuffer(
+          sampleRate: 22050,
+          durationSeconds: 0.1,
+          generatePcm: (t) => 0.0,
+        ),
+    };
+  }
+
+  /// Scrive un file WAV standard formattando l'intestazione RIFF e iniettando i campioni PCM a 16-bit.
+  static Future<void> _generateWavFile(
+    File file, {
+    required int sampleRate,
+    required double durationSeconds,
+    required double Function(double t) generatePcm,
+  }) async {
+    final bytes = generateWavBuffer(
+      sampleRate: sampleRate,
+      durationSeconds: durationSeconds,
+      generatePcm: generatePcm,
+    );
+    await file.writeAsBytes(bytes);
   }
 
   /// Converte un intero a 32-bit in un array di 4 byte (Little Endian).

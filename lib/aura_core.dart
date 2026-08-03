@@ -38,6 +38,11 @@ export 'src/desktop_shell/window_geometry_validator.dart';
 export 'src/desktop_shell/window_preferences_repository.dart';
 export 'src/desktop_shell/window_geometry_persistence_coordinator.dart';
 
+// Audio Domain Contracts (Phase 6.7)
+export 'src/audio/audio_manifest.dart';
+export 'src/audio/wav_header_verifier.dart';
+export 'src/audio/audio_import_engine.dart';
+
 // Agent Runtime Base
 export 'src/agent_runtime/agent_card.dart';
 export 'src/agent_runtime/inference_bridge.dart';

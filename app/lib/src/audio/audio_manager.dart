@@ -1,10 +1,84 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:aura_core/aura_core.dart';
 import 'sound_generator.dart';
 import 'audio_scene.dart';
 import 'bgm_player.dart';
 import 'audio_scene_machine.dart';
+
+/// Implementazione concreta di [AudioAssetSource] basata su [rootBundle] di Flutter con fallback locale.
+class FlutterBundleAudioSource implements AudioAssetSource {
+  final String assetPathPrefix;
+
+  FlutterBundleAudioSource({this.assetPathPrefix = 'assets/audio'});
+
+  @override
+  Future<List<int>?> read(String filename) async {
+    try {
+      final byteData = await rootBundle.load('$assetPathPrefix/$filename');
+      return byteData.buffer
+          .asUint8List(byteData.offsetInBytes, byteData.lengthInBytes);
+    } catch (_) {
+      final file = File('$assetPathPrefix/$filename');
+      if (file.existsSync()) {
+        return file.readAsBytesSync();
+      }
+      return null;
+    }
+  }
+}
+
+/// Implementazione concreta di [ManagedAudioStore] su filesystem locale.
+class DiskManagedAudioStore implements ManagedAudioStore {
+  final String storeDirPath;
+
+  DiskManagedAudioStore(this.storeDirPath);
+
+  @override
+  Future<List<int>?> read(String filename) async {
+    final file = File('$storeDirPath/$filename');
+    if (file.existsSync()) {
+      return file.readAsBytesSync();
+    }
+    return null;
+  }
+
+  @override
+  Future<void> writeAtomically(String filename, List<int> bytes) async {
+    final targetFile = File('$storeDirPath/$filename');
+    final tempFile = File(
+        '$storeDirPath/$filename.tmp_${DateTime.now().microsecondsSinceEpoch}');
+    if (!targetFile.parent.existsSync()) {
+      targetFile.parent.createSync(recursive: true);
+    }
+    await tempFile.writeAsBytes(bytes, flush: true);
+    if (targetFile.existsSync()) {
+      await targetFile.delete();
+    }
+    await tempFile.rename(targetFile.path);
+  }
+
+  @override
+  Future<void> delete(String filename) async {
+    final file = File('$storeDirPath/$filename');
+    if (file.existsSync()) {
+      await file.delete();
+    }
+  }
+}
+
+/// Implementazione concreta di [ProceduralAudioFallback] basata su [SoundGenerator].
+class SoundGeneratorProceduralAudioFallback implements ProceduralAudioFallback {
+  const SoundGeneratorProceduralAudioFallback();
+
+  @override
+  Future<List<int>> generate(AudioTrackDescriptor descriptor) async {
+    return SoundGenerator.generateTrackBuffer(descriptor.filename);
+  }
+}
 
 /// Implementazione di [BgmPlayer] basata su [AudioPlayer] nativo del pacchetto `audioplayers`.
 class AudioplayersBgmPlayer implements BgmPlayer {
@@ -182,16 +256,53 @@ class AudioManager {
       return;
     }
 
-    // Assicura che la directory temporanea per i file audio esista
+    // Assicura che la directory per lo store gestito dei file audio esista
     final audioDir = Directory('$appDataPath/audio');
     if (!audioDir.existsSync()) {
       audioDir.createSync(recursive: true);
     }
 
-    // Genera proceduralmente tutti i suoni WAV necessari al gioco
-    await SoundGenerator.generateAllSounds(audioDir.path);
+    final bundleSource = FlutterBundleAudioSource();
+    final managedStore = DiskManagedAudioStore(audioDir.path);
+    const fallback = SoundGeneratorProceduralAudioFallback();
 
-    // Memorizza i percorsi dei file WAV generati
+    final engine = AudioImportEngine(
+      bundledSource: bundleSource,
+      managedStore: managedStore,
+      proceduralFallback: fallback,
+    );
+
+    AudioManifest? manifest;
+    try {
+      final manifestBytes = await bundleSource.read('audio_manifest.json');
+      if (manifestBytes != null) {
+        final jsonStr = utf8.decode(manifestBytes);
+        manifest = AudioManifest.fromJson(jsonDecode(jsonStr));
+      }
+    } catch (e) {
+      debugPrint(
+          '[AUDIO] Warning: Impossibile decodificare audio_manifest.json ($e). Fallback procedurale attivo.');
+    }
+
+    if (manifest != null) {
+      final resolvedMap = await engine.resolveAll(manifest);
+      for (final entry in resolvedMap.entries) {
+        final track = entry.value;
+        final targetFile =
+            File('${audioDir.path}/${track.descriptor.filename}');
+        if (track.isProceduralFallback) {
+          debugPrint(
+              '[AUDIO] [WARN] Traccia "${track.descriptor.id}" caricata in modalità degradata (proceduralFallback).');
+          if (!targetFile.existsSync()) {
+            await targetFile.writeAsBytes(track.bytes);
+          }
+        }
+      }
+    } else {
+      await SoundGenerator.generateAllSounds(audioDir.path);
+    }
+
+    // Memorizza i percorsi dei file WAV verificati
     _bgmMainPath = '${audioDir.path}/bgm_main.wav';
     _bgmAmbientPath = '${audioDir.path}/bgm_ambient.wav';
     _bgmTensePath = '${audioDir.path}/bgm_tense.wav';

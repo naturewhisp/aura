@@ -6,11 +6,13 @@ import '../domain/installation_record.dart';
 import '../domain/local_inference_preflight_models.dart';
 import '../domain/provisioning_options.dart';
 import '../domain/runtime_dependency_models.dart';
+import 'bundled_runtime_resolver.dart';
 import 'installation_record_repository.dart';
 import 'json_model_configuration_repository.dart';
 import 'llama_server_dependency_service.dart';
 import 'provisioning_file_system.dart';
 import 'provisioning_path_resolver.dart';
+import 'runtime_manifest_repository.dart';
 
 /// Contratto astratto per il motore di preflight dell'inferenza locale.
 ///
@@ -31,6 +33,7 @@ abstract interface class LocalInferencePreflightEngine {
 /// Implementazione predefinita del motore di preflight.
 final class DefaultLocalInferencePreflightEngine
     implements LocalInferencePreflightEngine {
+  final BundledRuntimeResolver _runtimeResolver;
   final JsonModelConfigurationRepository _configurationRepository;
   final InstallationRecordRepository _installationRecordRepository;
   final LlamaServerDependencyService _dependencyService;
@@ -43,11 +46,21 @@ final class DefaultLocalInferencePreflightEngine
     required LlamaServerDependencyService dependencyService,
     required ProvisioningFileSystem fileSystem,
     required ProvisioningPathResolver pathResolver,
+    BundledRuntimeResolver? runtimeResolver,
   })  : _configurationRepository = configurationRepository,
         _installationRecordRepository = installationRecordRepository,
         _dependencyService = dependencyService,
         _fileSystem = fileSystem,
-        _pathResolver = pathResolver;
+        _pathResolver = pathResolver,
+        _runtimeResolver = runtimeResolver ??
+            DefaultBundledRuntimeResolver(
+              manifestRepository: DefaultRuntimeManifestRepository(
+                fileSystem: fileSystem,
+                pathResolver: pathResolver,
+              ),
+              fileSystem: fileSystem,
+              pathResolver: pathResolver,
+            );
 
   @override
   Future<LocalInferencePreflightResult> check({
@@ -66,9 +79,9 @@ final class DefaultLocalInferencePreflightEngine
 
     final configRecord = await _configurationRepository.readRecord();
 
-    // 1. Verifica runtime configurato
+    // 1. Risoluzione portabile del runtime configurato
     final runtimeConfig = configRecord.runtime;
-    if (runtimeConfig == null || runtimeConfig.executablePath.trim().isEmpty) {
+    if (runtimeConfig == null) {
       return const LocalInferencePreflightResult.failed(
         reason: LocalInferencePreflightFailure.runtimeNotConfigured,
         message: 'Nessun eseguibile llama-server è stato configurato. '
@@ -76,8 +89,29 @@ final class DefaultLocalInferencePreflightEngine
       );
     }
 
-    // 2. Verifica fisica rapida del file runtime
-    final execPath = runtimeConfig.executablePath.trim();
+    ResolvedLlamaRuntime? resolvedRuntime;
+    try {
+      resolvedRuntime = await _runtimeResolver.resolve(runtimeConfig);
+    } catch (e) {
+      return LocalInferencePreflightResult.failed(
+        reason: LocalInferencePreflightFailure.runtimeInvalid,
+        message: 'Impossibile risolvere il runtime configurato: $e',
+        runtimeConfiguration: runtimeConfig,
+      );
+    }
+
+    if (resolvedRuntime == null) {
+      return LocalInferencePreflightResult.failed(
+        reason: LocalInferencePreflightFailure.runtimeMissing,
+        message:
+            'L\'eseguibile llama-server configurato non è presente sul disco o il manifest è mancante.',
+        runtimeConfiguration: runtimeConfig,
+      );
+    }
+
+    final execPath = resolvedRuntime.executablePath;
+
+    // 2. Verifica fisica rapida del file runtime risolto
     if (!await _fileSystem.fileExists(execPath)) {
       return LocalInferencePreflightResult.failed(
         reason: LocalInferencePreflightFailure.runtimeMissing,
@@ -165,11 +199,14 @@ final class DefaultLocalInferencePreflightEngine
       );
     }
 
-    // 8. runtimeProbe: probe processuale sull'eseguibile llama-server
+    // 8. runtimeProbe: probe processuale sull'eseguibile llama-server con metadati vendor
     assert(depth == PreflightDepth.runtimeProbe, 'Depth non gestita: $depth');
 
-    final probeResult =
-        await _dependencyService.validateExecutable(executablePath: execPath);
+    final probeResult = await _dependencyService.validateExecutable(
+      executablePath: execPath,
+      variantId: resolvedRuntime.variantId,
+      vendorDirectories: resolvedRuntime.vendorDirectories,
+    );
     if (!probeResult.isValid) {
       return LocalInferencePreflightResult.failed(
         reason: LocalInferencePreflightFailure.runtimeInvalid,

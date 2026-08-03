@@ -16,6 +16,7 @@ AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
+AppMutex=AURA_APPLICATION_SINGLE_INSTANCE_MUTEX
 DefaultDirName={autopf}\AURA
 DisableProgramGroupPage=yes
 OutputBaseFilename=aura_setup_v{#MyAppVersion}

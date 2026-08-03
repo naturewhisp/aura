@@ -7,6 +7,8 @@ import '../../provisioning/cli/local_inference_service_provider.dart';
 import '../../provisioning/domain/configured_model_reference.dart';
 import '../../provisioning/domain/installation_record.dart';
 import '../../provisioning/domain/runtime_dependency_models.dart';
+import '../infrastructure/bundled_runtime_resolver.dart';
+import '../infrastructure/runtime_manifest_repository.dart';
 
 // ---------------------------------------------------------------------------
 // Risultato tipizzato della risoluzione della configurazione di bootstrap.
@@ -131,11 +133,31 @@ final class InferenceBootstrapBridge {
       final models = snapshot.modelConfiguration;
 
       // Nessuna configurazione runtime → configurazione incompleta.
-      if (runtime == null || runtime.executablePath.trim().isEmpty) {
+      if (runtime == null) {
         return const InvalidResolution(
           reason: InferenceBootstrapFailureReason.incompleteModelConfiguration,
           sanitizedMessage:
               'Nessun runtime llama-server configurato. Eseguire "aura runtime set" prima di avviare l\'applicazione.',
+        );
+      }
+
+      final resolver = DefaultBundledRuntimeResolver(
+        manifestRepository: DefaultRuntimeManifestRepository(
+          fileSystem: services.fileSystem,
+          pathResolver: services.pathResolver,
+        ),
+        fileSystem: services.fileSystem,
+        pathResolver: services.pathResolver,
+      );
+
+      final resolvedRuntime = await resolver.resolve(runtime);
+      if (resolvedRuntime == null ||
+          !await services.fileSystem
+              .fileExists(resolvedRuntime.executablePath)) {
+        return const InvalidResolution(
+          reason: InferenceBootstrapFailureReason.runtimeExecutableMissing,
+          sanitizedMessage:
+              'Il runtime llama-server configurato non è presente sul disco o la sua variante non è valida.',
         );
       }
 
@@ -227,7 +249,9 @@ final class InferenceBootstrapBridge {
           '$appManagedRoot/runtime/logs/evaluator_llama_server.log';
 
       final actorConfig = ManagedLlamaServerConfiguration(
-        executablePath: runtime.executablePath,
+        executablePath: resolvedRuntime.executablePath,
+        workingDirectory: resolvedRuntime.workingDirectory,
+        vendorDirectories: resolvedRuntime.vendorDirectories,
         modelPath: actorPath,
         modelAlias: 'aura.actor.primary',
         gpuLayers: 99,
@@ -239,7 +263,9 @@ final class InferenceBootstrapBridge {
       );
 
       final evaluatorConfig = ManagedLlamaServerConfiguration(
-        executablePath: runtime.executablePath,
+        executablePath: resolvedRuntime.executablePath,
+        workingDirectory: resolvedRuntime.workingDirectory,
+        vendorDirectories: resolvedRuntime.vendorDirectories,
         modelPath: evaluatorPath,
         modelAlias: 'aura.evaluator.primary',
         gpuLayers: 99,

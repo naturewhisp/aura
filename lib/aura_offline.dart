@@ -87,6 +87,7 @@ export 'src/provisioning/application/runtime_model_settings_facade.dart';
 export 'src/provisioning/infrastructure/json_model_configuration_repository.dart';
 export 'src/provisioning/infrastructure/llama_server_dependency_service.dart';
 export 'src/provisioning/infrastructure/runtime_manifest_repository.dart';
+export 'src/provisioning/infrastructure/bundled_runtime_resolver.dart';
 export 'src/provisioning/infrastructure/runtime_bundle_integrity_verifier.dart';
 export 'src/provisioning/infrastructure/local_inference_preflight_engine.dart';
 export 'src/provisioning/infrastructure/model_configuration_service.dart';

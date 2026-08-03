@@ -100,9 +100,15 @@ final class DefaultLlamaServerDependencyService
       variantId: variantId,
     );
 
-    final isBundled = executablePath.contains(_pathResolver.bundledRoot) ||
-        executablePath.contains(_pathResolver.appManagedRoot) ||
-        (variantId != null && variantId.isNotEmpty);
+    final manifestResult = await _manifestRepository.readManifestResult();
+    final isManifestBundled = manifestResult is RuntimeManifestFound &&
+        manifestResult.manifest.variants.any((v) =>
+            executablePath.contains(v.workingDirectory.replaceAll('/', '\\')) ||
+            executablePath.contains(v.id));
+
+    final isBundled = source == RuntimeSource.bundled ||
+        (variantId != null && variantId.isNotEmpty) ||
+        isManifestBundled;
 
     final effectiveSource =
         source ?? (isBundled ? RuntimeSource.bundled : RuntimeSource.external);
@@ -209,10 +215,42 @@ final class DefaultLlamaServerDependencyService
     }
 
     // 2. Discovery guidata dal manifest canonico runtime-manifest.json
-    final manifest = await _manifestRepository.readManifest();
+    final manifestResult = await _manifestRepository.readManifestResult();
+    final hasCanonicalBin = await _fileSystem
+            .directoryExists('${_pathResolver.bundledRoot}\\runtime\\bin') ||
+        await _fileSystem
+            .directoryExists('${_pathResolver.appManagedRoot}\\runtime\\bin');
+
     String? lastFallbackReason;
 
-    if (manifest != null) {
+    if (manifestResult is RuntimeManifestMalformed) {
+      final msg =
+          'Manifest multi-variante corrotto in "${manifestResult.manifestPath}": ${manifestResult.errorMessage}. Esecuzione bloccata per sicurezza (Fail-Closed).';
+      warnings.add(msg);
+      if (hasCanonicalBin) {
+        return LlamaServerDetectionResult(
+          configuredCandidate: configuredPath,
+          isConfiguredValid: false,
+          effectiveCandidate: null,
+          warnings: warnings,
+          fallbackReason: msg,
+        );
+      }
+    } else if (manifestResult is RuntimeManifestMissing && hasCanonicalBin) {
+      final msg =
+          'Directory canonica runtime/bin/ presente ma manifest runtime-manifest.json mancante. Esecuzione bloccata per sicurezza (Fail-Closed).';
+      warnings.add(msg);
+      return LlamaServerDetectionResult(
+        configuredCandidate: configuredPath,
+        isConfiguredValid: false,
+        effectiveCandidate: null,
+        warnings: warnings,
+        fallbackReason: msg,
+      );
+    }
+
+    if (manifestResult is RuntimeManifestFound) {
+      final manifest = manifestResult.manifest;
       final roots = [
         '${_pathResolver.bundledRoot}\\runtime',
         '${_pathResolver.appManagedRoot}\\runtime',
@@ -281,65 +319,63 @@ final class DefaultLlamaServerDependencyService
       }
     }
 
-    // 3. Fallback a candidati legacy hardcoded se manifest non disponibile o non soddisfacente
-    final legacyCandidates = [
-      (
-        variantId: 'win-x64-cuda',
-        accel: RuntimeAcceleration.cuda,
-        paths: [
-          '${_pathResolver.appManagedRoot}\\runtime\\bin\\win-x64-cuda\\llama-server.exe',
-          '${_pathResolver.bundledRoot}\\runtime\\bin\\win-x64-cuda\\llama-server.exe',
-          '${_pathResolver.appManagedRoot}\\runtime\\windows-x64-cuda\\llama-server.exe',
-          '${_pathResolver.bundledRoot}\\runtime\\windows-x64-cuda\\llama-server.exe',
-        ],
-        vendorDirs: (String path) => [
-              '${io.File(path).parent.path}\\vendor',
-            ]
-      ),
-      (
-        variantId: 'win-x64-vulkan',
-        accel: RuntimeAcceleration.vulkan,
-        paths: [
-          '${_pathResolver.appManagedRoot}\\runtime\\bin\\win-x64-vulkan\\llama-server.exe',
-          '${_pathResolver.bundledRoot}\\runtime\\bin\\win-x64-vulkan\\llama-server.exe',
-        ],
-        vendorDirs: (String path) => [
-              '${io.File(path).parent.path}\\vendor',
-            ]
-      ),
-      (
-        variantId: 'win-x64-cpu-avx2',
-        accel: RuntimeAcceleration.cpu,
-        paths: [
-          '${_pathResolver.appManagedRoot}\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
-          '${_pathResolver.bundledRoot}\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
-          '${_pathResolver.appManagedRoot}\\runtime\\llama-server.exe',
-          '${_pathResolver.bundledRoot}\\runtime\\llama-server.exe',
-        ],
-        vendorDirs: (String path) => <String>[]
-      ),
-    ];
+    // 3. Fallback a soli percorsi realmente legacy hardcoded se la cartella canonica runtime/bin/ NON esiste
+    if (!hasCanonicalBin) {
+      final legacyCandidates = [
+        (
+          variantId: 'win-x64-cuda',
+          accel: RuntimeAcceleration.cuda,
+          paths: [
+            '${_pathResolver.appManagedRoot}\\runtime\\windows-x64-cuda\\llama-server.exe',
+            '${_pathResolver.bundledRoot}\\runtime\\windows-x64-cuda\\llama-server.exe',
+          ],
+          vendorDirs: (String path) => [
+                '${io.File(path).parent.path}\\vendor',
+              ]
+        ),
+        (
+          variantId: 'win-x64-vulkan',
+          accel: RuntimeAcceleration.vulkan,
+          paths: [
+            '${_pathResolver.appManagedRoot}\\runtime\\windows-x64-vulkan\\llama-server.exe',
+            '${_pathResolver.bundledRoot}\\runtime\\windows-x64-vulkan\\llama-server.exe',
+          ],
+          vendorDirs: (String path) => [
+                '${io.File(path).parent.path}\\vendor',
+              ]
+        ),
+        (
+          variantId: 'win-x64-cpu-avx2',
+          accel: RuntimeAcceleration.cpu,
+          paths: [
+            '${_pathResolver.appManagedRoot}\\runtime\\llama-server.exe',
+            '${_pathResolver.bundledRoot}\\runtime\\llama-server.exe',
+          ],
+          vendorDirs: (String path) => <String>[]
+        ),
+      ];
 
-    for (final candidateGroup in legacyCandidates) {
-      for (final candidate in candidateGroup.paths) {
-        if (await _fileSystem.fileExists(candidate)) {
-          final vendors = candidateGroup.vendorDirs(candidate);
-          final validation = await validateExecutable(
-            executablePath: candidate,
-            variantId: candidateGroup.variantId,
-            vendorDirectories: vendors,
-          );
-          if (validation.isValid) {
-            return LlamaServerDetectionResult(
-              configuredCandidate: configuredPath,
-              isConfiguredValid: false,
-              detectedFallback: candidate,
-              effectiveCandidate: candidate,
+      for (final candidateGroup in legacyCandidates) {
+        for (final candidate in candidateGroup.paths) {
+          if (await _fileSystem.fileExists(candidate)) {
+            final vendors = candidateGroup.vendorDirs(candidate);
+            final validation = await validateExecutable(
+              executablePath: candidate,
               variantId: candidateGroup.variantId,
-              declaredAcceleration: candidateGroup.accel,
-              acceleration: validation.acceleration,
-              warnings: warnings,
+              vendorDirectories: vendors,
             );
+            if (validation.isValid) {
+              return LlamaServerDetectionResult(
+                configuredCandidate: configuredPath,
+                isConfiguredValid: false,
+                detectedFallback: candidate,
+                effectiveCandidate: candidate,
+                variantId: candidateGroup.variantId,
+                declaredAcceleration: candidateGroup.accel,
+                acceleration: validation.acceleration,
+                warnings: warnings,
+              );
+            }
           }
         }
       }

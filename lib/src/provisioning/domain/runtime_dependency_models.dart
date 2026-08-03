@@ -28,6 +28,54 @@ enum RuntimeSource {
   external,
 }
 
+/// DTO operativo risolto per il lancio e l'esecuzione di `llama-server`.
+@immutable
+final class ResolvedLlamaRuntime {
+  final RuntimeSource source;
+  final String? runtimeSetId;
+  final String? variantId;
+  final String executablePath;
+  final String workingDirectory;
+  final List<String> vendorDirectories;
+  final RuntimeAcceleration declaredAcceleration;
+  final RuntimeAcceleration effectiveAcceleration;
+
+  const ResolvedLlamaRuntime({
+    required this.source,
+    this.runtimeSetId,
+    this.variantId,
+    required this.executablePath,
+    required this.workingDirectory,
+    this.vendorDirectories = const [],
+    required this.declaredAcceleration,
+    required this.effectiveAcceleration,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ResolvedLlamaRuntime &&
+          runtimeType == other.runtimeType &&
+          source == other.source &&
+          runtimeSetId == other.runtimeSetId &&
+          variantId == other.variantId &&
+          executablePath == other.executablePath &&
+          workingDirectory == other.workingDirectory &&
+          declaredAcceleration == other.declaredAcceleration &&
+          effectiveAcceleration == other.effectiveAcceleration;
+
+  @override
+  int get hashCode => Object.hash(
+        source,
+        runtimeSetId,
+        variantId,
+        executablePath,
+        workingDirectory,
+        declaredAcceleration,
+        effectiveAcceleration,
+      );
+}
+
 /// DTO immutabile che rappresenta la configurazione persistita della dipendenza runtime `llama-server`.
 @immutable
 final class LlamaServerConfiguration {

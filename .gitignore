@@ -150,6 +150,8 @@ cython_debug/
 .pub-cache/
 .pub/
 /build/
+/release/
+/runtime/bin/
 
 # Windows OS metadata
 Thumbs.db

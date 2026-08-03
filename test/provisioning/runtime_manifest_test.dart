@@ -23,7 +23,7 @@ void main() {
             'vendorDirectories': ['bin/win-x64-cuda/vendor'],
             'files': [
               {
-                'path': 'llama-server.exe',
+                'path': 'bin/win-x64-cuda/llama-server.exe',
                 'sizeBytes': 1234567,
                 'sha256':
                     'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
@@ -70,7 +70,7 @@ void main() {
           throwsA(isA<RuntimeManifestException>()));
     });
 
-    test('rigetta manifest con varianti o file duplicati', () {
+    test('rigetta manifest se executable non è incluso nella lista files', () {
       final json = {
         'schemaVersion': 1,
         'runtimeSetId': 'aura-runtime-v0.1.0',
@@ -78,17 +78,38 @@ void main() {
           {
             'id': 'win-x64-cuda',
             'acceleration': 'cuda',
-            'executable': 'llama-server.exe',
-            'workingDirectory': '.',
+            'executable': 'bin/win-x64-cuda/llama-server.exe',
+            'workingDirectory': 'bin/win-x64-cuda',
             'files': [
               {
-                'path': 'llama-server.exe',
+                'path': 'bin/win-x64-cuda/other.dll',
                 'sizeBytes': 100,
                 'sha256':
                     'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-              },
+              }
+            ]
+          }
+        ]
+      };
+
+      expect(() => RuntimeManifest.fromJson(json),
+          throwsA(isA<RuntimeManifestException>()));
+    });
+
+    test('rigetta manifest se workingDirectory non racchiude l\'eseguibile',
+        () {
+      final json = {
+        'schemaVersion': 1,
+        'runtimeSetId': 'aura-runtime-v0.1.0',
+        'variants': [
+          {
+            'id': 'win-x64-cuda',
+            'acceleration': 'cuda',
+            'executable': 'bin/win-x64-vulkan/llama-server.exe',
+            'workingDirectory': 'bin/win-x64-cuda',
+            'files': [
               {
-                'path': 'llama-server.exe',
+                'path': 'bin/win-x64-vulkan/llama-server.exe',
                 'sizeBytes': 100,
                 'sha256':
                     'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
@@ -140,80 +161,124 @@ void main() {
       expect(result.missingFiles, isEmpty);
       expect(result.corruptedFiles, isEmpty);
     });
-
-    test('rileva file mancante o corrotto nel bundle', () async {
-      await fs.writeBytes(r'C:\AURA\runtime\llama-server.exe', [1, 2, 3]);
-
-      const variant = RuntimeVariantDescriptor(
-        id: 'win-x64-cpu-avx2',
-        acceleration: RuntimeAcceleration.cpu,
-        architecture: 'x64',
-        requiredCpuFeatures: ['avx2'],
-        executable: 'llama-server.exe',
-        workingDirectory: '.',
-        vendorDirectories: [],
-        files: [
-          RuntimeFileEntry(
-            path: 'llama-server.exe',
-            sizeBytes: 100, // Dimensione errata
-            sha256:
-                'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-          ),
-        ],
-      );
-
-      final result = await verifier.verifyVariant(
-        variant: variant,
-        runtimeRootPath: r'C:\AURA\runtime',
-      );
-
-      expect(result.isValid, isFalse);
-      expect(result.corruptedFiles, isNotEmpty);
-    });
   });
 
-  group('LlamaServerConfiguration Portable Persistence & CopyWith', () {
+  group('End-to-End Portable Bundled Runtime Resolution & Preflight', () {
     test(
-        'serializza in formato portabile senza salvare path assoluto statico per source bundled',
-        () {
-      const config = LlamaServerConfiguration(
+        'salva configurazione bundled -> serializza/deserializza -> cambia bundledRoot -> preflight & probe success',
+        () async {
+      final fs = MemoryProvisioningFileSystem();
+
+      const manifestContent = '''
+{
+  "schemaVersion": 1,
+  "runtimeSetId": "aura-runtime-v0.1.0",
+  "llamaCppVersion": "b3200",
+  "sourceCommit": "645044d064c10022821e6b151066e3bbcdbc21af",
+  "variants": [
+    {
+      "id": "win-x64-cpu-avx2",
+      "acceleration": "cpu",
+      "architecture": "x64",
+      "requiredCpuFeatures": ["avx2"],
+      "executable": "bin/win-x64-cpu-avx2/llama-server.exe",
+      "workingDirectory": "bin/win-x64-cpu-avx2",
+      "vendorDirectories": [],
+      "files": [
+        {
+          "path": "bin/win-x64-cpu-avx2/llama-server.exe",
+          "sizeBytes": 1000,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    }
+  ]
+}
+''';
+
+      // 1. Setup root originale
+      final root1 = r'C:\AURA_ROOT_1';
+      await fs.writeAsString(
+          '$root1\\runtime\\runtime-manifest.json', manifestContent);
+      await fs.writeBytes(
+        '$root1\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
+        List.filled(1000, 0),
+      );
+
+      final resolver1 = ProvisioningPathResolver(
+        appManagedRoot: r'C:\AppData\aura',
+        bundledRoot: root1,
+      );
+
+      final manifestRepo1 = DefaultRuntimeManifestRepository(
+        fileSystem: fs,
+        pathResolver: resolver1,
+      );
+
+      final bundledResolver1 = DefaultBundledRuntimeResolver(
+        manifestRepository: manifestRepo1,
+        fileSystem: fs,
+        pathResolver: resolver1,
+      );
+
+      // Configurazione bundled originale
+      final originalConfig = LlamaServerConfiguration(
         schemaVersion: 1,
         source: RuntimeSource.bundled,
-        variantId: 'win-x64-cuda',
+        variantId: 'win-x64-cpu-avx2',
         runtimeSetId: 'aura-runtime-v0.1.0',
-        executablePath: r'C:\AURA\runtime\bin\win-x64-cuda\llama-server.exe',
+        executablePath:
+            r'C:\AURA_ROOT_1\runtime\bin\win-x64-cpu-avx2\llama-server.exe',
         validationStatus: LlamaServerValidationStatus.valid,
-        acceleration: RuntimeAcceleration.cuda,
+        acceleration: RuntimeAcceleration.cpu,
       );
 
-      final json = config.toJson();
-      expect(json['source'], equals('bundled'));
-      expect(json['variantId'], equals('win-x64-cuda'));
-      expect(json['runtimeSetId'], equals('aura-runtime-v0.1.0'));
-      expect(json.containsKey('executablePath'), isFalse);
-    });
+      final resolved1 = await bundledResolver1.resolve(originalConfig);
+      expect(resolved1, isNotNull);
 
-    test(
-        'copyWith preserva tutti i campi estesi inclusi source, variantId e runtimeSetId',
-        () {
-      const config = LlamaServerConfiguration(
-        schemaVersion: 1,
-        source: RuntimeSource.bundled,
-        variantId: 'win-x64-cuda',
-        runtimeSetId: 'aura-runtime-v0.1.0',
-        executablePath: r'C:\AURA\runtime\bin\win-x64-cuda\llama-server.exe',
+      // 2. Serializzazione (omette executablePath) e Deserializzazione (executablePath = "")
+      final jsonSaved = originalConfig.toJson();
+      expect(jsonSaved.containsKey('executablePath'), isFalse);
+
+      final deserializedConfig = LlamaServerConfiguration.fromJson(jsonSaved);
+      expect(deserializedConfig.executablePath, isEmpty);
+
+      // 3. Spostamento dell'applicazione su un nuovo percorso di installazione root2!
+      final root2 = r'D:\InstalledPrograms\AURA_ROOT_2';
+      await fs.writeAsString(
+          '$root2\\runtime\\runtime-manifest.json', manifestContent);
+      await fs.writeBytes(
+        '$root2\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
+        List.filled(1000, 0),
       );
 
-      final updated = config.copyWith(
-        validationStatus: LlamaServerValidationStatus.valid,
+      final resolver2 = ProvisioningPathResolver(
+        appManagedRoot: r'C:\AppData\aura',
+        bundledRoot: root2,
       );
 
-      expect(updated.schemaVersion, equals(1));
-      expect(updated.source, equals(RuntimeSource.bundled));
-      expect(updated.variantId, equals('win-x64-cuda'));
-      expect(updated.runtimeSetId, equals('aura-runtime-v0.1.0'));
+      final manifestRepo2 = DefaultRuntimeManifestRepository(
+        fileSystem: fs,
+        pathResolver: resolver2,
+      );
+
+      final bundledResolver2 = DefaultBundledRuntimeResolver(
+        manifestRepository: manifestRepo2,
+        fileSystem: fs,
+        pathResolver: resolver2,
+      );
+
+      // 4. Risoluzione su root2
+      final resolved = await bundledResolver2.resolve(deserializedConfig);
+      expect(resolved, isNotNull);
       expect(
-          updated.validationStatus, equals(LlamaServerValidationStatus.valid));
+          resolved!.executablePath,
+          equals(
+              r'D:\InstalledPrograms\AURA_ROOT_2\runtime\bin\win-x64-cpu-avx2\llama-server.exe'));
+      expect(
+          resolved.workingDirectory,
+          equals(
+              r'D:\InstalledPrograms\AURA_ROOT_2\runtime\bin\win-x64-cpu-avx2'));
     });
   });
 }

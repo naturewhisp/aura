@@ -1,17 +1,6 @@
-<#
-.SYNOPSIS
-    Script transazionale di packaging e assemblaggio per il rilascio standalone di A.U.R.A. (ZIP Portabile, Manifest & Installer Inno Setup).
-
-.PARAMETER Version
-    Versione del rilascio (es. "0.1.0" o "1.0.0").
-
-.PARAMETER AllowPlaceholders
-    Set solo in ambienti CI/dev per consentire test del packaging con eseguibili stub.
-    DISATTIVATO di default per garantire che le release ufficiali contengano unicamente binari reali.
-#>
+# Script transazionale di packaging e assemblaggio per il rilascio standalone di A.U.R.A. (ZIP Portabile, Manifest & Installer Inno Setup).
 param(
-    [string]$Version = "0.1.0",
-    [switch]$AllowPlaceholders
+    [string]$Version = "0.1.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,13 +8,27 @@ $ErrorActionPreference = "Stop"
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " A.U.R.A. Transactional Standalone Release Pipeline" -ForegroundColor Cyan
 Write-Host " Versione Rilascio: $Version" -ForegroundColor Cyan
-Write-Host " Placeholders Consentiti: $AllowPlaceholders" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 $projectRoot = Resolve-Path "$PSScriptRoot\.."
 
-# 1. Scansione Igiene & Formattazione pre-build (Zero Diagnostic / Strict Format)
-Write-Host "🔍 Verification Pre-Commit: Formattazione & Analisi Statica..." -ForegroundColor Yellow
+function Test-ValidPeExecutable($filePath) {
+    if (-not (Test-Path $filePath)) { return $false }
+    try {
+        $stream = [System.IO.File]::OpenRead($filePath)
+        $b0 = $stream.ReadByte()
+        $b1 = $stream.ReadByte()
+        $len = $stream.Length
+        $stream.Close()
+        if ($len -gt 1000 -and $b0 -eq 77 -and $b1 -eq 90) {
+            return $true
+        }
+    } catch {}
+    return $false
+}
+
+# 1. Scansione Igiene e Formattazione pre-build (Zero Diagnostic / Strict Format)
+Write-Host "Verification Pre-Commit: Formattazione e Analisi Statica..." -ForegroundColor Yellow
 
 dart format --output=none --set-exit-if-changed "$projectRoot\lib" "$projectRoot\test" "$projectRoot\bin" "$projectRoot\tool"
 
@@ -46,20 +49,12 @@ if (Test-Path $stagingDir) {
 }
 New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
-# 3. Generazione e verifica transazionale dei binari di runtime multi-variante
-Write-Host "⚙️ Preparazione runtime multi-variante in staging..." -ForegroundColor Yellow
-$buildRuntimeArgs = @{
-    Version = $Version
-    OutDir = $runtimeStagingDir
-}
-if ($AllowPlaceholders) {
-    $buildRuntimeArgs['AllowPlaceholders'] = $true
-}
-
-& "$PSScriptRoot\build_llama_runtimes.ps1" @buildRuntimeArgs
+# 3. Generazione transazionale dei binari di runtime multi-variante reali (senza placeholder)
+Write-Host "Preparazione runtime multi-variante reali in staging..." -ForegroundColor Yellow
+& "$PSScriptRoot\build_llama_runtimes.ps1" -Version $Version -OutDir $runtimeStagingDir
 
 # 4. Compilazione pacchetto Flutter Release per Windows
-Write-Host "🛠️ Compilazione Flutter Windows Release..." -ForegroundColor Yellow
+Write-Host "Compilazione Flutter Windows Release..." -ForegroundColor Yellow
 Push-Location "$projectRoot\app"
 try {
     flutter build windows --release
@@ -73,7 +68,7 @@ if (-not (Test-Path "$flutterBuildDir\aura_app.exe")) {
 }
 
 # 5. Assemblaggio transazionale in build/release-staging
-Write-Host "📦 Assemblaggio transazionale del bundle di rilascio..." -ForegroundColor Yellow
+Write-Host "Assemblaggio transazionale del bundle di rilascio..." -ForegroundColor Yellow
 Copy-Item -Path "$flutterBuildDir\*" -Destination $stagingDir -Recurse -Force
 Copy-Item -Path $runtimeStagingDir -Destination "$stagingDir\runtime" -Recurse -Force
 
@@ -114,7 +109,7 @@ $releaseManifestJson = $releaseManifest | ConvertTo-Json -Depth 5
 Set-Content -Path "$stagingDir\release-manifest.json" -Value $releaseManifestJson -Encoding UTF8
 
 # Calcolo SHA256SUMS.txt inclusivo di release-manifest.json
-Write-Host "🔒 Calcolo checksum SHA-256 (SHA256SUMS.txt)..." -ForegroundColor Yellow
+Write-Host "Calcolo checksum SHA-256 (SHA256SUMS.txt)..." -ForegroundColor Yellow
 $sumsFile = "$stagingDir\SHA256SUMS.txt"
 $allFiles = Get-ChildItem -Path $stagingDir -Recurse -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" }
 
@@ -126,7 +121,53 @@ foreach ($f in $allFiles) {
 }
 Set-Content -Path $sumsFile -Value ($sumLines -join "`r`n") -Encoding UTF8
 
-# 6. Promozione atomica dello staging in release/
+# 6. Validazioni pre-promozione (Parse Manifest, SHA-256 Integrity, PE Header, --version Probe & License Check)
+Write-Host "Esecuzione verifiche di sicurezza pre-promozione..." -ForegroundColor Yellow
+
+$manifestPath = "$stagingDir\runtime\runtime-manifest.json"
+if (-not (Test-Path $manifestPath)) {
+    throw "[FAIL-CLOSED] runtime-manifest.json non trovato in staging."
+}
+
+$manifestJson = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
+foreach ($variant in $manifestJson.variants) {
+    $vId = $variant.id
+    $vExe = "$stagingDir\runtime\$($variant.executable.Replace('/', '\'))"
+
+    if (-not (Test-ValidPeExecutable $vExe)) {
+        throw "[FAIL-CLOSED] Eseguibile variante $vId non e un binario PE valido: $vExe"
+    }
+
+    Write-Host "  Probe --version per la variante $vId..." -ForegroundColor Gray
+    try {
+        $proc = Start-Process -FilePath $vExe -ArgumentList "--version" -NoNewWindow -PassThru -Wait -ErrorAction Stop
+        if ($proc.ExitCode -ne 0) {
+            Write-Host "  Warning: ExitCode probe non-zero ($($proc.ExitCode)) per $vId" -ForegroundColor Yellow
+        }
+    } catch {
+        $err = $_.Exception.Message
+        throw "[FAIL-CLOSED] Impossibile eseguire probe per la variante $vId : $err"
+    }
+
+    foreach ($fileEntry in $variant.files) {
+        $fPath = "$stagingDir\runtime\$($fileEntry.path.Replace('/', '\'))"
+        if (-not (Test-Path $fPath)) {
+            throw "[FAIL-CLOSED] File tracciato nel manifest assente: $fPath"
+        }
+        $calcHash = (Get-FileHash -Path $fPath -Algorithm SHA256).Hash.ToLower()
+        if ($calcHash -ne $fileEntry.sha256.ToLower()) {
+            throw "[FAIL-CLOSED] Checksum mismatch su $fPath! Atteso: $($fileEntry.sha256), Calcolato: $calcHash"
+        }
+    }
+}
+
+if (-not (Test-Path "$stagingDir\THIRD_PARTY_NOTICES.txt")) {
+    throw "[FAIL-CLOSED] THIRD_PARTY_NOTICES.txt non presente nel bundle."
+}
+
+Write-Host "Verifiche di sicurezza superate con successo!" -ForegroundColor Green
+
+# 7. Promozione atomica dello staging in release/
 $releaseRootDir = "$projectRoot\release"
 $bundleDirName = "aura-v$Version-win-x64"
 $targetBundleDir = "$releaseRootDir\$bundleDirName"
@@ -141,16 +182,16 @@ if (Test-Path $targetBundleDir) {
 
 Move-Item -Path $stagingDir -Destination $targetBundleDir -Force
 
-# 7. Archiviazione ZIP portabile
+# 8. Archiviazione ZIP portabile
 $zipFile = "$releaseRootDir\$bundleDirName.zip"
 if (Test-Path $zipFile) {
     Remove-Item -Path $zipFile -Force
 }
 
-Write-Host "🤐 Archiviazione ZIP portabile: $zipFile..." -ForegroundColor Yellow
+Write-Host "Archiviazione ZIP portabile: $zipFile..." -ForegroundColor Yellow
 Compress-Archive -Path "$targetBundleDir\*" -DestinationPath $zipFile -CompressionLevel Optimal
 
-# 8. Compilazione Installer Inno Setup (se ISCC.exe disponibile)
+# 9. Compilazione Installer Inno Setup (se ISCC.exe disponibile)
 $isccPath = Get-Command "iscc" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
 if (-not $isccPath) {
     $possiblePaths = @(
@@ -166,16 +207,16 @@ if (-not $isccPath) {
 }
 
 if ($isccPath) {
-    Write-Host "🔨 Compilazione Installer Inno Setup con ISCC.exe ($isccPath)..." -ForegroundColor Yellow
+    Write-Host "Compilazione Installer Inno Setup con ISCC.exe ($isccPath)..." -ForegroundColor Yellow
     $issFile = "$projectRoot\tool\aura_installer.iss"
     & $isccPath "/DMyAppVersion=$Version" $issFile
-    Write-Host "✅ Installer generato in release/ aura_setup_v$Version.exe" -ForegroundColor Green
+    Write-Host "Installer generato in release/aura_setup_v$Version.exe" -ForegroundColor Green
 } else {
-    Write-Host "ℹ️ ISCC.exe non trovato nel sistema. Compilazione installer .exe saltata (ZIP portabile generato correttamente)." -ForegroundColor Yellow
+    Write-Host "ISCC.exe non trovato nel sistema. Compilazione installer .exe saltata (ZIP portabile generato correttamente)." -ForegroundColor Yellow
 }
 
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host " ✅ Pacchetto di rilascio completato con successo!" -ForegroundColor Green
+Write-Host " Pacchetto di rilascio completato con successo!" -ForegroundColor Green
 Write-Host " Bundled Folder: $targetBundleDir" -ForegroundColor Green
 Write-Host " Archive ZIP:    $zipFile" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green

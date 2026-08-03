@@ -190,6 +190,27 @@ final class RuntimeVariantDescriptor {
       files.add(entry);
     }
 
+    // Invarianti di sicurezza strutturali
+    if (!seenPaths.contains(cleanExec)) {
+      throw RuntimeManifestException(
+        'L\'eseguibile "$cleanExec" deve essere incluso obbligatoriamente nella lista "files" della variante $id.',
+      );
+    }
+
+    if (!cleanExec.startsWith(cleanWorkDir)) {
+      throw RuntimeManifestException(
+        'L\'eseguibile "$cleanExec" deve risiedere all\'interno della workingDirectory "$cleanWorkDir" della variante $id.',
+      );
+    }
+
+    for (final v in vendorDirectories) {
+      if (!v.startsWith(cleanWorkDir)) {
+        throw RuntimeManifestException(
+          'La vendor directory "$v" deve risiedere all\'interno della workingDirectory "$cleanWorkDir" della variante $id.',
+        );
+      }
+    }
+
     return RuntimeVariantDescriptor(
       id: id.trim(),
       acceleration: accel,

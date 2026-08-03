@@ -256,10 +256,14 @@ class AudioManager {
       return;
     }
 
-    // Assicura che la directory per lo store gestito dei file audio esista
+    // Assicura che le directory per lo store gestito ed il fallback degradato esistano
     final audioDir = Directory('$appDataPath/audio');
+    final degradedDir = Directory('$appDataPath/audio/degraded');
     if (!audioDir.existsSync()) {
       audioDir.createSync(recursive: true);
+    }
+    if (!degradedDir.existsSync()) {
+      degradedDir.createSync(recursive: true);
     }
 
     final bundleSource = FlutterBundleAudioSource();
@@ -271,6 +275,8 @@ class AudioManager {
       managedStore: managedStore,
       proceduralFallback: fallback,
     );
+
+    final resolvedPaths = <String, String>{};
 
     AudioManifest? manifest;
     try {
@@ -288,29 +294,53 @@ class AudioManager {
       final resolvedMap = await engine.resolveAll(manifest);
       for (final entry in resolvedMap.entries) {
         final track = entry.value;
-        final targetFile =
-            File('${audioDir.path}/${track.descriptor.filename}');
         if (track.isProceduralFallback) {
           debugPrint(
               '[AUDIO] [WARN] Traccia "${track.descriptor.id}" caricata in modalità degradata (proceduralFallback).');
-          if (!targetFile.existsSync()) {
-            await targetFile.writeAsBytes(track.bytes);
+          final degradedFile =
+              File('${degradedDir.path}/${track.descriptor.filename}');
+          if (!degradedFile.existsSync()) {
+            await degradedFile.writeAsBytes(track.bytes);
           }
+          resolvedPaths[track.descriptor.filename] = degradedFile.path;
+        } else {
+          resolvedPaths[track.descriptor.filename] =
+              '${audioDir.path}/${track.descriptor.filename}';
         }
       }
     } else {
-      await SoundGenerator.generateAllSounds(audioDir.path);
+      await SoundGenerator.generateAllSounds(degradedDir.path);
+      for (final filename in [
+        'bgm_main.wav',
+        'bgm_ambient.wav',
+        'bgm_tense.wav',
+        'bgm_epic.wav',
+        'sfx_click.wav',
+        'sfx_alert.wav',
+        'sfx_glitch.wav',
+        'sfx_chime.wav'
+      ]) {
+        resolvedPaths[filename] = '${degradedDir.path}/$filename';
+      }
     }
 
     // Memorizza i percorsi dei file WAV verificati
-    _bgmMainPath = '${audioDir.path}/bgm_main.wav';
-    _bgmAmbientPath = '${audioDir.path}/bgm_ambient.wav';
-    _bgmTensePath = '${audioDir.path}/bgm_tense.wav';
-    _bgmEpicPath = '${audioDir.path}/bgm_epic.wav';
-    _sfxClickPath = '${audioDir.path}/sfx_click.wav';
-    _sfxAlertPath = '${audioDir.path}/sfx_alert.wav';
-    _sfxGlitchPath = '${audioDir.path}/sfx_glitch.wav';
-    _sfxChimePath = '${audioDir.path}/sfx_chime.wav';
+    _bgmMainPath =
+        resolvedPaths['bgm_main.wav'] ?? '${degradedDir.path}/bgm_main.wav';
+    _bgmAmbientPath = resolvedPaths['bgm_ambient.wav'] ??
+        '${degradedDir.path}/bgm_ambient.wav';
+    _bgmTensePath =
+        resolvedPaths['bgm_tense.wav'] ?? '${degradedDir.path}/bgm_tense.wav';
+    _bgmEpicPath =
+        resolvedPaths['bgm_epic.wav'] ?? '${degradedDir.path}/bgm_epic.wav';
+    _sfxClickPath =
+        resolvedPaths['sfx_click.wav'] ?? '${degradedDir.path}/sfx_click.wav';
+    _sfxAlertPath =
+        resolvedPaths['sfx_alert.wav'] ?? '${degradedDir.path}/sfx_alert.wav';
+    _sfxGlitchPath =
+        resolvedPaths['sfx_glitch.wav'] ?? '${degradedDir.path}/sfx_glitch.wav';
+    _sfxChimePath =
+        resolvedPaths['sfx_chime.wav'] ?? '${degradedDir.path}/sfx_chime.wav';
 
     // Crea i player di sottofondo nativi (sempre creati per prevenire stati incoerenti)
     final bgmMainPlayer = AudioPlayer();

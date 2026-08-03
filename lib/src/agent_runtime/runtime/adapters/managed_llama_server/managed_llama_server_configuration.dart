@@ -21,6 +21,7 @@ class ManagedLlamaServerConfiguration {
   final String apiKey;
   final List<String> extraArguments;
   final Map<String, String> environmentOverrides;
+  final List<String> vendorDirectories;
   final String? workingDirectory;
   final bool diagnosticMode;
   final String? runtimeInstanceId;
@@ -70,6 +71,7 @@ class ManagedLlamaServerConfiguration {
     this.apiKey = 'managed-llama-secret',
     this.extraArguments = const [],
     this.environmentOverrides = const {},
+    this.vendorDirectories = const [],
     this.workingDirectory,
     this.diagnosticMode = false,
     this.runtimeInstanceId,

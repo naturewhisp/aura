@@ -22,19 +22,24 @@ final class FakeLlamaServerDependencyService
   @override
   Future<LlamaServerValidationResult> validateExecutable({
     required String executablePath,
+    String? variantId,
+    List<String> vendorDirectories = const [],
   }) async =>
       LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,
         executablePath: executablePath,
+        variantId: variantId,
         acceleration: detectionResult.acceleration,
       );
 
   @override
   Future<LlamaServerConfiguration> configureExecutable({
     required String executablePath,
+    String? variantId,
   }) async =>
       LlamaServerConfiguration(
         executablePath: executablePath,
+        variantId: variantId,
         validationStatus: LlamaServerValidationStatus.valid,
         lastValidatedAtUtc: DateTime.now().toUtc(),
         acceleration: detectionResult.acceleration,

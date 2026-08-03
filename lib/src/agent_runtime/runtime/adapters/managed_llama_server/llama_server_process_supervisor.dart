@@ -10,6 +10,7 @@ import 'managed_llama_server_configuration.dart';
 import 'managed_llama_server_failure.dart';
 import 'port_allocator.dart';
 import 'process_launcher.dart';
+import 'llama_runtime_launch_environment_resolver.dart';
 
 /// Stati possibili della State Machine del supervisor di `llama-server`.
 enum LlamaServerSupervisorState {
@@ -34,6 +35,7 @@ class LlamaServerProcessSupervisor {
   final String? _role;
   final String? _ownerInstanceId;
   final ProcessOwnershipRegistry? _processOwnershipRegistry;
+  final LlamaRuntimeLaunchEnvironmentResolver _environmentResolver;
 
   LlamaServerSupervisorState _state = LlamaServerSupervisorState.idle;
   ManagedProcess? _process;
@@ -65,6 +67,8 @@ class LlamaServerProcessSupervisor {
     String? role,
     String? ownerInstanceId,
     ProcessOwnershipRegistry? processOwnershipRegistry,
+    LlamaRuntimeLaunchEnvironmentResolver environmentResolver =
+        const DefaultLlamaRuntimeLaunchEnvironmentResolver(),
   })  : _configuration = configuration,
         _processLauncher = processLauncher,
         _portAllocator = portAllocator,
@@ -73,7 +77,8 @@ class LlamaServerProcessSupervisor {
         _commandBuilder = commandBuilder,
         _role = role,
         _ownerInstanceId = ownerInstanceId,
-        _processOwnershipRegistry = processOwnershipRegistry;
+        _processOwnershipRegistry = processOwnershipRegistry,
+        _environmentResolver = environmentResolver;
 
   LlamaServerSupervisorState get state => _state;
   int? get allocatedPort => _allocatedPort;
@@ -137,29 +142,22 @@ class LlamaServerProcessSupervisor {
           allocatedPort: _allocatedPort!,
         );
 
-        // 4. Lancio del processo
-        final env = Map<String, String>.from(io.Platform.environment);
-        if (_configuration.environmentOverrides.isNotEmpty) {
-          env.addAll(_configuration.environmentOverrides);
-        }
-        final userProfile = env['USERPROFILE'] ?? env['HOME'];
-        if (userProfile != null && userProfile.isNotEmpty) {
-          final vendorDir1 =
-              '$userProfile\\.lmstudio\\extensions\\backends\\vendor\\win-llama-cuda12-vendor-v2';
-          final vendorDir2 =
-              '$userProfile\\.lmstudio\\extensions\\backends\\vendor\\win-llama-cuda-vendor-v2';
-          final existingPath = env['PATH'] ?? '';
-          env['PATH'] = '$vendorDir1;$vendorDir2;$existingPath';
-        }
-
-        final effectiveWorkDir = _configuration.workingDirectory ??
-            io.File(_configuration.executablePath).parent.path;
+        // 4. Lancio del processo con ambiente process-local isolato tramite resolver
+        final resolver = _environmentResolver;
+        final resolvedEnv = resolver.resolve(
+          executablePath: _configuration.executablePath,
+          workingDirectory: _configuration.workingDirectory ?? '',
+          vendorDirectories: _configuration.vendorDirectories,
+          currentEnvironment: _configuration.environmentOverrides.isNotEmpty
+              ? _configuration.environmentOverrides
+              : null,
+        );
 
         final launchRequest = ProcessLaunchRequest(
           executable: _configuration.executablePath,
           arguments: args,
-          workingDirectory: effectiveWorkDir,
-          environment: env,
+          workingDirectory: resolvedEnv.workingDirectory,
+          environment: resolvedEnv.environmentOverrides,
         );
 
         try {

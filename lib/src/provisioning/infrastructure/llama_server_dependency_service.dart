@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' as io show Directory, File, Platform;
+import 'dart:io' as io show File;
 
 import '../../agent_runtime/runtime/adapters/managed_llama_server/dart_io_process_launcher.dart';
+import '../../agent_runtime/runtime/adapters/managed_llama_server/llama_runtime_launch_environment_resolver.dart';
 import '../../agent_runtime/runtime/adapters/managed_llama_server/process_launcher.dart';
 import '../domain/runtime_dependency_models.dart';
 import 'json_model_configuration_repository.dart';
@@ -17,11 +18,14 @@ abstract interface class LlamaServerDependencyService {
   /// Valida operativamente un candidato eseguibile tramite probe processuale sicuro.
   Future<LlamaServerValidationResult> validateExecutable({
     required String executablePath,
+    String? variantId,
+    List<String> vendorDirectories = const [],
   });
 
   /// Configura e persiste il percorso dell'eseguibile `llama-server`.
   Future<LlamaServerConfiguration> configureExecutable({
     required String executablePath,
+    String? variantId,
   });
 
   /// Azzera la configurazione persistita dell'eseguibile.
@@ -38,6 +42,7 @@ final class DefaultLlamaServerDependencyService
   final ProvisioningFileSystem _fileSystem;
   final ProvisioningPathResolver _pathResolver;
   final ProcessLauncher _processLauncher;
+  final LlamaRuntimeLaunchEnvironmentResolver _environmentResolver;
   final Duration _probeTimeout;
 
   DefaultLlamaServerDependencyService({
@@ -45,11 +50,14 @@ final class DefaultLlamaServerDependencyService
     required ProvisioningFileSystem fileSystem,
     required ProvisioningPathResolver pathResolver,
     ProcessLauncher processLauncher = const DartIoProcessLauncher(),
+    LlamaRuntimeLaunchEnvironmentResolver environmentResolver =
+        const DefaultLlamaRuntimeLaunchEnvironmentResolver(),
     Duration probeTimeout = const Duration(seconds: 5),
   })  : _configurationRepository = configurationRepository,
         _fileSystem = fileSystem,
         _pathResolver = pathResolver,
         _processLauncher = processLauncher,
+        _environmentResolver = environmentResolver,
         _probeTimeout = probeTimeout;
 
   @override
@@ -68,11 +76,16 @@ final class DefaultLlamaServerDependencyService
   @override
   Future<LlamaServerConfiguration> configureExecutable({
     required String executablePath,
+    String? variantId,
   }) async {
-    final validation = await validateExecutable(executablePath: executablePath);
+    final validation = await validateExecutable(
+      executablePath: executablePath,
+      variantId: variantId,
+    );
 
     final config = LlamaServerConfiguration(
       executablePath: executablePath.trim(),
+      variantId: variantId ?? validation.variantId,
       detectedVersion: validation.detectedVersion,
       lastValidatedAtUtc: validation.lastValidatedAtUtc,
       validationStatus: validation.status,
@@ -93,78 +106,103 @@ final class DefaultLlamaServerDependencyService
     String? configuredPath;
     var isConfiguredValid = false;
 
-    // 1. Percorso selezionato e persistito dall'utente
+    // 1. Prova prima la configurazione gestita/persistita precedentemente valida (last-known-good)
     final persistedConfig = await readConfiguration();
     if (persistedConfig != null &&
         persistedConfig.executablePath.trim().isNotEmpty) {
       configuredPath = persistedConfig.executablePath.trim();
-      final validation =
-          await validateExecutable(executablePath: configuredPath);
+      final validation = await validateExecutable(
+        executablePath: configuredPath,
+        variantId: persistedConfig.variantId,
+      );
       if (validation.isValid) {
         return LlamaServerDetectionResult(
           configuredCandidate: configuredPath,
           isConfiguredValid: true,
           effectiveCandidate: configuredPath,
+          variantId: validation.variantId ?? persistedConfig.variantId,
+          declaredAcceleration: validation.declaredAcceleration,
           acceleration: validation.acceleration,
         );
       } else {
         warnings.add(
-          'Il percorso configurato dall\'utente ("$configuredPath") non è più valido: '
+          'La configurazione runtime precedente ("$configuredPath") non è più valida: '
           '${validation.errorMessage ?? validation.status.name}',
         );
       }
     }
 
-    // 2. Eseguibile locale all'applicazione (portable bundle versionato e legacy)
-    final portableCandidate1 =
-        '${_pathResolver.appManagedRoot}\\runtime\\windows-x64-cuda\\llama-server.exe';
-    final portableCandidate2 =
-        '${_pathResolver.appManagedRoot}\\runtime\\llama-server.exe';
-    final portableCandidate3 =
-        '${_pathResolver.bundledRoot}\\runtime\\windows-x64-cuda\\llama-server.exe';
-    final portableCandidate4 =
-        '${_pathResolver.bundledRoot}\\runtime\\llama-server.exe';
+    // 2. Candidati bundled ufficiali ordinati: win-x64-cuda -> win-x64-vulkan -> win-x64-cpu-avx2
+    final bundledCandidates = [
+      (
+        variantId: 'win-x64-cuda',
+        accel: RuntimeAcceleration.cuda,
+        paths: [
+          '${_pathResolver.appManagedRoot}\\runtime\\bin\\win-x64-cuda\\llama-server.exe',
+          '${_pathResolver.bundledRoot}\\runtime\\bin\\win-x64-cuda\\llama-server.exe',
+          '${_pathResolver.appManagedRoot}\\runtime\\windows-x64-cuda\\llama-server.exe',
+          '${_pathResolver.bundledRoot}\\runtime\\windows-x64-cuda\\llama-server.exe',
+        ],
+        vendorDirs: (String path) => [
+              '${io.File(path).parent.path}\\vendor',
+            ]
+      ),
+      (
+        variantId: 'win-x64-vulkan',
+        accel: RuntimeAcceleration.vulkan,
+        paths: [
+          '${_pathResolver.appManagedRoot}\\runtime\\bin\\win-x64-vulkan\\llama-server.exe',
+          '${_pathResolver.bundledRoot}\\runtime\\bin\\win-x64-vulkan\\llama-server.exe',
+        ],
+        vendorDirs: (String path) => [
+              '${io.File(path).parent.path}\\vendor',
+            ]
+      ),
+      (
+        variantId: 'win-x64-cpu-avx2',
+        accel: RuntimeAcceleration.cpu,
+        paths: [
+          '${_pathResolver.appManagedRoot}\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
+          '${_pathResolver.bundledRoot}\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
+          '${_pathResolver.appManagedRoot}\\runtime\\llama-server.exe',
+          '${_pathResolver.bundledRoot}\\runtime\\llama-server.exe',
+        ],
+        vendorDirs: (String path) => <String>[]
+      ),
+    ];
 
-    for (final candidate in [
-      portableCandidate1,
-      portableCandidate2,
-      portableCandidate3,
-      portableCandidate4
-    ]) {
-      if (await _fileSystem.fileExists(candidate)) {
-        final validation = await validateExecutable(executablePath: candidate);
-        if (validation.isValid) {
-          return LlamaServerDetectionResult(
-            configuredCandidate: configuredPath,
-            isConfiguredValid: isConfiguredValid,
-            detectedFallback: candidate,
-            effectiveCandidate: candidate,
-            warnings: warnings,
-            acceleration: validation.acceleration,
+    String? lastFallbackReason;
+
+    for (final candidateGroup in bundledCandidates) {
+      for (final candidate in candidateGroup.paths) {
+        if (await _fileSystem.fileExists(candidate)) {
+          final vendors = candidateGroup.vendorDirs(candidate);
+          final validation = await validateExecutable(
+            executablePath: candidate,
+            variantId: candidateGroup.variantId,
+            vendorDirectories: vendors,
           );
+          if (validation.isValid) {
+            return LlamaServerDetectionResult(
+              configuredCandidate: configuredPath,
+              isConfiguredValid: isConfiguredValid,
+              detectedFallback: candidate,
+              effectiveCandidate: candidate,
+              variantId: candidateGroup.variantId,
+              declaredAcceleration: candidateGroup.accel,
+              acceleration: validation.acceleration,
+              warnings: warnings,
+            );
+          } else {
+            lastFallbackReason =
+                'Probe della variante ${candidateGroup.variantId} fallito (${validation.errorMessage}). Ripiego sulla variante successiva.';
+            warnings.add(lastFallbackReason);
+          }
         }
       }
     }
 
-    // 3. Eseguibili individuabili nelle estensioni di LM Studio (priorità GPU: vulkan, cuda, nvidia)
-    final lmCandidates = await _detectFromLmStudioBackends();
-    for (final candidate in lmCandidates) {
-      if (await _fileSystem.fileExists(candidate)) {
-        final validation = await validateExecutable(executablePath: candidate);
-        if (validation.isValid) {
-          return LlamaServerDetectionResult(
-            configuredCandidate: configuredPath,
-            isConfiguredValid: isConfiguredValid,
-            detectedFallback: candidate,
-            effectiveCandidate: candidate,
-            warnings: warnings,
-            acceleration: validation.acceleration,
-          );
-        }
-      }
-    }
-
-    // 4. Eseguibile individuabile tramite il PATH di sistema (where.exe / where)
+    // 3. Fallback ad eseguibile nel PATH di sistema (where.exe / where)
     final pathCandidate = await _detectFromSystemPath();
     if (pathCandidate != null) {
       final validation =
@@ -175,8 +213,8 @@ final class DefaultLlamaServerDependencyService
           isConfiguredValid: isConfiguredValid,
           detectedFallback: pathCandidate,
           effectiveCandidate: pathCandidate,
-          warnings: warnings,
           acceleration: validation.acceleration,
+          warnings: warnings,
         );
       }
     }
@@ -190,12 +228,15 @@ final class DefaultLlamaServerDependencyService
       isConfiguredValid: false,
       effectiveCandidate: null,
       warnings: warnings,
+      fallbackReason: lastFallbackReason,
     );
   }
 
   @override
   Future<LlamaServerValidationResult> validateExecutable({
     required String executablePath,
+    String? variantId,
+    List<String> vendorDirectories = const [],
   }) async {
     final cleanPath = executablePath.trim();
     final now = DateTime.now().toUtc();
@@ -204,16 +245,17 @@ final class DefaultLlamaServerDependencyService
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.missing,
         executablePath: cleanPath,
+        variantId: variantId,
         lastValidatedAtUtc: now,
         errorMessage: 'Il percorso dell\'eseguibile è vuoto.',
       );
     }
 
-    // Verifiche fisiche essenziali sul filesystem
     if (await _fileSystem.directoryExists(cleanPath)) {
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.notExecutable,
         executablePath: cleanPath,
+        variantId: variantId,
         lastValidatedAtUtc: now,
         errorMessage: 'Il percorso specificato indica una directory.',
       );
@@ -223,6 +265,7 @@ final class DefaultLlamaServerDependencyService
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.missing,
         executablePath: cleanPath,
+        variantId: variantId,
         lastValidatedAtUtc: now,
         errorMessage: 'Il file eseguibile non esiste sul disco.',
       );
@@ -234,6 +277,7 @@ final class DefaultLlamaServerDependencyService
         return LlamaServerValidationResult(
           status: LlamaServerValidationStatus.notExecutable,
           executablePath: cleanPath,
+          variantId: variantId,
           lastValidatedAtUtc: now,
           errorMessage: 'Il file eseguibile ha dimensione 0 byte.',
         );
@@ -242,19 +286,25 @@ final class DefaultLlamaServerDependencyService
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.notExecutable,
         executablePath: cleanPath,
+        variantId: variantId,
         lastValidatedAtUtc: now,
         errorMessage: 'Impossibile leggere il file eseguibile: $e',
       );
     }
 
     // Probe processuale 1: Invocazione di --version
-    final versionResult = await _runProbe(cleanPath, ['--version']);
+    final versionResult = await _runProbe(
+      cleanPath,
+      ['--version'],
+      vendorDirectories: vendorDirectories,
+    );
     if (versionResult != null && versionResult.isSuccess) {
       final versionStr = _extractVersion(versionResult.output);
       final accel = _detectAcceleration(versionResult.output);
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,
         executablePath: cleanPath,
+        variantId: variantId,
         detectedVersion: versionStr,
         lastValidatedAtUtc: now,
         acceleration: accel,
@@ -262,13 +312,18 @@ final class DefaultLlamaServerDependencyService
     }
 
     // Probe processuale 2: Fallback ad invocazione di --help
-    final helpResult = await _runProbe(cleanPath, ['--help']);
+    final helpResult = await _runProbe(
+      cleanPath,
+      ['--help'],
+      vendorDirectories: vendorDirectories,
+    );
     if (helpResult != null && helpResult.looksLikeLlamaServerHelp) {
       final versionStr = _extractVersion(helpResult.output) ?? 'unknown';
       final accel = _detectAcceleration(helpResult.output);
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,
         executablePath: cleanPath,
+        variantId: variantId,
         detectedVersion: versionStr,
         lastValidatedAtUtc: now,
         acceleration: accel,
@@ -281,6 +336,7 @@ final class DefaultLlamaServerDependencyService
     return LlamaServerValidationResult(
       status: LlamaServerValidationStatus.probeFailed,
       executablePath: cleanPath,
+      variantId: variantId,
       lastValidatedAtUtc: now,
       errorMessage: 'Probe di avvio fallito: $errorOutput',
     );
@@ -288,28 +344,23 @@ final class DefaultLlamaServerDependencyService
 
   Future<_ProbeRunOutput?> _runProbe(
     String executablePath,
-    List<String> arguments,
-  ) async {
+    List<String> arguments, {
+    List<String> vendorDirectories = const [],
+  }) async {
     try {
-      final env = Map<String, String>.from(io.Platform.environment);
-      final userProfile = env['USERPROFILE'] ?? env['HOME'];
-      if (userProfile != null && userProfile.isNotEmpty) {
-        final vendorDir1 =
-            '$userProfile\\.lmstudio\\extensions\\backends\\vendor\\win-llama-cuda12-vendor-v2';
-        final vendorDir2 =
-            '$userProfile\\.lmstudio\\extensions\\backends\\vendor\\win-llama-cuda-vendor-v2';
-        final existingPath = env['PATH'] ?? '';
-        env['PATH'] = '$vendorDir1;$vendorDir2;$existingPath';
-      }
-
       final parentDir = io.File(executablePath).parent.path;
+      final resolvedEnv = _environmentResolver.resolve(
+        executablePath: executablePath,
+        workingDirectory: parentDir,
+        vendorDirectories: vendorDirectories,
+      );
 
       final process = await _processLauncher.start(
         ProcessLaunchRequest(
           executable: executablePath,
           arguments: arguments,
-          workingDirectory: parentDir,
-          environment: env,
+          workingDirectory: resolvedEnv.workingDirectory,
+          environment: resolvedEnv.environmentOverrides,
           runInShell: false,
         ),
       );
@@ -401,52 +452,6 @@ final class DefaultLlamaServerDependencyService
       }
     } catch (_) {}
     return null;
-  }
-
-  Future<List<String>> _detectFromLmStudioBackends() async {
-    final candidates = <String>[];
-    try {
-      final userProfile = io.Platform.environment['USERPROFILE'] ??
-          io.Platform.environment['HOME'];
-      if (userProfile == null || userProfile.isEmpty) return candidates;
-
-      final lmStudioBackendsDir =
-          '$userProfile\\.lmstudio\\extensions\\backends';
-      if (!await _fileSystem.directoryExists(lmStudioBackendsDir)) {
-        return candidates;
-      }
-
-      final dir = io.Directory(lmStudioBackendsDir);
-      if (!dir.existsSync()) return candidates;
-
-      final found = <String>[];
-      final entities = dir.listSync(recursive: true);
-      for (final entity in entities) {
-        if (entity is io.File &&
-            entity.path.toLowerCase().endsWith('llama-server.exe')) {
-          found.add(entity.path);
-        }
-      }
-
-      found.sort((a, b) {
-        final aLower = a.toLowerCase();
-        final bLower = b.toLowerCase();
-        final aScore = (aLower.contains('vulkan') ||
-                aLower.contains('cuda') ||
-                aLower.contains('nvidia'))
-            ? 0
-            : 1;
-        final bScore = (bLower.contains('vulkan') ||
-                bLower.contains('cuda') ||
-                bLower.contains('nvidia'))
-            ? 0
-            : 1;
-        return aScore.compareTo(bScore);
-      });
-
-      candidates.addAll(found);
-    } catch (_) {}
-    return candidates;
   }
 
   RuntimeAcceleration _detectAcceleration(String output) {

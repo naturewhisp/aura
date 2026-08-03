@@ -837,15 +837,55 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             if (detected != null) ...[
               const SizedBox(height: 10),
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E293B),
                   borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: const Color(0xFF334155)),
                 ),
-                child: Text(
-                  'Rilevato automaticamente: $detected',
-                  style:
-                      const TextStyle(color: Color(0xFF10B981), fontSize: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.bolt, color: Color(0xFF00FFC8), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Runtime Bundled: $detected',
+                        style: const TextStyle(
+                          color: Color(0xFF10B981),
+                          fontSize: 12,
+                          fontFamily: 'monospace',
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color:
+                            currentState.runtimeDetectionResult?.acceleration ==
+                                    RuntimeAcceleration.cuda
+                                ? const Color(0xFF065F46)
+                                : currentState.runtimeDetectionResult
+                                            ?.acceleration ==
+                                        RuntimeAcceleration.vulkan
+                                    ? const Color(0xFF1E3A8A)
+                                    : const Color(0xFF334155),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        currentState.runtimeDetectionResult?.variantId != null
+                            ? 'VARIANTE: ${currentState.runtimeDetectionResult!.variantId!.toUpperCase()}'
+                            : 'ACCEL: ${currentState.runtimeDetectionResult?.acceleration.name.toUpperCase()}',
+                        style: const TextStyle(
+                          color: Color(0xFF00FFC8),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

@@ -2,48 +2,76 @@ import 'package:aura_core/aura_offline.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('RuntimeManifest Domain Unit Tests', () {
-    test('deserializza correttamente un manifest.json valido con backend CUDA',
-        () {
+  group('RuntimeManifest & LlamaServerConfiguration Schema Migration', () {
+    test('deserializza correttamente runtime-manifest.json valido', () {
       final json = {
-        'runtimeId': 'llama.cpp-windows-x64-cuda',
-        'llamaCppCommit': 'b3450',
-        'buildType': 'Release',
-        'backend': 'cuda',
-        'cudaVersion': '12.2',
-        'architecture': 'x86_64',
-        'files': [
+        'schemaVersion': 1,
+        'runtimeSetId': 'aura-runtime-v0.1.0',
+        'llamaCppVersion': 'b3200',
+        'sourceCommit': '645044d064c10022821e6b151066e3bbcdbc21af',
+        'variants': [
           {
-            'path': 'llama-server.exe',
-            'sha256':
-                'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-          },
-          {
-            'path': 'cudart64_12.dll',
-            'sha256':
-                '8f35248a313b2c6957790e71616c68e14674720616147614e21a2214d2417622',
+            'id': 'win-x64-cuda',
+            'acceleration': 'cuda',
+            'architecture': 'x64',
+            'requiredCpuFeatures': ['avx2', 'cuda12'],
+            'executable': 'bin/win-x64-cuda/llama-server.exe',
+            'workingDirectory': 'bin/win-x64-cuda',
+            'vendorDirectories': ['bin/win-x64-cuda/vendor'],
+            'files': [
+              {
+                'path': 'llama-server.exe',
+                'sizeBytes': 1234567,
+                'sha256':
+                    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+              }
+            ]
           }
         ]
       };
 
       final manifest = RuntimeManifest.fromJson(json);
+      expect(manifest.schemaVersion, equals(1));
+      expect(manifest.runtimeSetId, equals('aura-runtime-v0.1.0'));
+      expect(manifest.variants.length, equals(1));
 
-      expect(manifest.runtimeId, equals('llama.cpp-windows-x64-cuda'));
-      expect(manifest.llamaCppCommit, equals('b3450'));
-      expect(manifest.backend, equals(RuntimeAcceleration.cuda));
-      expect(manifest.cudaVersion, equals('12.2'));
-      expect(manifest.files.length, equals(2));
-      expect(manifest.files.first.path, equals('llama-server.exe'));
+      final v = manifest.findVariantById('win-x64-cuda');
+      expect(v, isNotNull);
+      expect(v!.acceleration, equals(RuntimeAcceleration.cuda));
+      expect(v.vendorDirectories, contains('bin/win-x64-cuda/vendor'));
     });
 
-    test('lancia FormatException se runtimeId è mancante o vuoto', () {
-      final json = {
-        'runtimeId': '',
-        'backend': 'cpu',
-        'files': [],
+    test(
+        'migra correttamente configurazioni legacy prive di schemaVersion e source',
+        () {
+      final legacyJson = {
+        'executablePath': r'C:\Users\test\.lmstudio\bin\llama-server.exe',
+        'validationStatus': 'valid',
+        'acceleration': 'cuda',
       };
 
-      expect(() => RuntimeManifest.fromJson(json), throwsFormatException);
+      final config = LlamaServerConfiguration.fromJson(legacyJson);
+      expect(config.schemaVersion, equals(1));
+      expect(config.source, equals(RuntimeSource.external));
+      expect(config.externalExecutablePath,
+          equals(r'C:\Users\test\.lmstudio\bin\llama-server.exe'));
+      expect(config.executablePath,
+          equals(r'C:\Users\test\.lmstudio\bin\llama-server.exe'));
+    });
+
+    test(
+        'riconosce il source bundled quando il path appartiene a una variante nota',
+        () {
+      final legacyJson = {
+        'executablePath': r'C:\AURA\runtime\bin\win-x64-cuda\llama-server.exe',
+        'validationStatus': 'valid',
+        'acceleration': 'cuda',
+      };
+
+      final config = LlamaServerConfiguration.fromJson(legacyJson);
+      expect(config.schemaVersion, equals(1));
+      expect(config.source, equals(RuntimeSource.bundled));
+      expect(config.variantId, equals('win-x64-cuda'));
     });
   });
 }

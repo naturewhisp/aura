@@ -22,9 +22,19 @@ enum LlamaServerValidationStatus {
   incompatible,
 }
 
+/// Sorgente di acquisizione del runtime `llama-server`.
+enum RuntimeSource {
+  bundled,
+  external,
+}
+
 /// DTO immutabile che rappresenta la configurazione persistita della dipendenza runtime `llama-server`.
 @immutable
 final class LlamaServerConfiguration {
+  final int schemaVersion;
+  final RuntimeSource source;
+  final String? variantId;
+  final String? externalExecutablePath;
   final String executablePath;
   final String? detectedVersion;
   final DateTime? lastValidatedAtUtc;
@@ -34,6 +44,10 @@ final class LlamaServerConfiguration {
   final int? gpuLayers;
 
   const LlamaServerConfiguration({
+    this.schemaVersion = 1,
+    this.source = RuntimeSource.bundled,
+    this.variantId,
+    this.externalExecutablePath,
     required this.executablePath,
     this.detectedVersion,
     this.lastValidatedAtUtc,
@@ -44,12 +58,40 @@ final class LlamaServerConfiguration {
   });
 
   factory LlamaServerConfiguration.fromJson(Map<String, dynamic> json) {
-    final path = json['executablePath'] as String?;
-    if (path == null || path.trim().isEmpty) {
-      throw const FormatException(
-        'Campo "executablePath" mancante o vuoto in LlamaServerConfiguration.',
+    final rawPath = (json['executablePath'] as String?)?.trim() ?? '';
+    final rawSourceStr = json['source'] as String?;
+    final variantId = json['variantId'] as String?;
+    final externalPath = (json['externalExecutablePath'] as String?)?.trim();
+
+    RuntimeSource source;
+    if (rawSourceStr != null) {
+      source = RuntimeSource.values.firstWhere(
+        (s) => s.name == rawSourceStr,
+        orElse: () => RuntimeSource.bundled,
       );
+    } else {
+      // Migrazione automatica da configurazione legacy basata unicamente su executablePath
+      if (rawPath.contains('win-x64-cuda') ||
+          rawPath.contains('windows-x64-cuda')) {
+        source = RuntimeSource.bundled;
+      } else if (rawPath.contains('win-x64-vulkan')) {
+        source = RuntimeSource.bundled;
+      } else if (rawPath.contains('win-x64-cpu') ||
+          rawPath.contains('windows-x64-cpu')) {
+        source = RuntimeSource.bundled;
+      } else {
+        source = RuntimeSource.external;
+      }
     }
+
+    final effectiveVariantId = variantId ??
+        (rawPath.contains('win-x64-cuda')
+            ? 'win-x64-cuda'
+            : rawPath.contains('win-x64-vulkan')
+                ? 'win-x64-vulkan'
+                : rawPath.contains('win-x64-cpu')
+                    ? 'win-x64-cpu-avx2'
+                    : null);
 
     final statusStr = json['validationStatus'] as String?;
     final status = LlamaServerValidationStatus.values.firstWhere(
@@ -68,8 +110,16 @@ final class LlamaServerConfiguration {
         ? DateTime.tryParse(lastValidatedStr)?.toUtc()
         : null;
 
+    final effectivePath = externalPath ??
+        (rawPath.isNotEmpty ? rawPath : (effectiveVariantId ?? ''));
+
     return LlamaServerConfiguration(
-      executablePath: path.trim(),
+      schemaVersion: (json['schemaVersion'] as num?)?.toInt() ?? 1,
+      source: source,
+      variantId: effectiveVariantId,
+      externalExecutablePath:
+          externalPath ?? (source == RuntimeSource.external ? rawPath : null),
+      executablePath: effectivePath,
       detectedVersion: json['detectedVersion'] as String?,
       lastValidatedAtUtc: lastValidated,
       validationStatus: status,
@@ -81,6 +131,11 @@ final class LlamaServerConfiguration {
 
   Map<String, dynamic> toJson() {
     return {
+      'schemaVersion': schemaVersion,
+      'source': source.name,
+      if (variantId != null) 'variantId': variantId,
+      if (externalExecutablePath != null)
+        'externalExecutablePath': externalExecutablePath,
       'executablePath': executablePath,
       if (detectedVersion != null) 'detectedVersion': detectedVersion,
       if (lastValidatedAtUtc != null)
@@ -157,16 +212,22 @@ final class LlamaServerDetectionResult {
   final bool isConfiguredValid;
   final String? detectedFallback;
   final String? effectiveCandidate;
-  final List<String> warnings;
+  final String? variantId;
+  final RuntimeAcceleration declaredAcceleration;
   final RuntimeAcceleration acceleration;
+  final String? fallbackReason;
+  final List<String> warnings;
 
   const LlamaServerDetectionResult({
     this.configuredCandidate,
     this.isConfiguredValid = false,
     this.detectedFallback,
     this.effectiveCandidate,
-    this.warnings = const [],
+    this.variantId,
+    this.declaredAcceleration = RuntimeAcceleration.cpu,
     this.acceleration = RuntimeAcceleration.cpu,
+    this.fallbackReason,
+    this.warnings = const [],
   });
 
   bool get isFound => effectiveCandidate != null;
@@ -180,7 +241,10 @@ final class LlamaServerDetectionResult {
           isConfiguredValid == other.isConfiguredValid &&
           detectedFallback == other.detectedFallback &&
           effectiveCandidate == other.effectiveCandidate &&
-          acceleration == other.acceleration;
+          variantId == other.variantId &&
+          declaredAcceleration == other.declaredAcceleration &&
+          acceleration == other.acceleration &&
+          fallbackReason == other.fallbackReason;
 
   @override
   int get hashCode => Object.hash(
@@ -188,12 +252,15 @@ final class LlamaServerDetectionResult {
         isConfiguredValid,
         detectedFallback,
         effectiveCandidate,
+        variantId,
+        declaredAcceleration,
         acceleration,
+        fallbackReason,
       );
 
   @override
   String toString() =>
-      'LlamaServerDetectionResult(effective: $effectiveCandidate, accel: ${acceleration.name}, configuredValid: $isConfiguredValid)';
+      'LlamaServerDetectionResult(effective: $effectiveCandidate, variant: $variantId, accel: ${acceleration.name}, fallbackReason: $fallbackReason)';
 }
 
 /// DTO che racchiude l'esito della validazione operativa del probe processuale di `llama-server`.
@@ -201,18 +268,22 @@ final class LlamaServerDetectionResult {
 final class LlamaServerValidationResult {
   final LlamaServerValidationStatus status;
   final String executablePath;
+  final String? variantId;
   final String? detectedVersion;
   final DateTime? lastValidatedAtUtc;
   final String? errorMessage;
+  final RuntimeAcceleration declaredAcceleration;
   final RuntimeAcceleration acceleration;
   final String? gpuDeviceName;
 
   const LlamaServerValidationResult({
     required this.status,
     required this.executablePath,
+    this.variantId,
     this.detectedVersion,
     this.lastValidatedAtUtc,
     this.errorMessage,
+    this.declaredAcceleration = RuntimeAcceleration.cpu,
     this.acceleration = RuntimeAcceleration.cpu,
     this.gpuDeviceName,
   });

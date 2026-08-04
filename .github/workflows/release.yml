@@ -206,6 +206,7 @@ jobs:
         shell: pwsh
         env:
           CATALOG_SIGNING_PRIVATE_KEY: ${{ secrets.CATALOG_SIGNING_PRIVATE_KEY }}
+          CATALOG_SIGNING_PUBLIC_KEY: ${{ secrets.CATALOG_SIGNING_PUBLIC_KEY }}
           CATALOG_SIGNING_KEY_ID: ${{ secrets.CATALOG_SIGNING_KEY_ID }}
         run: |
           $ver = "${{ steps.params.outputs.version }}"
@@ -232,6 +233,9 @@ jobs:
 
       - name: Verify Release Assets Integrity (Fail-Closed)
         shell: pwsh
+        env:
+          CATALOG_SIGNING_PUBLIC_KEY: ${{ secrets.CATALOG_SIGNING_PUBLIC_KEY }}
+          CATALOG_SIGNING_KEY_ID: ${{ secrets.CATALOG_SIGNING_KEY_ID }}
         run: |
           $ver = "${{ steps.params.outputs.version }}"
           $reqInst = [bool]::Parse("${{ steps.params.outputs.require_installer }}")

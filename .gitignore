@@ -152,6 +152,7 @@ cython_debug/
 /build/
 /release/
 /runtime/bin/
+/runtime/acquisition-metadata.json
 
 # Windows OS metadata
 Thumbs.db

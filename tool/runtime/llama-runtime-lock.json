@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "1.0",
+  "llamaCppTag": "b3200",
+  "llamaCppCommit": "36a7a0b3e6488d5e1bbfdfaa14bbdbf2e463a55e",
+  "variants": [
+    {
+      "id": "win-x64-cuda",
+      "assetName": "llama-b3200-bin-win-cuda-12.4-x64.zip",
+      "patterns": ["llama-*-bin-win-cuda-12.4-x64.zip", "llama-*-bin-win-cuda-*-x64.zip", "llama-*-bin-win-cuda*.zip"],
+      "destDir": "runtime/bin/win-x64-cuda",
+      "vendorDir": "runtime/bin/win-x64-cuda/vendor"
+    },
+    {
+      "id": "win-x64-vulkan",
+      "assetName": "llama-b3200-bin-win-vulkan-x64.zip",
+      "patterns": ["llama-*-bin-win-vulkan-x64.zip"],
+      "destDir": "runtime/bin/win-x64-vulkan",
+      "vendorDir": "runtime/bin/win-x64-vulkan/vendor"
+    },
+    {
+      "id": "win-x64-cpu-avx2",
+      "assetName": "llama-b3200-bin-win-cpu-x64.zip",
+      "patterns": ["llama-*-bin-win-cpu-x64.zip", "llama-*-bin-win-avx2-x64.zip"],
+      "destDir": "runtime/bin/win-x64-cpu-avx2",
+      "vendorDir": ""
+    }
+  ]
+}

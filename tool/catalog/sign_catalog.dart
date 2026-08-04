@@ -302,7 +302,7 @@ Future<void> main(List<String> args) async {
     signature: signatureBase64,
   );
 
-  // Verification contro il Trust Store registrato
+  // Verification contro il Trust Store registrato (FAIL-CLOSED OBBLIGATORIO)
   String? expectedPublicKeyHex =
       publicKeyHexArg ?? Platform.environment['CATALOG_SIGNING_PUBLIC_KEY'];
 
@@ -311,28 +311,40 @@ Future<void> main(List<String> args) async {
     if (await pubFile.exists()) {
       final pubJson =
           jsonDecode(await pubFile.readAsString()) as Map<String, dynamic>;
-      expectedPublicKeyHex = pubJson['publicKeyHex'] as String;
+      expectedPublicKeyHex = pubJson['publicKeyHex'] as String?;
     }
+  }
+
+  if (expectedPublicKeyHex == null || expectedPublicKeyHex.trim().isEmpty) {
+    stderr.writeln(
+      '[FAIL-CLOSED] Nessuna chiave pubblica fidata fornita via --public-key-hex, CATALOG_SIGNING_PUBLIC_KEY o file .public.json',
+    );
+    exit(1);
   }
 
   final derivedPublicHex = extractedPublicKey.bytes
       .map((b) => b.toRadixString(16).padLeft(2, '0'))
       .join();
 
-  if (expectedPublicKeyHex != null &&
-      expectedPublicKeyHex.trim().isNotEmpty &&
-      derivedPublicHex.toLowerCase() !=
-          expectedPublicKeyHex.trim().toLowerCase()) {
+  final cleanExpectedHex = expectedPublicKeyHex.trim().toLowerCase();
+  if (derivedPublicHex.toLowerCase() != cleanExpectedHex) {
     stderr.writeln(
-      '[FAIL-CLOSED] La chiave pubblica derivata ($derivedPublicHex) NON corrisponde alla chiave pubblica fidata ($expectedPublicKeyHex)',
+      '[FAIL-CLOSED] La chiave pubblica derivata ($derivedPublicHex) NON corrisponde alla chiave pubblica fidata ($cleanExpectedHex)',
     );
     exit(1);
   }
 
+  final trustedPublicBytes = Uint8List.fromList(
+    List.generate(
+      cleanExpectedHex.length ~/ 2,
+      (i) => int.parse(cleanExpectedHex.substring(i * 2, i * 2 + 2), radix: 16),
+    ),
+  );
+
   final catalogPublicKey = CatalogPublicKey(
     keyId: keyId,
     algorithm: 'ed25519-v1',
-    rawKeyBytes: Uint8List.fromList(extractedPublicKey.bytes),
+    rawKeyBytes: trustedPublicBytes,
   );
 
   final trustStore = InMemoryCatalogTrustStore.fromKeys([catalogPublicKey]);

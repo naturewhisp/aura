@@ -1,17 +1,27 @@
 # Script di download e sincronizzazione automatica dei binari pre-compilati ufficiali di llama.cpp per A.U.R.A.
 param(
-    [string]$Tag = "b3200",
+    [string]$Tag = "",
     [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
 
+$projectRoot = Resolve-Path "$PSScriptRoot\.."
+$lockfilePath = "$projectRoot\tool\runtime\llama-runtime-lock.json"
+
+if (-not (Test-Path $lockfilePath)) {
+    throw "[FAIL-CLOSED] Lockfile runtime non trovato: $lockfilePath"
+}
+
+$lockJson = Get-Content -Path $lockfilePath -Raw | ConvertFrom-Json
+$targetTag = if ([string]::IsNullOrWhiteSpace($Tag)) { $lockJson.llamaCppTag } else { $Tag }
+$llamaCppCommit = $lockJson.llamaCppCommit
+
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " A.U.R.A. Llama.cpp Official Binary Downloader & Sync" -ForegroundColor Cyan
-Write-Host " Tag Target: $Tag" -ForegroundColor Cyan
+Write-Host " Tag Target: $targetTag | Commit Target: $llamaCppCommit" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-$projectRoot = Resolve-Path "$PSScriptRoot\.."
 $runtimeBinDir = "$projectRoot\runtime\bin"
 $tempDownloadDir = "$projectRoot\build\downloads_temp"
 
@@ -35,10 +45,10 @@ function Test-ValidPeExecutable($filePath) {
 }
 
 $repoUrl = "https://api.github.com/repos/ggml-org/llama.cpp/releases"
-if ($Tag -eq "latest") {
+if ($targetTag -eq "latest") {
     $apiUrl = "$repoUrl/latest"
 } else {
-    $apiUrl = "$repoUrl/tags/$Tag"
+    $apiUrl = "$repoUrl/tags/$targetTag"
 }
 
 Write-Host "Interrogazione metadati release da GitHub ($apiUrl)..." -ForegroundColor Yellow
@@ -50,49 +60,23 @@ $headers = @{
 try {
     $releaseInfo = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
 } catch {
-    if ($Tag -ne "latest" -and -not $Tag.StartsWith("b")) {
-        $apiUrl = "$repoUrl/tags/b$Tag"
-        Write-Host "Tentativo con tag b$Tag..." -ForegroundColor Yellow
+    Write-Host "Tag $targetTag non trovato via API API direct tag, tentativo con /latest..." -ForegroundColor Yellow
+    try {
+        $apiUrl = "$repoUrl/latest"
         $releaseInfo = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
-    } else {
-        throw "[FAIL-CLOSED] Impossibile recuperare informazioni sulla release llama.cpp per il tag '$Tag': $_"
+    } catch {
+        throw "[FAIL-CLOSED] Impossibile recuperare informazioni sulla release llama.cpp: $_"
     }
 }
 
 $effectiveTag = $releaseInfo.tag_name
-$llamaCppCommit = $releaseInfo.target_commitish
-if ([string]::IsNullOrWhiteSpace($llamaCppCommit)) {
-    $llamaCppCommit = "36a7a0b3e6488d5e1bbfdfaa14bbdbf2e463a55e" # Commit SHA fisso di fallback per llama.cpp release b3200
-}
-Write-Host "Release individuata: $effectiveTag (Commit llama.cpp: $llamaCppCommit)" -ForegroundColor Green
-
-$variants = @(
-    @{
-        id = "win-x64-cuda"
-        destDir = "$runtimeBinDir\win-x64-cuda"
-        vendorDir = "$runtimeBinDir\win-x64-cuda\vendor"
-        patterns = @("llama-*-bin-win-cuda-12.4-x64.zip", "llama-*-bin-win-cuda-*-x64.zip", "llama-*-bin-win-cuda*.zip")
-    },
-    @{
-        id = "win-x64-vulkan"
-        destDir = "$runtimeBinDir\win-x64-vulkan"
-        vendorDir = "$runtimeBinDir\win-x64-vulkan\vendor"
-        patterns = @("llama-*-bin-win-vulkan-x64.zip")
-    },
-    @{
-        id = "win-x64-cpu-avx2"
-        destDir = "$runtimeBinDir\win-x64-cpu-avx2"
-        vendorDir = ""
-        patterns = @("llama-*-bin-win-cpu-x64.zip", "llama-*-bin-win-avx2-x64.zip")
-    }
-)
 
 $acquiredMetadata = @()
 
-foreach ($map in $variants) {
-    $variantId = $map["id"]
-    $destDir = $map["destDir"]
-    $vendorDir = $map["vendorDir"]
+foreach ($variantLock in $lockJson.variants) {
+    $variantId = $variantLock.id
+    $destDir = "$projectRoot\$($variantLock.destDir.Replace('/', '\'))"
+    $vendorDir = if ($variantLock.vendorDir) { "$projectRoot\$($variantLock.vendorDir.Replace('/', '\'))" } else { "" }
     $exePath = "$destDir\llama-server.exe"
 
     $isValidPe = Test-ValidPeExecutable $exePath
@@ -108,23 +92,18 @@ foreach ($map in $variants) {
         }
     } else {
         $selectedAsset = $null
-        $patterns = $map["patterns"]
-        foreach ($pat in $patterns) {
-            if (-not $selectedAsset) {
-                $matched = $releaseInfo.assets | Where-Object { $_.name -like $pat } | Select-Object -First 1
-                if ($matched) {
-                    $selectedAsset = $matched
-                }
-            }
+        
+        # 1. Ricerca assetName esatto dal lockfile
+        if ($variantLock.assetName) {
+            $selectedAsset = $releaseInfo.assets | Where-Object { $_.name -eq $variantLock.assetName } | Select-Object -First 1
         }
 
-        if (-not $selectedAsset) {
-            if ($variantId -like "*cuda*") {
-                $selectedAsset = $releaseInfo.assets | Where-Object { $_.name -like "*win-cuda*" } | Select-Object -First 1
-            } elseif ($variantId -like "*vulkan*") {
-                $selectedAsset = $releaseInfo.assets | Where-Object { $_.name -like "*win-vulkan*" } | Select-Object -First 1
-            } else {
-                $selectedAsset = $releaseInfo.assets | Where-Object { $_.name -like "*win-cpu*" -or $_.name -like "*win-avx2*" } | Select-Object -First 1
+        # 2. Fallback su patterns se assetName non corrisponde
+        if (-not $selectedAsset -and $variantLock.patterns) {
+            foreach ($pat in $variantLock.patterns) {
+                if (-not $selectedAsset) {
+                    $selectedAsset = $releaseInfo.assets | Where-Object { $_.name -like $pat } | Select-Object -First 1
+                }
             }
         }
 
@@ -136,10 +115,18 @@ foreach ($map in $variants) {
             Write-Host "Download asset $zipFileName..." -ForegroundColor Yellow
             Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFilePath -Headers $headers
 
-            # Verifica SHA-256 dell'archivio scaricato
+            # Calcolo e verifica SHA-256
             $zipHash = (Get-FileHash -Path $zipFilePath -Algorithm SHA256).Hash.ToLower()
             $zipSize = (Get-Item $zipFilePath).Length
             Write-Host "  Archivio scaricato $zipFileName (SHA-256: $zipHash, Size: $zipSize bytes)" -ForegroundColor Gray
+
+            if ($variantLock.sha256 -and $variantLock.sha256.Trim() -ne "") {
+                $expectedHash = $variantLock.sha256.Trim().ToLower()
+                if ($zipHash -ne $expectedHash) {
+                    throw "[FAIL-CLOSED] Checksum mismatch su asset $zipFileName! Atteso lockfile: $expectedHash, Calcolato: $zipHash"
+                }
+                Write-Host "  ✅ Checksum lockfile verificato con successo per $zipFileName" -ForegroundColor Green
+            }
 
             $extractDir = "$tempDownloadDir\extracted_$variantId"
             if (Test-Path $extractDir) {
@@ -174,7 +161,6 @@ foreach ($map in $variants) {
                     }
                 }
 
-                # Preserva licenze estratte
                 $licenseFile = Get-ChildItem -Path $extractDir -Recurse -Filter "*LICENSE*" | Select-Object -First 1
                 if ($licenseFile) {
                     Copy-Item -Path $licenseFile.FullName -Destination "$destDir\LICENSE.txt" -Force

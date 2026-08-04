@@ -11,45 +11,102 @@ import 'package:aura_core/src/provisioning/domain/catalog_compatibility_evaluato
 import 'package:aura_core/src/provisioning/domain/validated_catalog_candidate_factory.dart';
 import 'package:aura_core/src/provisioning/validation/catalog_validation_service.dart';
 
+/// Script di verifica della firma e dell'integrita dell'envelope di catalogo A.U.R.A.
+///
+/// Uso:
+///   dart run tool/catalog/verify_catalog.dart [opzioni]
+///
+/// Opzioni:
+///   --catalog <path>          Path al file catalog/model-manifest.json da verificare
+///   --public-key-hex <hex>     Stringa esadecimale della chiave pubblica fidata
+///   --key-id <string>         ID della chiave fidata (es. aura-catalog-development-2026-01)
+///   --public-key-file <path>   Path al file JSON contenente keyId e publicKeyHex
 Future<void> main(List<String> args) async {
-  final catalogFile =
-      File('build/catalog/aura-official-development.catalog.json');
-  final publicKeyFile =
-      File('.local/catalog-keys/aura-catalog-development-2026-01.public.json');
+  String? catalogPathArg;
+  String? publicKeyHexArg;
+  String? keyIdArg;
+  String? publicKeyFilePathArg;
 
+  for (var i = 0; i < args.length; i++) {
+    final arg = args[i];
+    if (arg == '--catalog' && i + 1 < args.length) {
+      catalogPathArg = args[++i];
+    } else if (arg == '--public-key-hex' && i + 1 < args.length) {
+      publicKeyHexArg = args[++i];
+    } else if (arg == '--key-id' && i + 1 < args.length) {
+      keyIdArg = args[++i];
+    } else if (arg == '--public-key-file' && i + 1 < args.length) {
+      publicKeyFilePathArg = args[++i];
+    }
+  }
+
+  // Risoluzione dinamica del path del catalogo
+  String catalogPath;
+  if (catalogPathArg != null) {
+    catalogPath = catalogPathArg;
+  } else if (await File('release/model-manifest.json').exists()) {
+    catalogPath = 'release/model-manifest.json';
+  } else if (await File('build/release-staging/model-manifest.json').exists()) {
+    catalogPath = 'build/release-staging/model-manifest.json';
+  } else {
+    catalogPath = 'build/catalog/aura-official-development.catalog.json';
+  }
+
+  final catalogFile = File(catalogPath);
   if (!await catalogFile.exists()) {
-    stderr.writeln('Errore: Catalogo non trovato: ${catalogFile.path}');
+    stderr.writeln(
+        '[FAIL-CLOSED] Errore: Catalogo non trovato: ${catalogFile.path}');
     exit(1);
   }
-  if (!await publicKeyFile.exists()) {
+
+  // Risoluzione della chiave pubblica fidata (FAIL-CLOSED)
+  String? keyId = keyIdArg ?? Platform.environment['CATALOG_SIGNING_KEY_ID'];
+  String? publicKeyHex =
+      publicKeyHexArg ?? Platform.environment['CATALOG_SIGNING_PUBLIC_KEY'];
+
+  if (publicKeyHex == null ||
+      publicKeyHex.trim().isEmpty ||
+      keyId == null ||
+      keyId.trim().isEmpty) {
+    final pubKeyFilePath = publicKeyFilePathArg ??
+        '.local/catalog-keys/aura-catalog-development-2026-01.public.json';
+    final pubKeyFile = File(pubKeyFilePath);
+    if (await pubKeyFile.exists()) {
+      final pubJson =
+          jsonDecode(await pubKeyFile.readAsString()) as Map<String, dynamic>;
+      keyId ??= pubJson['keyId'] as String?;
+      publicKeyHex ??= pubJson['publicKeyHex'] as String?;
+    }
+  }
+
+  if (keyId == null ||
+      keyId.trim().isEmpty ||
+      publicKeyHex == null ||
+      publicKeyHex.trim().isEmpty) {
     stderr.writeln(
-      'Errore: Chiave pubblica non trovata: ${publicKeyFile.path}',
+      '[FAIL-CLOSED] Nessuna chiave pubblica fidata fornita via --public-key-hex, CATALOG_SIGNING_PUBLIC_KEY o file .public.json',
     );
     exit(1);
   }
 
-  stdout.writeln('--- Verifica Runtime del Catalogo Firmato ---');
+  stdout
+      .writeln('--- Verifica Runtime del Catalogo Firmato ($catalogPath) ---');
 
   final envelopeJson =
       jsonDecode(await catalogFile.readAsString()) as Map<String, dynamic>;
   final envelope = CatalogEnvelope.fromJson(envelopeJson);
 
-  final publicKeyJson =
-      jsonDecode(await publicKeyFile.readAsString()) as Map<String, dynamic>;
-  final keyId = publicKeyJson['keyId'] as String;
-  final algorithm = publicKeyJson['algorithm'] as String;
-  final publicKeyHex = publicKeyJson['publicKeyHex'] as String;
-
+  final cleanHex = publicKeyHex.trim();
   final publicBytes = Uint8List.fromList(
     List.generate(
-      publicKeyHex.length ~/ 2,
-      (i) => int.parse(publicKeyHex.substring(i * 2, i * 2 + 2), radix: 16),
+      cleanHex.length ~/ 2,
+      (i) => int.parse(cleanHex.substring(i * 2, i * 2 + 2), radix: 16),
     ),
   );
 
   final catalogPublicKey = CatalogPublicKey(
     keyId: keyId,
-    algorithm: algorithm,
+    algorithm: 'ed25519-v1',
     rawKeyBytes: publicBytes,
   );
 
@@ -69,7 +126,7 @@ Future<void> main(List<String> args) async {
   stdout.writeln('1. Risultato Verifica Firma: ${verificationResult.status}');
   if (!verificationResult.isValid) {
     stderr.writeln(
-      'Firma non valida! Motivo: ${verificationResult.failureReason}',
+      '[FAIL-CLOSED] Firma non valida! Motivo: ${verificationResult.failureReason}',
     );
     exit(1);
   }
@@ -89,17 +146,18 @@ Future<void> main(List<String> args) async {
   stdout.writeln('2. Risultato Candidato Catalogo:');
   if (!candidateResult.isSuccess) {
     stderr.writeln(
-        'Creazione candidato fallita: ${candidateResult.errorMessage}');
+        '[FAIL-CLOSED] Creazione candidato fallita: ${candidateResult.errorMessage}');
     exit(1);
   }
+
   final candidate = candidateResult.candidate!;
   final manifest = candidate.envelope.signedPayload.manifest;
   stdout.writeln('   - Catalog ID: ${manifest.catalogId}');
   stdout.writeln(
       '   - Revision: ${candidate.envelope.signedPayload.catalogRevision}');
-  stdout.writeln(
-    '   - Numero Artifact: ${manifest.artifacts.length}',
-  );
+  stdout
+      .writeln('   - Key ID fidata: ${candidate.envelope.signedPayload.keyId}');
+  stdout.writeln('   - Numero Artifact: ${manifest.artifacts.length}');
   stdout.writeln('   - Validazione Trust Level: ${candidate.trustLevel}');
 
   stdout.writeln('\n--- Elenco Artifact Validati ---');
@@ -110,9 +168,8 @@ Future<void> main(List<String> args) async {
     stdout.writeln('   Size: ${artifact.sizeBytes} bytes');
     stdout.writeln('   SHA-256: ${artifact.sha256}');
     stdout.writeln('   URI: ${artifact.downloadUri}');
-    stdout.writeln('   Metadata: ${artifact.metadata}');
     stdout.writeln('');
   }
 
-  stdout.writeln('VERIFICA RUNTIME COMPLETATA CON SUCCESSO!');
+  stdout.writeln('✅ VERIFICA RUNTIME COMPLETATA CON SUCCESSO!');
 }

@@ -37,7 +37,6 @@ function Test-ValidWavRiffHeader($filePath) {
     if (-not (Test-Path $filePath)) { return $false }
     try {
         $bytes = Get-Content -Path $filePath -Encoding Byte -TotalCount 12 -ErrorAction SilentlyContinue
-        # RIFF = 0x52, 0x49, 0x46, 0x46; WAVE = 0x57, 0x41, 0x56, 0x45
         if ($bytes.Length -eq 12 -and $bytes[0] -eq 0x52 -and $bytes[1] -eq 0x49 -and $bytes[2] -eq 0x46 -and $bytes[3] -eq 0x46 -and $bytes[8] -eq 0x57 -and $bytes[9] -eq 0x41 -and $bytes[10] -eq 0x56 -and $bytes[11] -eq 0x45) {
             return $true
         }
@@ -126,34 +125,47 @@ foreach ($variant in $runtimeManifest.variants) {
     }
 }
 
-# 5. Verifica audio-manifest.json ed intesita file WAV RIFF Header
+# 5. Verifica audio-manifest.json ed integrita file WAV RIFF Header (OBBLIGATORIO)
 $audioManifestPath = "$bundleDir\audio-manifest.json"
-if (Test-Path $audioManifestPath) {
-    $audioManifest = Get-Content -Path $audioManifestPath -Raw | ConvertFrom-Json
-    foreach ($track in $audioManifest.tracks) {
-        $audioFile = "$bundleDir\audio\$($track.filename)"
-        if (-not (Test-Path $audioFile)) {
-            throw "[FAIL-CLOSED] File audio tracciato assente: $audioFile"
-        }
-        if (-not (Test-ValidWavRiffHeader $audioFile)) {
-            throw "[FAIL-CLOSED] File audio non e un archivio WAV RIFF valido: $audioFile"
-        }
-        $calcHash = (Get-FileHash -Path $audioFile -Algorithm SHA256).Hash.ToLower()
-        if ($calcHash -ne $track.sha256.ToLower()) {
-            throw "[FAIL-CLOSED] Checksum mismatch su file audio $audioFile"
-        }
-    }
-    Write-Host "✅ Asset audio e manifest verificati con successo!" -ForegroundColor Green
+if (-not (Test-Path $audioManifestPath)) {
+    throw "[FAIL-CLOSED] audio-manifest.json assente in: $audioManifestPath"
 }
+$audioManifest = Get-Content -Path $audioManifestPath -Raw | ConvertFrom-Json
+foreach ($track in $audioManifest.tracks) {
+    $audioFile = "$bundleDir\audio\$($track.filename)"
+    if (-not (Test-Path $audioFile)) {
+        throw "[FAIL-CLOSED] File audio tracciato assente: $audioFile"
+    }
+    if (-not (Test-ValidWavRiffHeader $audioFile)) {
+        throw "[FAIL-CLOSED] File audio non e un archivio WAV RIFF valido: $audioFile"
+    }
+    $calcHash = (Get-FileHash -Path $audioFile -Algorithm SHA256).Hash.ToLower()
+    if ($calcHash -ne $track.sha256.ToLower()) {
+        throw "[FAIL-CLOSED] Checksum mismatch su file audio $audioFile"
+    }
+}
+Write-Host "✅ Asset audio e manifest verificati con successo!" -ForegroundColor Green
 
 # 6. Verifica firma del catalogo modelli model-manifest.json via Dart
 $modelManifestPath = "$targetReleaseDir\model-manifest.json"
 if (-not (Test-Path $modelManifestPath)) {
     throw "[FAIL-CLOSED] model-manifest.json non trovato in $modelManifestPath"
 }
-$catalogVerifyResult = & dart run "$projectRoot\tool\catalog\verify_catalog.dart"
+$modelManifestJson = Get-Content -Path $modelManifestPath -Raw | ConvertFrom-Json
+$catalogKeyId = $modelManifestJson.signedPayload.keyId
+
+$verifyArgs = @(
+    "run", "$projectRoot\tool\catalog\verify_catalog.dart",
+    "--catalog", $modelManifestPath,
+    "--key-id", $catalogKeyId
+)
+if ($env:CATALOG_SIGNING_PUBLIC_KEY) {
+    $verifyArgs += @("--public-key-hex", $env:CATALOG_SIGNING_PUBLIC_KEY)
+}
+
+& dart @verifyArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "[FAIL-CLOSED] Verifica firma del catalogo modelli fallita!"
+    throw "[FAIL-CLOSED] Verifica firma del catalogo modelli $modelManifestPath fallita con exit code $LASTEXITCODE!"
 }
 Write-Host "✅ Firma e trust store del catalogo modelli verificati!" -ForegroundColor Green
 
@@ -185,6 +197,12 @@ Expand-Archive -Path $zipFile -DestinationPath $tempExtractDir -Force
 if (-not (Test-ValidPeExecutable "$tempExtractDir\aura_app.exe")) {
     throw "[FAIL-CLOSED] Eseguibile estrapolato da ZIP portabile non valido."
 }
+
+# Checksum interno dentro la ZIP
+$internalSumsFile = "$tempExtractDir\SHA256SUMS.txt"
+if (-not (Test-Path $internalSumsFile)) {
+    throw "[FAIL-CLOSED] SHA256SUMS.txt interno mancante nel pacchetto ZIP portabile."
+}
 Remove-Item -Path $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
 
 # 9. Verifica AURA-<version>-SHA256SUMS.txt
@@ -199,11 +217,12 @@ foreach ($line in $sumLines) {
         $expHash = $parts[0].Trim().ToLower()
         $relFile = $parts[1].Trim()
         $fullPath = "$targetReleaseDir\$relFile"
-        if (Test-Path $fullPath) {
-            $actHash = (Get-FileHash -Path $fullPath -Algorithm SHA256).Hash.ToLower()
-            if ($expHash -ne $actHash) {
-                throw "[FAIL-CLOSED] Checksum mismatch su asset di release $relFile! Atteso: $expHash, Calcolato: $actHash"
-            }
+        if (-not (Test-Path $fullPath)) {
+            throw "[FAIL-CLOSED] Asset dichiarato nel checksum di release ma assente sul disco: $relFile ($fullPath)"
+        }
+        $actHash = (Get-FileHash -Path $fullPath -Algorithm SHA256).Hash.ToLower()
+        if ($expHash -ne $actHash) {
+            throw "[FAIL-CLOSED] Checksum mismatch su asset di release $relFile! Atteso: $expHash, Calcolato: $actHash"
         }
     }
 }

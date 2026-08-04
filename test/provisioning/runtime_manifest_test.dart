@@ -504,5 +504,194 @@ void main() {
       final detection = await service.detect();
       expect(detection.effectiveCandidate, isNotNull);
     });
+
+    test(
+        'scarta le varianti AVX2 per CPU legacy (es. Core i7-2600 Sandy Bridge senza AVX2)',
+        () async {
+      final fs = MemoryProvisioningFileSystem();
+
+      const realManifestContent = '''
+{
+  "schemaVersion": 1,
+  "runtimeSetId": "aura-runtime-v0.1.0",
+  "llamaCppVersion": "b10255",
+  "sourceCommit": "66fa168a5",
+  "variants": [
+    {
+      "id": "win-x64-cuda",
+      "acceleration": "cuda",
+      "architecture": "x64",
+      "requiredCpuFeatures": ["avx2", "fma"],
+      "requiredBackendCapabilities": ["cuda12"],
+      "executable": "bin/win-x64-cuda/llama-server.exe",
+      "workingDirectory": "bin/win-x64-cuda",
+      "vendorDirectories": ["bin/win-x64-cuda/vendor"],
+      "files": [
+        {
+          "path": "bin/win-x64-cuda/llama-server.exe",
+          "sizeBytes": 1000,
+          "sha256": "541b3e9daa09b20bf85fa273e5cbd3e80185aa4ec298e765db87742b70138a53"
+        }
+      ]
+    },
+    {
+      "id": "win-x64-vulkan",
+      "acceleration": "vulkan",
+      "architecture": "x64",
+      "requiredCpuFeatures": ["avx"],
+      "requiredBackendCapabilities": ["vulkan"],
+      "executable": "bin/win-x64-vulkan/llama-server.exe",
+      "workingDirectory": "bin/win-x64-vulkan",
+      "vendorDirectories": ["bin/win-x64-vulkan/vendor"],
+      "files": [
+        {
+          "path": "bin/win-x64-vulkan/llama-server.exe",
+          "sizeBytes": 1000,
+          "sha256": "541b3e9daa09b20bf85fa273e5cbd3e80185aa4ec298e765db87742b70138a53"
+        }
+      ]
+    },
+    {
+      "id": "win-x64-cpu-avx2",
+      "acceleration": "cpu",
+      "architecture": "x64",
+      "requiredCpuFeatures": ["avx2", "fma"],
+      "requiredBackendCapabilities": [],
+      "executable": "bin/win-x64-cpu-avx2/llama-server.exe",
+      "workingDirectory": "bin/win-x64-cpu-avx2",
+      "vendorDirectories": [],
+      "files": [
+        {
+          "path": "bin/win-x64-cpu-avx2/llama-server.exe",
+          "sizeBytes": 1000,
+          "sha256": "541b3e9daa09b20bf85fa273e5cbd3e80185aa4ec298e765db87742b70138a53"
+        }
+      ]
+    }
+  ]
+}
+''';
+
+      final root = r'C:\AURA_LEGACY_CPU_TEST';
+      await fs.writeAsString(
+          '$root\\runtime\\runtime-manifest.json', realManifestContent);
+      await fs.writeBytes('$root\\runtime\\bin\\win-x64-cuda\\llama-server.exe',
+          List.filled(1000, 0));
+      await fs.writeBytes(
+          '$root\\runtime\\bin\\win-x64-vulkan\\llama-server.exe',
+          List.filled(1000, 0));
+      await fs.writeBytes(
+          '$root\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
+          List.filled(1000, 0));
+
+      final pathResolver = ProvisioningPathResolver(
+        appManagedRoot: r'C:\AppData\aura',
+        bundledRoot: root,
+      );
+
+      final service = DefaultLlamaServerDependencyService(
+        configurationRepository: JsonModelConfigurationRepository(
+          storeDirectoryPath: r'C:\AppData\aura\store',
+          fileSystem: fs,
+          lock: InMemoryProvisioningLock(),
+        ),
+        fileSystem: fs,
+        pathResolver: pathResolver,
+        processLauncher: FakeProcessLauncher(
+          processFactory: () {
+            final proc = FakeManagedProcess();
+            proc.emitStdout('version: 10255 (66fa168a5)\nbuild: 10255');
+            proc.completeExit(0);
+            return proc;
+          },
+        ),
+        // Mock CPU legacy senza AVX2 ed FMA (es. Core i7-2600 Sandy Bridge con solo AVX1)
+        cpuFeatureDetector:
+            const _MockCpuFeatureDetector({'x64', 'sse4.2', 'avx'}),
+      );
+
+      final detection = await service.detect();
+      expect(detection.effectiveCandidate, isNotNull);
+      // La variante Vulkan richiede solo "avx", quindi viene selezionata. Le varianti AVX2+FMA vengono scartate.
+      expect(detection.variantId, equals('win-x64-vulkan'));
+    });
+
+    test(
+        'fail-closed in caso di detection indeterminata (nessun flag AVX2 assunto)',
+        () async {
+      final fs = MemoryProvisioningFileSystem();
+
+      const realManifestContent = '''
+{
+  "schemaVersion": 1,
+  "runtimeSetId": "aura-runtime-v0.1.0",
+  "llamaCppVersion": "b10255",
+  "sourceCommit": "66fa168a5",
+  "variants": [
+    {
+      "id": "win-x64-cpu-avx2",
+      "acceleration": "cpu",
+      "architecture": "x64",
+      "requiredCpuFeatures": ["avx2", "fma"],
+      "requiredBackendCapabilities": [],
+      "executable": "bin/win-x64-cpu-avx2/llama-server.exe",
+      "workingDirectory": "bin/win-x64-cpu-avx2",
+      "vendorDirectories": [],
+      "files": [
+        {
+          "path": "bin/win-x64-cpu-avx2/llama-server.exe",
+          "sizeBytes": 1000,
+          "sha256": "541b3e9daa09b20bf85fa273e5cbd3e80185aa4ec298e765db87742b70138a53"
+        }
+      ]
+    }
+  ]
+}
+''';
+
+      final root = r'C:\AURA_INDETERMINATE_CPU_TEST';
+      await fs.writeAsString(
+          '$root\\runtime\\runtime-manifest.json', realManifestContent);
+      await fs.writeBytes(
+          '$root\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
+          List.filled(1000, 0));
+
+      final pathResolver = ProvisioningPathResolver(
+        appManagedRoot: r'C:\AppData\aura',
+        bundledRoot: root,
+      );
+
+      final service = DefaultLlamaServerDependencyService(
+        configurationRepository: JsonModelConfigurationRepository(
+          storeDirectoryPath: r'C:\AppData\aura\store',
+          fileSystem: fs,
+          lock: InMemoryProvisioningLock(),
+        ),
+        fileSystem: fs,
+        pathResolver: pathResolver,
+        processLauncher: FakeProcessLauncher(
+          processFactory: () {
+            final proc = FakeManagedProcess();
+            proc.emitStdout('version: 10255 (66fa168a5)\nbuild: 10255');
+            proc.completeExit(0);
+            return proc;
+          },
+        ),
+        // Detection indeterminata: restituisce solo il set baseline x64
+        cpuFeatureDetector: const _MockCpuFeatureDetector({'x64', 'sse4.2'}),
+      );
+
+      final detection = await service.detect();
+      // Nessuna variante accettata in quanto win-x64-cpu-avx2 richiede avx2 ed fma
+      expect(detection.effectiveCandidate, isNull);
+    });
   });
+}
+
+final class _MockCpuFeatureDetector implements CpuFeatureDetector {
+  final Set<String> features;
+  const _MockCpuFeatureDetector(this.features);
+
+  @override
+  Future<Set<String>> detectCpuFeatures() async => features;
 }

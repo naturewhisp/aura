@@ -1,6 +1,6 @@
-# Script transazionale di packaging e assemblaggio per il rilascio standalone di A.U.R.A. (ZIP Portabile, Manifest & Installer Inno Setup).
 param(
-    [string]$Version = "0.1.0"
+    [string]$Version = "0.1.0",
+    [switch]$RequireInstaller
 )
 
 $ErrorActionPreference = "Stop"
@@ -254,6 +254,9 @@ if ($isccPath) {
     }
     Write-Host "✅ Installer generato e verificato con successo: $setupInstallerFile" -ForegroundColor Green
 } else {
+    if ($RequireInstaller) {
+        throw "[FAIL-CLOSED] Parametro -RequireInstaller specificato ma ISCC.exe non e stato trovato nel sistema."
+    }
     Write-Host "ISCC.exe non trovato nel sistema. Compilazione installer .exe saltata (ZIP portabile generato correttamente)." -ForegroundColor Yellow
 }
 

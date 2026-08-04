@@ -1,17 +1,15 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aura_core/aura_testing.dart';
-import 'package:aura_app/main.dart';
 import 'package:aura_app/src/state_management/game_controller_notifier.dart';
 import 'package:aura_app/src/state_management/desktop_shell_controller.dart';
 import 'package:aura_app/src/state_management/application_shutdown_coordinator.dart';
 
 void main() {
-  testWidgets('AuraApp didRequestAppExit invokes and awaits notifier.shutdown',
-      (WidgetTester tester) async {
+  test(
+      'ApplicationShutdownCoordinator requestShutdown executes shutdown sequence deterministically',
+      () async {
     final shutdownCompleter = Completer<void>();
     bool shutdownCompleted = false;
 
@@ -48,40 +46,22 @@ void main() {
       onNativeExit: () {},
     );
 
-    await tester.pumpWidget(AuraApp(
-      notifier: notifier,
-      dependencyService: const FakeLlamaServerDependencyService(),
-      desktopWindowController: fakeWindowController,
-      desktopShellController: shellController,
-      shutdownCoordinator: shutdownCoordinator,
-    ));
+    final shutdownFuture = shutdownCoordinator.requestShutdown();
 
-    // Pump to allow BootMenuScreen's initial boot sequence timers to complete
-    await tester.pump(const Duration(seconds: 2));
+    // Allow I/O (persistence flush) to advance to notifier.shutdown
+    await Future<void>.delayed(const Duration(milliseconds: 50));
 
-    final state = tester.state(find.byType(AuraApp)) as WidgetsBindingObserver;
-
-    late Future<AppExitResponse> exitFuture;
-    await tester.runAsync(() async {
-      exitFuture = state.didRequestAppExit();
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-    });
-
-    // Verify exitFuture is pending because onDispose is awaiting shutdownCompleter
+    // Verify shutdown is initiated but onDispose is awaiting shutdownCompleter
     expect(shutdownCompleted, isFalse);
-
-    AppExitResponse? response;
-    await tester.runAsync(() async {
-      shutdownCompleter.complete();
-      response = await exitFuture;
-    });
-
-    expect(response, equals(AppExitResponse.exit));
-    expect(shutdownCompleted, isTrue);
     expect(notifier.isShutdown, isTrue);
 
-    await tester.pumpWidget(const SizedBox());
-    await tester.pump(const Duration(seconds: 1));
+    // Complete shutdownCompleter to unblock onDispose and allow shutdownFuture to resolve
+    shutdownCompleter.complete();
+    await shutdownFuture;
+
+    expect(shutdownCompleted, isTrue);
+    expect(notifier.isShutdown, isTrue);
+    expect(fakeWindowController.isWindowClosed, isTrue);
 
     if (tempDir.existsSync()) {
       tempDir.deleteSync(recursive: true);

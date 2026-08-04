@@ -11,7 +11,7 @@ dependencies:
   flutter:
     sdk: flutter
   meta: ^1.11.0
-  audioplayers: ^6.0.0
+  audioplayers: ^6.8.1
   
   # Dipendenza locale per importare il core di gioco deterministico
   aura_core:

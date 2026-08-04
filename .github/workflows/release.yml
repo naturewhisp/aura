@@ -199,7 +199,7 @@ jobs:
       - name: Acquire Deterministic llama.cpp Runtime Binaries
         shell: pwsh
         run: |
-          .\tool\fetch_llama_binaries.ps1 -Tag "b3200" -Force
+          .\tool\fetch_llama_binaries.ps1 -Force
           if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Acquisizione binari llama.cpp fallita" }
 
       - name: Package Standalone Release
@@ -257,6 +257,9 @@ jobs:
           $sha = "${{ github.sha }}"
           $ref = "${{ github.ref_name }}"
 
+          $runtimeLock = Get-Content "tool/runtime/llama-runtime-lock.json" -Raw | ConvertFrom-Json
+          $llamaCppTag = $runtimeLock.llamaCppTag
+
           $isCandidateMsg = if ($kind -eq "candidate") { "`n> [!WARNING]`n> **TEST BUILD — DO NOT REDISTRIBUTE**`n" } else { "" }
 
           $notes = @"
@@ -266,7 +269,7 @@ jobs:
           $isCandidateMsg
           ## Componenti inclusi
           - **Applicazione Desktop**: Flutter Release Windows x64
-          - **Runtime Local Inference**: llama.cpp (b3200) multi-variante
+          - **Runtime Local Inference**: llama.cpp ($llamaCppTag) multi-variante
             - ``win-x64-cuda`` (NVIDIA CUDA 12)
             - ``win-x64-vulkan`` (Vulkan API Generic)
             - ``win-x64-cpu-avx2`` (CPU High-Performance Fallback)

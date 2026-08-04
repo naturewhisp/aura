@@ -1,0 +1,105 @@
+name: CI Validation
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validation Suite (Format, Analyze, Test, Build, Manifests)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.12.1'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: 'stable'
+          cache: true
+
+      - name: Verify Toolchain
+        run: |
+          dart --version
+          flutter --version
+
+      - name: Install Core Dependencies
+        run: dart pub get --enforce-lockfile
+
+      - name: Core Format Check
+        run: dart format --output=none --set-exit-if-changed lib test bin tool
+
+      - name: Core Static Analysis
+        run: dart analyze .
+
+      - name: Core Unit Tests
+        run: dart test
+
+      - name: Install App Dependencies
+        run: |
+          cd app
+          flutter pub get --enforce-lockfile
+
+      - name: App Format Check
+        run: |
+          cd app
+          dart format --output=none --set-exit-if-changed lib test
+
+      - name: App Static Analysis
+        run: |
+          cd app
+          flutter analyze
+
+      - name: App Unit & Widget Tests
+        run: |
+          cd app
+          flutter test
+
+      - name: App Flutter Windows Release Build
+        run: |
+          cd app
+          flutter build windows --release
+
+      - name: Validate Runtime & Audio Manifests
+        shell: powershell
+        run: |
+          $runtimeManifest = Get-Content -Path "runtime/runtime-manifest.json" -Raw | ConvertFrom-Json
+          if ($runtimeManifest.variants.Count -lt 3) {
+              throw "Runtime manifest contains fewer than 3 variants!"
+          }
+          Write-Host "✅ Runtime manifest valid: $($runtimeManifest.runtimeSetId)"
+
+          $audioManifest = Get-Content -Path "distribution/audio/audio-manifest.json" -Raw | ConvertFrom-Json
+          foreach ($track in $audioManifest.tracks) {
+              $audioFile = "distribution/audio/$($track.filename)"
+              if (-not (Test-Path $audioFile)) {
+                  throw "Required audio file missing: $audioFile"
+              }
+              $hash = (Get-FileHash -Path $audioFile -Algorithm SHA256).Hash.ToLower()
+              if ($hash -ne $track.sha256.ToLower()) {
+                  throw "Audio file SHA-256 mismatch for $audioFile"
+              }
+          }
+          Write-Host "✅ Audio manifest & assets valid: $($audioManifest.audioSetId)"
+
+      - name: Run Actionlint Workflow Linter
+        shell: powershell
+        run: |
+          Write-Host "Verifica sintattica workflow..."

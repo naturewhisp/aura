@@ -1,0 +1,252 @@
+name: Release Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Target Version (e.g. 0.1.0-rc.1 or 0.1.0)'
+        required: true
+        type: string
+      channel:
+        description: 'Distribution Channel (dev, beta, stable)'
+        required: true
+        type: choice
+        options:
+          - dev
+          - beta
+          - stable
+        default: 'beta'
+      release_kind:
+        description: 'Release Kind (candidate vs official)'
+        required: true
+        type: choice
+        options:
+          - candidate
+          - official
+        default: 'candidate'
+      require_installer:
+        description: 'Require Inno Setup Installer'
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Verify, Sign & Draft Release
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    permissions:
+      contents: write
+
+    environment: ${{ inputs.release_kind == 'official' && 'release' || 'release-candidate' }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate Inputs & SemVer Policy
+        shell: powershell
+        run: |
+          $ver = "${{ inputs.version }}".Trim()
+          $chan = "${{ inputs.channel }}"
+          $kind = "${{ inputs.release_kind }}"
+          $reqInst = "${{ inputs.require_installer }}"
+
+          Write-Host "Verifica parametri: version=$ver, channel=$chan, release_kind=$kind, require_installer=$reqInst"
+
+          if ($ver.StartsWith("v")) {
+              throw "[FAIL-CLOSED] La versione non deve includere il prefisso 'v' nell'input. Usa formato es. 0.1.0-rc.1"
+          }
+
+          $semverRegex = "^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
+          if ($ver -notmatch $semverRegex) {
+              throw "[FAIL-CLOSED] Formato SemVer non valido: $ver"
+          }
+
+          $isPrerelease = $Matches[4] -ne $null
+
+          if ($kind -eq "candidate" -and -not $isPrerelease) {
+              throw "[FAIL-CLOSED] Le release 'candidate' devono avere un suffisso prerelease (es. 0.1.0-rc.1)"
+          }
+
+          if ($kind -eq "official") {
+              if ($isPrerelease) {
+                  throw "[FAIL-CLOSED] Le release 'official' non devono contenere suffissi prerelease"
+              }
+              if ($chan -ne "stable") {
+                  throw "[FAIL-CLOSED] Le release 'official' devono appartenere al canale 'stable'"
+              }
+              if ($reqInst -ne "true") {
+                  throw "[FAIL-CLOSED] Le release 'official/stable' richiedono l'installer Inno Setup"
+              }
+          }
+
+          if ($chan -eq "beta" -and $reqInst -ne "true") {
+              throw "[FAIL-CLOSED] Le release del canale 'beta' richiedono l'installer Inno Setup"
+          }
+
+          Write-Host "✅ Validazione parametri e policy SemVer completata con successo!"
+
+      - name: Set up Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: '3.12.1'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.1'
+          channel: 'stable'
+          cache: true
+
+      - name: Install Inno Setup Compiler (ISCC)
+        shell: powershell
+        run: |
+          $iscc = Get-Command "iscc" -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+              Write-Host "Installazione Inno Setup via Chocolatey..."
+              choco install innosetup --no-progress -y
+              echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
+          }
+
+      - name: Run Quality Gate Checks (Format, Analyze, Tests)
+        shell: powershell
+        run: |
+          dart pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test bin tool
+          dart analyze .
+          dart test
+
+          Push-Location app
+          try {
+              flutter pub get --enforce-lockfile
+              dart format --output=none --set-exit-if-changed lib test
+              flutter analyze
+              flutter test
+          } finally {
+              Pop-Location
+          }
+
+      - name: Acquire Deterministic llama.cpp Runtime Binaries
+        shell: powershell
+        run: |
+          .\tool\fetch_llama_binaries.ps1 -Tag "b3200" -Force
+
+      - name: Package Standalone Release
+        shell: powershell
+        env:
+          CATALOG_SIGNING_PRIVATE_KEY: ${{ secrets.CATALOG_SIGNING_PRIVATE_KEY }}
+          CATALOG_SIGNING_KEY_ID: ${{ secrets.CATALOG_SIGNING_KEY_ID }}
+        run: |
+          $reqInst = [bool]::Parse("${{ inputs.require_installer }}")
+          $params = @{
+              Version = "${{ inputs.version }}"
+              Channel = "${{ inputs.channel }}"
+              ReleaseKind = "${{ inputs.release_kind }}"
+              WorkflowRunId = "${{ github.run_id }}"
+              WorkflowRunAttempt = "${{ github.run_attempt }}"
+          }
+          if ($reqInst) {
+              $params.RequireInstaller = $true
+          }
+          .\tool\package_release.ps1 @params
+
+      - name: Verify Release Assets Integrity (Fail-Closed)
+        shell: powershell
+        run: |
+          $reqInst = [bool]::Parse("${{ inputs.require_installer }}")
+          $params = @{
+              Version = "${{ inputs.version }}"
+          }
+          if ($reqInst) {
+              $params.RequireInstaller = $true
+          }
+          .\tool\verify_release_assets.ps1 @params
+
+      - name: Generate Release Notes
+        shell: powershell
+        run: |
+          $ver = "${{ inputs.version }}"
+          $chan = "${{ inputs.channel }}"
+          $kind = "${{ inputs.release_kind }}"
+          $sha = (git rev-parse HEAD).Trim()
+
+          $notes = @"
+          # A.U.R.A. v$ver ($chan / $kind)
+
+          Commit di riferimento: ``$sha``
+
+          $($kind -eq "candidate" ? "> [!WARNING]`n> **TEST BUILD — DO NOT REDISTRIBUTE**`n" : "")
+
+          ## Componenti inclusi
+          - **Applicazione Desktop**: Flutter Release Windows x64
+          - **Runtime Local Inference**: llama.cpp (b3200) multi-variante
+            - ``win-x64-cuda`` (NVIDIA CUDA 12)
+            - ``win-x64-vulkan`` (Vulkan API Generic)
+            - ``win-x64-cpu-avx2`` (CPU High-Performance Fallback)
+          - **Audio Set**: Default Release Audio Set (48kHz/22kHz PCM WAV)
+          - **Firma Cataloghi**: Ed25519 (RFC 8032) / JCS (RFC 8785) verified
+
+          ## Nota Modelli
+          I pacchetti di distribuzione **NON** includono file di modello GGUF. Il primo avvio dell'applicazione guidata o il pannello impostazioni provvedera al download verificato del modello.
+
+          ## Istruzioni per la verifica Checksum
+          Scarica ``AURA-$ver-SHA256SUMS.txt`` e verifica gli hash:
+          ```powershell
+          Get-FileHash -Algorithm SHA256 aura-v$ver-win-x64.zip
+          ```
+          "@
+
+          Set-Content -Path "release\RELEASE_NOTES.md" -Value $notes -Encoding UTF8
+
+      - name: Create Git Tag & Draft Release on GitHub
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "v${{ inputs.version }}"
+          $commit = "${{ github.sha }}"
+          $isPrerelease = "${{ inputs.release_kind }}" -eq "candidate"
+
+          Write-Host "Creazione tag $tag per il commit $commit..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a $tag $commit -m "Release $tag"
+          git push origin $tag
+
+          Write-Host "Creazione GitHub Draft Release..."
+          $argsList = @(
+              "release", "create", $tag,
+              "--title", "A.U.R.A. $tag",
+              "--notes-file", "release\RELEASE_NOTES.md",
+              "--draft"
+          )
+          if ($isPrerelease) {
+              $argsList += "--prerelease"
+          }
+
+          # Aggiunta asset
+          $assets = Get-ChildItem -Path "release" -File | Where-Object { $_.Name -ne "RELEASE_NOTES.md" }
+          foreach ($a in $assets) {
+              $argsList += $a.FullName
+          }
+
+          gh @argsList
+          Write-Host "✅ Draft Release creata con successo!"
+
+      - name: Upload Diagnostic Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aura-release-diagnostics-v${{ inputs.version }}
+          path: release/
+          retention-days: 5

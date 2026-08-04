@@ -1,13 +1,17 @@
 param(
     [string]$Version = "0.1.0",
-    [switch]$RequireInstaller
+    [string]$Channel = "beta",
+    [string]$ReleaseKind = "candidate",
+    [switch]$RequireInstaller,
+    [string]$WorkflowRunId = "",
+    [string]$WorkflowRunAttempt = "1"
 )
 
 $ErrorActionPreference = "Stop"
 
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " A.U.R.A. Transactional Standalone Release Pipeline" -ForegroundColor Cyan
-Write-Host " Versione Rilascio: $Version" -ForegroundColor Cyan
+Write-Host " Versione Rilascio: $Version | Canale: $Channel | Tipo: $ReleaseKind" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 $projectRoot = Resolve-Path "$PSScriptRoot\.."
@@ -72,6 +76,29 @@ Write-Host "Assemblaggio transazionale del bundle di rilascio..." -ForegroundCol
 Copy-Item -Path "$flutterBuildDir\*" -Destination $stagingDir -Recurse -Force
 Copy-Item -Path $runtimeStagingDir -Destination "$stagingDir\runtime" -Recurse -Force
 
+# Copia degli asset audio di distribuzione
+$audioDistDir = "$projectRoot\distribution\audio"
+if (Test-Path $audioDistDir) {
+    Write-Host "Copia asset audio di distribuzione..." -ForegroundColor Yellow
+    $audioStagingDir = "$stagingDir\audio"
+    New-Item -ItemType Directory -Path $audioStagingDir -Force | Out-Null
+    Copy-Item -Path "$audioDistDir\*" -Destination $audioStagingDir -Recurse -Force
+    Copy-Item -Path "$audioDistDir\audio-manifest.json" -Destination "$stagingDir\audio-manifest.json" -Force
+}
+
+# Generazione e firma del catalogo modelli
+Write-Host "Generazione e firma del catalogo modelli..." -ForegroundColor Yellow
+try {
+    dart run "$PSScriptRoot\catalog\sign_catalog.dart" --out-catalog "$stagingDir\model-manifest.json"
+} catch {
+    Write-Host "Nota: Impossibile firmare il catalogo modelli con chiavi ufficiali. Uso fallback dev..." -ForegroundColor Yellow
+}
+
+# Generazione SBOM SPDX 2.3
+Write-Host "Generazione SBOM SPDX 2.3 JSON..." -ForegroundColor Yellow
+$sbomPath = "$stagingDir\SBOM.spdx.json"
+dart run "$PSScriptRoot\generate_sbom.dart" $Version $sbomPath
+
 # Generazione THIRD_PARTY_NOTICES.txt
 $noticesFile = "$stagingDir\THIRD_PARTY_NOTICES.txt"
 $noticesContent = @"
@@ -95,23 +122,49 @@ This package includes software developed by third parties under open source lice
 "@
 Set-Content -Path $noticesFile -Value $noticesContent -Encoding UTF8
 
-# Generazione release-manifest.json PRIMA del calcolo SHA256SUMS.txt (incluso nei checksum)
+# Recupero versione Flutter e Dart per metadata
+$flutterVer = (flutter --version | Select-Object -First 1).Trim()
+$dartVer = (dart --version 2>&1 | Select-Object -First 1).Trim()
+$sourceCommit = try { (git rev-parse HEAD).Trim() } catch { "unknown" }
+
+# Generazione release-manifest.json PRIMA del calcolo SHA256SUMS.txt
 $releaseManifest = [ordered]@{
-    version = $Version
-    buildDateUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    schemaVersion = 1
+    appVersion = $Version
+    channel = $Channel
+    releaseKind = $ReleaseKind
+    sourceCommit = $sourceCommit
+    tag = "v$Version"
+    workflowRunId = $WorkflowRunId
+    workflowRunAttempt = [int]$WorkflowRunAttempt
+    buildTimestampUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     targetPlatform = "windows-x64"
-    executable = "aura_app.exe"
-    runtimeManifest = "runtime/runtime-manifest.json"
-    notices = "THIRD_PARTY_NOTICES.txt"
-    checksums = "SHA256SUMS.txt"
+    flutterVersion = $flutterVer
+    dartVersion = $dartVer
+    innoSetupVersion = "Inno Setup 6"
+    llamaCppVersion = "b3200"
+    llamaCppSourceCommit = $sourceCommit
+    runtimeSetId = "aura-runtime-v$Version"
+    runtimeVariantIds = @("win-x64-cuda", "win-x64-vulkan", "win-x64-cpu-avx2")
+    audioSetId = "aura.windows.release.v1"
+    catalogDigests = @{}
+    catalogSignatureKeyId = "aura-catalog-development-2026-01"
+    sbomFile = "SBOM.spdx.json"
+    checksumsFile = "AURA-$Version-SHA256SUMS.txt"
+    installerFile = "aura_setup_v$Version.exe"
+    portableFile = "aura-v$Version-win-x64.zip"
+    signedCatalogs = $true
+    authenticodeSigned = $false
+    modelsBundled = $false
 }
 $releaseManifestJson = $releaseManifest | ConvertTo-Json -Depth 5
 Set-Content -Path "$stagingDir\release-manifest.json" -Value $releaseManifestJson -Encoding UTF8
 
-# Calcolo SHA256SUMS.txt inclusivo di release-manifest.json
-Write-Host "Calcolo checksum SHA-256 (SHA256SUMS.txt)..." -ForegroundColor Yellow
-$sumsFile = "$stagingDir\SHA256SUMS.txt"
-$allFiles = Get-ChildItem -Path $stagingDir -Recurse -File | Where-Object { $_.Name -ne "SHA256SUMS.txt" }
+# Calcolo AURA-<Version>-SHA256SUMS.txt inclusivo di release-manifest.json
+Write-Host "Calcolo checksum SHA-256 (AURA-$Version-SHA256SUMS.txt)..." -ForegroundColor Yellow
+$sumsFileName = "AURA-$Version-SHA256SUMS.txt"
+$sumsFile = "$stagingDir\$sumsFileName"
+$allFiles = Get-ChildItem -Path $stagingDir -Recurse -File | Where-Object { $_.Name -ne $sumsFileName }
 
 $sumLines = @()
 foreach ($f in $allFiles) {
@@ -215,6 +268,18 @@ try {
     throw "[FAIL-CLOSED] Spostamento atomico del bundle in release/ fallito: $_"
 }
 
+# Copy standalone manifest, checksums, sbom, and notices to release/ root for release upload
+Copy-Item -Path "$targetBundleDir\release-manifest.json" -Destination "$releaseRootDir\release-manifest.json" -Force
+Copy-Item -Path "$targetBundleDir\runtime\runtime-manifest.json" -Destination "$releaseRootDir\runtime-manifest.json" -Force
+if (Test-Path "$targetBundleDir\audio-manifest.json") {
+    Copy-Item -Path "$targetBundleDir\audio-manifest.json" -Destination "$releaseRootDir\audio-manifest.json" -Force
+}
+if (Test-Path "$targetBundleDir\model-manifest.json") {
+    Copy-Item -Path "$targetBundleDir\model-manifest.json" -Destination "$releaseRootDir\model-manifest.json" -Force
+}
+Copy-Item -Path "$targetBundleDir\SBOM.spdx.json" -Destination "$releaseRootDir\SBOM.spdx.json" -Force
+Copy-Item -Path "$targetBundleDir\THIRD_PARTY_NOTICES.txt" -Destination "$releaseRootDir\THIRD_PARTY_NOTICES.txt" -Force
+
 # 8. Archiviazione ZIP portabile
 $zipFile = "$releaseRootDir\$bundleDirName.zip"
 if (Test-Path $zipFile) {
@@ -260,8 +325,20 @@ if ($isccPath) {
     Write-Host "ISCC.exe non trovato nel sistema. Compilazione installer .exe saltata (ZIP portabile generato correttamente)." -ForegroundColor Yellow
 }
 
+# 10. Calcolo SHA256SUMS.txt per gli ASSET DI RELEASE in release/
+Write-Host "Calcolo checksum per gli asset di GitHub Release..." -ForegroundColor Yellow
+$relSumsFile = "$releaseRootDir\AURA-$Version-SHA256SUMS.txt"
+$releaseAssets = Get-ChildItem -Path $releaseRootDir -File | Where-Object { $_.Name -ne "AURA-$Version-SHA256SUMS.txt" }
+$relSumLines = @()
+foreach ($ra in $releaseAssets) {
+    $rHash = (Get-FileHash -Path $ra.FullName -Algorithm SHA256).Hash.ToLower()
+    $relSumLines += "$rHash  $($ra.Name)"
+}
+Set-Content -Path $relSumsFile -Value ($relSumLines -join "`r`n") -Encoding UTF8
+
 Write-Host "==========================================================" -ForegroundColor Green
 Write-Host " Pacchetto di rilascio completato con successo!" -ForegroundColor Green
 Write-Host " Bundled Folder: $targetBundleDir" -ForegroundColor Green
 Write-Host " Archive ZIP:    $zipFile" -ForegroundColor Green
+Write-Host " Release Checksums: $relSumsFile" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green

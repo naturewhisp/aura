@@ -21,15 +21,22 @@ Il workspace è organizzato come un monorepo Dart/Flutter composto dalle seguent
 
 ## 🛠️ Requisiti e Installazione
 
-### Prerequisiti
-*   **Dart SDK & Flutter SDK** (consigliata versione $\ge 3.22$)
-*   **LM Studio** o un server API locale compatibile con OpenAI (es. llama.cpp, Ollama) avviato su `http://127.0.0.1:1234`.
+### Prerequisiti e Distribuzione
+*   **Distribuzione Ufficiale**: Scarica l'installer standalone (`aura_setup_vX.Y.Z.exe`) o il pacchetto portatile (`aura-vX.Y.Z-win-x64.zip`) dalla sezione [GitHub Releases](https://github.com/naturewhisp/aura/releases).
+*   **Runtime Gestiti Incorporati**: A.U.R.A. include i runtime nativi multi-variante `llama-server` (CUDA 12, Vulkan e CPU AVX2) con selezione dinamica in base alle funzionalità hardware del sistema. Nessuna installazione esterna o server di inferenza terzo è richiesto.
+*   **Cataloghi Modelli Firmati**: I modelli LLM raccomandati per l'Attore (PANOPTICON) e il Valutatore vengono scaricati ed ingeriti in modo sicuro tramite cataloghi firmati con tecnologia Ed25519 (RFC 8032) e canonicalizzazione JCS (RFC 8785).
 
-### Configurazione LM Studio (Fase 4 Consigliata)
-Per un'esperienza ottimale di gioco reale:
-*   Carica un modello leggero per il Valutatore (es. `mistralai/ministral-3-3b`).
-*   Carica un modello più grande e reattivo per l'Attore (es. `lmstudio-community/gemma-4-12B-it-QAT-GGUF` o `qwen/qwen3.5-9b`).
-*   Nel pannello di configurazione del modello (Actor), puoi scegliere se abilitare o meno il **Reasoning** (Chain-of-thought) in base alle tue esigenze di latenza.
+---
+
+## 📦 Pipeline di Packaging & Release (Fase 6.9)
+
+A.U.R.A. utilizza una pipeline CI/CD automatizzata tramite **GitHub Actions**:
+
+- **Continuous Integration (`.github/workflows/ci.yml`)**: Valida ad ogni Pull Request e Push su `main` la formattazione, l'analisi statica, la suite dei test ed effettua la build di verifica.
+- **Release Pipeline (`.github/workflows/release.yml`)**: Pipeline guidata che acquisisce i runtime deterministici, compila l'eseguibile Windows e l'installer Inno Setup, genera l'SBOM SPDX 2.3, firma i cataloghi, calcola i checksum SHA-256 e crea una **Draft Release** su GitHub per il collaudo manuale.
+- **Workflow di Cleanup (`.github/workflows/cleanup-draft-release.yml`)**: Consente l'eliminazione sicura di candidate Draft Release e dei relativi tag temporanei.
+
+Per maggiori dettagli consultare la [Guida Operativa di Release](docs/RELEASE_PROCESS.md) e la [Specifica di Pipeline](docs/phase6/RELEASE_PIPELINE_SPEC.md).
 
 ---
 

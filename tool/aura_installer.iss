@@ -67,7 +67,7 @@ begin
   Result := True;
   if CheckAuraRunning() then
   begin
-    MsgBox('A.U.R.A. risulta in esecuzione. Si prega di chiudere l''applicazione prima di procedere con la disinstallazione.', mbCritical, MB_OK);
+    MsgBox('A.U.R.A. risulta in esecuzione. Si prega di chiudere l''applicazione prima di procedere con la disinstallazione.', mbError, MB_OK);
     Result := False;
   end;
 end;

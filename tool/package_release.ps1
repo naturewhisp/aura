@@ -228,22 +228,31 @@ Compress-Archive -Path "$targetBundleDir\*" -DestinationPath $zipFile -Compressi
 $isccPath = Get-Command "iscc" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
 if (-not $isccPath) {
     $possiblePaths = @(
+        "$env:LocalAppData\Programs\Inno Setup 6\ISCC.exe",
         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
         "C:\Program Files\Inno Setup 6\ISCC.exe"
     )
     foreach ($p in $possiblePaths) {
-        if (Test-Path $p) {
+        if ($p -and (Test-Path $p)) {
             $isccPath = $p
             break
         }
     }
 }
 
+$setupInstallerFile = "$releaseRootDir\aura_setup_v$Version.exe"
+
 if ($isccPath) {
     Write-Host "Compilazione Installer Inno Setup con ISCC.exe ($isccPath)..." -ForegroundColor Yellow
     $issFile = "$projectRoot\tool\aura_installer.iss"
     & $isccPath "/DMyAppVersion=$Version" $issFile
-    Write-Host "Installer generato in release/aura_setup_v$Version.exe" -ForegroundColor Green
+    if (-not (Test-Path $setupInstallerFile)) {
+        throw "[FAIL-CLOSED] Compilazione Inno Setup terminata ma l'eseguibile $setupInstallerFile non e stato creato."
+    }
+    if (-not (Test-ValidPeExecutable $setupInstallerFile)) {
+        throw "[FAIL-CLOSED] L'installer generato $setupInstallerFile non e un eseguibile Windows PE valido."
+    }
+    Write-Host "✅ Installer generato e verificato con successo: $setupInstallerFile" -ForegroundColor Green
 } else {
     Write-Host "ISCC.exe non trovato nel sistema. Compilazione installer .exe saltata (ZIP portabile generato correttamente)." -ForegroundColor Yellow
 }

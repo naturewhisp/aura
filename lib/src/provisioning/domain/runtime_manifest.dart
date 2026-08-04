@@ -86,6 +86,7 @@ final class RuntimeVariantDescriptor {
   final RuntimeAcceleration acceleration;
   final String architecture;
   final List<String> requiredCpuFeatures;
+  final List<String> requiredBackendCapabilities;
   final String executable;
   final String workingDirectory;
   final List<String> vendorDirectories;
@@ -96,6 +97,7 @@ final class RuntimeVariantDescriptor {
     required this.acceleration,
     required this.architecture,
     required this.requiredCpuFeatures,
+    this.requiredBackendCapabilities = const [],
     required this.executable,
     required this.workingDirectory,
     required this.vendorDirectories,
@@ -170,6 +172,11 @@ final class RuntimeVariantDescriptor {
         ? rawFeatures.cast<String>().map((e) => e.trim()).toList()
         : <String>[];
 
+    final rawBackendCaps = json['requiredBackendCapabilities'];
+    final requiredBackendCapabilities = rawBackendCaps is List
+        ? rawBackendCaps.cast<String>().map((e) => e.trim()).toList()
+        : <String>[];
+
     final rawFiles = json['files'];
     if (rawFiles is! List || rawFiles.isEmpty) {
       throw RuntimeManifestException(
@@ -216,6 +223,8 @@ final class RuntimeVariantDescriptor {
       acceleration: accel,
       architecture: (json['architecture'] as String? ?? 'x64').trim(),
       requiredCpuFeatures: List.unmodifiable(requiredCpuFeatures),
+      requiredBackendCapabilities:
+          List.unmodifiable(requiredBackendCapabilities),
       executable: cleanExec,
       workingDirectory: cleanWorkDir,
       vendorDirectories: List.unmodifiable(vendorDirectories),
@@ -228,6 +237,7 @@ final class RuntimeVariantDescriptor {
         'acceleration': acceleration.name,
         'architecture': architecture,
         'requiredCpuFeatures': requiredCpuFeatures,
+        'requiredBackendCapabilities': requiredBackendCapabilities,
         'executable': executable,
         'workingDirectory': workingDirectory,
         'vendorDirectories': vendorDirectories,

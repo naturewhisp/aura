@@ -1,4 +1,5 @@
 import 'package:aura_core/aura_offline.dart';
+import 'package:aura_core/aura_testing.dart';
 import 'package:crypto/crypto.dart';
 import 'package:test/test.dart';
 
@@ -17,7 +18,8 @@ void main() {
             'id': 'win-x64-cuda',
             'acceleration': 'cuda',
             'architecture': 'x64',
-            'requiredCpuFeatures': ['avx2', 'cuda12'],
+            'requiredCpuFeatures': ['avx2', 'fma'],
+            'requiredBackendCapabilities': ['cuda12'],
             'executable': 'bin/win-x64-cuda/llama-server.exe',
             'workingDirectory': 'bin/win-x64-cuda',
             'vendorDirectories': ['bin/win-x64-cuda/vendor'],
@@ -41,6 +43,8 @@ void main() {
       final v = manifest.findVariantById('win-x64-cuda');
       expect(v, isNotNull);
       expect(v!.acceleration, equals(RuntimeAcceleration.cuda));
+      expect(v.requiredCpuFeatures, containsAll(['avx2', 'fma']));
+      expect(v.requiredBackendCapabilities, contains('cuda12'));
       expect(v.vendorDirectories, contains('bin/win-x64-cuda/vendor'));
     });
 
@@ -390,6 +394,115 @@ void main() {
 
       final resolved = await resolver.resolve(config);
       expect(resolved, isNull);
+    });
+  });
+
+  group('Real Manifest & DefaultCpuFeatureDetector End-to-End Discovery', () {
+    test(
+        'convalida tutte e tre le varianti del manifest reale con DefaultCpuFeatureDetector',
+        () async {
+      final fs = MemoryProvisioningFileSystem();
+
+      const realManifestContent = '''
+{
+  "schemaVersion": 1,
+  "runtimeSetId": "aura-runtime-v0.1.0",
+  "llamaCppVersion": "b10255",
+  "sourceCommit": "66fa168a5",
+  "variants": [
+    {
+      "id": "win-x64-cuda",
+      "acceleration": "cuda",
+      "architecture": "x64",
+      "requiredCpuFeatures": ["avx2", "fma"],
+      "requiredBackendCapabilities": ["cuda12"],
+      "executable": "bin/win-x64-cuda/llama-server.exe",
+      "workingDirectory": "bin/win-x64-cuda",
+      "vendorDirectories": ["bin/win-x64-cuda/vendor"],
+      "files": [
+        {
+          "path": "bin/win-x64-cuda/llama-server.exe",
+          "sizeBytes": 1000,
+          "sha256": "541b3e9daa09b20bf85fa273e5cbd3e80185aa4ec298e765db87742b70138a53"
+        }
+      ]
+    },
+    {
+      "id": "win-x64-vulkan",
+      "acceleration": "vulkan",
+      "architecture": "x64",
+      "requiredCpuFeatures": ["avx2"],
+      "requiredBackendCapabilities": ["vulkan"],
+      "executable": "bin/win-x64-vulkan/llama-server.exe",
+      "workingDirectory": "bin/win-x64-vulkan",
+      "vendorDirectories": ["bin/win-x64-vulkan/vendor"],
+      "files": [
+        {
+          "path": "bin/win-x64-vulkan/llama-server.exe",
+          "sizeBytes": 1000,
+          "sha256": "541b3e9daa09b20bf85fa273e5cbd3e80185aa4ec298e765db87742b70138a53"
+        }
+      ]
+    },
+    {
+      "id": "win-x64-cpu-avx2",
+      "acceleration": "cpu",
+      "architecture": "x64",
+      "requiredCpuFeatures": ["avx2", "fma"],
+      "requiredBackendCapabilities": [],
+      "executable": "bin/win-x64-cpu-avx2/llama-server.exe",
+      "workingDirectory": "bin/win-x64-cpu-avx2",
+      "vendorDirectories": [],
+      "files": [
+        {
+          "path": "bin/win-x64-cpu-avx2/llama-server.exe",
+          "sizeBytes": 1000,
+          "sha256": "541b3e9daa09b20bf85fa273e5cbd3e80185aa4ec298e765db87742b70138a53"
+        }
+      ]
+    }
+  ]
+}
+''';
+
+      final root = r'C:\AURA_REAL_MANIFEST_TEST';
+      await fs.writeAsString(
+          '$root\\runtime\\runtime-manifest.json', realManifestContent);
+      await fs.writeBytes('$root\\runtime\\bin\\win-x64-cuda\\llama-server.exe',
+          List.filled(1000, 0));
+      await fs.writeBytes(
+          '$root\\runtime\\bin\\win-x64-vulkan\\llama-server.exe',
+          List.filled(1000, 0));
+      await fs.writeBytes(
+          '$root\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
+          List.filled(1000, 0));
+
+      final pathResolver = ProvisioningPathResolver(
+        appManagedRoot: r'C:\AppData\aura',
+        bundledRoot: root,
+      );
+
+      final service = DefaultLlamaServerDependencyService(
+        configurationRepository: JsonModelConfigurationRepository(
+          storeDirectoryPath: r'C:\AppData\aura\store',
+          fileSystem: fs,
+          lock: InMemoryProvisioningLock(),
+        ),
+        fileSystem: fs,
+        pathResolver: pathResolver,
+        processLauncher: FakeProcessLauncher(
+          processFactory: () {
+            final proc = FakeManagedProcess();
+            proc.emitStdout('version: 10255 (66fa168a5)\nbuild: 10255');
+            proc.completeExit(0);
+            return proc;
+          },
+        ),
+        cpuFeatureDetector: const DefaultCpuFeatureDetector(),
+      );
+
+      final detection = await service.detect();
+      expect(detection.effectiveCandidate, isNotNull);
     });
   });
 }

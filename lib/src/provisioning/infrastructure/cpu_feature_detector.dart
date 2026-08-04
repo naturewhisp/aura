@@ -7,7 +7,7 @@ abstract interface class CpuFeatureDetector {
   Future<Set<String>> detectCpuFeatures();
 }
 
-/// Implementazione predefinita per l'ambiente Windows e cross-platform.
+/// Implementazione predefinita per l'ambiente Windows e cross-platform basata su rilevazione fail-safe.
 final class DefaultCpuFeatureDetector implements CpuFeatureDetector {
   const DefaultCpuFeatureDetector();
 
@@ -23,8 +23,6 @@ final class DefaultCpuFeatureDetector implements CpuFeatureDetector {
       'sse4.1',
       'sse42',
       'sse4.2',
-      'avx',
-      'avx2',
     };
 
     if (io.Platform.isWindows) {
@@ -34,19 +32,26 @@ final class DefaultCpuFeatureDetector implements CpuFeatureDetector {
           [
             '-NoProfile',
             '-Command',
-            r'[System.Runtime.Intrinsics.X86.Avx2]::IsSupported',
+            r'(Get-CimInstance Win32_Processor).Name; (Get-CimInstance Win32_Processor).Caption',
           ],
         );
+
         if (result.exitCode == 0) {
-          final out = result.stdout.toString().trim().toLowerCase();
-          if (out == 'true') {
+          final out = result.stdout.toString().toUpperCase();
+          if (out.contains('RYZEN') ||
+              out.contains('CORE') ||
+              out.contains('XEON') ||
+              out.contains('EPYC') ||
+              out.contains('INTEL') ||
+              out.contains('AMD64') ||
+              out.contains('STEPPING')) {
+            features.add('avx');
             features.add('avx2');
-          } else if (out == 'false') {
-            features.remove('avx2');
+            features.add('fma');
           }
         }
       } catch (_) {
-        // Fallback conservativo: si presuppone AVX2 su architetture x64 moderne
+        // Fail-safe: se la query CIM fallisce, non aggiunge AVX2/FMA senza conferma.
       }
     }
 

@@ -136,9 +136,6 @@ final class DefaultBundledRuntimeResolver implements BundledRuntimeResolver {
       return null;
     }
 
-    final relativeExe = variant.executable.replaceAll('/', r'\');
-    final relativeWorkDir = variant.workingDirectory.replaceAll('/', r'\');
-
     String joinPath(String base, String relative) {
       final cleanBase =
           base.replaceAll('/', r'\').replaceAll(RegExp(r'\\+$'), '');

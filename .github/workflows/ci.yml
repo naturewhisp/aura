@@ -36,53 +36,63 @@ jobs:
           cache: true
 
       - name: Verify Toolchain
+        shell: pwsh
         run: |
           dart --version
           flutter --version
 
       - name: Install Core Dependencies
+        shell: pwsh
         run: dart pub get --enforce-lockfile
 
       - name: Core Format Check
+        shell: pwsh
         run: dart format --output=none --set-exit-if-changed lib test bin tool
 
       - name: Core Static Analysis
+        shell: pwsh
         run: dart analyze .
 
       - name: Core Unit Tests
+        shell: pwsh
         run: dart test
 
       - name: Install App Dependencies
+        shell: pwsh
         run: |
-          cd app
+          Set-Location app
           flutter pub get --enforce-lockfile
 
       - name: App Format Check
+        shell: pwsh
         run: |
-          cd app
+          Set-Location app
           dart format --output=none --set-exit-if-changed lib test
 
       - name: App Static Analysis
+        shell: pwsh
         run: |
-          cd app
+          Set-Location app
           flutter analyze
 
       - name: App Unit & Widget Tests
+        shell: pwsh
         run: |
-          cd app
+          Set-Location app
           flutter test
 
       - name: App Flutter Windows Release Build
+        shell: pwsh
         run: |
-          cd app
+          Set-Location app
           flutter build windows --release
 
       - name: Validate Runtime & Audio Manifests
-        shell: powershell
+        shell: pwsh
         run: |
           $runtimeManifest = Get-Content -Path "runtime/runtime-manifest.json" -Raw | ConvertFrom-Json
           if ($runtimeManifest.variants.Count -lt 3) {
-              throw "Runtime manifest contains fewer than 3 variants!"
+              throw "[FAIL-CLOSED] Runtime manifest contains fewer than 3 variants!"
           }
           Write-Host "✅ Runtime manifest valid: $($runtimeManifest.runtimeSetId)"
 
@@ -90,16 +100,14 @@ jobs:
           foreach ($track in $audioManifest.tracks) {
               $audioFile = "distribution/audio/$($track.filename)"
               if (-not (Test-Path $audioFile)) {
-                  throw "Required audio file missing: $audioFile"
+                  throw "[FAIL-CLOSED] Required audio file missing: $audioFile"
               }
               $hash = (Get-FileHash -Path $audioFile -Algorithm SHA256).Hash.ToLower()
               if ($hash -ne $track.sha256.ToLower()) {
-                  throw "Audio file SHA-256 mismatch for $audioFile"
+                  throw "[FAIL-CLOSED] Audio file SHA-256 mismatch for $audioFile"
               }
           }
           Write-Host "✅ Audio manifest & assets valid: $($audioManifest.audioSetId)"
 
       - name: Run Actionlint Workflow Linter
-        shell: powershell
-        run: |
-          Write-Host "Verifica sintattica workflow..."
+        uses: rhysd/actionlint-action@v1

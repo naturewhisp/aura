@@ -40,12 +40,21 @@ New-Item -ItemType Directory -Path $targetRuntimeRoot -Force | Out-Null
 
 $binRoot = "$targetRuntimeRoot\bin"
 
-if ([string]::IsNullOrWhiteSpace($SourceCommit)) {
+# Lettura metadati di acquisizione runtime da runtime/acquisition-metadata.json
+$acqMetaPath = "$projectRoot\runtime\acquisition-metadata.json"
+$llamaCppVersion = "b3200"
+$llamaCppCommit = "36a7a0b3e6488d5e1bbfdfaa14bbdbf2e463a55e"
+
+if (Test-Path $acqMetaPath) {
     try {
-        $SourceCommit = (git rev-parse HEAD).Trim()
-    } catch {
-        $SourceCommit = "unknown"
-    }
+        $acqJson = Get-Content -Path $acqMetaPath -Raw | ConvertFrom-Json
+        if ($acqJson.llamaCppTag) { $llamaCppVersion = $acqJson.llamaCppTag }
+        if ($acqJson.llamaCppCommit) { $llamaCppCommit = $acqJson.llamaCppCommit }
+    } catch {}
+}
+
+if ([string]::IsNullOrWhiteSpace($SourceCommit)) {
+    $SourceCommit = $llamaCppCommit
 }
 
 # Definizione varianti ufficiali
@@ -169,7 +178,7 @@ foreach ($v in $variants) {
 $manifestObject = [ordered]@{
     schemaVersion = 1
     runtimeSetId = "aura-runtime-v$Version"
-    llamaCppVersion = "b3200"
+    llamaCppVersion = $llamaCppVersion
     sourceCommit = $SourceCommit
     variants = $manifestVariants
 }

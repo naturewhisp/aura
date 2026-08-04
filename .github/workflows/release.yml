@@ -59,7 +59,7 @@ jobs:
 
       - name: Resolve & Validate Release Parameters
         id: params
-        shell: powershell
+        shell: pwsh
         run: |
           if ("${{ github.event_name }}" -eq "push") {
               $tagRef = "${{ github.ref_name }}"
@@ -78,7 +78,6 @@ jobs:
 
               Write-Host "Modo TEST TAG attivato: version=$ver, channel=$chan, release_kind=$kind"
 
-              # Strict test tag policy
               $semverRegex = "^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
               if ($ver -notmatch $semverRegex) {
                   throw "[FAIL-CLOSED] Formato SemVer estratto dal tag non valido: $ver"
@@ -109,6 +108,9 @@ jobs:
               }
 
               if ($kind -eq "official") {
+                  if ("${{ github.ref }}" -ne "refs/heads/main" -and "${{ github.ref }}" -ne "refs/heads/master") {
+                      throw "[FAIL-CLOSED] Le release ufficiali 'official/stable' devono provenire esclusivamente dal branch main/master."
+                  }
                   if ($isPrerelease) {
                       throw "[FAIL-CLOSED] Le release 'official' non devono contenere suffissi prerelease"
                   }
@@ -125,10 +127,10 @@ jobs:
               }
           }
 
-          echo "version=$ver" >> $env:GITHUB_OUTPUT
-          echo "channel=$chan" >> $env:GITHUB_OUTPUT
-          echo "release_kind=$kind" >> $env:GITHUB_OUTPUT
-          echo "require_installer=$reqInst" >> $env:GITHUB_OUTPUT
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver" -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "channel=$chan" -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "release_kind=$kind" -Encoding utf8
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "require_installer=$reqInst" -Encoding utf8
           Write-Host "✅ Validazione parametri e policy SemVer completata con successo!"
 
       - name: Set up Dart
@@ -144,40 +146,64 @@ jobs:
           cache: true
 
       - name: Install Inno Setup Compiler (ISCC)
-        shell: powershell
+        shell: pwsh
         run: |
           $iscc = Get-Command "iscc" -ErrorAction SilentlyContinue
           if (-not $iscc) {
               Write-Host "Installazione Inno Setup via Chocolatey..."
               choco install innosetup --no-progress -y
-              echo "C:\Program Files (x86)\Inno Setup 6" >> $env:GITHUB_PATH
+              Add-Content -Path $env:GITHUB_PATH -Value "C:\Program Files (x86)\Inno Setup 6" -Encoding utf8
           }
 
-      - name: Run Quality Gate Checks (Format, Analyze, Tests)
-        shell: powershell
+      - name: Core Format Check
+        shell: pwsh
         run: |
           dart pub get --enforce-lockfile
           dart format --output=none --set-exit-if-changed lib test bin tool
-          dart analyze .
-          dart test
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Core format check fallito" }
 
-          Push-Location app
-          try {
-              flutter pub get --enforce-lockfile
-              dart format --output=none --set-exit-if-changed lib test
-              flutter analyze
-              flutter test
-          } finally {
-              Pop-Location
-          }
+      - name: Core Static Analysis
+        shell: pwsh
+        run: |
+          dart analyze .
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Core static analysis fallita" }
+
+      - name: Core Unit Tests
+        shell: pwsh
+        run: |
+          dart test
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Core test suite fallita" }
+
+      - name: App Format Check
+        shell: pwsh
+        run: |
+          Set-Location app
+          flutter pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] App format check fallito" }
+
+      - name: App Static Analysis
+        shell: pwsh
+        run: |
+          Set-Location app
+          flutter analyze
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] App static analysis fallita" }
+
+      - name: App Unit & Widget Tests
+        shell: pwsh
+        run: |
+          Set-Location app
+          flutter test
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] App test suite fallita" }
 
       - name: Acquire Deterministic llama.cpp Runtime Binaries
-        shell: powershell
+        shell: pwsh
         run: |
           .\tool\fetch_llama_binaries.ps1 -Tag "b3200" -Force
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Acquisizione binari llama.cpp fallita" }
 
       - name: Package Standalone Release
-        shell: powershell
+        shell: pwsh
         env:
           CATALOG_SIGNING_PRIVATE_KEY: ${{ secrets.CATALOG_SIGNING_PRIVATE_KEY }}
           CATALOG_SIGNING_KEY_ID: ${{ secrets.CATALOG_SIGNING_KEY_ID }}
@@ -186,11 +212,13 @@ jobs:
           $chan = "${{ steps.params.outputs.channel }}"
           $kind = "${{ steps.params.outputs.release_kind }}"
           $reqInst = [bool]::Parse("${{ steps.params.outputs.require_installer }}")
+          $tag = if ("${{ github.event_name }}" -eq "push") { "${{ github.ref_name }}" } else { "v$ver" }
 
           $params = @{
               Version = $ver
               Channel = $chan
               ReleaseKind = $kind
+              ReleaseTag = $tag
               WorkflowRunId = "${{ github.run_id }}"
               WorkflowRunAttempt = "${{ github.run_attempt }}"
               SourceRef = "${{ github.ref }}"
@@ -200,9 +228,10 @@ jobs:
               $params.RequireInstaller = $true
           }
           .\tool\package_release.ps1 @params
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Packaging release fallito" }
 
       - name: Verify Release Assets Integrity (Fail-Closed)
-        shell: powershell
+        shell: pwsh
         run: |
           $ver = "${{ steps.params.outputs.version }}"
           $reqInst = [bool]::Parse("${{ steps.params.outputs.require_installer }}")
@@ -213,9 +242,10 @@ jobs:
               $params.RequireInstaller = $true
           }
           .\tool\verify_release_assets.ps1 @params
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Verifiche di integrita degli asset fallite" }
 
       - name: Generate Release Notes
-        shell: powershell
+        shell: pwsh
         run: |
           $ver = "${{ steps.params.outputs.version }}"
           $chan = "${{ steps.params.outputs.channel }}"
@@ -223,13 +253,13 @@ jobs:
           $sha = "${{ github.sha }}"
           $ref = "${{ github.ref_name }}"
 
+          $isCandidateMsg = if ($kind -eq "candidate") { "`n> [!WARNING]`n> **TEST BUILD — DO NOT REDISTRIBUTE**`n" } else { "" }
+
           $notes = @"
           # A.U.R.A. v$ver ($chan / $kind)
 
           Source Commit: ``$sha`` (Branch/Ref: ``$ref``)
-
-          $($kind -eq "candidate" ? "> [!WARNING]`n> **TEST BUILD — DO NOT REDISTRIBUTE**`n" : "")
-
+          $isCandidateMsg
           ## Componenti inclusi
           - **Applicazione Desktop**: Flutter Release Windows x64
           - **Runtime Local Inference**: llama.cpp (b3200) multi-variante
@@ -252,7 +282,7 @@ jobs:
           Set-Content -Path "release\RELEASE_NOTES.md" -Value $notes -Encoding UTF8
 
       - name: Create Git Tag & Draft Release on GitHub
-        shell: powershell
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -261,16 +291,15 @@ jobs:
           $commit = "${{ github.sha }}"
           $isPrerelease = "${{ steps.params.outputs.release_kind }}" -eq "candidate"
 
-          Write-Host "Creazione o verifica tag $tag ancorato al commit $commit..."
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          # Se il trigger e push tag phase6-release-test-*, usa quel tag oppure crea v<version>
           if ("${{ github.event_name }}" -eq "push") {
               $tag = "${{ github.ref_name }}"
           } else {
               git tag -a $tag $commit -m "Release $tag"
               git push origin $tag
+              if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Push git tag $tag fallito" }
           }
 
           Write-Host "Creazione GitHub Draft Release per $tag ancorata a $commit..."
@@ -285,13 +314,13 @@ jobs:
               $argsList += "--prerelease"
           }
 
-          # Allegati della release
           $assets = Get-ChildItem -Path "release" -File | Where-Object { $_.Name -ne "RELEASE_NOTES.md" }
           foreach ($a in $assets) {
               $argsList += $a.FullName
           }
 
           gh @argsList
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Creazione della Draft Release su GitHub fallita" }
           Write-Host "✅ Draft Release $tag creata con successo ancorata a $commit!"
 
       - name: Upload Diagnostic Workflow Artifact

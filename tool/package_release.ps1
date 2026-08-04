@@ -2,6 +2,7 @@ param(
     [string]$Version = "0.1.0",
     [string]$Channel = "beta",
     [string]$ReleaseKind = "candidate",
+    [string]$ReleaseTag = "",
     [switch]$RequireInstaller,
     [string]$WorkflowRunId = "",
     [string]$WorkflowRunAttempt = "1",
@@ -11,9 +12,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Invoke-NativeCommand([scriptblock]$Command, [string]$Description) {
+    & $Command
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        throw "[FAIL-CLOSED] $Description fallito con exit code $code"
+    }
+}
+
+if ([string]::IsNullOrWhiteSpace($ReleaseTag)) {
+    $ReleaseTag = "v$Version"
+}
+
 Write-Host "==========================================================" -ForegroundColor Cyan
 Write-Host " A.U.R.A. Transactional Standalone Release Pipeline" -ForegroundColor Cyan
-Write-Host " Versione Rilascio: $Version | Canale: $Channel | Tipo: $ReleaseKind" -ForegroundColor Cyan
+Write-Host " Versione: $Version | Tag: $ReleaseTag | Canale: $Channel | Tipo: $ReleaseKind" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
 $projectRoot = Resolve-Path "$PSScriptRoot\.."
@@ -36,11 +49,11 @@ function Test-ValidPeExecutable($filePath) {
 # 1. Scansione Igiene e Formattazione pre-build (Zero Diagnostic / Strict Format)
 Write-Host "Verification Pre-Commit: Formattazione e Analisi Statica..." -ForegroundColor Yellow
 
-dart format --output=none --set-exit-if-changed "$projectRoot\lib" "$projectRoot\test" "$projectRoot\bin" "$projectRoot\tool"
+Invoke-NativeCommand { dart format --output=none --set-exit-if-changed "$projectRoot\lib" "$projectRoot\test" "$projectRoot\bin" "$projectRoot\tool" } "Dart format check core"
 
 Push-Location "$projectRoot\app"
 try {
-    dart format --output=none --set-exit-if-changed lib test
+    Invoke-NativeCommand { dart format --output=none --set-exit-if-changed lib test } "Dart format check app"
 } finally {
     Pop-Location
 }
@@ -57,13 +70,13 @@ New-Item -ItemType Directory -Path $stagingDir -Force | Out-Null
 
 # 3. Generazione transazionale dei binari di runtime multi-variante reali (senza placeholder)
 Write-Host "Preparazione runtime multi-variante reali in staging..." -ForegroundColor Yellow
-& "$PSScriptRoot\build_llama_runtimes.ps1" -Version $Version -OutDir $runtimeStagingDir
+Invoke-NativeCommand { & "$PSScriptRoot\build_llama_runtimes.ps1" -Version $Version -OutDir $runtimeStagingDir } "Staging runtime multi-variante"
 
 # 4. Compilazione pacchetto Flutter Release per Windows
 Write-Host "Compilazione Flutter Windows Release..." -ForegroundColor Yellow
 Push-Location "$projectRoot\app"
 try {
-    flutter build windows --release
+    Invoke-NativeCommand { flutter build windows --release } "Flutter build windows --release"
 } finally {
     Pop-Location
 }
@@ -88,18 +101,24 @@ if (Test-Path $audioDistDir) {
     Copy-Item -Path "$audioDistDir\audio-manifest.json" -Destination "$stagingDir\audio-manifest.json" -Force
 }
 
-# Generazione e firma del catalogo modelli
+# Generazione e firma del catalogo modelli (FAIL-CLOSED)
 Write-Host "Generazione e firma del catalogo modelli..." -ForegroundColor Yellow
-try {
-    dart run "$PSScriptRoot\catalog\sign_catalog.dart" --out-catalog "$stagingDir\model-manifest.json"
-} catch {
-    Write-Host "Nota: Impossibile firmare il catalogo modelli con chiavi ufficiali. Uso fallback dev..." -ForegroundColor Yellow
+$modelManifestFile = "$stagingDir\model-manifest.json"
+Invoke-NativeCommand { dart run "$PSScriptRoot\catalog\sign_catalog.dart" --out-catalog $modelManifestFile } "Firma ed auto-verifica del catalogo modelli"
+
+if (-not (Test-Path $modelManifestFile)) {
+    throw "[FAIL-CLOSED] model-manifest.json non generato."
 }
+
+# Estrazione keyId e calcolo SHA-256 del catalogo firmato
+$modelManifestJson = Get-Content -Path $modelManifestFile -Raw | ConvertFrom-Json
+$catalogKeyId = $modelManifestJson.signedPayload.keyId
+$catalogDigest = (Get-FileHash -Path $modelManifestFile -Algorithm SHA256).Hash.ToLower()
 
 # Generazione SBOM SPDX 2.3
 Write-Host "Generazione SBOM SPDX 2.3 JSON..." -ForegroundColor Yellow
 $sbomPath = "$stagingDir\SBOM.spdx.json"
-dart run "$PSScriptRoot\generate_sbom.dart" $Version $sbomPath
+Invoke-NativeCommand { dart run "$PSScriptRoot\generate_sbom.dart" $Version $sbomPath } "Generazione SBOM SPDX 2.3"
 
 # Generazione THIRD_PARTY_NOTICES.txt
 $noticesFile = "$stagingDir\THIRD_PARTY_NOTICES.txt"
@@ -124,15 +143,29 @@ This package includes software developed by third parties under open source lice
 "@
 Set-Content -Path $noticesFile -Value $noticesContent -Encoding UTF8
 
-# Recupero versione Flutter e Dart per metadata
+# Recupero versione Flutter, Dart e metadati runtime
 $flutterVer = (flutter --version | Select-Object -First 1).Trim()
 $dartVer = (dart --version 2>&1 | Select-Object -First 1).Trim()
 $sourceCommit = try { (git rev-parse HEAD).Trim() } catch { "unknown" }
 
+# Lettura llama.cpp metadata da acquisition-metadata.json
+$acqMetaPath = "$projectRoot\runtime\acquisition-metadata.json"
+$llamaCppVersion = "b3200"
+$llamaCppCommit = "36a7a0b3e6488d5e1bbfdfaa14bbdbf2e463a55e"
+if (Test-Path $acqMetaPath) {
+    try {
+        $acqJson = Get-Content -Path $acqMetaPath -Raw | ConvertFrom-Json
+        if ($acqJson.llamaCppTag) { $llamaCppVersion = $acqJson.llamaCppTag }
+        if ($acqJson.llamaCppCommit) { $llamaCppCommit = $acqJson.llamaCppCommit }
+    } catch {}
+}
+
 if ([string]::IsNullOrWhiteSpace($SourceRef)) {
     $SourceRef = try { (git symbolic-ref -q HEAD).Trim() } catch { "refs/heads/fase6" }
 }
-if ([string]::IsNullOrWhiteSpace($SourceBranch)) {
+if ($SourceRef.StartsWith("refs/tags/")) {
+    $SourceBranch = $null
+} elseif ([string]::IsNullOrWhiteSpace($SourceBranch)) {
     $SourceBranch = try { (git rev-parse --abbrev-ref HEAD).Trim() } catch { "fase6" }
 }
 
@@ -145,7 +178,7 @@ $releaseManifest = [ordered]@{
     sourceCommit = $sourceCommit
     sourceRef = $SourceRef
     sourceBranch = $SourceBranch
-    tag = "v$Version"
+    tag = $ReleaseTag
     workflowRunId = $WorkflowRunId
     workflowRunAttempt = [int]$WorkflowRunAttempt
     buildTimestampUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -153,13 +186,15 @@ $releaseManifest = [ordered]@{
     flutterVersion = $flutterVer
     dartVersion = $dartVer
     innoSetupVersion = "Inno Setup 6"
-    llamaCppVersion = "b3200"
-    llamaCppSourceCommit = $sourceCommit
+    llamaCppVersion = $llamaCppVersion
+    llamaCppSourceCommit = $llamaCppCommit
     runtimeSetId = "aura-runtime-v$Version"
     runtimeVariantIds = @("win-x64-cuda", "win-x64-vulkan", "win-x64-cpu-avx2")
     audioSetId = "aura.windows.release.v1"
-    catalogDigests = @{}
-    catalogSignatureKeyId = "aura-catalog-development-2026-01"
+    catalogDigests = @{
+        "model-manifest.json" = $catalogDigest
+    }
+    catalogSignatureKeyId = $catalogKeyId
     sbomFile = "SBOM.spdx.json"
     checksumsFile = "AURA-$Version-SHA256SUMS.txt"
     installerFile = "aura_setup_v$Version.exe"
@@ -321,7 +356,7 @@ $setupInstallerFile = "$releaseRootDir\aura_setup_v$Version.exe"
 if ($isccPath) {
     Write-Host "Compilazione Installer Inno Setup con ISCC.exe ($isccPath)..." -ForegroundColor Yellow
     $issFile = "$projectRoot\tool\aura_installer.iss"
-    & $isccPath "/DMyAppVersion=$Version" $issFile
+    Invoke-NativeCommand { & $isccPath "/DMyAppVersion=$Version" $issFile } "Compilazione Inno Setup ISCC"
     if (-not (Test-Path $setupInstallerFile)) {
         throw "[FAIL-CLOSED] Compilazione Inno Setup terminata ma l'eseguibile $setupInstallerFile non e stato creato."
     }

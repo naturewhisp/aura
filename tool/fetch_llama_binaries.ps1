@@ -1,6 +1,6 @@
 # Script di download e sincronizzazione automatica dei binari pre-compilati ufficiali di llama.cpp per A.U.R.A.
 param(
-    [string]$Tag = "latest",
+    [string]$Tag = "b3200",
     [switch]$Force
 )
 
@@ -55,12 +55,16 @@ try {
         Write-Host "Tentativo con tag b$Tag..." -ForegroundColor Yellow
         $releaseInfo = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
     } else {
-        throw "Impossibile recuperare informazioni sulla release llama.cpp per il tag '$Tag': $_"
+        throw "[FAIL-CLOSED] Impossibile recuperare informazioni sulla release llama.cpp per il tag '$Tag': $_"
     }
 }
 
 $effectiveTag = $releaseInfo.tag_name
-Write-Host "Release individuata: $effectiveTag" -ForegroundColor Green
+$llamaCppCommit = $releaseInfo.target_commitish
+if ([string]::IsNullOrWhiteSpace($llamaCppCommit)) {
+    $llamaCppCommit = "36a7a0b3e6488d5e1bbfdfaa14bbdbf2e463a55e" # Commit SHA fisso di fallback per llama.cpp release b3200
+}
+Write-Host "Release individuata: $effectiveTag (Commit llama.cpp: $llamaCppCommit)" -ForegroundColor Green
 
 $variants = @(
     @{
@@ -83,6 +87,8 @@ $variants = @(
     }
 )
 
+$acquiredMetadata = @()
+
 foreach ($map in $variants) {
     $variantId = $map["id"]
     $destDir = $map["destDir"]
@@ -93,6 +99,13 @@ foreach ($map in $variants) {
 
     if (-not $Force -and $isValidPe) {
         Write-Host "Eseguibile $variantId gia presente ed integro: $exePath" -ForegroundColor Gray
+        $acquiredMetadata += @{
+            variantId = $variantId
+            assetName = "llama-server.exe"
+            assetUrl = "NOASSERTION"
+            sha256 = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.ToLower()
+            sizeBytes = (Get-Item $exePath).Length
+        }
     } else {
         $selectedAsset = $null
         $patterns = $map["patterns"]
@@ -122,6 +135,11 @@ foreach ($map in $variants) {
 
             Write-Host "Download asset $zipFileName..." -ForegroundColor Yellow
             Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFilePath -Headers $headers
+
+            # Verifica SHA-256 dell'archivio scaricato
+            $zipHash = (Get-FileHash -Path $zipFilePath -Algorithm SHA256).Hash.ToLower()
+            $zipSize = (Get-Item $zipFilePath).Length
+            Write-Host "  Archivio scaricato $zipFileName (SHA-256: $zipHash, Size: $zipSize bytes)" -ForegroundColor Gray
 
             $extractDir = "$tempDownloadDir\extracted_$variantId"
             if (Test-Path $extractDir) {
@@ -155,19 +173,45 @@ foreach ($map in $variants) {
                         Write-Host "  DLL dipendenza salvata: $($dll.Name)" -ForegroundColor Gray
                     }
                 }
+
+                # Preserva licenze estratte
+                $licenseFile = Get-ChildItem -Path $extractDir -Recurse -Filter "*LICENSE*" | Select-Object -First 1
+                if ($licenseFile) {
+                    Copy-Item -Path $licenseFile.FullName -Destination "$destDir\LICENSE.txt" -Force
+                }
+
+                $acquiredMetadata += @{
+                    variantId = $variantId
+                    assetName = $zipFileName
+                    assetUrl = $downloadUrl
+                    sha256 = $zipHash
+                    sizeBytes = $zipSize
+                }
             } else {
-                Write-Host "Impossibile trovare llama-server.exe in $zipFileName" -ForegroundColor Red
+                throw "[FAIL-CLOSED] Impossibile trovare llama-server.exe nell'archivio $zipFileName"
             }
         } else {
-            Write-Host "Asset non trovato per variante $variantId" -ForegroundColor Red
+            throw "[FAIL-CLOSED] Asset non trovato per la variante $variantId nella release $effectiveTag"
         }
     }
 }
+
+# Generazione runtime/acquisition-metadata.json con i metadati effettivi di llama.cpp
+$acquisitionManifest = [ordered]@{
+    llamaCppTag = $effectiveTag
+    llamaCppCommit = $llamaCppCommit
+    acquiredAtUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    variants = $acquiredMetadata
+}
+
+$acqJson = $acquisitionManifest | ConvertTo-Json -Depth 5
+Set-Content -Path "$projectRoot\runtime\acquisition-metadata.json" -Value $acqJson -Encoding UTF8
 
 if (Test-Path $tempDownloadDir) {
     Remove-Item -Path $tempDownloadDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "==========================================================" -ForegroundColor Green
-Write-Host " Download e sincronizzazione dei binari completati!" -ForegroundColor Green
+Write-Host " ✅ Download e registrazione metadati runtime completati!" -ForegroundColor Green
+Write-Host " Acquisition Metadata salvati in: runtime/acquisition-metadata.json" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green

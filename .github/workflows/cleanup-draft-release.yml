@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Exact Tag to delete (e.g. v0.1.0-rc.1)'
+        description: 'Exact Tag to delete (e.g. phase6-release-test-0.1.0-rc.1 or v0.1.0-rc.1)'
         required: true
         type: string
       confirm_string:
@@ -27,7 +27,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Validate Confirmation String
+      - name: Validate Tag & Confirmation String
         shell: bash
         run: |
           TAG="${{ inputs.tag }}"
@@ -39,7 +39,13 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Stringa di conferma valida per $TAG"
+          # Safety Check: rifiuta la cancellazione di tag stable ufficiali
+          if [[ "$TAG" != phase6-release-test-* ]] && [[ "$TAG" != *-rc.* ]] && [[ "$TAG" != *-beta.* ]] && [[ "$TAG" != *-dev.* ]]; then
+            echo "[FAIL-CLOSED] Il workflow di cleanup puo eliminare solo tag di test phase6-release-test-* o release candidate (rc/beta/dev). Tag stabili ($TAG) rifiutati."
+            exit 1
+          fi
+
+          echo "✅ Tag di candidate/test e stringa di conferma validi per $TAG"
 
       - name: Verify & Delete Draft Release
         shell: bash
@@ -59,7 +65,7 @@ jobs:
           IS_DRAFT=$(echo "$RELEASE_INFO" | jq -r '.isDraft')
 
           if [ "$IS_DRAFT" != "true" ]; then
-            echo "[FAIL-CLOSED] La release $TAG risulta gia pubblicata! Impossibile eliminare una release ufficiale pubblicata."
+            echo "[FAIL-CLOSED] La release $TAG risulta gia pubblicata! Impossibile eliminare una release pubblicata."
             exit 1
           fi
 

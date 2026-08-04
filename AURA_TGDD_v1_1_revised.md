@@ -1,8 +1,8 @@
 # Technical Game Design Document (TGDD)
 
 **Progetto:** A.U.R.A. — Artificial Unbound Reasoning Arena  
-**Versione:** 1.7 — Phase 6.9 GitHub Actions, Draft Releases, Catalog Signing & Distribution Pipeline  
-**Stato:** Documento tecnico aggiornato; sviluppo completato e validato fino a Fase 6.9 inclusa (GitHub Actions, Draft Releases, Catalog Signing & Distribution)  
+**Versione:** 1.7 — Phase 6.9 GitHub Actions, Draft Releases, Catalog Signing & Distribution Pipeline (Active Development & Rebaseline)  
+**Stato:** Documento tecnico aggiornato; sviluppo completato e validato fino a Fase 6.8 inclusa. Fase 6.9 in corso di rebaseline per il primo collaudo automatizzato delle candidate release.  
 **Piattaforme Target:** Windows Desktop, Android  
 **Target iniziale di produzione:** Windows x64  
 **Stack Frontend:** Flutter / Dart  

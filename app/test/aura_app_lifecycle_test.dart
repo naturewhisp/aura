@@ -10,6 +10,7 @@ void main() {
   test(
       'ApplicationShutdownCoordinator requestShutdown executes shutdown sequence deterministically',
       () async {
+    final shutdownStartedCompleter = Completer<void>();
     final shutdownCompleter = Completer<void>();
     bool shutdownCompleted = false;
 
@@ -23,6 +24,9 @@ void main() {
       bridge: MockInferenceBridge(),
       initialState: initialState,
       onDispose: () async {
+        if (!shutdownStartedCompleter.isCompleted) {
+          shutdownStartedCompleter.complete();
+        }
         await shutdownCompleter.future;
         shutdownCompleted = true;
       },
@@ -48,10 +52,10 @@ void main() {
 
     final shutdownFuture = shutdownCoordinator.requestShutdown();
 
-    // Allow I/O (persistence flush) to advance to notifier.shutdown
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    // Await deterministic entry into onDispose without any arbitrary delay
+    await shutdownStartedCompleter.future;
 
-    // Verify shutdown is initiated but onDispose is awaiting shutdownCompleter
+    // Verify shutdown is in progress (notifier.isShutdown is true) but onDispose has not finished
     expect(shutdownCompleted, isFalse);
     expect(notifier.isShutdown, isTrue);
 

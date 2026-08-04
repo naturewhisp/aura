@@ -24,6 +24,7 @@ void main() {
     );
 
     // Inizializza l'AudioManager senza abilitare l'audio nativo reale per i test
+    AudioManager().resetForTesting();
     await AudioManager().initialize('test_dir', audioEnabled: false);
   });
 

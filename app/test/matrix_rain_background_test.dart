@@ -23,6 +23,7 @@ void main() {
       bridge: mockBridge,
       initialState: initialState,
     );
+    AudioManager().resetForTesting();
     await AudioManager().initialize('test_dir', audioEnabled: false);
   });
 

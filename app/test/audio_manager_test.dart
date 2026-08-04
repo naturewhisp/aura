@@ -559,6 +559,10 @@ void main() {
       AudioManager().resetForTesting();
     });
 
+    tearDown(() {
+      AudioManager().resetForTesting();
+    });
+
     test(
         'AudioManager.dispose è idempotente e blocca inizializzazioni successive seguendo la politica terminale',
         () async {

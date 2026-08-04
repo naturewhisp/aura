@@ -24,6 +24,7 @@ void main() {
     );
 
     // Initialize AudioManager in headless mode for testing
+    AudioManager().resetForTesting();
     await AudioManager().initialize('test_dir', audioEnabled: false);
   });
 

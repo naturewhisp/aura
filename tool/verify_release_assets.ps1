@@ -107,7 +107,7 @@ foreach ($variant in $runtimeManifest.variants) {
     $vId = $variant.id
     $vExe = "$bundleDir\runtime\$($variant.executable.Replace('/', '\'))"
     if (-not (Test-ValidPeExecutable $vExe)) {
-        throw "[FAIL-CLOSED] Eseguibile PE non valido per la variante $vId: $vExe"
+        throw "[FAIL-CLOSED] Eseguibile PE non valido per la variante ${vId}: $vExe"
     }
 
     $oldPath = $env:PATH
@@ -210,9 +210,12 @@ if (-not (Test-ValidPeExecutable "$tempExtractDir\aura_app.exe")) {
 }
 
 # Checksum interno dentro la ZIP
-$internalSumsFile = "$tempExtractDir\SHA256SUMS.txt"
+$internalSumsFile = "$tempExtractDir\AURA-$Version-SHA256SUMS.txt"
 if (-not (Test-Path $internalSumsFile)) {
-    throw "[FAIL-CLOSED] SHA256SUMS.txt interno mancante nel pacchetto ZIP portabile."
+    $internalSumsFile = "$tempExtractDir\SHA256SUMS.txt"
+}
+if (-not (Test-Path $internalSumsFile)) {
+    throw "[FAIL-CLOSED] File checksum interno (AURA-$Version-SHA256SUMS.txt) mancante nel pacchetto ZIP portabile."
 }
 Remove-Item -Path $tempExtractDir -Recurse -Force -ErrorAction SilentlyContinue
 

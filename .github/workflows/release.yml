@@ -53,7 +53,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
 
@@ -199,8 +199,11 @@ jobs:
       - name: Acquire Deterministic llama.cpp Runtime Binaries
         shell: pwsh
         run: |
-          .\tool\fetch_llama_binaries.ps1 -Force
-          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Acquisizione binari llama.cpp fallita" }
+          try {
+              & .\tool\fetch_llama_binaries.ps1 -Force
+          } catch {
+              throw "[FAIL-CLOSED] Acquisizione binari llama.cpp fallita: $($_.Exception.Message)"
+          }
 
       - name: Package Standalone Release
         shell: pwsh
@@ -228,8 +231,11 @@ jobs:
           if ($reqInst) {
               $params.RequireInstaller = $true
           }
-          .\tool\package_release.ps1 @params
-          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Packaging release fallito" }
+          try {
+              & .\tool\package_release.ps1 @params
+          } catch {
+              throw "[FAIL-CLOSED] Packaging release fallito: $($_.Exception.Message)"
+          }
 
       - name: Verify Release Assets Integrity (Fail-Closed)
         shell: pwsh
@@ -245,8 +251,11 @@ jobs:
           if ($reqInst) {
               $params.RequireInstaller = $true
           }
-          .\tool\verify_release_assets.ps1 @params
-          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Verifiche di integrita degli asset fallite" }
+          try {
+              & .\tool\verify_release_assets.ps1 @params
+          } catch {
+              throw "[FAIL-CLOSED] Verifiche di integrita degli asset fallite: $($_.Exception.Message)"
+          }
 
       - name: Generate Release Notes
         shell: pwsh

@@ -686,6 +686,85 @@ void main() {
       expect(detection.effectiveCandidate, isNull);
     });
   });
+
+  group('Pure CPU Feature Classification (classifyCpuFeatures)', () {
+    test('OSXSAVE true ma YMM disabilitato (XCR0=0x2) rifiuta AVX, AVX2 e FMA',
+        () {
+      final features = classifyCpuFeatures(
+        const NativeCpuCapabilitySnapshot(
+          avxBit: true,
+          avx2Bit: true,
+          fmaBit: true,
+          osxsaveBit: true,
+          xcr0Low: 0x2, // XMM attivo, YMM disabilitato dall'OS
+        ),
+      );
+
+      expect(features, isNot(contains('avx')));
+      expect(features, isNot(contains('avx2')));
+      expect(features, isNot(contains('fma')));
+    });
+
+    test('OSXSAVE true e YMM abilitato (XCR0=0x6) concede AVX, AVX2 e FMA', () {
+      final features = classifyCpuFeatures(
+        const NativeCpuCapabilitySnapshot(
+          avxBit: true,
+          avx2Bit: true,
+          fmaBit: true,
+          osxsaveBit: true,
+          xcr0Low: 0x6, // XMM + YMM attivi
+        ),
+      );
+
+      expect(features, contains('avx'));
+      expect(features, contains('avx2'));
+      expect(features, contains('fma'));
+    });
+
+    test(
+        'OSXSAVE false rifiuta AVX anche se i bit CPUID sono presenti e XCR0=0x6',
+        () {
+      final features = classifyCpuFeatures(
+        const NativeCpuCapabilitySnapshot(
+          avxBit: true,
+          avx2Bit: true,
+          fmaBit: true,
+          osxsaveBit: false,
+          xcr0Low: 0x6,
+        ),
+      );
+
+      expect(features, isNot(contains('avx')));
+      expect(features, isNot(contains('avx2')));
+      expect(features, isNot(contains('fma')));
+    });
+
+    test('AVX2 bit true ma AVX bit false rifiuta AVX2 ed FMA', () {
+      final features = classifyCpuFeatures(
+        const NativeCpuCapabilitySnapshot(
+          avxBit: false,
+          avx2Bit: true,
+          fmaBit: true,
+          osxsaveBit: true,
+          xcr0Low: 0x6,
+        ),
+      );
+
+      expect(features, isNot(contains('avx')));
+      expect(features, isNot(contains('avx2')));
+      expect(features, isNot(contains('fma')));
+    });
+
+    test('Snapshot baseline restituisce solo le feature baseline', () {
+      final features =
+          classifyCpuFeatures(NativeCpuCapabilitySnapshot.baseline());
+
+      expect(features, contains('x64'));
+      expect(features, isNot(contains('avx')));
+      expect(features, isNot(contains('avx2')));
+      expect(features, isNot(contains('fma')));
+    });
+  });
 }
 
 final class _MockCpuFeatureDetector implements CpuFeatureDetector {

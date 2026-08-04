@@ -1,26 +1,29 @@
 {
   "schemaVersion": "1.0",
-  "llamaCppTag": "b3200",
-  "llamaCppCommit": "36a7a0b3e6488d5e1bbfdfaa14bbdbf2e463a55e",
+  "llamaCppTag": "b10256",
+  "llamaCppCommit": "6c8dcaa7ae41fa9f4aa2b3b68ee82cb8b2a03632",
   "variants": [
     {
       "id": "win-x64-cuda",
-      "assetName": "llama-b3200-bin-win-cuda-12.4-x64.zip",
-      "patterns": ["llama-*-bin-win-cuda-12.4-x64.zip", "llama-*-bin-win-cuda-*-x64.zip", "llama-*-bin-win-cuda*.zip"],
+      "assetName": "llama-b10256-bin-win-cuda-12.4-x64.zip",
+      "sizeBytes": 250493995,
+      "sha256": "229db8cd65b161e0b817bd516ca014d5df21e57fd65e56263c4882e1dcacd0c0",
       "destDir": "runtime/bin/win-x64-cuda",
       "vendorDir": "runtime/bin/win-x64-cuda/vendor"
     },
     {
       "id": "win-x64-vulkan",
-      "assetName": "llama-b3200-bin-win-vulkan-x64.zip",
-      "patterns": ["llama-*-bin-win-vulkan-x64.zip"],
+      "assetName": "llama-b10256-bin-win-vulkan-x64.zip",
+      "sizeBytes": 34127269,
+      "sha256": "ea787c151309a80b908809a04b6f71d44da41de0ea4b2794114567b67df861f6",
       "destDir": "runtime/bin/win-x64-vulkan",
       "vendorDir": "runtime/bin/win-x64-vulkan/vendor"
     },
     {
       "id": "win-x64-cpu-avx2",
-      "assetName": "llama-b3200-bin-win-cpu-x64.zip",
-      "patterns": ["llama-*-bin-win-cpu-x64.zip", "llama-*-bin-win-avx2-x64.zip"],
+      "assetName": "llama-b10256-bin-win-cpu-x64.zip",
+      "sizeBytes": 18391527,
+      "sha256": "53f2e78056250a85aeff3e92f5081436f68a88e3e6b0b74f3642ddc2e0cf6b40",
       "destDir": "runtime/bin/win-x64-cpu-avx2",
       "vendorDir": ""
     }

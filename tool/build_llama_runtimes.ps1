@@ -40,12 +40,19 @@ New-Item -ItemType Directory -Path $targetRuntimeRoot -Force | Out-Null
 
 $binRoot = "$targetRuntimeRoot\bin"
 
-# Lettura metadati di acquisizione runtime da runtime/acquisition-metadata.json
+# Lettura metadati di acquisizione runtime da tool/runtime/llama-runtime-lock.json o acquisition-metadata.json
+$lockPath = "$projectRoot\tool\runtime\llama-runtime-lock.json"
 $acqMetaPath = "$projectRoot\runtime\acquisition-metadata.json"
-$llamaCppVersion = "b3200"
-$llamaCppCommit = "36a7a0b3e6488d5e1bbfdfaa14bbdbf2e463a55e"
+$llamaCppVersion = "b10256"
+$llamaCppCommit = "6c8dcaa7ae41fa9f4aa2b3b68ee82cb8b2a03632"
 
-if (Test-Path $acqMetaPath) {
+if (Test-Path $lockPath) {
+    try {
+        $lockJson = Get-Content -Path $lockPath -Raw | ConvertFrom-Json
+        if ($lockJson.llamaCppTag) { $llamaCppVersion = $lockJson.llamaCppTag }
+        if ($lockJson.llamaCppCommit) { $llamaCppCommit = $lockJson.llamaCppCommit }
+    } catch {}
+} elseif (Test-Path $acqMetaPath) {
     try {
         $acqJson = Get-Content -Path $acqMetaPath -Raw | ConvertFrom-Json
         if ($acqJson.llamaCppTag) { $llamaCppVersion = $acqJson.llamaCppTag }

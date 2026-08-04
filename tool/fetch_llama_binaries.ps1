@@ -1,4 +1,5 @@
 # Script di download e sincronizzazione automatica dei binari pre-compilati ufficiali di llama.cpp per A.U.R.A.
+# Esegue un'acquisizione rigorosamente hash-pinned e verificata contro tool/runtime/llama-runtime-lock.json.
 param(
     [string]$Tag = "",
     [switch]$Force
@@ -14,17 +15,19 @@ if (-not (Test-Path $lockfilePath)) {
 }
 
 $lockJson = Get-Content -Path $lockfilePath -Raw | ConvertFrom-Json
-$targetTag = if ([string]::IsNullOrWhiteSpace($Tag)) { $lockJson.llamaCppTag } else { $Tag }
+$targetTag = $lockJson.llamaCppTag
 $llamaCppCommit = $lockJson.llamaCppCommit
 
+if (-not [string]::IsNullOrWhiteSpace($Tag) -and $Tag -ne $targetTag) {
+    throw "[FAIL-CLOSED] Parametro -Tag '$Tag' non corrisponde al tag locked '$targetTag' definito in llama-runtime-lock.json"
+}
+
 Write-Host "==========================================================" -ForegroundColor Cyan
-Write-Host " A.U.R.A. Llama.cpp Official Binary Downloader & Sync" -ForegroundColor Cyan
-Write-Host " Tag Target: $targetTag | Commit Target: $llamaCppCommit" -ForegroundColor Cyan
+Write-Host " A.U.R.A. Hash-Pinned Llama.cpp Official Binary Sync" -ForegroundColor Cyan
+Write-Host " Tag Locked: $targetTag | Commit Locked: $llamaCppCommit" -ForegroundColor Cyan
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-$runtimeBinDir = "$projectRoot\runtime\bin"
 $tempDownloadDir = "$projectRoot\build\downloads_temp"
-
 if (-not (Test-Path $tempDownloadDir)) {
     New-Item -ItemType Directory -Path $tempDownloadDir -Force | Out-Null
 }
@@ -44,13 +47,7 @@ function Test-ValidPeExecutable($filePath) {
     return $false
 }
 
-$repoUrl = "https://api.github.com/repos/ggml-org/llama.cpp/releases"
-if ($targetTag -eq "latest") {
-    $apiUrl = "$repoUrl/latest"
-} else {
-    $apiUrl = "$repoUrl/tags/$targetTag"
-}
-
+$apiUrl = "https://api.github.com/repos/ggml-org/llama.cpp/releases/tags/$targetTag"
 Write-Host "Interrogazione metadati release da GitHub ($apiUrl)..." -ForegroundColor Yellow
 
 $headers = @{
@@ -60,16 +57,12 @@ $headers = @{
 try {
     $releaseInfo = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
 } catch {
-    Write-Host "Tag $targetTag non trovato via API API direct tag, tentativo con /latest..." -ForegroundColor Yellow
-    try {
-        $apiUrl = "$repoUrl/latest"
-        $releaseInfo = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
-    } catch {
-        throw "[FAIL-CLOSED] Impossibile recuperare informazioni sulla release llama.cpp: $_"
-    }
+    throw "[FAIL-CLOSED] Impossibile recuperare informazioni sulla release llama.cpp per il tag locked '$targetTag': $_"
 }
 
-$effectiveTag = $releaseInfo.tag_name
+if ($releaseInfo.tag_name -ne $targetTag) {
+    throw "[FAIL-CLOSED] Tag upstream inatteso! Atteso: '$targetTag', Ricevuto: '$($releaseInfo.tag_name)'"
+}
 
 $acquiredMetadata = @()
 
@@ -79,112 +72,112 @@ foreach ($variantLock in $lockJson.variants) {
     $vendorDir = if ($variantLock.vendorDir) { "$projectRoot\$($variantLock.vendorDir.Replace('/', '\'))" } else { "" }
     $exePath = "$destDir\llama-server.exe"
 
+    if ([string]::IsNullOrWhiteSpace($variantLock.assetName)) {
+        throw "[FAIL-CLOSED] assetName mancante nel lockfile per la variante $variantId"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($variantLock.sha256)) {
+        throw "[FAIL-CLOSED] SHA-256 mancante nel lockfile per la variante $variantId"
+    }
+
+    $expectedHash = $variantLock.sha256.Trim().ToLower()
+    $expectedSize = [long]$variantLock.sizeBytes
+
     $isValidPe = Test-ValidPeExecutable $exePath
 
     if (-not $Force -and $isValidPe) {
         Write-Host "Eseguibile $variantId gia presente ed integro: $exePath" -ForegroundColor Gray
         $acquiredMetadata += @{
             variantId = $variantId
-            assetName = "llama-server.exe"
+            assetName = $variantLock.assetName
             assetUrl = "NOASSERTION"
-            sha256 = (Get-FileHash -Path $exePath -Algorithm SHA256).Hash.ToLower()
-            sizeBytes = (Get-Item $exePath).Length
+            sha256 = $expectedHash
+            sizeBytes = $expectedSize
         }
     } else {
-        $selectedAsset = $null
-        
-        # 1. Ricerca assetName esatto dal lockfile
-        if ($variantLock.assetName) {
-            $selectedAsset = $releaseInfo.assets | Where-Object { $_.name -eq $variantLock.assetName } | Select-Object -First 1
+        # Selezione ESATTA dell'asset dal lockfile (senza wildcard o fallback a latest)
+        $selectedAsset = $releaseInfo.assets | Where-Object { $_.name -eq $variantLock.assetName } | Select-Object -First 1
+
+        if (-not $selectedAsset) {
+            throw "[FAIL-CLOSED] Asset locked '$($variantLock.assetName)' non trovato nella release upstream $targetTag"
         }
 
-        # 2. Fallback su patterns se assetName non corrisponde
-        if (-not $selectedAsset -and $variantLock.patterns) {
-            foreach ($pat in $variantLock.patterns) {
-                if (-not $selectedAsset) {
-                    $selectedAsset = $releaseInfo.assets | Where-Object { $_.name -like $pat } | Select-Object -First 1
-                }
-            }
+        $downloadUrl = $selectedAsset.browser_download_url
+        $zipFileName = $selectedAsset.name
+        $zipFilePath = "$tempDownloadDir\$zipFileName"
+
+        Write-Host "Download asset $zipFileName..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFilePath -Headers $headers
+
+        # Verification 1: Size check
+        $zipSize = (Get-Item $zipFilePath).Length
+        if ($expectedSize -gt 0 -and $zipSize -ne $expectedSize) {
+            throw "[FAIL-CLOSED] Dimensione archivio mismatch su $zipFileName! Atteso: $expectedSize bytes, Ricevuto: $zipSize bytes"
         }
 
-        if ($selectedAsset) {
-            $downloadUrl = $selectedAsset.browser_download_url
-            $zipFileName = $selectedAsset.name
-            $zipFilePath = "$tempDownloadDir\$zipFileName"
+        # Verification 2: SHA-256 Checksum check
+        $zipHash = (Get-FileHash -Path $zipFilePath -Algorithm SHA256).Hash.ToLower()
+        if ($zipHash -ne $expectedHash) {
+            throw "[FAIL-CLOSED] Checksum mismatch su asset $zipFileName! Atteso lockfile: $expectedHash, Calcolato: $zipHash"
+        }
 
-            Write-Host "Download asset $zipFileName..." -ForegroundColor Yellow
-            Invoke-WebRequest -Uri $downloadUrl -OutFile $zipFilePath -Headers $headers
+        Write-Host "  ✅ Size ($zipSize bytes) e Checksum SHA-256 ($zipHash) verificati con successo!" -ForegroundColor Green
 
-            # Calcolo e verifica SHA-256
-            $zipHash = (Get-FileHash -Path $zipFilePath -Algorithm SHA256).Hash.ToLower()
-            $zipSize = (Get-Item $zipFilePath).Length
-            Write-Host "  Archivio scaricato $zipFileName (SHA-256: $zipHash, Size: $zipSize bytes)" -ForegroundColor Gray
+        # Estrazione solo dopo il superamento dei controlli
+        $extractDir = "$tempDownloadDir\extracted_$variantId"
+        if (Test-Path $extractDir) {
+            Remove-Item -Path $extractDir -Recurse -Force
+        }
+        Expand-Archive -Path $zipFilePath -DestinationPath $extractDir -Force
 
-            if ($variantLock.sha256 -and $variantLock.sha256.Trim() -ne "") {
-                $expectedHash = $variantLock.sha256.Trim().ToLower()
-                if ($zipHash -ne $expectedHash) {
-                    throw "[FAIL-CLOSED] Checksum mismatch su asset $zipFileName! Atteso lockfile: $expectedHash, Calcolato: $zipHash"
-                }
-                Write-Host "  ✅ Checksum lockfile verificato con successo per $zipFileName" -ForegroundColor Green
-            }
+        if (-not (Test-Path $destDir)) {
+            New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+        }
+        if ($vendorDir -ne "" -and -not (Test-Path $vendorDir)) {
+            New-Item -ItemType Directory -Path $vendorDir -Force | Out-Null
+        }
 
-            $extractDir = "$tempDownloadDir\extracted_$variantId"
-            if (Test-Path $extractDir) {
-                Remove-Item -Path $extractDir -Recurse -Force
-            }
-            Expand-Archive -Path $zipFilePath -DestinationPath $extractDir -Force
+        $extractedExe = Get-ChildItem -Path $extractDir -Recurse -Filter "llama-server*.exe" | Select-Object -First 1
+        if (-not $extractedExe) {
+            $extractedExe = Get-ChildItem -Path $extractDir -Recurse -Filter "*server*.exe" | Select-Object -First 1
+        }
 
-            if (-not (Test-Path $destDir)) {
-                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
-            }
-            if ($vendorDir -ne "" -and -not (Test-Path $vendorDir)) {
-                New-Item -ItemType Directory -Path $vendorDir -Force | Out-Null
-            }
+        if ($extractedExe) {
+            Copy-Item -Path $extractedExe.FullName -Destination "$destDir\llama-server.exe" -Force
+            Write-Host "  Eseguibile salvato: $destDir\llama-server.exe" -ForegroundColor Green
 
-            $extractedExe = Get-ChildItem -Path $extractDir -Recurse -Filter "llama-server*.exe" | Select-Object -First 1
-            if (-not $extractedExe) {
-                $extractedExe = Get-ChildItem -Path $extractDir -Recurse -Filter "*server*.exe" | Select-Object -First 1
-            }
-
-            if ($extractedExe) {
-                Copy-Item -Path $extractedExe.FullName -Destination "$destDir\llama-server.exe" -Force
-                Write-Host "  Eseguibile salvato: $destDir\llama-server.exe" -ForegroundColor Green
-
-                $dllFiles = Get-ChildItem -Path $extractDir -Recurse -Filter "*.dll"
-                if ($dllFiles) {
-                    foreach ($dll in $dllFiles) {
-                        Copy-Item -Path $dll.FullName -Destination "$destDir\$($dll.Name)" -Force
-                        if ($vendorDir -ne "") {
-                            Copy-Item -Path $dll.FullName -Destination "$vendorDir\$($dll.Name)" -Force
-                        }
-                        Write-Host "  DLL dipendenza salvata: $($dll.Name)" -ForegroundColor Gray
+            $dllFiles = Get-ChildItem -Path $extractDir -Recurse -Filter "*.dll"
+            if ($dllFiles) {
+                foreach ($dll in $dllFiles) {
+                    Copy-Item -Path $dll.FullName -Destination "$destDir\$($dll.Name)" -Force
+                    if ($vendorDir -ne "") {
+                        Copy-Item -Path $dll.FullName -Destination "$vendorDir\$($dll.Name)" -Force
                     }
+                    Write-Host "  DLL dipendenza salvata: $($dll.Name)" -ForegroundColor Gray
                 }
+            }
 
-                $licenseFile = Get-ChildItem -Path $extractDir -Recurse -Filter "*LICENSE*" | Select-Object -First 1
-                if ($licenseFile) {
-                    Copy-Item -Path $licenseFile.FullName -Destination "$destDir\LICENSE.txt" -Force
-                }
+            $licenseFile = Get-ChildItem -Path $extractDir -Recurse -Filter "*LICENSE*" | Select-Object -First 1
+            if ($licenseFile) {
+                Copy-Item -Path $licenseFile.FullName -Destination "$destDir\LICENSE.txt" -Force
+            }
 
-                $acquiredMetadata += @{
-                    variantId = $variantId
-                    assetName = $zipFileName
-                    assetUrl = $downloadUrl
-                    sha256 = $zipHash
-                    sizeBytes = $zipSize
-                }
-            } else {
-                throw "[FAIL-CLOSED] Impossibile trovare llama-server.exe nell'archivio $zipFileName"
+            $acquiredMetadata += @{
+                variantId = $variantId
+                assetName = $zipFileName
+                assetUrl = $downloadUrl
+                sha256 = $zipHash
+                sizeBytes = $zipSize
             }
         } else {
-            throw "[FAIL-CLOSED] Asset non trovato per la variante $variantId nella release $effectiveTag"
+            throw "[FAIL-CLOSED] Impossibile trovare llama-server.exe nell'archivio $zipFileName"
         }
     }
 }
 
 # Generazione runtime/acquisition-metadata.json con i metadati effettivi di llama.cpp
 $acquisitionManifest = [ordered]@{
-    llamaCppTag = $effectiveTag
+    llamaCppTag = $targetTag
     llamaCppCommit = $llamaCppCommit
     acquiredAtUtc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
     variants = $acquiredMetadata

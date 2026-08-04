@@ -20,6 +20,15 @@ final class BundledCatalogTrustStore implements CatalogTrustStore {
 
   /// Chiavi pubbliche fidate, versionare nel codice sorgente.
   static final List<CatalogPublicKey> _trustedKeys = [
+    // Chiave di produzione/official release (generata 2026-08-04).
+    CatalogPublicKey(
+      keyId: 'aura-catalog-release-2026-01',
+      algorithm: 'ed25519-v1',
+      rawKeyBytes: _hexToBytes(
+        '5e6946292e9dd49d328c676ffa7b6565'
+        'fe3a398c969ca4300805435d84abdb99',
+      ),
+    ),
     // Chiave di development/release-candidate (generata 2026-08-04).
     CatalogPublicKey(
       keyId: 'aura-catalog-development-2026-01',

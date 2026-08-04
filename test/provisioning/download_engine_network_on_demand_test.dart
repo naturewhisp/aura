@@ -24,11 +24,16 @@ void main() {
         return;
       }
 
-      // Legge l'envelope del catalogo di sviluppo compilato
-      final catalogFile =
-          File('build/catalog/aura-official-development.catalog.json');
+      // Legge l'envelope del catalogo di sviluppo compilato o fixture
+      var catalogFile =
+          File('test/fixtures/catalog/aura-official-development.catalog.json');
+      if (!await catalogFile.exists()) {
+        catalogFile =
+            File('build/catalog/aura-official-development.catalog.json');
+      }
       expect(await catalogFile.exists(), isTrue,
-          reason: 'Il catalogo di sviluppo deve essere compilato.');
+          reason:
+              'Il catalogo di sviluppo deve essere presente nelle fixture di test o su disco.');
 
       final catalogJson =
           jsonDecode(await catalogFile.readAsString()) as Map<String, dynamic>;

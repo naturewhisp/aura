@@ -15,20 +15,32 @@ void main() {
     late Ed25519CatalogSignatureVerifier verifier;
 
     setUp(() async {
-      catalogFile =
-          File('build/catalog/aura-official-development.catalog.json');
-      publicKeyFile = File(
-          '.local/catalog-keys/aura-catalog-development-2026-01.public.json');
+      var cFile =
+          File('test/fixtures/catalog/aura-official-development.catalog.json');
+      if (!await cFile.exists()) {
+        cFile = File('build/catalog/aura-official-development.catalog.json');
+      }
+      catalogFile = cFile;
+
+      var pkFile = File(
+          'test/fixtures/catalog/aura-catalog-development-2026-01.public.json');
+      if (!await pkFile.exists()) {
+        pkFile = File(
+            '.local/catalog-keys/aura-catalog-development-2026-01.public.json');
+      }
+      publicKeyFile = pkFile;
 
       expect(
         await catalogFile.exists(),
         isTrue,
-        reason: 'Il file di catalogo generato deve esistere su disco.',
+        reason:
+            'Il file di catalogo deve esistere nelle fixture di test o su disco.',
       );
       expect(
         await publicKeyFile.exists(),
         isTrue,
-        reason: 'La chiave pubblica di sviluppo deve esistere su disco.',
+        reason:
+            'La chiave pubblica del catalogo deve esistere nelle fixture di test o su disco.',
       );
 
       final envelopeJson =

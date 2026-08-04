@@ -1,0 +1,10 @@
+# Configuration for package:test
+tags:
+  network:
+    description: "Tests requiring active internet connectivity"
+  real-model:
+    description: "Tests executing real LLM inference with GGUF files"
+  on-demand:
+    description: "On-demand execution tests"
+  integration:
+    description: "Integration and end-to-end flow tests"

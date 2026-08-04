@@ -1,0 +1,124 @@
+{
+  "signedPayload": {
+    "schemaVersion": "1.0",
+    "signatureAlgorithm": "ed25519-v1",
+    "keyId": "aura-catalog-development-2026-01",
+    "catalogId": "aura-official-development",
+    "catalogVersion": "1.0.0",
+    "catalogRevision": 1,
+    "issuedAt": "2026-08-04T08:21:04.891555Z",
+    "expiresAt": "2026-11-02T08:21:04.891555Z",
+    "manifest": {
+      "schemaVersion": "1.0",
+      "catalogId": "aura-official-development",
+      "generatedAt": "2026-08-04T08:21:04.891555Z",
+      "artifacts": [
+        {
+          "artifactId": "gemma-4-12b-it-qat-q4_0",
+          "artifactType": "model",
+          "displayName": "Gemma 4 12B IT QAT (Q4_0)",
+          "version": "4.0.0",
+          "buildId": "qat-q4_0-v1",
+          "platform": "all",
+          "architecture": "gguf",
+          "fileName": "gemma-4-12B-it-QAT-Q4_0.gguf",
+          "sourceKind": "remoteHttps",
+          "downloadUri": "https://huggingface.co/lmstudio-community/gemma-4-12B-it-QAT-GGUF/resolve/aaec3dd9d1012557147a627142759994d1fd8d37/gemma-4-12B-it-QAT-Q4_0.gguf",
+          "sizeBytes": 6975879008,
+          "sha256": "f568ac5de71c8fcac5d5794494388ad94db9e18b4368ca897e21b30d2448eeec",
+          "compression": "none",
+          "license": "apache-2.0",
+          "quantization": "Q4_0",
+          "capabilities": [
+            "generate_character_response",
+            "instruction_following"
+          ],
+          "hardwareCompatibilityTags": [],
+          "deprecated": false,
+          "releaseChannel": "stable",
+          "metadata": {
+            "role": "actor",
+            "intendedUsage": "production-default",
+            "selectable": true,
+            "defaultActor": true,
+            "defaultEvaluator": false,
+            "applicationModelId": "google/gemma-4-12b-qat",
+            "repository": "lmstudio-community/gemma-4-12B-it-QAT-GGUF",
+            "revision": "aaec3dd9d1012557147a627142759994d1fd8d37",
+            "verificationStatus": "huggingface-api-resolved"
+          }
+        },
+        {
+          "artifactId": "ministral-3-3b-instruct-2512-q4_k_m",
+          "artifactType": "model",
+          "displayName": "Ministral 3B Instruct 2512 (Q4_K_M)",
+          "version": "3.0.0",
+          "buildId": "q4_k_m-v1",
+          "platform": "all",
+          "architecture": "gguf",
+          "fileName": "Ministral-3-3B-Instruct-2512-Q4_K_M.gguf",
+          "sourceKind": "remoteHttps",
+          "downloadUri": "https://huggingface.co/lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF/resolve/94b49547f1931930f002226bc0a68b5f10a4ee25/Ministral-3-3B-Instruct-2512-Q4_K_M.gguf",
+          "sizeBytes": 2146498240,
+          "sha256": "ee46f8f2cc4acf15e89699563e23b4a3919dce2e9ce7c44b53778d6590318e96",
+          "compression": "none",
+          "license": "apache-2.0",
+          "quantization": "Q4_K_M",
+          "capabilities": [
+            "score_user_input",
+            "produce_json_delta",
+            "detect_injection_attempt"
+          ],
+          "hardwareCompatibilityTags": [],
+          "deprecated": false,
+          "releaseChannel": "stable",
+          "metadata": {
+            "role": "evaluator",
+            "intendedUsage": "production-default",
+            "selectable": true,
+            "defaultActor": false,
+            "defaultEvaluator": true,
+            "applicationModelId": "mistralai/ministral-3-3b",
+            "repository": "lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF",
+            "revision": "94b49547f1931930f002226bc0a68b5f10a4ee25",
+            "verificationStatus": "huggingface-api-resolved"
+          }
+        },
+        {
+          "artifactId": "qwen2.5-0.5b-instruct-download-test-q4_0",
+          "artifactType": "model",
+          "displayName": "Qwen 2.5 0.5B Instruct Download Test (Q4_0)",
+          "version": "2.5.0",
+          "buildId": "q4_0-test-v1",
+          "platform": "all",
+          "architecture": "gguf",
+          "fileName": "Qwen2.5-0.5B-Instruct-Q4_0.gguf",
+          "sourceKind": "remoteHttps",
+          "downloadUri": "https://huggingface.co/bartowski/Qwen2.5-0.5B-Instruct-GGUF/resolve/41ba88dbac95fed2528c92514c131d73eb5a174b/Qwen2.5-0.5B-Instruct-Q4_0.gguf",
+          "sizeBytes": 352972352,
+          "sha256": "c8cd5f37dd1235fb010c45316d4ff8af875e1a4e0ff368b4bf6cacb9053d4919",
+          "compression": "none",
+          "license": "apache-2.0",
+          "quantization": "Q4_0",
+          "capabilities": [
+            "technical_download_test"
+          ],
+          "hardwareCompatibilityTags": [],
+          "deprecated": false,
+          "releaseChannel": "stable",
+          "metadata": {
+            "role": "technical-test",
+            "intendedUsage": "download-engine-validation",
+            "selectable": false,
+            "defaultActor": false,
+            "defaultEvaluator": false,
+            "repository": "bartowski/Qwen2.5-0.5B-Instruct-GGUF",
+            "revision": "41ba88dbac95fed2528c92514c131d73eb5a174b",
+            "verificationStatus": "huggingface-api-resolved"
+          }
+        }
+      ]
+    }
+  },
+  "signature": "Qc1JDhDBAPqtszdlx6oYitMw0De/MpBlOPpcMgcxB6nb4oz2gh/UZ4mS0hv88eTt9iTLgQsQeoCiCqEUt+T+Aw=="
+}

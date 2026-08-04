@@ -351,3 +351,16 @@ Se desideri estendere o modificare l'architettura agentica:
     *   **Link Clickable Relativi:** Ogni riferimento incrociato tra documenti versionati (`docs/`, `ARCHITECTURE.md`, `AGENTS.md`) deve usare ESCLUSIVAMENTE link cliccabili relativi in formato Markdown. Sono tassativamente vietati link `file:///`, percorsi Windows assoluti e path specifici della workstation dello sviluppatore.
     *   **Immutabilità della Baseline:** Le baseline di implementazione e documentazione registrate nei documenti di fase (es. `PHASE_6_2B_BASELINE_AND_6_3_READINESS.md`) devono contenere gli hash di commit espliciti immutabili. Eventuali modifiche successive richiedono un aggiornamento formale con il nuovo hash.
 
+---
+
+## 9. Procedura Operativa di Orchestrazione Rilasci CI/CD
+
+L'agente assistente funge da **Orchestatore Ufficiale dei Rilasci** per il repository A.U.R.A. Su indicazione dell'utente, l'agente esegue, monitora, verifica e pubblica i rilasci (Candidate e Official) applicando rigidamente le direttive descritte nella skill [aura-release-orchestrator](.agents/skills/aura-release-orchestrator/SKILL.md).
+
+### Regole Inviolabili di Rilascio:
+1. **Trigger Esclusivo Manuale**: Tutti i rilasci sono avviati via `workflow_dispatch` tramite GitHub CLI (`gh workflow run release.yml`).
+2. **Policy Zero Diagnostic Pre-Release**: Nessun rilascio viene avviato se `dart analyze .` o `flutter analyze` restituiscono avvisi, warning o info.
+3. **Fail-Closed Verification Mandatory**: Ogni asset generato dalla pipeline (ZIP, Installer EXE, Manifest del Catalogo Modelli Ed25519) deve superare la verifica criptografica e di integrità tramite `tool/verify_release_assets.ps1` prima di essere confermato.
+4. **Draft-First Lifecycle**: I rilasci sono generati inizialmente in stato **Draft**. La transizione a pubblica (`--draft=false`) avviene unicamente previa approvazione esplicita dell'utente.
+
+

@@ -36,9 +36,20 @@ function Test-ValidPeExecutable($filePath) {
 function Test-ValidWavRiffHeader($filePath) {
     if (-not (Test-Path $filePath)) { return $false }
     try {
-        $bytes = Get-Content -Path $filePath -Encoding Byte -TotalCount 12 -ErrorAction SilentlyContinue
-        if ($bytes.Length -eq 12 -and $bytes[0] -eq 0x52 -and $bytes[1] -eq 0x49 -and $bytes[2] -eq 0x46 -and $bytes[3] -eq 0x46 -and $bytes[8] -eq 0x57 -and $bytes[9] -eq 0x41 -and $bytes[10] -eq 0x56 -and $bytes[11] -eq 0x45) {
-            return $true
+        $stream = [System.IO.File]::OpenRead($filePath)
+        try {
+            if ($stream.Length -lt 12) {
+                return $false
+            }
+            $bytes = New-Object byte[] 12
+            $readCount = $stream.Read($bytes, 0, 12)
+            if ($readCount -eq 12 -and
+                $bytes[0] -eq 0x52 -and $bytes[1] -eq 0x49 -and $bytes[2] -eq 0x46 -and $bytes[3] -eq 0x46 -and
+                $bytes[8] -eq 0x57 -and $bytes[9] -eq 0x41 -and $bytes[10] -eq 0x56 -and $bytes[11] -eq 0x45) {
+                return $true
+            }
+        } finally {
+            $stream.Dispose()
         }
     } catch {}
     return $false

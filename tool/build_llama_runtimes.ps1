@@ -113,14 +113,23 @@ foreach ($v in $variants) {
     }
 }
 
-# Funzione per la validazione formale PE Executable (Header MZ)
 function Test-IsPEExecutable([string]$filePath) {
     if (-not (Test-Path $filePath)) { return $false }
-    $bytes = Get-Content -Path $filePath -Encoding Byte -TotalCount 2 -ErrorAction SilentlyContinue
-    if ($bytes -and $bytes.Length -eq 2 -and $bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A) {
-        return $true
+    try {
+        $stream = [System.IO.File]::OpenRead($filePath)
+        try {
+            if ($stream.Length -lt 2) {
+                return $false
+            }
+            $firstByte = $stream.ReadByte()
+            $secondByte = $stream.ReadByte()
+            return ($firstByte -eq 0x4D -and $secondByte -eq 0x5A)
+        } finally {
+            $stream.Dispose()
+        }
+    } catch {
+        return $false
     }
-    return $false
 }
 
 # Verifica o popolamento degli eseguibili per ogni variante

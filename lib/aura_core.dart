@@ -148,6 +148,7 @@ export 'src/provisioning/domain/catalog_refresh_policy.dart';
 export 'src/provisioning/domain/catalog_provider_contracts.dart';
 export 'src/provisioning/crypto/catalog_signature_verifier.dart';
 export 'src/provisioning/crypto/catalog_trust_store.dart';
+export 'src/provisioning/crypto/bundled_catalog_trust_store.dart';
 export 'src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart';
 export 'src/provisioning/infrastructure/catalog_cache_repository.dart';
 export 'src/provisioning/infrastructure/lkg_catalog_metadata_repository.dart';

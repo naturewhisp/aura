@@ -47,6 +47,7 @@ export 'src/bootstrap/managed_inference_topology.dart';
 // Provisioning Catalog Providers, Signed Cache & Refresh (Phase 6.4b)
 export 'src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart';
 export 'src/provisioning/crypto/catalog_trust_store.dart';
+export 'src/provisioning/crypto/bundled_catalog_trust_store.dart';
 export 'src/provisioning/crypto/catalog_signature_verifier.dart';
 
 // Provisioning Download Engine Infrastructure (Phase 6.4c)

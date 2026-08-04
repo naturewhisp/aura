@@ -146,11 +146,13 @@ foreach ($map in $variants) {
                 Write-Host "  Eseguibile salvato: $destDir\llama-server.exe" -ForegroundColor Green
 
                 $dllFiles = Get-ChildItem -Path $extractDir -Recurse -Filter "*.dll"
-                if ($dllFiles -and $vendorDir -ne "") {
+                if ($dllFiles) {
                     foreach ($dll in $dllFiles) {
-                        Copy-Item -Path $dll.FullName -Destination "$vendorDir\$($dll.Name)" -Force
                         Copy-Item -Path $dll.FullName -Destination "$destDir\$($dll.Name)" -Force
-                        Write-Host "  DLL Vendor salvata: $($dll.Name)" -ForegroundColor Gray
+                        if ($vendorDir -ne "") {
+                            Copy-Item -Path $dll.FullName -Destination "$vendorDir\$($dll.Name)" -Force
+                        }
+                        Write-Host "  DLL dipendenza salvata: $($dll.Name)" -ForegroundColor Gray
                     }
                 }
             } else {

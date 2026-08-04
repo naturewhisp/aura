@@ -3,6 +3,7 @@ import '../domain/runtime_dependency_models.dart';
 import '../domain/runtime_manifest.dart';
 import 'provisioning_file_system.dart';
 import 'provisioning_path_resolver.dart';
+import 'runtime_bundle_integrity_verifier.dart';
 import 'runtime_manifest_repository.dart';
 
 /// Eccezione lanciata quando la risoluzione del runtime fallisce per corruzione o assenza di manifest.
@@ -25,19 +26,23 @@ abstract interface class BundledRuntimeResolver {
   });
 }
 
-/// Implementazione predefinita basata su [RuntimeManifestRepository], [ProvisioningFileSystem] e [ProvisioningPathResolver].
+/// Implementazione predefinita basata su [RuntimeManifestRepository], [RuntimeBundleIntegrityVerifier], [ProvisioningFileSystem] e [ProvisioningPathResolver].
 final class DefaultBundledRuntimeResolver implements BundledRuntimeResolver {
   final RuntimeManifestRepository _manifestRepository;
+  final RuntimeBundleIntegrityVerifier _integrityVerifier;
   final ProvisioningFileSystem _fileSystem;
   final ProvisioningPathResolver _pathResolver;
 
-  const DefaultBundledRuntimeResolver({
+  DefaultBundledRuntimeResolver({
     required RuntimeManifestRepository manifestRepository,
     required ProvisioningFileSystem fileSystem,
     required ProvisioningPathResolver pathResolver,
+    RuntimeBundleIntegrityVerifier? integrityVerifier,
   })  : _manifestRepository = manifestRepository,
         _fileSystem = fileSystem,
-        _pathResolver = pathResolver;
+        _pathResolver = pathResolver,
+        _integrityVerifier = integrityVerifier ??
+            DefaultRuntimeBundleIntegrityVerifier(fileSystem: fileSystem);
 
   @override
   Future<ResolvedLlamaRuntime?> resolve(
@@ -84,37 +89,37 @@ final class DefaultBundledRuntimeResolver implements BundledRuntimeResolver {
 
     final manifest = manifestResult.manifest;
     final manifestPath = manifestResult.manifestPath;
+
+    // 1. Verificazione rigorosa di runtimeSetId se esplicitamente configurato
+    if (config.runtimeSetId != null &&
+        config.runtimeSetId!.trim().isNotEmpty &&
+        config.runtimeSetId!.trim() != manifest.runtimeSetId) {
+      return null;
+    }
+
     final lastSlash = manifestPath.lastIndexOf(r'\');
     final manifestRoot = lastSlash > 0
         ? manifestPath.substring(0, lastSlash)
         : _pathResolver.bundledRoot;
 
-    // Ricerca della variante richiesta o fallback alla prima conforme
+    // 2. Ricerca variante: se variantId è esplicito, NON ammettere fallback silenziosi!
     RuntimeVariantDescriptor? variant;
     if (config.variantId != null && config.variantId!.trim().isNotEmpty) {
       final targetId = config.variantId!.trim();
-      for (final v in manifest.variants) {
-        if (v.id == targetId) {
-          variant = v;
-          break;
-        }
+      variant = manifest.findVariantById(targetId);
+      if (variant == null) {
+        // Variante esplicita non presente nel nuovo manifest -> nessun fallback silenzioso
+        return null;
       }
-    }
-
-    if (variant == null && manifest.variants.isNotEmpty) {
-      // Priorità canonica: cuda -> vulkan -> cpu
+    } else if (manifest.variants.isNotEmpty) {
+      // Priorità canonica solo se variantId NON era specificato: cuda -> vulkan -> cpu
       final canonicalPriority = [
         'win-x64-cuda',
         'win-x64-vulkan',
         'win-x64-cpu-avx2'
       ];
       for (final id in canonicalPriority) {
-        for (final v in manifest.variants) {
-          if (v.id == id) {
-            variant = v;
-            break;
-          }
-        }
+        variant = manifest.findVariantById(id);
         if (variant != null) break;
       }
       variant ??= manifest.variants.first;
@@ -122,13 +127,30 @@ final class DefaultBundledRuntimeResolver implements BundledRuntimeResolver {
 
     if (variant == null) return null;
 
+    // 3. Verifica di integrità SHA-256 obbligatoria su TUTTI i file della variante (eseguibile + DLL vendor)
+    final integrity = await _integrityVerifier.verifyVariant(
+      variant: variant,
+      runtimeRootPath: manifestRoot,
+    );
+    if (!integrity.isValid) {
+      return null;
+    }
+
     final relativeExe = variant.executable.replaceAll('/', r'\');
     final relativeWorkDir = variant.workingDirectory.replaceAll('/', r'\');
 
-    final absExePath = '$manifestRoot\\$relativeExe';
-    final absWorkDir = '$manifestRoot\\$relativeWorkDir';
+    String joinPath(String base, String relative) {
+      final cleanBase =
+          base.replaceAll('/', r'\').replaceAll(RegExp(r'\\+$'), '');
+      final cleanRel =
+          relative.replaceAll('/', r'\').replaceAll(RegExp(r'^\\+'), '');
+      return '$cleanBase\\$cleanRel';
+    }
+
+    final absExePath = joinPath(manifestRoot, variant.executable);
+    final absWorkDir = joinPath(manifestRoot, variant.workingDirectory);
     final absVendors = variant.vendorDirectories
-        .map((v) => '$manifestRoot\\${v.replaceAll('/', r'\')}')
+        .map((v) => joinPath(manifestRoot, v))
         .toList();
 
     if (!await _fileSystem.fileExists(absExePath)) return null;

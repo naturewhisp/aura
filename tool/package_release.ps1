@@ -121,7 +121,7 @@ foreach ($f in $allFiles) {
 }
 Set-Content -Path $sumsFile -Value ($sumLines -join "`r`n") -Encoding UTF8
 
-# 6. Validazioni pre-promozione (Parse Manifest, SHA-256 Integrity, PE Header, --version Probe & License Check)
+# 6. Validazioni pre-promozione (Parse Manifest, SHA-256 Integrity, PE Header, --version Probe con PATH Vendor & License Check)
 Write-Host "Esecuzione verifiche di sicurezza pre-promozione..." -ForegroundColor Yellow
 
 $manifestPath = "$stagingDir\runtime\runtime-manifest.json"
@@ -138,15 +138,34 @@ foreach ($variant in $manifestJson.variants) {
         throw "[FAIL-CLOSED] Eseguibile variante $vId non e un binario PE valido: $vExe"
     }
 
-    Write-Host "  Probe --version per la variante $vId..." -ForegroundColor Gray
+    Write-Host "  Probe --version per la variante $vId (con PATH vendor isolato)..." -ForegroundColor Gray
+    $oldPath = $env:PATH
     try {
-        $proc = Start-Process -FilePath $vExe -ArgumentList "--version" -NoNewWindow -PassThru -Wait -ErrorAction Stop
+        $vendorPaths = @()
+        if ($variant.vendorDirectories) {
+            foreach ($vd in $variant.vendorDirectories) {
+                $vp = "$stagingDir\runtime\$($vd.Replace('/', '\'))"
+                if (Test-Path $vp) {
+                    $vendorPaths += (Resolve-Path $vp).Path
+                }
+            }
+        }
+        $wDir = "$stagingDir\runtime\$($variant.workingDirectory.Replace('/', '\'))"
+        if (Test-Path $wDir) {
+            $wDir = (Resolve-Path $wDir).Path
+        }
+
+        $env:PATH = (($vendorPaths + $wDir + $oldPath) -join ';')
+
+        $proc = Start-Process -FilePath $vExe -ArgumentList "--version" -WorkingDirectory $wDir -NoNewWindow -PassThru -Wait -ErrorAction Stop
         if ($proc.ExitCode -ne 0) {
-            Write-Host "  Warning: ExitCode probe non-zero ($($proc.ExitCode)) per $vId" -ForegroundColor Yellow
+            throw "[FAIL-CLOSED] Probe --version fallita per la variante $vId con ExitCode $($proc.ExitCode)"
         }
     } catch {
         $err = $_.Exception.Message
         throw "[FAIL-CLOSED] Impossibile eseguire probe per la variante $vId : $err"
+    } finally {
+        $env:PATH = $oldPath
     }
 
     foreach ($fileEntry in $variant.files) {
@@ -167,20 +186,34 @@ if (-not (Test-Path "$stagingDir\THIRD_PARTY_NOTICES.txt")) {
 
 Write-Host "Verifiche di sicurezza superate con successo!" -ForegroundColor Green
 
-# 7. Promozione atomica dello staging in release/
+# 7. Promozione atomica dello staging in release/ (con backup transazionale e rollback)
 $releaseRootDir = "$projectRoot\release"
 $bundleDirName = "aura-v$Version-win-x64"
 $targetBundleDir = "$releaseRootDir\$bundleDirName"
+$backupBundleDir = "$releaseRootDir\$bundleDirName-backup"
 
 if (-not (Test-Path $releaseRootDir)) {
     New-Item -ItemType Directory -Path $releaseRootDir -Force | Out-Null
 }
 
 if (Test-Path $targetBundleDir) {
-    Remove-Item -Path $targetBundleDir -Recurse -Force
+    if (Test-Path $backupBundleDir) {
+        Remove-Item -Path $backupBundleDir -Recurse -Force
+    }
+    Move-Item -Path $targetBundleDir -Destination $backupBundleDir -Force
 }
 
-Move-Item -Path $stagingDir -Destination $targetBundleDir -Force
+try {
+    Move-Item -Path $stagingDir -Destination $targetBundleDir -Force
+    if (Test-Path $backupBundleDir) {
+        Remove-Item -Path $backupBundleDir -Recurse -Force
+    }
+} catch {
+    if (Test-Path $backupBundleDir) {
+        Move-Item -Path $backupBundleDir -Destination $targetBundleDir -Force
+    }
+    throw "[FAIL-CLOSED] Spostamento atomico del bundle in release/ fallito: $_"
+}
 
 # 8. Archiviazione ZIP portabile
 $zipFile = "$releaseRootDir\$bundleDirName.zip"

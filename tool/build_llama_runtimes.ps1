@@ -33,6 +33,10 @@ if ([string]::IsNullOrWhiteSpace($OutDir)) {
 } else {
     $targetRuntimeRoot = $OutDir
 }
+if (Test-Path $targetRuntimeRoot) {
+    Remove-Item -Path $targetRuntimeRoot -Recurse -Force
+}
+New-Item -ItemType Directory -Path $targetRuntimeRoot -Force | Out-Null
 
 $binRoot = "$targetRuntimeRoot\bin"
 

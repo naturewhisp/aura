@@ -6,6 +6,7 @@ import '../../agent_runtime/runtime/adapters/managed_llama_server/dart_io_proces
 import '../../agent_runtime/runtime/adapters/managed_llama_server/llama_runtime_launch_environment_resolver.dart';
 import '../../agent_runtime/runtime/adapters/managed_llama_server/process_launcher.dart';
 import '../domain/runtime_dependency_models.dart';
+import 'cpu_feature_detector.dart';
 import 'json_model_configuration_repository.dart';
 import 'provisioning_file_system.dart';
 import 'provisioning_path_resolver.dart';
@@ -48,6 +49,7 @@ final class DefaultLlamaServerDependencyService
   final LlamaRuntimeLaunchEnvironmentResolver _environmentResolver;
   final RuntimeManifestRepository _manifestRepository;
   final RuntimeBundleIntegrityVerifier _integrityVerifier;
+  final CpuFeatureDetector _cpuFeatureDetector;
   final Duration _probeTimeout;
 
   DefaultLlamaServerDependencyService({
@@ -59,6 +61,7 @@ final class DefaultLlamaServerDependencyService
         const DefaultLlamaRuntimeLaunchEnvironmentResolver(),
     RuntimeManifestRepository? manifestRepository,
     RuntimeBundleIntegrityVerifier? integrityVerifier,
+    CpuFeatureDetector cpuFeatureDetector = const DefaultCpuFeatureDetector(),
     Duration probeTimeout = const Duration(seconds: 5),
   })  : _configurationRepository = configurationRepository,
         _fileSystem = fileSystem,
@@ -74,6 +77,7 @@ final class DefaultLlamaServerDependencyService
             DefaultRuntimeBundleIntegrityVerifier(
               fileSystem: fileSystem,
             ),
+        _cpuFeatureDetector = cpuFeatureDetector,
         _probeTimeout = probeTimeout;
 
   @override
@@ -274,7 +278,19 @@ final class DefaultLlamaServerDependencyService
           return posA.compareTo(posB);
         });
 
+      final supportedCpu = await _cpuFeatureDetector.detectCpuFeatures();
+
       for (final variant in sortedVariants) {
+        final missingCpuFeatures = variant.requiredCpuFeatures
+            .where((feat) => !supportedCpu.contains(feat.toLowerCase()))
+            .toList();
+        if (missingCpuFeatures.isNotEmpty) {
+          lastFallbackReason =
+              'Variante ${variant.id} incompatibile: la CPU non supporta le estensioni richieste [${missingCpuFeatures.join(', ')}]. Ripiego su variante successiva.';
+          warnings.add(lastFallbackReason);
+          continue;
+        }
+
         for (final root in roots) {
           final integrity = await _integrityVerifier.verifyVariant(
             variant: variant,
@@ -448,6 +464,30 @@ final class DefaultLlamaServerDependencyService
         lastValidatedAtUtc: now,
         errorMessage: 'Il file eseguibile non esiste sul disco.',
       );
+    }
+
+    if (variantId != null && variantId.trim().isNotEmpty) {
+      final manifestResult = await _manifestRepository.readManifestResult();
+      if (manifestResult is RuntimeManifestFound) {
+        final variant =
+            manifestResult.manifest.findVariantById(variantId.trim());
+        if (variant != null && variant.requiredCpuFeatures.isNotEmpty) {
+          final supportedCpu = await _cpuFeatureDetector.detectCpuFeatures();
+          final missingCpu = variant.requiredCpuFeatures
+              .where((f) => !supportedCpu.contains(f.toLowerCase()))
+              .toList();
+          if (missingCpu.isNotEmpty) {
+            return LlamaServerValidationResult(
+              status: LlamaServerValidationStatus.incompatible,
+              executablePath: cleanPath,
+              variantId: variantId,
+              lastValidatedAtUtc: now,
+              errorMessage:
+                  'La CPU non supporta le estensioni istruzioni richieste: [${missingCpu.join(', ')}].',
+            );
+          }
+        }
+      }
     }
 
     try {

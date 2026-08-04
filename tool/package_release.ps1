@@ -4,7 +4,9 @@ param(
     [string]$ReleaseKind = "candidate",
     [switch]$RequireInstaller,
     [string]$WorkflowRunId = "",
-    [string]$WorkflowRunAttempt = "1"
+    [string]$WorkflowRunAttempt = "1",
+    [string]$SourceRef = "",
+    [string]$SourceBranch = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -127,6 +129,13 @@ $flutterVer = (flutter --version | Select-Object -First 1).Trim()
 $dartVer = (dart --version 2>&1 | Select-Object -First 1).Trim()
 $sourceCommit = try { (git rev-parse HEAD).Trim() } catch { "unknown" }
 
+if ([string]::IsNullOrWhiteSpace($SourceRef)) {
+    $SourceRef = try { (git symbolic-ref -q HEAD).Trim() } catch { "refs/heads/fase6" }
+}
+if ([string]::IsNullOrWhiteSpace($SourceBranch)) {
+    $SourceBranch = try { (git rev-parse --abbrev-ref HEAD).Trim() } catch { "fase6" }
+}
+
 # Generazione release-manifest.json PRIMA del calcolo SHA256SUMS.txt
 $releaseManifest = [ordered]@{
     schemaVersion = 1
@@ -134,6 +143,8 @@ $releaseManifest = [ordered]@{
     channel = $Channel
     releaseKind = $ReleaseKind
     sourceCommit = $sourceCommit
+    sourceRef = $SourceRef
+    sourceBranch = $SourceBranch
     tag = "v$Version"
     workflowRunId = $WorkflowRunId
     workflowRunAttempt = [int]$WorkflowRunAttempt

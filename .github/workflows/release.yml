@@ -29,12 +29,15 @@ on:
         required: true
         type: boolean
         default: true
+  push:
+    tags:
+      - 'phase6-release-test-*'
 
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ inputs.version }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -46,7 +49,7 @@ jobs:
     permissions:
       contents: write
 
-    environment: ${{ inputs.release_kind == 'official' && 'release' || 'release-candidate' }}
+    environment: ${{ (github.event_name == 'push' || inputs.release_kind == 'candidate') && 'release-candidate' || 'release' }}
 
     steps:
       - name: Checkout Repository
@@ -54,47 +57,78 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Validate Inputs & SemVer Policy
+      - name: Resolve & Validate Release Parameters
+        id: params
         shell: powershell
         run: |
-          $ver = "${{ inputs.version }}".Trim()
-          $chan = "${{ inputs.channel }}"
-          $kind = "${{ inputs.release_kind }}"
-          $reqInst = "${{ inputs.require_installer }}"
+          if ("${{ github.event_name }}" -eq "push") {
+              $tagRef = "${{ github.ref_name }}"
+              Write-Host "Triggered by push tag: $tagRef"
 
-          Write-Host "Verifica parametri: version=$ver, channel=$chan, release_kind=$kind, require_installer=$reqInst"
-
-          if ($ver.StartsWith("v")) {
-              throw "[FAIL-CLOSED] La versione non deve includere il prefisso 'v' nell'input. Usa formato es. 0.1.0-rc.1"
-          }
-
-          $semverRegex = "^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
-          if ($ver -notmatch $semverRegex) {
-              throw "[FAIL-CLOSED] Formato SemVer non valido: $ver"
-          }
-
-          $isPrerelease = $Matches[4] -ne $null
-
-          if ($kind -eq "candidate" -and -not $isPrerelease) {
-              throw "[FAIL-CLOSED] Le release 'candidate' devono avere un suffisso prerelease (es. 0.1.0-rc.1)"
-          }
-
-          if ($kind -eq "official") {
-              if ($isPrerelease) {
-                  throw "[FAIL-CLOSED] Le release 'official' non devono contenere suffissi prerelease"
+              if ($tagRef -notlike "phase6-release-test-*") {
+                  throw "[FAIL-CLOSED] Tag ref non supportato per questo workflow: $tagRef"
               }
-              if ($chan -ne "stable") {
-                  throw "[FAIL-CLOSED] Le release 'official' devono appartenere al canale 'stable'"
+
+              $ver = $tagRef.Replace("phase6-release-test-", "").Trim()
+              if ($ver.StartsWith("v")) { $ver = $ver.Substring(1) }
+
+              $chan = "dev"
+              $kind = "candidate"
+              $reqInst = "true"
+
+              Write-Host "Modo TEST TAG attivato: version=$ver, channel=$chan, release_kind=$kind"
+
+              # Strict test tag policy
+              $semverRegex = "^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
+              if ($ver -notmatch $semverRegex) {
+                  throw "[FAIL-CLOSED] Formato SemVer estratto dal tag non valido: $ver"
               }
-              if ($reqInst -ne "true") {
-                  throw "[FAIL-CLOSED] Le release 'official/stable' richiedono l'installer Inno Setup"
+
+              $isPrerelease = $Matches[4] -ne $null
+              if (-not $isPrerelease) {
+                  throw "[FAIL-CLOSED] I tag di test phase6-release-test-* richiedono un suffisso prerelease (es. phase6-release-test-0.1.0-rc.1)"
+              }
+          } else {
+              $ver = "${{ inputs.version }}".Trim()
+              if ($ver.StartsWith("v")) { $ver = $ver.Substring(1) }
+              $chan = "${{ inputs.channel }}"
+              $kind = "${{ inputs.release_kind }}"
+              $reqInst = "${{ inputs.require_installer }}"
+
+              Write-Host "Workflow dispatch: version=$ver, channel=$chan, release_kind=$kind, require_installer=$reqInst"
+
+              $semverRegex = "^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
+              if ($ver -notmatch $semverRegex) {
+                  throw "[FAIL-CLOSED] Formato SemVer non valido: $ver"
+              }
+
+              $isPrerelease = $Matches[4] -ne $null
+
+              if ($kind -eq "candidate" -and -not $isPrerelease) {
+                  throw "[FAIL-CLOSED] Le release 'candidate' devono avere un suffisso prerelease (es. 0.1.0-rc.1)"
+              }
+
+              if ($kind -eq "official") {
+                  if ($isPrerelease) {
+                      throw "[FAIL-CLOSED] Le release 'official' non devono contenere suffissi prerelease"
+                  }
+                  if ($chan -ne "stable") {
+                      throw "[FAIL-CLOSED] Le release 'official' devono appartenere al canale 'stable'"
+                  }
+                  if ($reqInst -ne "true") {
+                      throw "[FAIL-CLOSED] Le release 'official/stable' richiedono l'installer Inno Setup"
+                  }
+              }
+
+              if ($chan -eq "beta" -and $reqInst -ne "true") {
+                  throw "[FAIL-CLOSED] Le release del canale 'beta' richiedono l'installer Inno Setup"
               }
           }
 
-          if ($chan -eq "beta" -and $reqInst -ne "true") {
-              throw "[FAIL-CLOSED] Le release del canale 'beta' richiedono l'installer Inno Setup"
-          }
-
+          echo "version=$ver" >> $env:GITHUB_OUTPUT
+          echo "channel=$chan" >> $env:GITHUB_OUTPUT
+          echo "release_kind=$kind" >> $env:GITHUB_OUTPUT
+          echo "require_installer=$reqInst" >> $env:GITHUB_OUTPUT
           Write-Host "✅ Validazione parametri e policy SemVer completata con successo!"
 
       - name: Set up Dart
@@ -148,13 +182,19 @@ jobs:
           CATALOG_SIGNING_PRIVATE_KEY: ${{ secrets.CATALOG_SIGNING_PRIVATE_KEY }}
           CATALOG_SIGNING_KEY_ID: ${{ secrets.CATALOG_SIGNING_KEY_ID }}
         run: |
-          $reqInst = [bool]::Parse("${{ inputs.require_installer }}")
+          $ver = "${{ steps.params.outputs.version }}"
+          $chan = "${{ steps.params.outputs.channel }}"
+          $kind = "${{ steps.params.outputs.release_kind }}"
+          $reqInst = [bool]::Parse("${{ steps.params.outputs.require_installer }}")
+
           $params = @{
-              Version = "${{ inputs.version }}"
-              Channel = "${{ inputs.channel }}"
-              ReleaseKind = "${{ inputs.release_kind }}"
+              Version = $ver
+              Channel = $chan
+              ReleaseKind = $kind
               WorkflowRunId = "${{ github.run_id }}"
               WorkflowRunAttempt = "${{ github.run_attempt }}"
+              SourceRef = "${{ github.ref }}"
+              SourceBranch = "${{ github.ref_name }}"
           }
           if ($reqInst) {
               $params.RequireInstaller = $true
@@ -164,9 +204,10 @@ jobs:
       - name: Verify Release Assets Integrity (Fail-Closed)
         shell: powershell
         run: |
-          $reqInst = [bool]::Parse("${{ inputs.require_installer }}")
+          $ver = "${{ steps.params.outputs.version }}"
+          $reqInst = [bool]::Parse("${{ steps.params.outputs.require_installer }}")
           $params = @{
-              Version = "${{ inputs.version }}"
+              Version = $ver
           }
           if ($reqInst) {
               $params.RequireInstaller = $true
@@ -176,15 +217,16 @@ jobs:
       - name: Generate Release Notes
         shell: powershell
         run: |
-          $ver = "${{ inputs.version }}"
-          $chan = "${{ inputs.channel }}"
-          $kind = "${{ inputs.release_kind }}"
-          $sha = (git rev-parse HEAD).Trim()
+          $ver = "${{ steps.params.outputs.version }}"
+          $chan = "${{ steps.params.outputs.channel }}"
+          $kind = "${{ steps.params.outputs.release_kind }}"
+          $sha = "${{ github.sha }}"
+          $ref = "${{ github.ref_name }}"
 
           $notes = @"
           # A.U.R.A. v$ver ($chan / $kind)
 
-          Commit di riferimento: ``$sha``
+          Source Commit: ``$sha`` (Branch/Ref: ``$ref``)
 
           $($kind -eq "candidate" ? "> [!WARNING]`n> **TEST BUILD — DO NOT REDISTRIBUTE**`n" : "")
 
@@ -214,19 +256,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "v${{ inputs.version }}"
+          $ver = "${{ steps.params.outputs.version }}"
+          $tag = "v$ver"
           $commit = "${{ github.sha }}"
-          $isPrerelease = "${{ inputs.release_kind }}" -eq "candidate"
+          $isPrerelease = "${{ steps.params.outputs.release_kind }}" -eq "candidate"
 
-          Write-Host "Creazione tag $tag per il commit $commit..."
+          Write-Host "Creazione o verifica tag $tag ancorato al commit $commit..."
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a $tag $commit -m "Release $tag"
-          git push origin $tag
+          
+          # Se il trigger e push tag phase6-release-test-*, usa quel tag oppure crea v<version>
+          if ("${{ github.event_name }}" -eq "push") {
+              $tag = "${{ github.ref_name }}"
+          } else {
+              git tag -a $tag $commit -m "Release $tag"
+              git push origin $tag
+          }
 
-          Write-Host "Creazione GitHub Draft Release..."
+          Write-Host "Creazione GitHub Draft Release per $tag ancorata a $commit..."
           $argsList = @(
               "release", "create", $tag,
+              "--target", $commit,
               "--title", "A.U.R.A. $tag",
               "--notes-file", "release\RELEASE_NOTES.md",
               "--draft"
@@ -235,18 +285,18 @@ jobs:
               $argsList += "--prerelease"
           }
 
-          # Aggiunta asset
+          # Allegati della release
           $assets = Get-ChildItem -Path "release" -File | Where-Object { $_.Name -ne "RELEASE_NOTES.md" }
           foreach ($a in $assets) {
               $argsList += $a.FullName
           }
 
           gh @argsList
-          Write-Host "✅ Draft Release creata con successo!"
+          Write-Host "✅ Draft Release $tag creata con successo ancorata a $commit!"
 
       - name: Upload Diagnostic Workflow Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aura-release-diagnostics-v${{ inputs.version }}
+          name: aura-release-diagnostics-v${{ steps.params.outputs.version }}
           path: release/
           retention-days: 5

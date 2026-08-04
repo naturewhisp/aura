@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Target Version (e.g. 0.1.0-rc.1 or 0.1.0)'
+        description: 'Target Semantic Version (e.g. 0.1.0-rc.1 or 0.1.0)'
         required: true
         type: string
       channel:
@@ -29,9 +29,6 @@ on:
         required: true
         type: boolean
         default: true
-  push:
-    tags:
-      - 'phase6-release-test-*'
 
 permissions:
   contents: read
@@ -49,7 +46,7 @@ jobs:
     permissions:
       contents: write
 
-    environment: ${{ (github.event_name == 'push' || inputs.release_kind == 'candidate') && 'release-candidate' || 'release' }}
+    environment: ${{ inputs.release_kind == 'candidate' && 'release-candidate' || 'release' }}
 
     steps:
       - name: Checkout Repository
@@ -61,70 +58,42 @@ jobs:
         id: params
         shell: pwsh
         run: |
-          if ("${{ github.event_name }}" -eq "push") {
-              $tagRef = "${{ github.ref_name }}"
-              Write-Host "Triggered by push tag: $tagRef"
+          $ver = "${{ inputs.version }}".Trim()
+          if ($ver.StartsWith("v")) { $ver = $ver.Substring(1) }
+          $chan = "${{ inputs.channel }}"
+          $kind = "${{ inputs.release_kind }}"
+          $reqInst = "${{ inputs.require_installer }}"
 
-              if ($tagRef -notlike "phase6-release-test-*") {
-                  throw "[FAIL-CLOSED] Tag ref non supportato per questo workflow: $tagRef"
+          Write-Host "Workflow dispatch: version=$ver, channel=$chan, release_kind=$kind, require_installer=$reqInst"
+
+          $semverRegex = "^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
+          if ($ver -notmatch $semverRegex) {
+              throw "[FAIL-CLOSED] Formato SemVer non valido: $ver"
+          }
+
+          $isPrerelease = $Matches[4] -ne $null
+
+          if ($kind -eq "candidate" -and -not $isPrerelease) {
+              throw "[FAIL-CLOSED] Le release 'candidate' devono avere un suffisso prerelease (es. 0.1.0-rc.1)"
+          }
+
+          if ($kind -eq "official") {
+              if ("${{ github.ref }}" -ne "refs/heads/main" -and "${{ github.ref }}" -ne "refs/heads/master") {
+                  throw "[FAIL-CLOSED] Le release ufficiali 'official/stable' devono provenire esclusivamente dal branch main/master."
               }
-
-              $ver = $tagRef.Replace("phase6-release-test-", "").Trim()
-              if ($ver.StartsWith("v")) { $ver = $ver.Substring(1) }
-
-              $chan = "dev"
-              $kind = "candidate"
-              $reqInst = "true"
-
-              Write-Host "Modo TEST TAG attivato: version=$ver, channel=$chan, release_kind=$kind"
-
-              $semverRegex = "^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
-              if ($ver -notmatch $semverRegex) {
-                  throw "[FAIL-CLOSED] Formato SemVer estratto dal tag non valido: $ver"
+              if ($isPrerelease) {
+                  throw "[FAIL-CLOSED] Le release 'official' non devono contenere suffissi prerelease"
               }
-
-              $isPrerelease = $Matches[4] -ne $null
-              if (-not $isPrerelease) {
-                  throw "[FAIL-CLOSED] I tag di test phase6-release-test-* richiedono un suffisso prerelease (es. phase6-release-test-0.1.0-rc.1)"
+              if ($chan -ne "stable") {
+                  throw "[FAIL-CLOSED] Le release 'official' devono appartenere al canale 'stable'"
               }
-          } else {
-              $ver = "${{ inputs.version }}".Trim()
-              if ($ver.StartsWith("v")) { $ver = $ver.Substring(1) }
-              $chan = "${{ inputs.channel }}"
-              $kind = "${{ inputs.release_kind }}"
-              $reqInst = "${{ inputs.require_installer }}"
-
-              Write-Host "Workflow dispatch: version=$ver, channel=$chan, release_kind=$kind, require_installer=$reqInst"
-
-              $semverRegex = "^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?$"
-              if ($ver -notmatch $semverRegex) {
-                  throw "[FAIL-CLOSED] Formato SemVer non valido: $ver"
+              if ($reqInst -ne "true") {
+                  throw "[FAIL-CLOSED] Le release 'official/stable' richiedono l'installer Inno Setup"
               }
+          }
 
-              $isPrerelease = $Matches[4] -ne $null
-
-              if ($kind -eq "candidate" -and -not $isPrerelease) {
-                  throw "[FAIL-CLOSED] Le release 'candidate' devono avere un suffisso prerelease (es. 0.1.0-rc.1)"
-              }
-
-              if ($kind -eq "official") {
-                  if ("${{ github.ref }}" -ne "refs/heads/main" -and "${{ github.ref }}" -ne "refs/heads/master") {
-                      throw "[FAIL-CLOSED] Le release ufficiali 'official/stable' devono provenire esclusivamente dal branch main/master."
-                  }
-                  if ($isPrerelease) {
-                      throw "[FAIL-CLOSED] Le release 'official' non devono contenere suffissi prerelease"
-                  }
-                  if ($chan -ne "stable") {
-                      throw "[FAIL-CLOSED] Le release 'official' devono appartenere al canale 'stable'"
-                  }
-                  if ($reqInst -ne "true") {
-                      throw "[FAIL-CLOSED] Le release 'official/stable' richiedono l'installer Inno Setup"
-                  }
-              }
-
-              if ($chan -eq "beta" -and $reqInst -ne "true") {
-                  throw "[FAIL-CLOSED] Le release del canale 'beta' richiedono l'installer Inno Setup"
-              }
+          if ($chan -eq "beta" -and $reqInst -ne "true") {
+              throw "[FAIL-CLOSED] Le release del canale 'beta' richiedono l'installer Inno Setup"
           }
 
           Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver" -Encoding utf8
@@ -216,7 +185,7 @@ jobs:
           $chan = "${{ steps.params.outputs.channel }}"
           $kind = "${{ steps.params.outputs.release_kind }}"
           $reqInst = [bool]::Parse("${{ steps.params.outputs.require_installer }}")
-          $tag = if ("${{ github.event_name }}" -eq "push") { "${{ github.ref_name }}" } else { "v$ver" }
+          $tag = "v$ver"
 
           $params = @{
               Version = $ver
@@ -310,13 +279,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           
-          if ("${{ github.event_name }}" -eq "push") {
-              $tag = "${{ github.ref_name }}"
-          } else {
-              git tag -a $tag $commit -m "Release $tag"
-              git push origin $tag
-              if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Push git tag $tag fallito" }
-          }
+          git tag -a $tag $commit -m "Release $tag"
+          git push origin $tag
+          if ($LASTEXITCODE -ne 0) { throw "[FAIL-CLOSED] Push git tag $tag fallito" }
 
           Write-Host "Creazione GitHub Draft Release per $tag ancorata a $commit..."
           $argsList = @(
@@ -344,4 +309,4 @@ jobs:
         with:
           name: aura-release-diagnostics-v${{ steps.params.outputs.version }}
           path: release/
-          retention-days: 5
+          retention-days: ${{ steps.params.outputs.release_kind == 'official' && 30 || 5 }}

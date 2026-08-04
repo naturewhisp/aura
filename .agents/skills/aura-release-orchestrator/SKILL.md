@@ -13,7 +13,8 @@ Questa skill fornisce le istruzioni operative e la procedura passo-passo affinch
 
 1. **Trigger Esclusivo Manuale**: Tutti i rilasci sono avviati via `workflow_dispatch`. Nessun rilascio viene scatenato automaticamente da `git push` o Pull Request.
 2. **Immutabilità e Zero Warnings**: Prima di avviare qualsiasi rilascio, la codebase locale deve superare `dart analyze .` e `flutter analyze` nel folder `app/` senza warning o info (`Zero Diagnostic Policy`).
-3. **Stato Iniziale sempre Draft**: Tutti i rilasci vengono creati su GitHub in stato **Draft** (`--draft`) e **Prerelease** (se candidate). La pubblicazione finale è un'azione deliberata eseguita dopo lo smoke test.
+3. **Pinning e Congelamento SHA**: L'HEAD locale ed il branch remoto devono coincidere perfettamente prima dell'avvio (`$expectedSha == $remoteSha`). Il tag creato da GitHub deve puntare esattamente a quel commit SHA.
+4. **Stato Iniziale sempre Draft**: Tutti i rilasci vengono creati su GitHub in stato **Draft** (`--draft`) e **Prerelease** (se candidate). La pubblicazione finale è un'azione deliberata eseguita solo dopo lo smoke test e l'approvazione dell'utente.
 
 ---
 
@@ -56,7 +57,7 @@ gh workflow run release.yml `
 
 ## 3. Procedura Operativa Passo-Passo per l'Agente
 
-### Fase A: Preparazione Pre-Rilascio
+### Fase A: Preparazione Pre-Rilascio e Congelamento SHA
 1. Verificare che l'albero di lavoro locale sia pulito: `git status`.
 2. Eseguire l'analisi statica locale:
    ```powershell
@@ -68,57 +69,98 @@ gh workflow run release.yml `
    dart test
    Set-Location app; flutter test; Set-Location ..
    ```
-4. Assicurarsi che le ultime modifiche siano state pushate sul ramo remoto interessato (`git push origin <branch>`).
+4. Congelare e verificare la corrispondenza esatta del commit SHA tra HEAD locale e branch remoto:
+   ```powershell
+   $branch = git branch --show-current
+   $expectedSha = (git rev-parse HEAD).Trim()
+   $remoteSha = (git rev-parse "origin/$branch").Trim()
+
+   if ($expectedSha -ne $remoteSha) {
+       throw "[FAIL-CLOSED] HEAD locale ($expectedSha) e branch remoto origin/$branch ($remoteSha) non coincidono. Eseguire git push prima del rilascio."
+   }
+   ```
 
 ---
 
-### Fase B: Dislocazione ed Monitoraggio della Pipeline CI/CD
+### Fase B: Dislocazione ed Identificazione Deterministica della Run
 1. Lanciare il workflow con i parametri appropriati (Candidate o Official):
    ```powershell
-   gh workflow run release.yml -f version=<semver> -f channel=<channel> -f release_kind=<kind> -f require_installer=true
+   gh workflow run release.yml --ref $branch -f version=<semver> -f channel=<channel> -f release_kind=<kind> -f require_installer=true
    ```
-2. Recuperare l'ID della run appena avviata e monitorarla:
+2. Attendere 3 secondi e recuperare in modo deterministico l'ID della run verificando la corrispondenza con `$expectedSha`:
    ```powershell
-   gh run list --workflow=release.yml --limit 1
-   gh run watch <run_id>
+   Start-Sleep -Seconds 3
+
+   $runsJson = gh run list --workflow=release.yml --event workflow_dispatch --branch $branch --limit 5 --json databaseId,headSha,createdAt
+   $matchingRun = ($runsJson | ConvertFrom-Json) | Where-Object { $_.headSha -eq $expectedSha } | Select-Object -First 1
+
+   if (-not $matchingRun) {
+       throw "[FAIL-CLOSED] Impossibile individuare in modo univoco la run di workflow per il commit $expectedSha"
+   }
+   $runId = $matchingRun.databaseId
+   Write-Host "Run individuata con successo: ID $runId (HEAD SHA: $expectedSha)"
+   ```
+3. Monitorare l'esecuzione della run fino alla conclusione:
+   ```powershell
+   gh run watch $runId
    ```
 
 ---
 
-### Fase C: Ispezione della Draft Release e Download Asset
-Una volta completato con successo il job su GitHub:
-1. Ispezionare la Draft Release creata:
+### Fase C: Ispezione della Draft Release, Tag SHA & Download Asset
+1. Verificare l'ancoraggio della Draft Release creata e la corrispondenza del Tag Git:
    ```powershell
-   gh release list --limit 5
-   gh release view v<version>
+   $relInfo = gh release view "v$version" --json targetCommitish,tagName,isDraft,isPrerelease | ConvertFrom-Json
+   $tagSha = (git rev-list -n 1 "v$version").Trim()
+
+   if ($tagSha -ne $expectedSha) {
+       throw "[FAIL-CLOSED] Il tag v$version ($tagSha) non punta al commit atteso ($expectedSha)"
+   }
    ```
-2. Scaricare gli asset generati in una cartella di test (es. `build/release-verify/`):
+2. Scaricare gli asset generati in una cartella isolata (es. `build/release-verify/`):
    ```powershell
-   gh release download v<version> --dir build/release-verify/
+   gh release download "v$version" --dir build/release-verify/
    ```
 
 ---
 
-### Fase D: Verification Asset Integrity (Fail-Closed)
-1. Verificare la corrispondenza dei checksum SHA-256:
-   ```powershell
-   Get-FileHash -Path 'build/release-verify/*' -Algorithm SHA256
-   ```
-2. Scompattare lo ZIP `aura-v<version>-win-x64.zip` in `build/release-verify/aura-v<version>-win-x64`.
-3. Eseguire lo script di verifica fail-closed:
+### Fase D: Verification Asset Integrity Fail-Closed
+1. Scompattare l'archivio ZIP portatile `aura-v<version>-win-x64.zip` in `build/release-verify/aura-v<version>-win-x64`.
+2. Eseguire l'ispezione ed il verifier autoritativo fail-closed (che convalida automaticamente checksum SHA-256, eseguibili nativi PE, manifest del catalogo Ed25519 e header audio):
    ```powershell
    pwsh -File .\tool\verify_release_assets.ps1 -Version <version> -ReleaseDir build/release-verify -RequireInstaller
    ```
-4. Verificare l'uscita con exit code 0 e l'esito:
+3. Verificare che l'output si concluda con l'esito tassativo:
    `✅ TUTTE LE VERIFICHE DI SICUREZZA ED INTEGRITA' SONO SUPERATE!`
 
 ---
 
-### Fase E: Pubblicazione Definitiva (Smoke Test & Publish)
-Dopo aver confermato l'esito positivo delle verifiche e ricevuto la conferma dell'utente:
-1. Promuovere la Draft Release a Release Pubblica scaricabile:
-   ```powershell
-   gh release edit v<version> --draft=false
-   ```
-2. Notificare l'utente fornendo l'URL della Release ufficiale pubblicata:
-   `https://github.com/naturewhisp/aura/releases/tag/v<version>`
+### Fase E: Smoke Test Obbligatorio & Pubblicazione
+
+#### Checklist di Smoke Test Manuale Obbligatorio:
+Prima di procedere alla pubblicazione della release, l'agente deve verificare o richiedere la conferma dei seguenti punti di smoke test:
+- [ ] Installazione completata senza errori tramite `aura_setup_v<version>.exe`.
+- [ ] Avvio dell'applicazione sia dalla versione installata che da quella portatile (`.zip`).
+- [ ] Rilevamento corretto del backend hardware di inferenza (`win-x64-cuda`, `win-x64-vulkan`, `win-x64-cpu-avx2`).
+- [ ] Download ed onboarding/setup verificato del modello dal catalogo.
+- [ ] Esecuzione di un turno completo di inferenza (turni `EvaluatorAgent` ed `ActorAgent`).
+- [ ] Riproduzione audio e regolazione delle impostazioni.
+- [ ] Shutdown dell'applicazione senza processi `llama-server.exe` rimasti orfani in background.
+- [ ] Disinstallazione pulita tramite l'uninstaller.
+- [ ] Conferma esplicita dell'utente per la pubblicazione finale.
+
+#### Pubblicazione con Preservazione dei Flag Prerelease:
+Dopo il superamento dello smoke test e l'approvazione dell'utente, l'agente esegue la pubblicazione specificando esplicitamente il flag prerelease:
+
+- **Per Release Candidate**:
+  ```powershell
+  gh release edit "v$version" --draft=false --prerelease
+  ```
+
+- **Per Release Ufficiale**:
+  ```powershell
+  gh release edit "v$version" --draft=false --prerelease=false
+  ```
+
+Notificare l'utente con il link finale:
+`https://github.com/naturewhisp/aura/releases/tag/v<version>`

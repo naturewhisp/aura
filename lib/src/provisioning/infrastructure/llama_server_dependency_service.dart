@@ -511,11 +511,19 @@ final class DefaultLlamaServerDependencyService
       );
     }
 
+    final effectiveVendorDirs = List<String>.from(vendorDirectories);
+    final parentPath = io.File(cleanPath).parent.path;
+    final candidateVendor = '$parentPath\\vendor';
+    if (!effectiveVendorDirs.contains(candidateVendor) &&
+        await _fileSystem.directoryExists(candidateVendor)) {
+      effectiveVendorDirs.add(candidateVendor);
+    }
+
     // Probe processuale 1: Invocazione di --version
     final versionResult = await _runProbe(
       cleanPath,
       ['--version'],
-      vendorDirectories: vendorDirectories,
+      vendorDirectories: effectiveVendorDirs,
     );
     if (versionResult != null && versionResult.isSuccess) {
       final versionStr = _extractVersion(versionResult.output);
@@ -534,7 +542,7 @@ final class DefaultLlamaServerDependencyService
     final helpResult = await _runProbe(
       cleanPath,
       ['--help'],
-      vendorDirectories: vendorDirectories,
+      vendorDirectories: effectiveVendorDirs,
     );
     if (helpResult != null && helpResult.looksLikeLlamaServerHelp) {
       final versionStr = _extractVersion(helpResult.output) ?? 'unknown';
@@ -549,9 +557,21 @@ final class DefaultLlamaServerDependencyService
       );
     }
 
-    final errorOutput = versionResult?.output ??
-        helpResult?.output ??
-        'Timeout o probe fallito.';
+    final versionOutput = versionResult?.output.trim() ?? '';
+    final helpOutput = helpResult?.output.trim() ?? '';
+    final rawError = versionOutput.isNotEmpty
+        ? versionOutput
+        : (helpOutput.isNotEmpty ? helpOutput : '');
+
+    final String errorOutput;
+    if (rawError.isNotEmpty) {
+      errorOutput = rawError;
+    } else {
+      final code = versionResult?.exitCode ?? helpResult?.exitCode ?? -1;
+      errorOutput =
+          'Impossibile avviare il processo (codice di uscita: $code).';
+    }
+
     return LlamaServerValidationResult(
       status: LlamaServerValidationStatus.probeFailed,
       executablePath: cleanPath,

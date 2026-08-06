@@ -769,31 +769,55 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     }
   }
 
+  Widget _buildErrorMessageBanner(String message) {
+    final detail = message.trim();
+    final formattedMessage = detail.isEmpty
+        ? 'Il processo llama-server non è stato avviato correttamente.'
+        : (detail.startsWith('Il probe processuale') ||
+                detail.startsWith('Errore') ||
+                detail.startsWith('Eseguibile')
+            ? detail
+            : 'Il processo llama-server non è stato avviato: $detail');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0x33EF4444),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFEF4444)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.warning_amber_rounded,
+              color: Color(0xFFEF4444), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              formattedMessage,
+              style: const TextStyle(
+                  color: Color(0xFFFCA5A5), fontSize: 13, height: 1.3),
+            ),
+          ),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _errorMessage = null;
+              });
+            },
+            child: const Icon(Icons.close, color: Color(0xFFFCA5A5), size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStepContent() {
     final currentState = _state;
     if (currentState == null || _isLoading) {
       return const Center(
         child: CircularProgressIndicator(color: Color(0xFF00FFC8)),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 40),
-          const SizedBox(height: 12),
-          Text(
-            _errorMessage!,
-            style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: _isLoading ? null : _initSetup,
-            child: const Text('RIPARTI / RITENTA'),
-          ),
-        ],
       );
     }
 
@@ -807,10 +831,13 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       case FirstRunSetupStep.runtimeSelection:
         final detected =
             currentState.runtimeDetectionResult?.effectiveCandidate;
+        final activeError = _errorMessage ?? currentState.errorMessage;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (activeError != null && activeError.trim().isNotEmpty)
+              _buildErrorMessageBanner(activeError),
             const Text(
               'PASSAGGIO 1: SELEZIONE RUNTIME LLAMA-SERVER',
               style: TextStyle(

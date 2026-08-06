@@ -183,7 +183,7 @@ final class DefaultFirstRunModelSetupFacade
         );
       } else {
         return FirstRunSetupState(
-          step: FirstRunSetupStep.failed,
+          step: FirstRunSetupStep.runtimeSelection,
           preflightResult: probeResult,
           runtimeDetectionResult: detection,
           errorMessage: probeResult.sanitizedMessage,

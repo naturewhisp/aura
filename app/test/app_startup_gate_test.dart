@@ -216,5 +216,39 @@ void main() {
 
       expect(find.byType(FirstRunModelSetupScreen), findsOneWidget);
     });
+
+    testWidgets(
+        'Fresh install with probe failure on evaluateInitialState routes to onboarding step runtimeSelection instead of error screen',
+        (WidgetTester tester) async {
+      final fakeFacade = FakeFirstRunFacade(
+        stateToReturn: const FirstRunSetupState(
+          step: FirstRunSetupStep.runtimeSelection,
+          errorMessage:
+              'Probe di avvio fallito: Impossibile avviare il processo (codice di uscita: -1).',
+        ),
+      );
+
+      await tester.pumpWidget(
+        GameControllerProvider(
+          notifier: notifier,
+          child: MaterialApp(
+            home: AppStartupGate(
+              notifier: notifier,
+              firstRunFacade: fakeFacade,
+              dependencyService: const FakeLlamaServerDependencyService(),
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.byType(FirstRunModelSetupScreen), findsOneWidget);
+      expect(find.text('IMPOSSIBILE VERIFICARE LA CONFIGURAZIONE LOCALE'),
+          findsNothing);
+      expect(find.text('A.U.R.A. — Configurazione Iniziale'), findsOneWidget);
+      expect(fakeFacade.evaluateCalls, greaterThanOrEqualTo(1));
+    });
   });
 }

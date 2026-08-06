@@ -256,6 +256,9 @@ class ManagedLlamaServerConfiguration {
     String? runtimeInstanceId,
     String? logFilePath,
     bool? disableReasoning,
+    // Sentinel: usare `clearProvenance: true` per azzerare esplicitamente il campo nullable.
+    ManagedModelProvenance? provenance,
+    bool clearProvenance = false,
   }) {
     return ManagedLlamaServerConfiguration(
       executablePath: executablePath ?? this.executablePath,
@@ -282,7 +285,7 @@ class ManagedLlamaServerConfiguration {
       runtimeInstanceId: runtimeInstanceId ?? this.runtimeInstanceId,
       logFilePath: logFilePath ?? this.logFilePath,
       disableReasoning: disableReasoning ?? this.disableReasoning,
-      provenance: provenance ?? this.provenance,
+      provenance: clearProvenance ? null : (provenance ?? this.provenance),
     );
   }
 }

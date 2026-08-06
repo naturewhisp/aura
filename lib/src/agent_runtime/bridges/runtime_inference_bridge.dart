@@ -278,16 +278,16 @@ class RuntimeInferenceBridge
   }
 
   /// Firma grammaticale composta: presente nel corpo di un errore indica un'incompatibilità
-  /// del sampler o della grammatica strutturata di llama.cpp.
+  /// **specifica** del sampler o della grammatica strutturata di llama.cpp.
+  /// Si richiede una corrispondenza su pattern multi-parola per evitare falsi positivi su
+  /// termini generici come "unsupported sampler option" o "grammar metadata missing".
   static bool _hasGrammarSignature(String errStr) {
     return errStr.contains('failed to initialize samplers') ||
         errStr.contains('unexpected empty grammar stack') ||
         errStr.contains('grammar parse error') ||
         errStr.contains('structured output unavailable') ||
         errStr.contains('malformed structured output') ||
-        errStr.contains('invalid schema grammar') ||
-        errStr.contains('sampler') ||
-        errStr.contains('grammar');
+        errStr.contains('invalid schema grammar');
   }
 
   /// Mappa in modo preciso l'esito diagnostico del tentativo fallito di inferenza strutturata.
@@ -335,10 +335,15 @@ class RuntimeInferenceBridge
           return 'model_missing';
         case RuntimeFailureCode.generationFailed:
           // Per generationFailed, distinguiamo 422 da 400 dal corpo del messaggio.
+          // Se il corpo non contiene un codice HTTP esplicito, usiamo 'grammar_error'
+          // per non inventare un protocol status non attestato.
           if (errStr.contains('422') && _hasGrammarSignature(errStr)) {
             return 'http_422_structured_error';
           }
-          if (_hasGrammarSignature(errStr)) return 'http_400_grammar_error';
+          if (errStr.contains('400') && _hasGrammarSignature(errStr)) {
+            return 'http_400_grammar_error';
+          }
+          if (_hasGrammarSignature(errStr)) return 'grammar_error';
           return 'generation_failed';
         default:
           return 'structured_generation_failed';

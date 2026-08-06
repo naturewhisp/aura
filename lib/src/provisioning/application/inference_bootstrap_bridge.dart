@@ -198,29 +198,43 @@ final class InferenceBootstrapBridge {
         );
       }
 
-      Future<String?> resolveModelPath(ConfiguredModelReference? ref) async {
-        if (ref == null) return null;
-        if (ref is ExternalModelReference) return ref.absolutePath;
+      Future<(String?, ManagedModelProvenance?)> resolveModelPath(
+        ConfiguredModelReference? ref,
+      ) async {
+        if (ref == null) return (null, null);
+        if (ref is ExternalModelReference) return (ref.absolutePath, null);
         if (ref is ManagedModelReference) {
           final record =
               await services.installationRecordRepository.readRecord();
           final descriptor = record.findInstallation(ref.installationId);
           if (descriptor == null ||
               descriptor.status != InstallationStatus.verified) {
-            return null;
+            return (null, null);
           }
           final installDir =
               services.pathResolver.resolveAppManagedRelativePath(
             descriptor.relativeInstallPath,
           );
           final entryFileName = descriptor.entryFileName ?? '';
-          return '$installDir\\$entryFileName';
+          final path = '$installDir\\$entryFileName';
+          final meta = descriptor.metadata;
+          final provenance = ManagedModelProvenance(
+            artifactId: descriptor.artifactId,
+            repository: (meta['repository'] as String?) ?? '',
+            revision: (meta['revision'] as String?) ?? descriptor.version,
+            fileName: entryFileName,
+            expectedSha256: descriptor.sha256,
+            integrityVerified: descriptor.status == InstallationStatus.verified,
+            modelArchitecture: descriptor.architecture,
+          );
+          return (path, provenance);
         }
-        return null;
+        return (null, null);
       }
 
-      final actorPath = await resolveModelPath(actorRef);
-      final evaluatorPath = await resolveModelPath(evaluatorRef);
+      final (actorPath, actorProvenance) = await resolveModelPath(actorRef);
+      final (evaluatorPath, evaluatorProvenance) =
+          await resolveModelPath(evaluatorRef);
 
       if (actorPath == null ||
           actorPath.trim().isEmpty ||
@@ -260,6 +274,7 @@ final class InferenceBootstrapBridge {
         shutdownTimeout: const Duration(seconds: 15),
         apiKey: 'managed-actor-secret',
         diagnosticMode: false,
+        provenance: actorProvenance,
       );
 
       final evaluatorConfig = ManagedLlamaServerConfiguration(
@@ -274,6 +289,7 @@ final class InferenceBootstrapBridge {
         shutdownTimeout: const Duration(seconds: 10),
         apiKey: 'managed-evaluator-secret',
         diagnosticMode: false,
+        provenance: evaluatorProvenance,
       );
 
       final topology = ManagedInferenceTopology(

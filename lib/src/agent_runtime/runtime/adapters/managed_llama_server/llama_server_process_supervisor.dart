@@ -302,17 +302,17 @@ class LlamaServerProcessSupervisor {
     if (_configuration.logFilePath != null &&
         _configuration.logFilePath!.trim().isNotEmpty &&
         _fileSystem is LocalFileSystem) {
-      // Apre il sink prima di _writeBootMetadataHeader in modo che eventuali eccezioni
-      // sincrone nel metodo non lascino il sink aperto senza riferimento.
-      final sink = io.File(_configuration.logFilePath!)
-        ..parent.createSync(recursive: true);
-      final openSink = sink.openWrite(mode: io.FileMode.append);
+      io.IOSink? openSink;
       try {
+        final file = io.File(_configuration.logFilePath!);
+        file.parent.createSync(recursive: true);
+        openSink = file.openWrite(mode: io.FileMode.append);
         _logFileSink = openSink;
-        _writeBootMetadataHeader(sink);
+        _writeBootMetadataHeader(file);
       } catch (_) {
-        // Chiude il sink prima di azzerare il riferimento per evitare leak di risorse.
-        openSink.close().ignore();
+        // Un errore nel log diagnostico non deve impedire l'avvio del runtime.
+        // Il sink viene chiuso (fire-and-forget) per evitare leak di risorse.
+        unawaited(openSink?.close());
         _logFileSink = null;
       }
     }

@@ -197,15 +197,18 @@ class MetricsDashboard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "SYSTEM RESONANCE:",
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 14.0,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+              const Expanded(
+                child: Text(
+                  "SYSTEM RESONANCE:",
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 14.0,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
                 ),
               ),
+              const SizedBox(width: 8.0),
               Text(
                 isVictoryOverload
                     ? "9.99x (OVERFLOW)"
@@ -247,20 +250,30 @@ class MetricsDashboard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      "LATENZA INFERENZA: ${lastInferenceDuration.toStringAsFixed(2)}s",
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11.0,
-                        color: Colors.white,
+                    Expanded(
+                      child: Text(
+                        "LATENZA INFERENZA: ${lastInferenceDuration.toStringAsFixed(2)}s",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11.0,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                    Text(
-                      "BANDA: ${lastTokensPerSecond.toStringAsFixed(1)} T/s",
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 11.0,
-                        color: Colors.white,
+                    const SizedBox(width: 8.0),
+                    Expanded(
+                      child: Text(
+                        "BANDA: ${lastTokensPerSecond.toStringAsFixed(1)} T/s",
+                        textAlign: TextAlign.right,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11.0,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ],
@@ -291,21 +304,30 @@ class MetricsDashboard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "PANOPTICON COMPACT TELEMETRY",
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 11.0,
-                  fontWeight: FontWeight.bold,
-                  color: systemColor,
+              Expanded(
+                child: Text(
+                  "PANOPTICON COMPACT TELEMETRY",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 11.0,
+                    fontWeight: FontWeight.bold,
+                    color: systemColor,
+                  ),
                 ),
               ),
-              Text(
-                statusText,
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  fontSize: 9.0,
-                  color: systemColor.withValues(alpha: 0.8),
+              const SizedBox(width: 8.0),
+              Flexible(
+                child: Text(
+                  statusText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 9.0,
+                    color: systemColor.withValues(alpha: 0.8),
+                  ),
                 ),
               ),
             ],
@@ -398,22 +420,31 @@ class MetricsDashboard extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 8.0,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF888888),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 8.0,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF888888),
+                ),
               ),
             ),
-            Text(
-              labelVal,
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 8.0,
-                fontWeight: FontWeight.bold,
-                color: color,
+            const SizedBox(width: 4.0),
+            Flexible(
+              child: Text(
+                labelVal,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 8.0,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
             ),
           ],
@@ -459,22 +490,31 @@ class MetricsDashboard extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12.0,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF888888),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12.0,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF888888),
+                ),
               ),
             ),
-            Text(
-              labelVal,
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 13.0,
-                fontWeight: FontWeight.bold,
-                color: color,
+            const SizedBox(width: 8.0),
+            Flexible(
+              child: Text(
+                labelVal,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13.0,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
             ),
           ],

@@ -1595,13 +1595,15 @@ class _BootMenuScreenState extends State<BootMenuScreen>
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                "NOME VISUALIZZATO IN CHAT (DISPLAY NAME)",
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  color: Color(0xFF00FF66),
-                  fontSize: 12.0,
-                  fontWeight: FontWeight.bold,
+              const Expanded(
+                child: Text(
+                  "NOME VISUALIZZATO IN CHAT (DISPLAY NAME)",
+                  style: TextStyle(
+                    fontFamily: 'monospace',
+                    color: Color(0xFF00FF66),
+                    fontSize: 12.0,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
               if (widget.notifier.userDisplayName != null)
@@ -1792,8 +1794,9 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8.0),
-                      Row(
+                      Wrap(
+                        spacing: 8.0,
+                        runSpacing: 8.0,
                         children: [
                           InkWell(
                             key: const Key('btn_set_windowed'),
@@ -1815,7 +1818,6 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
                           InkWell(
                             key: const Key('btn_set_maximized'),
                             onTap: () => shellController.maximize(),
@@ -1836,7 +1838,6 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
                           InkWell(
                             key: const Key('btn_toggle_fullscreen'),
                             onTap: () =>
@@ -1849,7 +1850,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                                     Border.all(color: const Color(0xFFFFB000)),
                               ),
                               child: const Text(
-                                "[ FULLSCREEN (F11) ]",
+                                "[ SCHERMO INTERO SENZA BORDI ]",
                                 style: TextStyle(
                                   fontFamily: 'monospace',
                                   color: Color(0xFFFFB000),

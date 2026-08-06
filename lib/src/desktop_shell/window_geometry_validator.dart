@@ -3,8 +3,10 @@ import 'window_geometry.dart';
 
 /// Validatore e ricompositore di geometria multi-monitor e DPI safe.
 final class WindowGeometryValidator {
-  static const double minLogicalWidth = 800.0;
-  static const double minLogicalHeight = 600.0;
+  static const double minLogicalWidth = 420.0;
+  static const double minLogicalHeight = 500.0;
+  static const double defaultLogicalWidth = 1280.0;
+  static const double defaultLogicalHeight = 800.0;
   static const double minVisibleArea = 100.0;
 
   const WindowGeometryValidator();
@@ -18,8 +20,10 @@ final class WindowGeometryValidator {
   }) {
     if (displays.isEmpty) {
       // Fallback assoluto se nessun display viene restituito dal sistema
-      final width = saved?.width.clamp(minLogicalWidth, 1920.0) ?? 1280.0;
-      final height = saved?.height.clamp(minLogicalHeight, 1080.0) ?? 800.0;
+      final width =
+          saved?.width.clamp(minLogicalWidth, 1920.0) ?? defaultLogicalWidth;
+      final height =
+          saved?.height.clamp(minLogicalHeight, 1080.0) ?? defaultLogicalHeight;
       return WindowGeometry(
         x: 100.0,
         y: 100.0,
@@ -36,7 +40,10 @@ final class WindowGeometryValidator {
 
     if (saved == null) {
       return _centerOnDisplay(
-          primaryDisplay, minLogicalWidth, minLogicalHeight);
+        primaryDisplay,
+        defaultLogicalWidth,
+        defaultLogicalHeight,
+      );
     }
 
     // 1. Clamp dimensioni minime

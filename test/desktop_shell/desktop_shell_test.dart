@@ -195,24 +195,88 @@ void main() {
       ),
     ];
 
-    test('null saved geometry centers window on primary display', () {
+    test('fresh startup uses default size, not minimum size', () {
       final geometry =
           validator.validateAndAdjust(saved: null, displays: displays);
 
       expect(geometry.monitorId, equals('display-primary'));
-      expect(geometry.width, equals(WindowGeometryValidator.minLogicalWidth));
-      expect(geometry.height, equals(WindowGeometryValidator.minLogicalHeight));
+      expect(
+          geometry.width, equals(WindowGeometryValidator.defaultLogicalWidth));
+      expect(geometry.height,
+          equals(WindowGeometryValidator.defaultLogicalHeight));
       expect(geometry.x, greaterThanOrEqualTo(0));
     });
 
+    test('preserves valid portrait geometries', () {
+      const portrait1 = WindowGeometry(
+        x: 100,
+        y: 100,
+        width: 450,
+        height: 800,
+        monitorId: 'display-primary',
+      );
+
+      final adjusted1 =
+          validator.validateAndAdjust(saved: portrait1, displays: displays);
+      expect(adjusted1.width, equals(450.0));
+      expect(adjusted1.height, equals(800.0));
+
+      const portrait2 = WindowGeometry(
+        x: 100,
+        y: 100,
+        width: 600,
+        height: 900,
+        monitorId: 'display-primary',
+      );
+
+      final adjusted2 =
+          validator.validateAndAdjust(saved: portrait2, displays: displays);
+      expect(adjusted2.width, equals(600.0));
+      expect(adjusted2.height, equals(900.0));
+    });
+
+    test('preserves portrait geometry on rotated 1080x1920 display', () {
+      final rotatedDisplays = [
+        const DisplayDescriptor(
+          id: 'display-rotated',
+          name: 'Rotated Portrait Display',
+          x: 0,
+          y: 0,
+          width: 1080,
+          height: 1920,
+          visibleX: 0,
+          visibleY: 0,
+          visibleWidth: 1080,
+          visibleHeight: 1880,
+          scaleFactor: 1.0,
+          isPrimary: true,
+        ),
+      ];
+
+      const saved = WindowGeometry(
+        x: 100,
+        y: 100,
+        width: 500,
+        height: 1000,
+        monitorId: 'display-rotated',
+      );
+
+      final adjusted =
+          validator.validateAndAdjust(saved: saved, displays: rotatedDisplays);
+
+      expect(adjusted.monitorId, equals('display-rotated'));
+      expect(adjusted.width, equals(500.0));
+      expect(adjusted.height, equals(1000.0));
+    });
+
     test(
-        'valid negative coordinates on left monitor are preserved without re-centering',
+        'valid negative coordinates on left monitor in portrait mode are preserved',
         () {
       const saved = WindowGeometry(
         x: -1500,
         y: 100,
-        width: 1280,
-        height: 800,
+        width: 500,
+        height: 850,
         monitorId: 'display-left',
       );
 
@@ -222,6 +286,8 @@ void main() {
       expect(adjusted.monitorId, equals('display-left'));
       expect(adjusted.x, equals(-1500.0));
       expect(adjusted.y, equals(100.0));
+      expect(adjusted.width, equals(500.0));
+      expect(adjusted.height, equals(850.0));
     });
 
     test('off-screen geometry is safely re-centered on fallback display', () {
@@ -242,19 +308,56 @@ void main() {
       expect(adjusted.height, equals(800.0));
     });
 
-    test('enforces minimum size bounds', () {
-      const saved = WindowGeometry(
+    test('clamps each axis independently', () {
+      const savedWidthTooSmall = WindowGeometry(
         x: 100,
         y: 100,
-        width: 200, // Too small
-        height: 150,
+        width: 400, // < 420
+        height: 900,
       );
 
-      final adjusted =
-          validator.validateAndAdjust(saved: saved, displays: displays);
+      final adjustedWidth = validator.validateAndAdjust(
+          saved: savedWidthTooSmall, displays: displays);
+      expect(adjustedWidth.width, equals(420.0));
+      expect(adjustedWidth.height, equals(900.0));
 
-      expect(adjusted.width, equals(WindowGeometryValidator.minLogicalWidth));
-      expect(adjusted.height, equals(WindowGeometryValidator.minLogicalHeight));
+      const savedBothTooSmall = WindowGeometry(
+        x: 100,
+        y: 100,
+        width: 419,
+        height: 499,
+      );
+
+      final adjustedBoth = validator.validateAndAdjust(
+          saved: savedBothTooSmall, displays: displays);
+      expect(adjustedBoth.width, equals(420.0));
+      expect(adjustedBoth.height, equals(500.0));
+    });
+
+    test('adapts default size when display work area is smaller than 1280x800',
+        () {
+      final smallDisplays = [
+        const DisplayDescriptor(
+          id: 'display-small',
+          name: 'Small Netbook Display',
+          x: 0,
+          y: 0,
+          width: 1024,
+          height: 600,
+          visibleX: 0,
+          visibleY: 0,
+          visibleWidth: 1024,
+          visibleHeight: 560,
+          scaleFactor: 1.0,
+          isPrimary: true,
+        ),
+      ];
+
+      final adjusted =
+          validator.validateAndAdjust(saved: null, displays: smallDisplays);
+
+      expect(adjusted.width, equals(1024.0));
+      expect(adjusted.height, equals(560.0));
     });
   });
 

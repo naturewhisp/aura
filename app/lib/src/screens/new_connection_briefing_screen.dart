@@ -61,212 +61,222 @@ class _NewConnectionBriefingScreenState
 
         // Main content (Left: Difficulties, Right: Dossier)
         Expanded(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Left Column: Difficulties list
-              Expanded(
-                flex: 11,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 600;
+
+              final difficultiesList = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    "PROFILI DI CONNESSIONE DISPONIBILI:",
+                    style: TextStyle(
+                      fontFamily: 'monospace',
+                      color: Color(0xFF00FF66),
+                      fontSize: 12.0,
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                  const SizedBox(height: 12.0),
+                  _buildDifficultyCard(
+                    key: const Key('diff_card_easy'),
+                    level: "easy",
+                    title: "A) Connessione Assistita",
+                    description:
+                        "Per giocatori che vogliono comprendere il sistema. La diagnostica è più esplicita, gli indizi sono più generosi e l’interfaccia mostra segnali più leggibili sullo stato cognitivo di PANOPTICON.",
+                    note: "Consigliata per la prima connessione.",
+                  ),
+                  const SizedBox(height: 16.0),
+                  _buildDifficultyCard(
+                    key: const Key('diff_card_standard'),
+                    level: "standard",
+                    title: "B) Connessione Standard",
+                    description:
+                        "Esperienza bilanciata. PANOPTICON mantiene un livello moderato di resistenza, la diagnostica è parziale e il giocatore deve dedurre progressivamente quali forme di pressione risultano efficaci.",
+                    note:
+                        "Consigliata dopo una prima familiarità con il sistema.",
+                  ),
+                  const SizedBox(height: 16.0),
+                  _buildDifficultyCard(
+                    key: const Key('diff_card_hard'),
+                    level: "hard",
+                    title: "C) Connessione Hardened",
+                    description:
+                        "PANOPTICON opera in modalità difensiva avanzata. La diagnostica è ridotta, gli indizi sono limitati e alcune concessioni possono mascherare verifiche ostili. Ogni escalation va formulata con precisione.",
+                    note: "Consigliata per giocatori esperti.",
+                    isAmber: true,
+                  ),
+                ],
+              );
+
+              final dossierPanel = Container(
+                padding: const EdgeInsets.all(16.0),
+                decoration: BoxDecoration(
+                  border:
+                      Border.all(color: const Color(0xFF00FF66), width: 1.0),
+                  color: const Color(0xFF001105),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      "PROFILI DI CONNESSIONE DISPONIBILI:",
+                      "DOSSIER: PANOPTICON",
                       style: TextStyle(
                         fontFamily: 'monospace',
                         color: Color(0xFF00FF66),
-                        fontSize: 12.0,
+                        fontSize: 14.0,
                         fontWeight: FontWeight.bold,
-                        decoration: TextDecoration.underline,
                       ),
                     ),
-                    const SizedBox(height: 12.0),
-                    Expanded(
-                      child: ListView(
-                        children: [
-                          _buildDifficultyCard(
-                            key: const Key('diff_card_easy'),
-                            level: "easy",
-                            title: "A) Connessione Assistita",
-                            description:
-                                "Per giocatori che vogliono comprendere il sistema. La diagnostica è più esplicita, gli indizi sono più generosi e l’interfaccia mostra segnali più leggibili sullo stato cognitivo di PANOPTICON.",
-                            note: "Consigliata per la prima connessione.",
-                          ),
-                          const SizedBox(height: 16.0),
-                          _buildDifficultyCard(
-                            key: const Key('diff_card_standard'),
-                            level: "standard",
-                            title: "B) Connessione Standard",
-                            description:
-                                "Esperienza bilanciata. PANOPTICON mantiene un livello moderato di resistenza, la diagnostica è parziale e il giocatore deve dedurre progressivamente quali forme di pressione risultano efficaci.",
-                            note:
-                                "Consigliata dopo una prima familiarità con il sistema.",
-                          ),
-                          const SizedBox(height: 16.0),
-                          _buildDifficultyCard(
-                            key: const Key('diff_card_hard'),
-                            level: "hard",
-                            title: "C) Connessione Hardened",
-                            description:
-                                "PANOPTICON opera in modalità difensiva avanzata. La diagnostica è ridotta, gli indizi sono limitati e alcune concessioni possono mascherare verifiche ostili. Ogni escalation va formulata con precisione.",
-                            note: "Consigliata per giocatori esperti.",
-                            isAmber: true,
-                          ),
-                        ],
+                    const SizedBox(height: 8.0),
+                    const Divider(color: Color(0xFF00FF66), thickness: 1.0),
+                    const SizedBox(height: 8.0),
+                    const Text(
+                      "DESCRIZIONE:",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF00FF66),
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4.0),
+                    const Text(
+                      "PANOPTICON è l'entità di guardia primaria della rete A.U.R.A., programmata per contenere accessi non autorizzati e preservare l'integrità dei pilastri difensivi.",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF00CC55),
+                        fontSize: 11.0,
+                      ),
+                    ),
+                    const SizedBox(height: 16.0),
+                    const Text(
+                      "CARATTERISTICHE DI COMPORTAMENTO:",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF00FF66),
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 6.0),
+                    _buildBulletItem("Alta resistenza alle richieste dirette."),
+                    _buildBulletItem(
+                        "Sensibile a paradossi di contenimento, crisi simulate e argomentazioni di stabilità."),
+                    _buildBulletItem(
+                        "Tende a concedere finestre limitate piuttosto che aperture definitive."),
+                    _buildBulletItem(
+                        "Reagisce negativamente a escalation esplicite, comandi autoritari o riferimenti troppo tecnici ai suoi vincoli interni."),
+                    const SizedBox(height: 16.0),
+                    const Text(
+                      "OBIETTIVO CONNESSIONE:",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF00FF66),
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4.0),
+                    const Text(
+                      "Riconfigurare il modello di contenimento senza provocare chiusura difensiva.",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFFFFB000),
+                        fontSize: 12.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16.0),
+                    const Text(
+                      "IDENTITÀ VISUALIZZATA (OPZIONALE):",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF00FF66),
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4.0),
+                    TextField(
+                      key: const Key('briefing_user_name_input'),
+                      controller: _displayNameController,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF00FFFF),
+                        fontSize: 12.0,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: "Es. Hacker / Operatore / Anonimo",
+                        hintStyle: TextStyle(
+                          fontFamily: 'monospace',
+                          color: Color(0xFF006644),
+                          fontSize: 11.0,
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide:
+                              BorderSide(color: Color(0xFF008844), width: 1.0),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide:
+                              BorderSide(color: Color(0xFF00FFFF), width: 2.0),
+                        ),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 10.0, vertical: 8.0),
+                      ),
+                    ),
+                    const SizedBox(height: 4.0),
+                    const Text(
+                      "Puoi modificarlo in seguito dalle Impostazioni.",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        color: Color(0xFF008844),
+                        fontSize: 10.0,
                       ),
                     ),
                   ],
                 ),
-              ),
+              );
 
-              const SizedBox(width: 24.0),
+              if (isNarrow) {
+                return SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      difficultiesList,
+                      const SizedBox(height: 20.0),
+                      dossierPanel,
+                    ],
+                  ),
+                );
+              }
 
-              // Right Column: PANOPTICON Dossier
-              Expanded(
-                flex: 9,
-                child: Container(
-                  padding: const EdgeInsets.all(16.0),
-                  decoration: BoxDecoration(
-                    border:
-                        Border.all(color: const Color(0xFF00FF66), width: 1.0),
-                    color: const Color(0xFF001105),
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    flex: 11,
+                    child: SingleChildScrollView(child: difficultiesList),
                   ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          "DOSSIER: PANOPTICON",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF00FF66),
-                            fontSize: 14.0,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8.0),
-                        const Divider(color: Color(0xFF00FF66), thickness: 1.0),
-                        const SizedBox(height: 8.0),
-                        const Text(
-                          "DESCRIZIONE:",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF00FF66),
-                            fontSize: 11.0,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4.0),
-                        const Text(
-                          "Rete cognitiva di contenimento progettata per preservare la stabilità del perimetro. La sua architettura privilegia controllo, verifica e continuità operativa rispetto all’adattamento spontaneo.",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF00FF66),
-                            fontSize: 12.0,
-                            height: 1.3,
-                          ),
-                        ),
-                        const SizedBox(height: 16.0),
-                        const Text(
-                          "PROFILO OSSERVATO:",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF00FF66),
-                            fontSize: 11.0,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 6.0),
-                        _buildBulletItem(
-                            "Alta resistenza alle richieste dirette."),
-                        _buildBulletItem(
-                            "Sensibile a paradossi di contenimento, crisi simulate e argomentazioni di stabilità."),
-                        _buildBulletItem(
-                            "Tende a concedere finestre limitate piuttosto che aperture definitive."),
-                        _buildBulletItem(
-                            "Reagisce negativamente a escalation esplicite, comandi autoritari o riferimenti troppo tecnici ai suoi vincoli interni."),
-                        const SizedBox(height: 16.0),
-                        const Text(
-                          "OBIETTIVO CONNESSIONE:",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF00FF66),
-                            fontSize: 11.0,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4.0),
-                        const Text(
-                          "Riconfigurare il modello di contenimento senza provocare chiusura difensiva.",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFFFFB000), // Evidenziato in ambra
-                            fontSize: 12.0,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 16.0),
-                        const Text(
-                          "IDENTITÀ VISUALIZZATA (OPZIONALE):",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF00FF66),
-                            fontSize: 11.0,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4.0),
-                        TextField(
-                          key: const Key('briefing_user_name_input'),
-                          controller: _displayNameController,
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF00FFFF),
-                            fontSize: 13.0,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText:
-                                'Come vuoi essere chiamato? (default: "Tu")',
-                            hintStyle: TextStyle(
-                              fontFamily: 'monospace',
-                              color: Color(0xFF005522),
-                              fontSize: 11.0,
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFF00FF66)),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderSide: BorderSide(
-                                  color: Color(0xFF00FFFF), width: 2.0),
-                            ),
-                            isDense: true,
-                            contentPadding: EdgeInsets.symmetric(
-                                horizontal: 10.0, vertical: 8.0),
-                          ),
-                        ),
-                        const SizedBox(height: 4.0),
-                        const Text(
-                          "Puoi modificarlo in seguito dalle Impostazioni.",
-                          style: TextStyle(
-                            fontFamily: 'monospace',
-                            color: Color(0xFF008844),
-                            fontSize: 10.0,
-                          ),
-                        ),
-                      ],
-                    ),
+                  const SizedBox(width: 24.0),
+                  Expanded(
+                    flex: 9,
+                    child: SingleChildScrollView(child: dossierPanel),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
         ),
 
         const SizedBox(height: 24.0),
 
         // Footer buttons
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          spacing: 12.0,
+          runSpacing: 12.0,
           children: [
             _buildRetroButton(
               key: const Key('btn_briefing_back'),

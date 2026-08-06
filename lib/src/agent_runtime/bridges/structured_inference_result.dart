@@ -8,8 +8,12 @@ final class StructuredInferenceResult {
   /// La modalità di formato strutturato che ha avuto successo.
   final EvaluatorExecutionMode mode;
 
+  /// Cronologia di tutti i tentativi eseguiti con le relative metriche.
+  final List<EvaluatorAttemptTelemetry> attempts;
+
   const StructuredInferenceResult({
     required this.value,
     required this.mode,
+    this.attempts = const [],
   });
 }

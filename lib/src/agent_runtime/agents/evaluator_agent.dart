@@ -5,9 +5,12 @@ import '../../models/evaluator_delta.dart';
 import '../../models/evaluator_run_result.dart';
 import '../../models/turn_input.dart';
 import '../agent_card.dart';
-import '../bridges/rule_based_evaluator_bridge.dart';
+import '../inference_bridge.dart';
+import '../bridges/dual_model_inference_bridge.dart';
 import '../bridges/local_api_inference_bridge.dart';
 import '../bridges/local_inference_exception.dart';
+import '../bridges/rule_based_evaluator_bridge.dart';
+import '../bridges/structured_inference_result.dart';
 import '../inference_timeout_exception.dart';
 
 /// Helper generico per applicare il timeout alle chiamate di inferenza.
@@ -141,51 +144,27 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
 
     try {
       final bridge = context.inferenceBridge;
-      Map<String, dynamic> rawMap;
-      EvaluatorExecutionMode execMode = EvaluatorExecutionMode.llmJsonSchema;
+      final primaryFuture = _generateStructuredWithFallbackMetadata(
+        bridge: bridge,
+        modelId: context.modelId,
+        messages: messages,
+        schema: _getJsonSchema(),
+        temperature: 0.0,
+        thinking: context.thinking ?? false,
+      );
 
-      if (bridge is LocalApiInferenceBridge) {
-        final primaryFuture = bridge.generateStructuredWithMetadata(
+      final structRes = await _withInferenceTimeout(
+        future: primaryFuture,
+        timeout: context.inferenceTimeout,
+        onTimeout: () => InferenceTimeoutException(
+          agentId: id,
           modelId: context.modelId,
-          messages: messages,
-          schema: _getJsonSchema(),
-          temperature: 0.0,
-          thinking: context.thinking ?? false,
-        );
-
-        final structRes = await _withInferenceTimeout(
-          future: primaryFuture,
-          timeout: context.inferenceTimeout,
-          onTimeout: () => InferenceTimeoutException(
-            agentId: id,
-            modelId: context.modelId,
-            timeout: context.inferenceTimeout!,
-            operation: 'generateStructuredWithMetadata',
-          ),
-        );
-
-        rawMap = structRes.value;
-        execMode = structRes.mode;
-      } else {
-        final primaryFuture = bridge.generateStructured(
-          modelId: context.modelId,
-          messages: messages,
-          schema: _getJsonSchema(),
-          temperature: 0.0,
-          thinking: context.thinking ?? false,
-        );
-
-        rawMap = await _withInferenceTimeout(
-          future: primaryFuture,
-          timeout: context.inferenceTimeout,
-          onTimeout: () => InferenceTimeoutException(
-            agentId: id,
-            modelId: context.modelId,
-            timeout: context.inferenceTimeout!,
-            operation: 'generateStructured',
-          ),
-        );
-      }
+          timeout: context.inferenceTimeout!,
+          operation: 'generateStructuredWithMetadata',
+        ),
+      );
+      final rawMap = structRes.value;
+      final execMode = structRes.mode;
 
       // Valida e applica i limiti (clamps) ai parametri
       final delta =
@@ -195,6 +174,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
         executionMode: execMode,
         requestedEvaluator: context.modelId,
         actualEvaluator: context.modelId,
+        attempts: structRes.attempts,
       );
     } catch (e) {
       // Formatta la ragione diagnostica sanitizzata del fallimento primario
@@ -221,15 +201,22 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
           messages: messages,
           schema: const {},
         );
-        final fallbackDelta = context.outputValidator
-            .parseEvaluatorDelta(jsonEncode(fallbackMap));
 
+        final delta = context.outputValidator
+            .parseEvaluatorDelta(jsonEncode(fallbackMap));
         return EvaluatorRunResult(
-          delta: fallbackDelta,
+          delta: delta,
           executionMode: EvaluatorExecutionMode.ruleBasedFallback,
           requestedEvaluator: context.modelId,
-          actualEvaluator: 'rule_based_evaluator',
+          actualEvaluator: 'rule_based_fallback',
           primaryFailureReason: failureReason,
+          attempts: const [
+            EvaluatorAttemptTelemetry(
+              mode: EvaluatorExecutionMode.ruleBasedFallback,
+              resultStatus: 'success',
+              durationMs: 0,
+            )
+          ],
         );
       } catch (fallbackError) {
         // Default assoluto di emergenza (fail-safe) se fallisce persino il fallback
@@ -247,9 +234,67 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
           requestedEvaluator: context.modelId,
           actualEvaluator: 'emergency_default',
           primaryFailureReason: failureReason,
+          attempts: const [
+            EvaluatorAttemptTelemetry(
+              mode: EvaluatorExecutionMode.emergencyDefault,
+              resultStatus: 'emergency_default',
+              durationMs: 0,
+            )
+          ],
         );
       }
     }
+  }
+
+  /// Estrae ricorsivamente il [LocalApiInferenceBridge] da wrapper quali [DualModelInferenceBridge]
+  /// al fine di poter eseguire [generateStructuredWithMetadata] con gestione dei fallback e telemetria.
+  Future<StructuredInferenceResult> _generateStructuredWithFallbackMetadata({
+    required InferenceBridge bridge,
+    required String modelId,
+    required List<Map<String, String>> messages,
+    required Map<String, dynamic> schema,
+    required double temperature,
+    required bool thinking,
+  }) {
+    if (bridge is LocalApiInferenceBridge) {
+      return bridge.generateStructuredWithMetadata(
+        modelId: modelId,
+        messages: messages,
+        schema: schema,
+        temperature: temperature,
+        thinking: thinking,
+      );
+    }
+    if (bridge is DualModelInferenceBridge) {
+      return _generateStructuredWithFallbackMetadata(
+        bridge: bridge.evaluatorBridge,
+        modelId: modelId,
+        messages: messages,
+        schema: schema,
+        temperature: temperature,
+        thinking: thinking,
+      );
+    }
+    // Fallback generico per bridge non-HTTP:
+    return bridge
+        .generateStructured(
+          modelId: modelId,
+          messages: messages,
+          schema: schema,
+          temperature: temperature,
+          thinking: thinking,
+        )
+        .then((val) => StructuredInferenceResult(
+              value: val,
+              mode: EvaluatorExecutionMode.llmJsonSchema,
+              attempts: const [
+                EvaluatorAttemptTelemetry(
+                  mode: EvaluatorExecutionMode.llmJsonSchema,
+                  resultStatus: 'success',
+                  durationMs: 0,
+                )
+              ],
+            ));
   }
 
   /// Definizione dello Schema JSON in conformità alla Sezione 6.1 del TGDD.

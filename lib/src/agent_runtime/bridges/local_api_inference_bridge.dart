@@ -189,13 +189,17 @@ class LocalApiInferenceBridge implements InferenceBridge {
     }
 
     LocalInferenceException? primaryException;
+    final attempts = <EvaluatorAttemptTelemetry>[];
 
     try {
       for (final mode in modesToTry) {
+        final sw = Stopwatch()..start();
         try {
           final Map<String, dynamic> requestBody = {
             "model": modelId,
             "temperature": temperature,
+            "max_tokens": 256,
+            "stop": const ["}\n\n", "}\n", "\n\n\n"],
           };
 
           if (thinking != null) {
@@ -224,12 +228,12 @@ class LocalApiInferenceBridge implements InferenceBridge {
               "type": "json_object",
             };
           } else {
-            // llmRawJson: crea una nuova lista immutabile con istruzione supplementare
+            // llmRawJson: crea una nuova lista immutabile con istruzione supplementare ultra-rigida
             payloadMessages = List<Map<String, String>>.from(messages)
               ..add({
                 "role": "system",
                 "content":
-                    "Restituisci esclusivamente un singolo oggetto JSON valido conforme allo schema. Non usare Markdown, commenti o testo aggiuntivo."
+                    "Restituisci esclusivamente un singolo oggetto JSON valido conforme allo schema. Non aggiungere spiegazioni, blocchi Markdown, o altro testo prima o dopo l’oggetto. Termina immediatamente dopo la parentesi graffa finale '}'."
               });
           }
 
@@ -243,6 +247,8 @@ class LocalApiInferenceBridge implements InferenceBridge {
                 body: jsonEncode(requestBody),
               )
               .timeout(httpTransportTimeout);
+
+          sw.stop();
 
           if (response.statusCode != 200) {
             final exception = LocalInferenceException.fromHttp(
@@ -260,8 +266,24 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
             if (isFormatError) {
               primaryException ??= exception;
+              attempts.add(EvaluatorAttemptTelemetry(
+                mode: mode,
+                resultStatus: 'http_${response.statusCode}_grammar_error',
+                durationMs: sw.elapsedMilliseconds,
+                errorMessage: exception.diagnosticMessage,
+              ));
+              // Cache anticipata: il server non supporta json_schema, memorizza llmJsonObject
+              if (mode == EvaluatorExecutionMode.llmJsonSchema) {
+                _capabilityCache[capKey] = EvaluatorExecutionMode.llmJsonObject;
+              }
               continue; // Prova la modalità successiva
             } else {
+              attempts.add(EvaluatorAttemptTelemetry(
+                mode: mode,
+                resultStatus: 'http_${response.statusCode}_error',
+                durationMs: sw.elapsedMilliseconds,
+                errorMessage: exception.diagnosticMessage,
+              ));
               // Errore infrastrutturale (401, 403, 404, 5xx): interrompe ed alza l'eccezione
               throw exception;
             }
@@ -274,21 +296,43 @@ class LocalApiInferenceBridge implements InferenceBridge {
 
           final parsedMap = _extractJsonCandidate(rawContent);
           if (parsedMap == null) {
-            // Contenuto vuoto o non decodificabile: errore di formato strutturato
+            final errMsg =
+                'HTTP 200: Nessun oggetto JSON valido estratto da $mode';
             primaryException ??= LocalInferenceException(
               statusCode: 200,
-              diagnosticMessage:
-                  'HTTP 200: Nessun oggetto JSON valido estratto da $mode',
+              diagnosticMessage: errMsg,
             );
+            attempts.add(EvaluatorAttemptTelemetry(
+              mode: mode,
+              resultStatus: 'parse_error',
+              durationMs: sw.elapsedMilliseconds,
+              errorMessage: errMsg,
+            ));
             continue; // Prova la modalità successiva
           }
 
+          attempts.add(EvaluatorAttemptTelemetry(
+            mode: mode,
+            resultStatus: 'success',
+            durationMs: sw.elapsedMilliseconds,
+          ));
+
           // Successo! Aggiorna la cache dell'istanza e restituisce il risultato
           _capabilityCache[capKey] = mode;
-          return StructuredInferenceResult(value: parsedMap, mode: mode);
+          return StructuredInferenceResult(
+            value: parsedMap,
+            mode: mode,
+            attempts: List.unmodifiable(attempts),
+          );
         } on LocalInferenceException catch (e) {
+          sw.stop();
           primaryException ??= e;
-          // Se è una LocalInferenceException non-format, la rilancia subito
+          attempts.add(EvaluatorAttemptTelemetry(
+            mode: mode,
+            resultStatus: 'exception',
+            durationMs: sw.elapsedMilliseconds,
+            errorMessage: e.diagnosticMessage,
+          ));
           if (e.statusCode != null &&
               e.statusCode != 400 &&
               e.statusCode != 422 &&
@@ -296,10 +340,18 @@ class LocalApiInferenceBridge implements InferenceBridge {
             rethrow;
           }
         } catch (e) {
+          sw.stop();
+          final errMsg = 'Parsing failure under $mode: $e';
           primaryException ??= LocalInferenceException(
-            diagnosticMessage: 'Parsing failure under $mode: $e',
+            diagnosticMessage: errMsg,
             cause: e,
           );
+          attempts.add(EvaluatorAttemptTelemetry(
+            mode: mode,
+            resultStatus: 'exception',
+            durationMs: sw.elapsedMilliseconds,
+            errorMessage: errMsg,
+          ));
         }
       }
 

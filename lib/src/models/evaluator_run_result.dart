@@ -21,6 +21,29 @@ enum EvaluatorExecutionMode {
   emergencyDefault,
 }
 
+/// Telemetria dettagliata per ciascun tentativo di inferenza eseguito dal Valutatore.
+final class EvaluatorAttemptTelemetry {
+  final EvaluatorExecutionMode mode;
+  final String
+      resultStatus; // e.g. "success", "http_400_grammar_error", "timeout", "parse_error"
+  final int durationMs;
+  final String? errorMessage;
+
+  const EvaluatorAttemptTelemetry({
+    required this.mode,
+    required this.resultStatus,
+    required this.durationMs,
+    this.errorMessage,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'mode': mode.name,
+        'result_status': resultStatus,
+        'duration_ms': durationMs,
+        if (errorMessage != null) 'error_message': errorMessage,
+      };
+}
+
 /// DTO wrapper immutabile che racchiude sia il punteggio di dominio ([EvaluatorDelta])
 /// sia i metadati di telemetria dell'esecuzione dell'agente Valutatore.
 final class EvaluatorRunResult {
@@ -39,12 +62,16 @@ final class EvaluatorRunResult {
   /// Motivo diagnostico sanitizzato del primo fallimento (se avvenuto un downgrade o fallback).
   final String? primaryFailureReason;
 
+  /// Elenco dei tentativi eseguiti durante l'inferenza con la loro durata ed esito.
+  final List<EvaluatorAttemptTelemetry> attempts;
+
   const EvaluatorRunResult({
     required this.delta,
     required this.executionMode,
     required this.requestedEvaluator,
     required this.actualEvaluator,
     this.primaryFailureReason,
+    this.attempts = const [],
   });
 
   /// Restituisce `true` se l'esecuzione è degradata al fallback rule-based o all'emergency default.

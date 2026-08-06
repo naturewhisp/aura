@@ -161,12 +161,13 @@ void main() {
     });
 
     test(
-        'Esegue downgrade a llmRawJson quando si verifica RuntimeException generationFailed con status 400',
+        'Esegue downgrade a llmRawJson quando si verifica RuntimeException generationFailed con status 400 e firma sampler',
         () async {
       fakeRuntime.generateStructuredError = const RuntimeException(
         RuntimeFailure(
           code: RuntimeFailureCode.generationFailed,
-          message: 'Errore di inferenza del server esterno (Status 400).',
+          message:
+              'Errore di inferenza del server esterno (Status 400): Failed to initialize samplers: Unexpected empty grammar stack',
         ),
       );
 
@@ -180,6 +181,43 @@ void main() {
       expect(result.attempts.length, equals(2));
       expect(result.attempts[0].resultStatus, equals('http_400_grammar_error'));
       expect(result.attempts[1].resultStatus, equals('success'));
+    });
+
+    test(
+        'Esegue downgrade e mappa lo stato a http_422_structured_error quando si verifica un errore HTTP 422 di schema',
+        () async {
+      fakeRuntime.generateStructuredError = const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.generationFailed,
+          message: 'Status 422 Unprocessable Entity - invalid schema grammar',
+        ),
+      );
+
+      const agent = EvaluatorAgent();
+      final result = await agent.run(turnInput, context);
+
+      expect(result.executionMode, equals(EvaluatorExecutionMode.llmRawJson));
+      expect(
+          result.attempts[0].resultStatus, equals('http_422_structured_error'));
+    });
+
+    test(
+        'Rifiuta downgrade quando l\'errore HTTP 400 non contiene firme di grammatica/sampler (es. invalid field)',
+        () async {
+      fakeRuntime.generateStructuredError = const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.generationFailed,
+          message: 'Status 400 Bad Request - Unknown JSON property provided',
+        ),
+      );
+
+      const agent = EvaluatorAgent();
+      final result = await agent.run(turnInput, context);
+
+      expect(result.executionMode,
+          equals(EvaluatorExecutionMode.ruleBasedFallback));
+      expect(result.usedRuleFallback, isTrue);
+      expect(fakeRuntime.textCallCount, equals(0)); // Nessun tentavo raw text!
     });
 
     test(

@@ -277,6 +277,26 @@ class RuntimeInferenceBridge
     _structuredCapabilityCache.clear();
   }
 
+  /// Mappa in modo preciso l'esito diagnostico del tentativo fallito di inferenza strutturata.
+  String _resolveAttemptStatus(Object error) {
+    final errStr = error.toString().toLowerCase();
+    if (error is LocalInferenceException) {
+      if (error.statusCode == 422) return 'http_422_structured_error';
+      if (error.statusCode == 400) return 'http_400_grammar_error';
+    }
+    if (error is RuntimeException) {
+      final code = error.failure.code;
+      if (code == RuntimeFailureCode.structuredOutputUnavailable) {
+        return 'structured_output_unavailable';
+      }
+      if (code == RuntimeFailureCode.malformedStructuredOutput) {
+        return 'malformed_structured_output';
+      }
+      if (errStr.contains('422')) return 'http_422_structured_error';
+    }
+    return 'http_400_grammar_error';
+  }
+
   /// Verifica se un errore di inferenza è dovuto a incompatibilità di grammatica/schema
   /// tale da giustificare il downgrade trasparente a raw JSON.
   bool _shouldDowngrade(Object error) {
@@ -290,12 +310,13 @@ class RuntimeInferenceBridge
     }
 
     if (error is LocalInferenceException) {
+      final isGrammarSignature = errStr.contains('grammar') ||
+          errStr.contains('sampler') ||
+          errStr.contains('schema') ||
+          errStr.contains('unexpected empty') ||
+          errStr.contains('failed to initialize samplers');
       return (error.statusCode == 400 || error.statusCode == 422) &&
-          (errStr.contains('grammar') ||
-              errStr.contains('sampler') ||
-              errStr.contains('schema') ||
-              errStr.contains('status 400') ||
-              errStr.contains('status 422'));
+          isGrammarSignature;
     }
 
     if (error is RuntimeException) {
@@ -305,12 +326,13 @@ class RuntimeInferenceBridge
         return true;
       }
       if (code == RuntimeFailureCode.generationFailed) {
-        return errStr.contains('status 400') ||
-            errStr.contains('status 422') ||
-            errStr.contains('grammar') ||
+        return errStr.contains('grammar') ||
             errStr.contains('sampler') ||
             errStr.contains('schema') ||
-            errStr.contains('unexpected empty');
+            errStr.contains('unexpected empty') ||
+            errStr.contains('failed to initialize samplers') ||
+            (errStr.contains('status 400') &&
+                (errStr.contains('sampler') || errStr.contains('grammar')));
       }
       return false;
     }
@@ -647,7 +669,7 @@ class RuntimeInferenceBridge
         sw.stop();
         attempts.add(EvaluatorAttemptTelemetry(
           mode: EvaluatorExecutionMode.llmJsonSchema,
-          resultStatus: 'http_400_grammar_error',
+          resultStatus: _resolveAttemptStatus(e),
           durationMs: sw.elapsedMilliseconds,
           errorMessage: e.toString(),
         ));

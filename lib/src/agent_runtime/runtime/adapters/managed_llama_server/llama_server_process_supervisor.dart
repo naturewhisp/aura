@@ -306,8 +306,32 @@ class LlamaServerProcessSupervisor {
         final file = io.File(_configuration.logFilePath!);
         file.parent.createSync(recursive: true);
         _logFileSink = file.openWrite(mode: io.FileMode.append);
-      } catch (_) {}
+        _writeBootMetadataHeader(file);
+      } catch (_) {
+        _logFileSink = null;
+      }
     }
+  }
+
+  void _writeBootMetadataHeader(io.File logFile) {
+    if (_logFileSink == null) return;
+    final modelPath = _configuration.modelPath;
+    final modelFile = io.File(modelPath);
+    final exists = modelFile.existsSync();
+    final sizeStr = exists ? '${modelFile.lengthSync()} bytes' : 'unknown';
+
+    final header = '''
+================================================================================
+A.U.R.A. Managed Llama Server Instance Boot Metadata
+Timestamp: ${DateTime.now().toIso8601String()}
+Role: ${_role ?? 'unspecified'}
+Model Path: $modelPath
+File Size: $sizeStr
+Executable: ${_configuration.executablePath}
+Target Port: $_allocatedPort
+Log File: ${logFile.path}
+================================================================================''';
+    _logFileSink!.writeln(header);
   }
 
   Future<void> _closeLogFileSink() async {

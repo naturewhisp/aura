@@ -1117,7 +1117,9 @@ class GameControllerNotifier extends ChangeNotifier {
         actorModel: actorModelId,
         latencyTotalMs: duration.inMilliseconds,
         eventId: "app-req-$turnId-evt",
-        eventType: ReplayEventType.userTurn,
+        eventType: command.type == TurnCommandType.override
+            ? ReplayEventType.override
+            : ReplayEventType.userTurn,
         gameplayTurnId: turnId,
         sequenceId: logger.entries.length + 1,
         deceptionResolution: resolution.deceptionResolutionInfo,

@@ -5,6 +5,7 @@ import 'models/user_profile.dart';
 /// Tipi di eventi registrabili all'interno del replay.
 enum ReplayEventType {
   userTurn('user_turn'),
+  override('override'),
   hint('hint'),
   deceptionBait('deception_bait'),
   deceptionResolution('deception_resolution'),

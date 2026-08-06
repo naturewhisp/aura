@@ -161,6 +161,28 @@ void main() {
     });
 
     test(
+        'Esegue downgrade a llmRawJson quando si verifica RuntimeException generationFailed con status 400',
+        () async {
+      fakeRuntime.generateStructuredError = const RuntimeException(
+        RuntimeFailure(
+          code: RuntimeFailureCode.generationFailed,
+          message: 'Errore di inferenza del server esterno (Status 400).',
+        ),
+      );
+
+      const agent = EvaluatorAgent();
+      final result = await agent.run(turnInput, context);
+
+      expect(result.executionMode, equals(EvaluatorExecutionMode.llmRawJson));
+      expect(result.usedRuleFallback, isFalse);
+      expect(fakeRuntime.structuredCallCount, equals(1));
+      expect(fakeRuntime.textCallCount, equals(1));
+      expect(result.attempts.length, equals(2));
+      expect(result.attempts[0].resultStatus, equals('http_400_grammar_error'));
+      expect(result.attempts[1].resultStatus, equals('success'));
+    });
+
+    test(
         'Intercetta errore non-grammar (permissionDenied) e va a ruleBasedFallback SENZA tentare generateText',
         () async {
       fakeRuntime.generateStructuredError = const RuntimeException(

@@ -280,19 +280,24 @@ class RuntimeInferenceBridge
   /// Verifica se un errore di inferenza è dovuto a incompatibilità di grammatica/schema
   /// tale da giustificare il downgrade trasparente a raw JSON.
   bool _shouldDowngrade(Object error) {
+    final errStr = error.toString().toLowerCase();
+
     if (error is FormatException) {
-      final msg = error.message.toLowerCase();
-      return msg.contains('grammar') ||
-          msg.contains('sampler') ||
-          msg.contains('schema') ||
-          msg.contains('unexpected empty');
+      return errStr.contains('grammar') ||
+          errStr.contains('sampler') ||
+          errStr.contains('schema') ||
+          errStr.contains('unexpected empty');
     }
+
     if (error is LocalInferenceException) {
       return (error.statusCode == 400 || error.statusCode == 422) &&
-          (error.diagnosticMessage.contains('grammar') ||
-              error.diagnosticMessage.contains('sampler') ||
-              error.diagnosticMessage.contains('schema'));
+          (errStr.contains('grammar') ||
+              errStr.contains('sampler') ||
+              errStr.contains('schema') ||
+              errStr.contains('status 400') ||
+              errStr.contains('status 422'));
     }
+
     if (error is RuntimeException) {
       final code = error.failure.code;
       if (code == RuntimeFailureCode.structuredOutputUnavailable ||
@@ -300,14 +305,16 @@ class RuntimeInferenceBridge
         return true;
       }
       if (code == RuntimeFailureCode.generationFailed) {
-        final msg = error.failure.message.toLowerCase();
-        return msg.contains('grammar') ||
-            msg.contains('sampler') ||
-            msg.contains('schema') ||
-            msg.contains('unexpected empty');
+        return errStr.contains('status 400') ||
+            errStr.contains('status 422') ||
+            errStr.contains('grammar') ||
+            errStr.contains('sampler') ||
+            errStr.contains('schema') ||
+            errStr.contains('unexpected empty');
       }
       return false;
     }
+
     return false;
   }
 

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io' as io;
+
 import 'package:aura_core/aura_testing.dart';
 import 'package:test/test.dart';
 
@@ -367,6 +370,142 @@ void main() {
 
       expect(supervisor.state, equals(LlamaServerSupervisorState.disposed));
       expect(healthProbe.isDisposed, isTrue);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Gruppo: boot metadata e resilienza del sink di log
+  // ---------------------------------------------------------------------------
+  // Questi test usano `dart:io` reale perché il ramo di apertura del sink è
+  // protetto da `_fileSystem is LocalFileSystem`.
+  // ---------------------------------------------------------------------------
+  group('Boot Metadata Header & Log Sink Resilience', () {
+    late io.Directory tempDir;
+    late io.File executableFile;
+    late io.File modelFile;
+
+    setUp(() async {
+      tempDir =
+          await io.Directory.systemTemp.createTemp('aura_supervisor_test');
+      executableFile = io.File('${tempDir.path}\\llama-server.exe')
+        ..writeAsBytesSync([]);
+      modelFile = io.File('${tempDir.path}\\model.gguf')..writeAsBytesSync([]);
+    });
+
+    tearDown(() async {
+      await tempDir.delete(recursive: true);
+    });
+
+    ManagedLlamaServerConfiguration _baseConfig({
+      String? logFilePath,
+      ManagedModelProvenance? provenance,
+    }) =>
+        ManagedLlamaServerConfiguration(
+          executablePath: executableFile.path,
+          modelPath: modelFile.path,
+          startupTimeout: const Duration(milliseconds: 200),
+          healthPollInterval: const Duration(milliseconds: 10),
+          maxStartupAttempts: 1,
+          logFilePath: logFilePath,
+          provenance: provenance,
+        );
+
+    test(
+        'Errore in createSync (directory non creabile) non impedisce l\'avvio del supervisor',
+        () async {
+      // Specifica un percorso non valido (file esistente usato come directory)
+      // così createSync() lancerà un'eccezione reale.
+      final blockedPath =
+          '${modelFile.path}\\nested\\supervisor.log'; // model.gguf non è una dir
+
+      final supervisor = LlamaServerProcessSupervisor(
+        configuration: _baseConfig(logFilePath: blockedPath),
+        processLauncher: FakeProcessLauncher(),
+        portAllocator: const FakePortAllocator(allocatedPort: 8080),
+        healthProbe:
+            FakeLlamaServerHealthProbe(isResponsive: true, modelVisible: true),
+      );
+
+      // Il supervisor deve avviarsi normalmente anche senza log file.
+      final port = await supervisor.start();
+      expect(port, equals(8080));
+      expect(supervisor.state, equals(LlamaServerSupervisorState.ready));
+
+      await supervisor.stop();
+    });
+
+    test(
+        'Boot header scritto con provenance managed contiene tutti i campi semantici',
+        () async {
+      final logFile = io.File('${tempDir.path}\\supervisor.log');
+      const provenance = ManagedModelProvenance(
+        artifactId: 'ministral-3b-q4km',
+        repository: 'lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF',
+        revision: 'ee46f8f2abc6cf5ab2e92d22bcd61965',
+        fileName: 'Ministral-3-3B-Instruct-2512-Q4_K_M.gguf',
+        expectedSha256: 'aabbcc',
+        integrityVerified: true,
+        modelArchitecture: 'mistral3',
+      );
+
+      final supervisor = LlamaServerProcessSupervisor(
+        configuration: _baseConfig(
+          logFilePath: logFile.path,
+          provenance: provenance,
+        ),
+        processLauncher: FakeProcessLauncher(),
+        portAllocator: const FakePortAllocator(allocatedPort: 9090),
+        healthProbe:
+            FakeLlamaServerHealthProbe(isResponsive: true, modelVisible: true),
+      );
+
+      await supervisor.start();
+      await supervisor.stop();
+
+      // Attende flush asincrono del sink prima di leggere.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(logFile.existsSync(), isTrue);
+      final content = logFile.readAsStringSync();
+
+      expect(content, contains('Artifact ID: ministral-3b-q4km'));
+      expect(
+        content,
+        contains(
+          'Repository: lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF',
+        ),
+      );
+      expect(content, contains('Revision: ee46f8f2abc6cf5ab2e92d22bcd61965'));
+      expect(
+        content,
+        contains('File Name: Ministral-3-3B-Instruct-2512-Q4_K_M.gguf'),
+      );
+      expect(content, contains('Model Architecture: mistral3'));
+      expect(content, contains('Integrity Verified: true'));
+    });
+
+    test(
+        'Boot header scritto senza provenance mostra "not available" per istanza esterna',
+        () async {
+      final logFile = io.File('${tempDir.path}\\supervisor_ext.log');
+
+      final supervisor = LlamaServerProcessSupervisor(
+        configuration: _baseConfig(logFilePath: logFile.path),
+        processLauncher: FakeProcessLauncher(),
+        portAllocator: const FakePortAllocator(allocatedPort: 7070),
+        healthProbe:
+            FakeLlamaServerHealthProbe(isResponsive: true, modelVisible: true),
+      );
+
+      await supervisor.start();
+      await supervisor.stop();
+
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(logFile.existsSync(), isTrue);
+      final content = logFile.readAsStringSync();
+      expect(content, contains('not available'));
+      expect(content, isNot(contains('Artifact ID:')));
     });
   });
 }

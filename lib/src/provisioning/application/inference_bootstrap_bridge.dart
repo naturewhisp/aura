@@ -225,7 +225,11 @@ final class InferenceBootstrapBridge {
             fileName: entryFileName,
             expectedSha256: descriptor.sha256,
             integrityVerified: descriptor.status == InstallationStatus.verified,
-            modelArchitecture: descriptor.architecture,
+            // `descriptor.architecture` è il target hardware (es. 'gguf', 'all').
+            // L'architettura GGUF semantica (es. 'mistral3', 'gemma4') è invece
+            // trascritta dal catalogo nel campo metadata['modelArchitecture'].
+            modelArchitecture: (meta['modelArchitecture'] as String?) ??
+                descriptor.architecture,
           );
           return (path, provenance);
         }

@@ -21,6 +21,15 @@ enum EvaluatorExecutionMode {
   emergencyDefault,
 }
 
+/// Utility centralizzata per sanitizzare e limitare qualsiasi stringa di errore diagnostico.
+String sanitizeDiagnosticMessage(Object error, {int maxLength = 200}) {
+  final errStr = error.toString().replaceAll(RegExp(r'[\r\n\t]+'), ' ').trim();
+  if (errStr.length > maxLength) {
+    return '${errStr.substring(0, maxLength - 3)}...';
+  }
+  return errStr;
+}
+
 /// Telemetria dettagliata per ciascun tentativo di inferenza eseguito dal Valutatore.
 final class EvaluatorAttemptTelemetry {
   final EvaluatorExecutionMode mode;
@@ -29,7 +38,16 @@ final class EvaluatorAttemptTelemetry {
   final int durationMs;
   final String? errorMessage;
 
-  const EvaluatorAttemptTelemetry({
+  EvaluatorAttemptTelemetry({
+    required this.mode,
+    required this.resultStatus,
+    required this.durationMs,
+    String? errorMessage,
+  }) : errorMessage = errorMessage != null
+            ? sanitizeDiagnosticMessage(errorMessage)
+            : null;
+
+  const EvaluatorAttemptTelemetry.raw({
     required this.mode,
     required this.resultStatus,
     required this.durationMs,

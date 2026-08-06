@@ -216,7 +216,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
           primaryFailureReason: failureReason,
           attempts: [
             ...previousAttempts,
-            const EvaluatorAttemptTelemetry(
+            EvaluatorAttemptTelemetry(
               mode: EvaluatorExecutionMode.ruleBasedFallback,
               resultStatus: 'success',
               durationMs: 0,
@@ -241,7 +241,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
           primaryFailureReason: failureReason,
           attempts: [
             ...previousAttempts,
-            const EvaluatorAttemptTelemetry(
+            EvaluatorAttemptTelemetry(
               mode: EvaluatorExecutionMode.emergencyDefault,
               resultStatus: 'emergency_default',
               durationMs: 0,
@@ -283,7 +283,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
         .then((val) => StructuredInferenceResult(
               value: val,
               mode: EvaluatorExecutionMode.llmJsonSchema,
-              attempts: const [
+              attempts: [
                 EvaluatorAttemptTelemetry(
                   mode: EvaluatorExecutionMode.llmJsonSchema,
                   resultStatus: 'success',

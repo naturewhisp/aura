@@ -166,12 +166,12 @@ final class DualModelInferenceBridge
         .then((val) => StructuredInferenceResult(
               value: val,
               mode: EvaluatorExecutionMode.llmJsonSchema,
-              attempts: const [
+              attempts: [
                 EvaluatorAttemptTelemetry(
                   mode: EvaluatorExecutionMode.llmJsonSchema,
                   resultStatus: 'success',
                   durationMs: 0,
-                )
+                ),
               ],
             ));
   }

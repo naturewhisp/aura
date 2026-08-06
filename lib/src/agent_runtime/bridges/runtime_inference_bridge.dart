@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:meta/meta.dart';
 
 import '../../models/evaluator_run_result.dart';
+import 'local_inference_exception.dart';
 import '../inference_bridge.dart';
 import '../output/actor_output_sanitization_request.dart';
 import '../output/actor_output_sanitizer.dart';
@@ -214,6 +215,33 @@ class _LateResultIgnoredException implements Exception {
   const _LateResultIgnoredException();
 }
 
+/// Unique cache key identifying structured generation capabilities for loaded runtime instances.
+@immutable
+class StructuredRuntimeCapabilityKey {
+  final String runtimeInstanceId;
+  final String logicalModelId;
+  final String modelVariantId;
+
+  const StructuredRuntimeCapabilityKey({
+    required this.runtimeInstanceId,
+    required this.logicalModelId,
+    required this.modelVariantId,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is StructuredRuntimeCapabilityKey &&
+          runtimeType == other.runtimeType &&
+          runtimeInstanceId == other.runtimeInstanceId &&
+          logicalModelId == other.logicalModelId &&
+          modelVariantId == other.modelVariantId;
+
+  @override
+  int get hashCode =>
+      Object.hash(runtimeInstanceId, logicalModelId, modelVariantId);
+}
+
 /// Compatibility bridge adapting the legacy [InferenceBridge] interface to the new [InferenceRuntime].
 class RuntimeInferenceBridge
     implements InferenceBridge, StructuredInferenceMetadataBridge {
@@ -225,6 +253,10 @@ class RuntimeInferenceBridge
   final RuntimeTraceIdFactory traceIdFactory;
   final RuntimeBridgeTimeoutPolicy timeoutPolicy;
   final TimeoutScheduler timeoutScheduler;
+
+  /// Instance capability cache tracking working structured modes per loaded runtime handle.
+  final Map<StructuredRuntimeCapabilityKey, EvaluatorExecutionMode>
+      _structuredCapabilityCache = {};
 
   RuntimeInferenceBridge({
     required this.runtime,
@@ -239,6 +271,45 @@ class RuntimeInferenceBridge
         requestIdFactory =
             requestIdFactory ?? SequentialGenerationRequestIdFactory(),
         traceIdFactory = traceIdFactory ?? SequentialRuntimeTraceIdFactory();
+
+  /// Svuota la cache delle capability per test o reset del runtime.
+  void clearCapabilityCache() {
+    _structuredCapabilityCache.clear();
+  }
+
+  /// Verifica se un errore di inferenza è dovuto a incompatibilità di grammatica/schema
+  /// tale da giustificare il downgrade trasparente a raw JSON.
+  bool _shouldDowngrade(Object error) {
+    if (error is FormatException) {
+      final msg = error.message.toLowerCase();
+      return msg.contains('grammar') ||
+          msg.contains('sampler') ||
+          msg.contains('schema') ||
+          msg.contains('unexpected empty');
+    }
+    if (error is LocalInferenceException) {
+      return (error.statusCode == 400 || error.statusCode == 422) &&
+          (error.diagnosticMessage.contains('grammar') ||
+              error.diagnosticMessage.contains('sampler') ||
+              error.diagnosticMessage.contains('schema'));
+    }
+    if (error is RuntimeException) {
+      final code = error.failure.code;
+      if (code == RuntimeFailureCode.structuredOutputUnavailable ||
+          code == RuntimeFailureCode.malformedStructuredOutput) {
+        return true;
+      }
+      if (code == RuntimeFailureCode.generationFailed) {
+        final msg = error.failure.message.toLowerCase();
+        return msg.contains('grammar') ||
+            msg.contains('sampler') ||
+            msg.contains('schema') ||
+            msg.contains('unexpected empty');
+      }
+      return false;
+    }
+    return false;
+  }
 
   /// Backwards-compatible constructor converting [handleResolver] to a execution plan resolver.
   factory RuntimeInferenceBridge.fromHandleResolver({
@@ -530,82 +601,122 @@ class RuntimeInferenceBridge
     double temperature = 0.0,
     bool? thinking,
   }) async {
+    final role = routeResolver.resolveRole(modelId);
+    final plan = planResolver(role);
+    final capKey = StructuredRuntimeCapabilityKey(
+      runtimeInstanceId: plan.handle.runtimeInstanceId.value,
+      logicalModelId: plan.logicalModelId,
+      modelVariantId: plan.handle.modelVariantId,
+    );
+
+    final cachedMode = _structuredCapabilityCache[capKey];
     final attempts = <EvaluatorAttemptTelemetry>[];
-    final sw = Stopwatch()..start();
 
-    // Tentativo 1: json_schema via runtime.generateStructured
-    try {
-      final map = await generateStructured(
-        modelId: modelId,
-        messages: messages,
-        schema: schema,
-        temperature: temperature,
-        thinking: thinking,
-      );
-      sw.stop();
-      attempts.add(EvaluatorAttemptTelemetry(
-        mode: EvaluatorExecutionMode.llmJsonSchema,
-        resultStatus: 'success',
-        durationMs: sw.elapsedMilliseconds,
-      ));
-      return StructuredInferenceResult(
-        value: map,
-        mode: EvaluatorExecutionMode.llmJsonSchema,
-        attempts: List.unmodifiable(attempts),
-      );
-    } catch (e) {
-      sw.stop();
-      final String errMsg = e.toString();
-      attempts.add(EvaluatorAttemptTelemetry(
-        mode: EvaluatorExecutionMode.llmJsonSchema,
-        resultStatus: 'http_400_grammar_error',
-        durationMs: sw.elapsedMilliseconds,
-        errorMessage:
-            errMsg.length > 150 ? '${errMsg.substring(0, 147)}...' : errMsg,
-      ));
-
-      // Tentativo 2 (Downgrade): generateText con prompt ultra-rigido e max_tokens: 256
-      final rawSw = Stopwatch()..start();
+    // Se la capability cache memorizza già llmRawJson, salta json_schema ed esegui direttamente il raw fallback
+    if (cachedMode != EvaluatorExecutionMode.llmRawJson) {
+      final sw = Stopwatch()..start();
       try {
-        final payloadMessages = List<Map<String, String>>.from(messages)
-          ..add({
-            'role': 'system',
-            'content':
-                'Restituisci esclusivamente un singolo oggetto JSON valido conforme allo schema. Non aggiungere spiegazioni, blocchi Markdown, o altro testo prima o dopo l’oggetto. Termina immediatamente dopo la parentesi graffa finale \'}\'.'
-          });
-
-        final textResult = await generateText(
+        final map = await generateStructured(
           modelId: modelId,
-          messages: payloadMessages,
+          messages: messages,
+          schema: schema,
           temperature: temperature,
-          maxTokens: 256,
-          thinking: false,
+          thinking: thinking,
         );
-        rawSw.stop();
+        sw.stop();
+        attempts.add(EvaluatorAttemptTelemetry(
+          mode: EvaluatorExecutionMode.llmJsonSchema,
+          resultStatus: 'success',
+          durationMs: sw.elapsedMilliseconds,
+        ));
+        _structuredCapabilityCache[capKey] =
+            EvaluatorExecutionMode.llmJsonSchema;
+        return StructuredInferenceResult(
+          value: map,
+          mode: EvaluatorExecutionMode.llmJsonSchema,
+          attempts: List.unmodifiable(attempts),
+        );
+      } catch (e) {
+        sw.stop();
+        attempts.add(EvaluatorAttemptTelemetry(
+          mode: EvaluatorExecutionMode.llmJsonSchema,
+          resultStatus: 'http_400_grammar_error',
+          durationMs: sw.elapsedMilliseconds,
+          errorMessage: e.toString(),
+        ));
 
-        final parsedMap =
-            LocalApiInferenceBridge.extractJsonCandidate(textResult);
-        if (parsedMap != null) {
-          attempts.add(EvaluatorAttemptTelemetry(
-            mode: EvaluatorExecutionMode.llmRawJson,
-            resultStatus: 'success',
-            durationMs: rawSw.elapsedMilliseconds,
-          ));
-          return StructuredInferenceResult(
-            value: parsedMap,
-            mode: EvaluatorExecutionMode.llmRawJson,
+        // Se l'errore NON è dovuto a una incompatibilità di grammatica/schema (es. timeout, permessi, crash), rilancia subito!
+        if (!_shouldDowngrade(e)) {
+          throw RuntimeInferenceExceptionWithAttempts(
+            originalException: e,
             attempts: List.unmodifiable(attempts),
           );
-        } else {
-          attempts.add(EvaluatorAttemptTelemetry(
-            mode: EvaluatorExecutionMode.llmRawJson,
-            resultStatus: 'parse_error',
-            durationMs: rawSw.elapsedMilliseconds,
-            errorMessage: 'Impossibile estrarre JSON da raw text',
-          ));
         }
-      } catch (rawError) {
-        rawSw.stop();
+
+        // Errore di grammatica/schema confermato: imposta la capability cache
+        _structuredCapabilityCache[capKey] = EvaluatorExecutionMode.llmRawJson;
+      }
+    }
+
+    // Tentativo Downgrade: generateText con prompt ultra-rigido e max_tokens: 256
+    final rawSw = Stopwatch()..start();
+    try {
+      final payloadMessages = List<Map<String, String>>.from(messages);
+      const rawInstruction =
+          'Restituisci esclusivamente un singolo oggetto JSON valido conforme allo schema. Non aggiungere spiegazioni, blocchi Markdown, o altro testo prima o dopo l’oggetto. Termina immediatamente dopo la parentesi graffa finale \'}\'.';
+
+      if (payloadMessages.isNotEmpty &&
+          payloadMessages.first['role'] == 'system') {
+        final firstSys = payloadMessages.first;
+        payloadMessages[0] = {
+          'role': 'system',
+          'content': '${firstSys['content']}\n\n$rawInstruction',
+        };
+      } else {
+        payloadMessages.insert(0, {
+          'role': 'system',
+          'content': rawInstruction,
+        });
+      }
+
+      final textResult = await generateText(
+        modelId: modelId,
+        messages: payloadMessages,
+        temperature: temperature,
+        maxTokens: 256,
+        thinking: false,
+      );
+      rawSw.stop();
+
+      final parsedMap =
+          LocalApiInferenceBridge.extractJsonCandidate(textResult);
+      if (parsedMap != null) {
+        attempts.add(EvaluatorAttemptTelemetry(
+          mode: EvaluatorExecutionMode.llmRawJson,
+          resultStatus: 'success',
+          durationMs: rawSw.elapsedMilliseconds,
+        ));
+        return StructuredInferenceResult(
+          value: parsedMap,
+          mode: EvaluatorExecutionMode.llmRawJson,
+          attempts: List.unmodifiable(attempts),
+        );
+      } else {
+        final errMsg = 'Impossibile estrarre JSON valido da raw text';
+        attempts.add(EvaluatorAttemptTelemetry(
+          mode: EvaluatorExecutionMode.llmRawJson,
+          resultStatus: 'parse_error',
+          durationMs: rawSw.elapsedMilliseconds,
+          errorMessage: errMsg,
+        ));
+        throw RuntimeInferenceExceptionWithAttempts(
+          originalException: FormatException(errMsg),
+          attempts: List.unmodifiable(attempts),
+        );
+      }
+    } catch (rawError) {
+      rawSw.stop();
+      if (rawError is! RuntimeInferenceExceptionWithAttempts) {
         attempts.add(EvaluatorAttemptTelemetry(
           mode: EvaluatorExecutionMode.llmRawJson,
           resultStatus: 'exception',
@@ -613,10 +724,8 @@ class RuntimeInferenceBridge
           errorMessage: rawError.toString(),
         ));
       }
-
-      // Se entrambi i tentativi falliscono, rilancia l'eccezione con la lista dei tentativi
       throw RuntimeInferenceExceptionWithAttempts(
-        originalException: e,
+        originalException: rawError,
         attempts: List.unmodifiable(attempts),
       );
     }

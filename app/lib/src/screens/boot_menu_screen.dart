@@ -29,6 +29,8 @@ class BootMenuScreen extends StatefulWidget {
   final Future<ModelInitializationResult> Function()? initializeModels;
 
   final LlamaServerDependencyService dependencyService;
+  final FirstRunModelSetupFacade? firstRunFacade;
+  final LocalInferenceFacade? inferenceFacade;
 
   /// Sotto-schermata iniziale per il testing ("boot", "settings", ecc.).
   final String initialSubScreen;
@@ -40,6 +42,8 @@ class BootMenuScreen extends StatefulWidget {
     required this.dependencyService,
     this.audioService = const AudioManagerBootService(),
     this.initializeModels,
+    this.firstRunFacade,
+    this.inferenceFacade,
     this.initialSubScreen = "boot",
   });
 
@@ -78,6 +82,24 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   int? _flashingIndex;
   final List<GlobalKey> _menuKeys = List.generate(6, (index) => GlobalKey());
 
+  LlamaServerDetectionResult? _detectionResult;
+  LocalInferenceSnapshot? _runtimeSnapshot;
+
+  Future<void> _refreshRuntimeStatus() async {
+    try {
+      final detection = await widget.dependencyService.detect();
+      final env = AuraCliEnvironment.fromPlatform();
+      final services = LocalInferenceServiceProvider.create(environment: env);
+      final infFacade = widget.inferenceFacade ?? services.inferenceFacade;
+      final snapshot = await infFacade.getSnapshot();
+      if (!mounted) return;
+      setState(() {
+        _detectionResult = detection;
+        _runtimeSnapshot = snapshot;
+      });
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +109,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
     } else {
       _bootCompleted = true;
     }
+    _refreshRuntimeStatus();
     _focusNode.requestFocus();
   }
 
@@ -105,6 +128,20 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       });
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
+
+      if (widget.firstRunFacade != null) {
+        final setupState = await widget.firstRunFacade!.evaluateInitialState();
+        if (!setupState.isReadyForBoot) {
+          _appendBootLog("AURA_INIT> FIRST-RUN CONFIGURATION REQUIRED.");
+          _appendBootLog("AURA_INIT> OPENING LOCAL INFERENCE SETUP...");
+          await Future.delayed(const Duration(milliseconds: 300));
+          if (!mounted) return;
+          setState(() {
+            _subScreen = "onboarding";
+          });
+          return;
+        }
+      }
 
       final depService = widget.dependencyService;
 
@@ -1134,17 +1171,55 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                       ),
                     ),
                     const SizedBox(height: 8.0),
-                    Text(
-                      "• Backend di Inferenza: llama-server (Accelerazione CUDA 12 - RTX 3060)\n"
-                      "• Modello Valutatore: ${widget.notifier.evaluatorModelId}\n"
-                      "• Modello Attore (PANOPTICON): ${widget.notifier.actorModelId}\n"
-                      "• Stato Preflight: PRONTO / OPERATIVO (Local IPC 0ms)",
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        color: Color(0xFF88FFB0),
-                        fontSize: 12.0,
-                        height: 1.5,
-                      ),
+                    Builder(
+                      builder: (context) {
+                        final accelText =
+                            switch (_detectionResult?.acceleration) {
+                          RuntimeAcceleration.cuda =>
+                            'CUDA (NVIDIA GPU ACCELERATED)',
+                          RuntimeAcceleration.vulkan =>
+                            'VULKAN (GPU ACCELERATED)',
+                          RuntimeAcceleration.cpu => 'CPU (AVX2 FALLBACK)',
+                          null => 'Rilevamento in corso...',
+                        };
+                        final execPath = _detectionResult?.effectiveCandidate ??
+                            _detectionResult?.configuredCandidate ??
+                            'Non configurato';
+                        final evalRef =
+                            _runtimeSnapshot?.modelConfiguration.evaluator;
+                        final evalModel = evalRef is ManagedModelReference
+                            ? 'Managed [${evalRef.installationId}]'
+                            : (evalRef is ExternalModelReference
+                                ? 'Esterno [${evalRef.absolutePath}]'
+                                : widget.notifier.evaluatorModelId);
+
+                        final actorRef =
+                            _runtimeSnapshot?.modelConfiguration.actor;
+                        final actorModel = actorRef is ManagedModelReference
+                            ? 'Managed [${actorRef.installationId}]'
+                            : (actorRef is ExternalModelReference
+                                ? 'Esterno [${actorRef.absolutePath}]'
+                                : widget.notifier.actorModelId);
+                        final preflightText =
+                            _runtimeSnapshot?.lastPreflightResult.isReady ==
+                                    true
+                                ? 'PRONTO / OPERATIVO (Local IPC)'
+                                : 'CONFIGURAZIONE INCOMPLETA / ATTESA VERIFICA';
+
+                        return Text(
+                          "• Hardware Rilevato: $accelText\n"
+                          "• Eseguibile Backend: $execPath\n"
+                          "• Modello Valutatore: $evalModel\n"
+                          "• Modello Attore (PANOPTICON): $actorModel\n"
+                          "• Stato Preflight: $preflightText",
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            color: Color(0xFF88FFB0),
+                            fontSize: 12.0,
+                            height: 1.5,
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 16.0),
                     Center(

@@ -569,7 +569,10 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
   }
 
   Future<void> _submitRuntime() async {
-    final path = _inputController.text.trim();
+    final inputPath = _inputController.text.trim();
+    final detectedCandidate =
+        _state?.runtimeDetectionResult?.effectiveCandidate;
+    final path = inputPath.isNotEmpty ? inputPath : (detectedCandidate ?? '');
     if (path.isEmpty) return;
 
     if (!mounted) return;
@@ -859,6 +862,23 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF047857),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        '★ RACCOMANDATO',
+                        style: TextStyle(
+                          color: Color(0xFFA7F3D0),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
                     Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),

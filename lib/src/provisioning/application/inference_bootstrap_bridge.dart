@@ -137,7 +137,7 @@ final class InferenceBootstrapBridge {
         return const InvalidResolution(
           reason: InferenceBootstrapFailureReason.incompleteModelConfiguration,
           sanitizedMessage:
-              'Nessun runtime llama-server configurato. Eseguire "aura runtime set" prima di avviare l\'applicazione.',
+              'Nessun runtime llama-server configurato. Configurazione iniziale richiesta.',
         );
       }
 

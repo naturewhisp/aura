@@ -48,6 +48,9 @@ final class FirstRunSetupState {
   });
 
   bool get isComplete => step == FirstRunSetupStep.complete;
+  bool get isReadyForBoot =>
+      step == FirstRunSetupStep.complete &&
+      (preflightResult == null || preflightResult!.isReady);
   bool get hasError =>
       errorMessage != null ||
       (preflightResult != null && !preflightResult!.isReady);

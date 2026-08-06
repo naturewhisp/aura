@@ -28,7 +28,13 @@ enum InferenceStep {
   /// Verifica della consistenza e del tono della risposta generata.
   toneConsistencyCheck, // "Verifica conformità del tono..."
   /// Elaborazione completata con successo.
-  completed // "Pronto."
+  completed;
+}
+
+/// Policy per la gestione dei fallback durante il bootstrap del motore di inferenza.
+enum BootstrapFallbackPolicy {
+  failClosed,
+  allowRuleBased,
 }
 
 /// Estensione di supporto per ottenere messaggi diegetici randomici in italiano per ogni fase di inferenza.
@@ -515,6 +521,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
   /// Esegue il bootstrap asincrono delle dipendenze di inferenza e aggiorna i supervisor dei modelli.
   Future<void> performManagedBootstrap({
+    BootstrapFallbackPolicy fallbackPolicy = BootstrapFallbackPolicy.failClosed,
     void Function(double progress, String log)? onProgress,
   }) async {
     if (_isBootstrapped) {
@@ -580,6 +587,9 @@ class GameControllerNotifier extends ChangeNotifier {
         case InvalidResolution(:final sanitizedMessage):
           onProgress?.call(0.30,
               'AURA_INIT> [WARN] CONFIGURATION RESOLUTION FAILED: $sanitizedMessage');
+          if (fallbackPolicy == BootstrapFallbackPolicy.failClosed) {
+            throw StateError('Bootstrap fail-closed: $sanitizedMessage');
+          }
           runtimeConfig = ApplicationRuntimeConfiguration(
             runtimeMode: ApplicationRuntimeMode.ruleBased,
             sessionId: gameStateNotifier.value.sessionId,
@@ -608,7 +618,12 @@ class GameControllerNotifier extends ChangeNotifier {
       );
 
       updateBootstrapResult(result);
-      onProgress?.call(1.0, 'AURA_INIT> NEURAL INFERENCE ENGINE STABLE.');
+      if (runtimeConfig.runtimeMode == ApplicationRuntimeMode.ruleBased) {
+        onProgress?.call(1.0,
+            'AURA_INIT> OFFLINE RULE-BASED ENGINE ACTIVE (DEGRADED MODE).');
+      } else {
+        onProgress?.call(1.0, 'AURA_INIT> NEURAL INFERENCE ENGINE STABLE.');
+      }
       completer.complete();
     } catch (e) {
       onProgress?.call(1.0, 'AURA_INIT> [WARN] BOOTSTRAP FAILED: $e');

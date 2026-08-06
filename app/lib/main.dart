@@ -10,7 +10,7 @@ import 'src/platform/desktop_shell_provider.dart';
 import 'src/platform/desktop_shortcuts.dart';
 import 'src/platform/windows/windows_desktop_window_controller.dart';
 import 'src/screens/terminal_screen.dart';
-import 'src/screens/boot_menu_screen.dart';
+import 'src/screens/app_startup_gate.dart';
 import 'src/audio/audio_manager.dart';
 
 /// Punto di ingresso principale dell'applicazione Flutter per A.U.R.A.
@@ -54,6 +54,16 @@ class AuraApp extends StatefulWidget {
   /// Callback opzionale per l'inizializzazione dei modelli nei test.
   final Future<ModelInitializationResult> Function()? initializeModels;
 
+  /// Facade per il primo avvio (opzionale nei test).
+  final FirstRunModelSetupFacade? firstRunFacade;
+
+  /// Servizi di inferenza locale (opzionali nei test).
+  final LocalInferenceServices? services;
+
+  /// Destinazione iniziale forzata per lo startup gate (opzionale nei test).
+  @visibleForTesting
+  final StartupDestination? initialStartupDestination;
+
   /// Crea un'istanza di [AuraApp].
   const AuraApp({
     super.key,
@@ -63,6 +73,9 @@ class AuraApp extends StatefulWidget {
     this.desktopShellController,
     this.shutdownCoordinator,
     this.initializeModels,
+    this.firstRunFacade,
+    this.services,
+    this.initialStartupDestination,
   });
 
   @override
@@ -213,33 +226,14 @@ class _AuraAppState extends State<AuraApp> with WidgetsBindingObserver {
                       if (widget.notifier.currentScreen == "terminal") {
                         return TerminalScreen(notifier: widget.notifier);
                       } else {
-                        final cliEnv = AuraCliEnvironment.fromPlatform();
-                        final appManagedRoot =
-                            widget.notifier.appDataPath.isNotEmpty
-                                ? widget.notifier.appDataPath
-                                : cliEnv.appManagedRoot;
-                        final bundledRoot = cliEnv.bundledRoot;
-
-                        final depService = widget.dependencyService ??
-                            DefaultLlamaServerDependencyService(
-                              configurationRepository:
-                                  JsonModelConfigurationRepository(
-                                storeDirectoryPath: appManagedRoot,
-                                fileSystem: const LocalProvisioningFileSystem(),
-                                lock: FileBasedProvisioningLock(
-                                  lockDirectory: appManagedRoot,
-                                ),
-                              ),
-                              fileSystem: const LocalProvisioningFileSystem(),
-                              pathResolver: ProvisioningPathResolver(
-                                appManagedRoot: appManagedRoot,
-                                bundledRoot: bundledRoot,
-                              ),
-                            );
-                        return BootMenuScreen(
+                        return AppStartupGate(
                           notifier: widget.notifier,
-                          dependencyService: depService,
+                          services: widget.services,
+                          firstRunFacade: widget.firstRunFacade,
+                          dependencyService: widget.dependencyService,
                           initializeModels: widget.initializeModels,
+                          initialStartupDestination:
+                              widget.initialStartupDestination,
                         );
                       }
                     },

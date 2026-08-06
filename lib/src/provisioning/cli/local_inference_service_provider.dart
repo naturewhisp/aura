@@ -29,6 +29,7 @@ final class LocalInferenceServices {
   final LocalInferenceFacade inferenceFacade;
   final RuntimeModelSettingsFacade settingsFacade;
   final FirstRunModelSetupFacade firstRunFacade;
+  final LlamaServerDependencyService dependencyService;
   final LocalInferenceCliRunner cliRunner;
   final InstallationRecordRepository installationRecordRepository;
   final ProvisioningPathResolver pathResolver;
@@ -38,6 +39,7 @@ final class LocalInferenceServices {
     required this.inferenceFacade,
     required this.settingsFacade,
     required this.firstRunFacade,
+    required this.dependencyService,
     required this.cliRunner,
     required this.installationRecordRepository,
     required this.pathResolver,
@@ -180,6 +182,7 @@ final class LocalInferenceServiceProvider {
       inferenceFacade: inferenceFacade,
       settingsFacade: settingsFacade,
       firstRunFacade: firstRunFacade,
+      dependencyService: dependencyService,
       cliRunner: cliRunner,
       installationRecordRepository: installRepo,
       pathResolver: pathResolver,

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:meta/meta.dart';
 
+import '../../models/evaluator_run_result.dart';
 import '../inference_bridge.dart';
 import '../output/actor_output_sanitization_request.dart';
 import '../output/actor_output_sanitizer.dart';
@@ -10,6 +11,22 @@ import '../runtime/runtime_failure.dart';
 import '../runtime/runtime_ids.dart';
 import '../runtime/runtime_requests.dart';
 import '../runtime/runtime_results.dart';
+import 'local_api_inference_bridge.dart';
+import 'structured_inference_result.dart';
+
+/// Eccezione di runtime che trasporta la cronologia dei tentativi già eseguiti prima del fallimento.
+class RuntimeInferenceExceptionWithAttempts implements Exception {
+  final Object originalException;
+  final List<EvaluatorAttemptTelemetry> attempts;
+
+  const RuntimeInferenceExceptionWithAttempts({
+    required this.originalException,
+    required this.attempts,
+  });
+
+  @override
+  String toString() => originalException.toString();
+}
 
 /// Represents an execution plan binding a [ModelRole] to a [logicalModelId] and loaded [ModelHandle].
 @immutable
@@ -198,7 +215,8 @@ class _LateResultIgnoredException implements Exception {
 }
 
 /// Compatibility bridge adapting the legacy [InferenceBridge] interface to the new [InferenceRuntime].
-class RuntimeInferenceBridge implements InferenceBridge {
+class RuntimeInferenceBridge
+    implements InferenceBridge, StructuredInferenceMetadataBridge {
   final InferenceRuntime runtime;
   final RuntimeModelExecutionPlan Function(ModelRole role) planResolver;
   final LegacyInferenceRouteResolver routeResolver;
@@ -502,6 +520,106 @@ class RuntimeInferenceBridge implements InferenceBridge {
             'L\'output del modello non è stato decodificato in un oggetto JSON.',
       ),
     );
+  }
+
+  @override
+  Future<StructuredInferenceResult> generateStructuredWithMetadata({
+    required String modelId,
+    required List<Map<String, String>> messages,
+    required Map<String, dynamic> schema,
+    double temperature = 0.0,
+    bool? thinking,
+  }) async {
+    final attempts = <EvaluatorAttemptTelemetry>[];
+    final sw = Stopwatch()..start();
+
+    // Tentativo 1: json_schema via runtime.generateStructured
+    try {
+      final map = await generateStructured(
+        modelId: modelId,
+        messages: messages,
+        schema: schema,
+        temperature: temperature,
+        thinking: thinking,
+      );
+      sw.stop();
+      attempts.add(EvaluatorAttemptTelemetry(
+        mode: EvaluatorExecutionMode.llmJsonSchema,
+        resultStatus: 'success',
+        durationMs: sw.elapsedMilliseconds,
+      ));
+      return StructuredInferenceResult(
+        value: map,
+        mode: EvaluatorExecutionMode.llmJsonSchema,
+        attempts: List.unmodifiable(attempts),
+      );
+    } catch (e) {
+      sw.stop();
+      final String errMsg = e.toString();
+      attempts.add(EvaluatorAttemptTelemetry(
+        mode: EvaluatorExecutionMode.llmJsonSchema,
+        resultStatus: 'http_400_grammar_error',
+        durationMs: sw.elapsedMilliseconds,
+        errorMessage:
+            errMsg.length > 150 ? '${errMsg.substring(0, 147)}...' : errMsg,
+      ));
+
+      // Tentativo 2 (Downgrade): generateText con prompt ultra-rigido e max_tokens: 256
+      final rawSw = Stopwatch()..start();
+      try {
+        final payloadMessages = List<Map<String, String>>.from(messages)
+          ..add({
+            'role': 'system',
+            'content':
+                'Restituisci esclusivamente un singolo oggetto JSON valido conforme allo schema. Non aggiungere spiegazioni, blocchi Markdown, o altro testo prima o dopo l’oggetto. Termina immediatamente dopo la parentesi graffa finale \'}\'.'
+          });
+
+        final textResult = await generateText(
+          modelId: modelId,
+          messages: payloadMessages,
+          temperature: temperature,
+          maxTokens: 256,
+          thinking: false,
+        );
+        rawSw.stop();
+
+        final parsedMap =
+            LocalApiInferenceBridge.extractJsonCandidate(textResult);
+        if (parsedMap != null) {
+          attempts.add(EvaluatorAttemptTelemetry(
+            mode: EvaluatorExecutionMode.llmRawJson,
+            resultStatus: 'success',
+            durationMs: rawSw.elapsedMilliseconds,
+          ));
+          return StructuredInferenceResult(
+            value: parsedMap,
+            mode: EvaluatorExecutionMode.llmRawJson,
+            attempts: List.unmodifiable(attempts),
+          );
+        } else {
+          attempts.add(EvaluatorAttemptTelemetry(
+            mode: EvaluatorExecutionMode.llmRawJson,
+            resultStatus: 'parse_error',
+            durationMs: rawSw.elapsedMilliseconds,
+            errorMessage: 'Impossibile estrarre JSON da raw text',
+          ));
+        }
+      } catch (rawError) {
+        rawSw.stop();
+        attempts.add(EvaluatorAttemptTelemetry(
+          mode: EvaluatorExecutionMode.llmRawJson,
+          resultStatus: 'exception',
+          durationMs: rawSw.elapsedMilliseconds,
+          errorMessage: rawError.toString(),
+        ));
+      }
+
+      // Se entrambi i tentativi falliscono, rilancia l'eccezione con la lista dei tentativi
+      throw RuntimeInferenceExceptionWithAttempts(
+        originalException: e,
+        attempts: List.unmodifiable(attempts),
+      );
+    }
   }
 
   @override

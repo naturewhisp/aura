@@ -1,3 +1,19 @@
+import 'bridges/structured_inference_result.dart';
+
+/// Interfaccia estesa per i bridge che supportano il downgrade del formato
+/// ed emettono i metadati di telemetria sui tentativi eseguiti.
+abstract interface class StructuredInferenceMetadataBridge {
+  /// Genera output strutturato fornendo i metadati sulla modalità di esecuzione
+  /// utilizzata ed il tracciamento dettagliato di ciascun tentativo.
+  Future<StructuredInferenceResult> generateStructuredWithMetadata({
+    required String modelId,
+    required List<Map<String, String>> messages,
+    required Map<String, dynamic> schema,
+    double temperature = 0.0,
+    bool? thinking,
+  });
+}
+
 /// Interfaccia astratta che astrae le chiamate di inferenza testuale e strutturata verso gli LLM.
 abstract class InferenceBridge {
   /// Genera una risposta testuale dal modello specificato in base alla cronologia dei messaggi.

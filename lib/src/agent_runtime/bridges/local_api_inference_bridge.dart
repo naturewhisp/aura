@@ -30,7 +30,8 @@ final class StructuredCapabilityKey {
 ///
 /// Gestisce la comunicazione di rete, l'inoltro dei parametri di inferenza (incluso il thinking),
 /// il downgrade guidato delle capability di formato strutturato ed la post-elaborazione/pulizia avanzata.
-class LocalApiInferenceBridge implements InferenceBridge {
+class LocalApiInferenceBridge
+    implements InferenceBridge, StructuredInferenceMetadataBridge {
   /// L'URL di base del server API locale (es. 'http://127.0.0.1:1234').
   final String baseUrl;
 
@@ -294,7 +295,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
           final message = choice?['message'] ?? const {};
           final rawContent = message['content'] as String? ?? '';
 
-          final parsedMap = _extractJsonCandidate(rawContent);
+          final parsedMap = extractJsonCandidate(rawContent);
           if (parsedMap == null) {
             final errMsg =
                 'HTTP 200: Nessun oggetto JSON valido estratto da $mode';
@@ -401,7 +402,7 @@ class LocalApiInferenceBridge implements InferenceBridge {
   /// 1. Direct jsonDecode
   /// 2. Markdown code fence extraction
   /// 3. Balanced brace scanner con supporto a stringhe ed escape
-  static Map<String, dynamic>? _extractJsonCandidate(String raw) {
+  static Map<String, dynamic>? extractJsonCandidate(String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) return null;
 

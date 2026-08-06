@@ -71,6 +71,9 @@ class ReplayEntry {
   /// Motivo diagnostico sanitizzato dell'eventuale primo fallimento primario.
   final String? fallbackReason;
 
+  /// La cronologia dei tentativi eseguiti dal valutatore con le relative metriche.
+  final List<Map<String, dynamic>> evaluatorAttempts;
+
   /// Il modello LLM utilizzato per l'inferenza dell'attore.
   final String actorModel;
 
@@ -111,6 +114,7 @@ class ReplayEntry {
     this.evaluatorExecutionMode,
     this.usedRuleFallback = false,
     this.fallbackReason,
+    this.evaluatorAttempts = const [],
     required this.actorModel,
     required this.latencyTotalMs,
     String? eventId,
@@ -174,6 +178,10 @@ class ReplayEntry {
         : null;
 
     final evalModel = runtime['evaluator_model'] as String? ?? '';
+    final attemptsList = (runtime['evaluator_attempts'] as List?)
+            ?.map((e) => Map<String, dynamic>.from(e as Map))
+            .toList() ??
+        const [];
 
     return ReplayEntry(
       turnId: json['turn_id'] as int? ?? 0,
@@ -191,6 +199,7 @@ class ReplayEntry {
       evaluatorExecutionMode: runtime['evaluator_execution_mode'] as String?,
       usedRuleFallback: runtime['used_rule_fallback'] as bool? ?? false,
       fallbackReason: runtime['fallback_reason'] as String?,
+      evaluatorAttempts: attemptsList,
       actorModel: runtime['actor_model'] as String? ?? '',
       latencyTotalMs: runtime['latency_total_ms'] as int? ?? 0,
       eventId: json['event_id'] as String?,
@@ -246,6 +255,7 @@ class ReplayEntry {
         'used_rule_fallback': usedRuleFallback,
         if (fallbackReason != null && fallbackReason!.isNotEmpty)
           'fallback_reason': fallbackReason,
+        'evaluator_attempts': evaluatorAttempts,
         'evaluator_model': evaluatorModel,
         'actor_model': actorModel,
         'latency_total_ms': latencyTotalMs,

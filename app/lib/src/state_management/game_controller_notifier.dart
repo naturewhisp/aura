@@ -1114,6 +1114,8 @@ class GameControllerNotifier extends ChangeNotifier {
         evaluatorExecutionMode: evaluatorRes.executionMode.name,
         usedRuleFallback: evaluatorRes.usedRuleFallback,
         fallbackReason: evaluatorRes.primaryFailureReason,
+        evaluatorAttempts:
+            evaluatorRes.attempts.map((a) => a.toJson()).toList(),
         actorModel: actorModelId,
         latencyTotalMs: duration.inMilliseconds,
         eventId: "app-req-$turnId-evt",

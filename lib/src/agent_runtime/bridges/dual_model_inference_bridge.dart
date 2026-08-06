@@ -1,4 +1,6 @@
+import '../../models/evaluator_run_result.dart';
 import '../inference_bridge.dart';
+import 'structured_inference_result.dart';
 
 /// Errore lanciato quando un [modelId] non corrisponde né al modello Actor
 /// né a quello Evaluator configurati nel [DualModelInferenceBridge].
@@ -33,7 +35,8 @@ class DualModelRoutingException implements Exception {
 /// - Non esiste alcun fallback automatico da un bridge all'altro.
 ///
 /// [discoverModels] restituisce l'unione ordinata dei modelli di entrambi i bridge.
-final class DualModelInferenceBridge implements InferenceBridge {
+final class DualModelInferenceBridge
+    implements InferenceBridge, StructuredInferenceMetadataBridge {
   /// Bridge HTTP del ruolo Actor.
   final InferenceBridge actorBridge;
 
@@ -123,6 +126,54 @@ final class DualModelInferenceBridge implements InferenceBridge {
       temperature: temperature,
       thinking: thinking,
     );
+  }
+
+  @override
+  Future<StructuredInferenceResult> generateStructuredWithMetadata({
+    required String modelId,
+    required List<Map<String, String>> messages,
+    required Map<String, dynamic> schema,
+    double temperature = 0.0,
+    bool? thinking,
+  }) {
+    if (!_isEvaluatorModel(modelId)) {
+      throw DualModelRoutingException(
+        requestedModelId: modelId,
+        actorModelId: actorModelId,
+        evaluatorModelId: evaluatorModelId,
+        operation: 'generateStructuredWithMetadata',
+      );
+    }
+    final eBridge = evaluatorBridge;
+    if (eBridge is StructuredInferenceMetadataBridge) {
+      return (eBridge as StructuredInferenceMetadataBridge)
+          .generateStructuredWithMetadata(
+        modelId: modelId,
+        messages: messages,
+        schema: schema,
+        temperature: temperature,
+        thinking: thinking,
+      );
+    }
+    return eBridge
+        .generateStructured(
+          modelId: modelId,
+          messages: messages,
+          schema: schema,
+          temperature: temperature,
+          thinking: thinking,
+        )
+        .then((val) => StructuredInferenceResult(
+              value: val,
+              mode: EvaluatorExecutionMode.llmJsonSchema,
+              attempts: const [
+                EvaluatorAttemptTelemetry(
+                  mode: EvaluatorExecutionMode.llmJsonSchema,
+                  resultStatus: 'success',
+                  durationMs: 0,
+                )
+              ],
+            ));
   }
 
   @override

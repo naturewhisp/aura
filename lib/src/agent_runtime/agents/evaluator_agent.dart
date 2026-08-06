@@ -6,10 +6,9 @@ import '../../models/evaluator_run_result.dart';
 import '../../models/turn_input.dart';
 import '../agent_card.dart';
 import '../inference_bridge.dart';
-import '../bridges/dual_model_inference_bridge.dart';
-import '../bridges/local_api_inference_bridge.dart';
 import '../bridges/local_inference_exception.dart';
 import '../bridges/rule_based_evaluator_bridge.dart';
+import '../bridges/runtime_inference_bridge.dart';
 import '../bridges/structured_inference_result.dart';
 import '../inference_timeout_exception.dart';
 
@@ -177,6 +176,11 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
         attempts: structRes.attempts,
       );
     } catch (e) {
+      List<EvaluatorAttemptTelemetry> previousAttempts = const [];
+      if (e is RuntimeInferenceExceptionWithAttempts) {
+        previousAttempts = e.attempts;
+      }
+
       // Formatta la ragione diagnostica sanitizzata del fallimento primario
       String failureReason;
       if (e is LocalInferenceException) {
@@ -210,8 +214,9 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
           requestedEvaluator: context.modelId,
           actualEvaluator: 'rule_based_fallback',
           primaryFailureReason: failureReason,
-          attempts: const [
-            EvaluatorAttemptTelemetry(
+          attempts: [
+            ...previousAttempts,
+            const EvaluatorAttemptTelemetry(
               mode: EvaluatorExecutionMode.ruleBasedFallback,
               resultStatus: 'success',
               durationMs: 0,
@@ -234,8 +239,9 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
           requestedEvaluator: context.modelId,
           actualEvaluator: 'emergency_default',
           primaryFailureReason: failureReason,
-          attempts: const [
-            EvaluatorAttemptTelemetry(
+          attempts: [
+            ...previousAttempts,
+            const EvaluatorAttemptTelemetry(
               mode: EvaluatorExecutionMode.emergencyDefault,
               resultStatus: 'emergency_default',
               durationMs: 0,
@@ -246,8 +252,8 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
     }
   }
 
-  /// Estrae ricorsivamente il [LocalApiInferenceBridge] da wrapper quali [DualModelInferenceBridge]
-  /// al fine di poter eseguire [generateStructuredWithMetadata] con gestione dei fallback e telemetria.
+  /// Invoca [generateStructuredWithMetadata] se il bridge implementa l'interfaccia [StructuredInferenceMetadataBridge],
+  /// altrimenti degrada alla chiamata standard [generateStructured].
   Future<StructuredInferenceResult> _generateStructuredWithFallbackMetadata({
     required InferenceBridge bridge,
     required String modelId,
@@ -256,8 +262,9 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
     required double temperature,
     required bool thinking,
   }) {
-    if (bridge is LocalApiInferenceBridge) {
-      return bridge.generateStructuredWithMetadata(
+    if (bridge is StructuredInferenceMetadataBridge) {
+      return (bridge as StructuredInferenceMetadataBridge)
+          .generateStructuredWithMetadata(
         modelId: modelId,
         messages: messages,
         schema: schema,
@@ -265,17 +272,6 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
         thinking: thinking,
       );
     }
-    if (bridge is DualModelInferenceBridge) {
-      return _generateStructuredWithFallbackMetadata(
-        bridge: bridge.evaluatorBridge,
-        modelId: modelId,
-        messages: messages,
-        schema: schema,
-        temperature: temperature,
-        thinking: thinking,
-      );
-    }
-    // Fallback generico per bridge non-HTTP:
     return bridge
         .generateStructured(
           modelId: modelId,

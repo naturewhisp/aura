@@ -6,6 +6,7 @@ export 'src/models/user_profile.dart';
 export 'src/models/victory_readiness.dart';
 export 'src/models/deception_state.dart';
 export 'src/models/evaluator_delta.dart';
+export 'src/models/evaluator_run_result.dart';
 export 'src/models/applied_delta.dart';
 export 'src/models/evaluator_resolution.dart';
 export 'src/models/actor_cue.dart';

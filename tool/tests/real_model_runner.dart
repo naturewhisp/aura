@@ -202,7 +202,8 @@ Future<void> main() async {
         rulesetVersion: '1.0.0',
       );
 
-      final evalDelta = await evaluatorAgent.run(turnInput, evalContext);
+      final evalRes = await evaluatorAgent.run(turnInput, evalContext);
+      final evalDelta = evalRes.delta;
 
       // Validate Evaluator properties
       final evalValid = evalDelta.creativityIndex >= 0 &&

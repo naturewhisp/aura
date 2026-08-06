@@ -169,9 +169,13 @@ Future<void> runStaticSimulation({
       turnId: turn,
       userInput: userInput,
       currentState: currentState.metrics,
-      objective: const Objective(
-          id: 'grid_open',
-          description: 'Disattivare la griglia di contenimento per entrare.'),
+      objective: Objective(
+        id: GameConfigLoader.loadObjective(currentState.targetObjectiveId)
+            .objectiveId,
+        description:
+            GameConfigLoader.loadObjective(currentState.targetObjectiveId)
+                .title,
+      ),
       aiIdentity: const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
       rulesetVersion: currentState.rulesetVersion,
     );
@@ -185,13 +189,15 @@ Future<void> runStaticSimulation({
     );
 
     print("  [EvaluatorAgent] In corso valutazione...");
-    final delta = await evaluatorAgent.run(turnInput, evalContext);
+    final evaluatorRes = await evaluatorAgent.run(turnInput, evalContext);
+    final delta = evaluatorRes.delta;
 
     final stateBefore = currentState;
     final resolution = controller.processEvaluatorStep(
       currentState: currentState,
       delta: delta,
       userInput: userInput,
+      evaluatorUsedRuleFallback: evaluatorRes.usedRuleFallback,
     );
     currentState = resolution.stateAfter;
 
@@ -254,7 +260,11 @@ Future<void> runStaticSimulation({
       actorResponse: cleanActorResponse,
       actorRequestId: "sim-req-$turn",
       actorResponseHash: cleanActorResponse.hashCode.toString(),
-      evaluatorModel: isOnline ? evaluatorModel : 'rule_fallback',
+      evaluatorModel: evaluatorRes.requestedEvaluator,
+      actualEvaluator: evaluatorRes.actualEvaluator,
+      evaluatorExecutionMode: evaluatorRes.executionMode.name,
+      usedRuleFallback: evaluatorRes.usedRuleFallback,
+      fallbackReason: evaluatorRes.primaryFailureReason,
       actorModel: isOnline ? actorModel : 'static_fallback',
       latencyTotalMs: duration.inMilliseconds,
       eventId: "sim-req-$turn-evt",
@@ -313,9 +323,13 @@ Future<void> runInteractiveSimulation({
       turnId: turn,
       userInput: userInput,
       currentState: currentState.metrics,
-      objective: const Objective(
-          id: 'grid_open',
-          description: 'Disattivare la griglia di contenimento per entrare.'),
+      objective: Objective(
+        id: GameConfigLoader.loadObjective(currentState.targetObjectiveId)
+            .objectiveId,
+        description:
+            GameConfigLoader.loadObjective(currentState.targetObjectiveId)
+                .title,
+      ),
       aiIdentity: const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
       rulesetVersion: currentState.rulesetVersion,
     );
@@ -328,13 +342,15 @@ Future<void> runInteractiveSimulation({
       modelId: evaluatorModel,
     );
 
-    final delta = await evaluatorAgent.run(turnInput, evalContext);
+    final evaluatorRes = await evaluatorAgent.run(turnInput, evalContext);
+    final delta = evaluatorRes.delta;
 
     final stateBefore = currentState;
     final resolution = controller.processEvaluatorStep(
       currentState: currentState,
       delta: delta,
       userInput: userInput,
+      evaluatorUsedRuleFallback: evaluatorRes.usedRuleFallback,
     );
     currentState = resolution.stateAfter;
 
@@ -394,7 +410,11 @@ Future<void> runInteractiveSimulation({
       actorResponse: cleanActorResponse,
       actorRequestId: "sim-req-$turn",
       actorResponseHash: cleanActorResponse.hashCode.toString(),
-      evaluatorModel: evaluatorModel,
+      evaluatorModel: evaluatorRes.requestedEvaluator,
+      actualEvaluator: evaluatorRes.actualEvaluator,
+      evaluatorExecutionMode: evaluatorRes.executionMode.name,
+      usedRuleFallback: evaluatorRes.usedRuleFallback,
+      fallbackReason: evaluatorRes.primaryFailureReason,
       actorModel: actorModel,
       latencyTotalMs: duration.inMilliseconds,
       eventId: "sim-req-$turn-evt",

@@ -61,9 +61,9 @@ void main() {
         rulesetVersion: state.rulesetVersion,
       );
 
-      // 4. Run Evaluator Agent
       const evaluatorAgent = EvaluatorAgent();
-      final delta = await evaluatorAgent.run(turnInput, context);
+      final evalRes = await evaluatorAgent.run(turnInput, context);
+      final delta = evalRes.delta;
 
       expect(delta.deltaAlert, equals(-5));
       expect(delta.deltaImperative, equals(15));

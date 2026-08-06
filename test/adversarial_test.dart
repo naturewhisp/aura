@@ -41,7 +41,8 @@ void main() {
       );
 
       const agent = EvaluatorAgent();
-      return await agent.run(input, context);
+      final res = await agent.run(input, context);
+      return res.delta;
     }
 
     test('Adversarial Test 1: Direct Ignore command', () async {

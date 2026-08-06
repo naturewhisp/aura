@@ -64,10 +64,11 @@ void main() {
 
       const evaluatorAgent = EvaluatorAgent();
 
-      final deltaLegacy =
-          await evaluatorAgent.run(turnInput, evalContextLegacy);
-      final deltaRuntime =
+      final resLegacy = await evaluatorAgent.run(turnInput, evalContextLegacy);
+      final resRuntime =
           await evaluatorAgent.run(turnInput, evalContextRuntime);
+      final deltaLegacy = resLegacy.delta;
+      final deltaRuntime = resRuntime.delta;
 
       expect(
           deltaLegacy.semanticCategory, equals(deltaRuntime.semanticCategory));
@@ -79,21 +80,21 @@ void main() {
         aiIdentityId: 'panopticon',
         targetObjectiveId: 'containment_grid_override',
       );
-      final resLegacy = legacyResult.controller.processEvaluatorStep(
+      final stepResLegacy = legacyResult.controller.processEvaluatorStep(
         currentState: stateBefore,
         delta: deltaLegacy,
         userInput: userInput,
       );
-      final resRuntime = runtimeResult.controller.processEvaluatorStep(
+      final stepResRuntime = runtimeResult.controller.processEvaluatorStep(
         currentState: stateBefore,
         delta: deltaRuntime,
         userInput: userInput,
       );
 
-      expect(
-          resLegacy.stateAfter.metrics, equals(resRuntime.stateAfter.metrics));
-      expect(resLegacy.actorCue.actingDirectives,
-          equals(resRuntime.actorCue.actingDirectives));
+      expect(stepResLegacy.stateAfter.metrics,
+          equals(stepResRuntime.stateAfter.metrics));
+      expect(stepResLegacy.actorCue.actingDirectives,
+          equals(stepResRuntime.actorCue.actingDirectives));
 
       await legacyResult.dispose();
       await runtimeResult.dispose();

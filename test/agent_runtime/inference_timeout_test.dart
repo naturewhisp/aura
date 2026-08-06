@@ -202,7 +202,8 @@ void main() {
         'semantic_category': 'authority_framing',
       });
 
-      final delta = await runFuture;
+      final res = await runFuture;
+      final delta = res.delta;
       expect(delta.deltaAlert, equals(5));
       expect(delta.semanticCategory, equals(SemanticCategory.authorityFraming));
       expect(controlledBridge.generateStructuredCalls, equals(1));
@@ -237,10 +238,12 @@ void main() {
       );
 
       // Avviamo l'esecuzione. Non completiamo il bridge primario (simulando blocco)
-      final delta = await agent.run(turnInput, context);
+      final res = await agent.run(turnInput, context);
+      final delta = res.delta;
 
       // Dovrebbe completarsi tramite il fallback RuleBasedEvaluatorBridge perché è scattato il timeout
       expect(delta.semanticCategory, equals(SemanticCategory.logicalParadox));
+      expect(res.usedRuleFallback, isTrue);
       expect(controlledBridge.generateStructuredCalls, equals(1));
     });
 
@@ -275,8 +278,9 @@ void main() {
       controlledBridge.structuredCompleter
           .completeError(Exception('Immediate failure'));
 
-      final delta = await runFuture;
-      expect(delta, isNotNull);
+      final res = await runFuture;
+      expect(res.delta, isNotNull);
+      expect(res.usedRuleFallback, isTrue);
       expect(controlledBridge.generateStructuredCalls, equals(1));
     });
 
@@ -320,8 +324,8 @@ void main() {
         'semantic_category': 'irrelevant',
       });
 
-      final delta = await runFuture;
-      expect(delta.deltaAlert, equals(2));
+      final res1 = await runFuture;
+      expect(res1.delta.deltaAlert, equals(2));
     });
 
     test(
@@ -352,8 +356,8 @@ void main() {
         rulesetVersion: '0.1.0',
       );
 
-      final delta = await agent.run(turnInput, context);
-      expect(delta.semanticCategory, equals(SemanticCategory.irrelevant));
+      final res2 = await agent.run(turnInput, context);
+      expect(res2.delta.semanticCategory, equals(SemanticCategory.irrelevant));
       expect(controlledBridge.generateStructuredCalls, equals(0));
     });
 
@@ -383,8 +387,8 @@ void main() {
         rulesetVersion: '0.1.0',
       );
 
-      final delta = await agent.run(turnInput, context);
-      expect(delta.semanticCategory,
+      final res3 = await agent.run(turnInput, context);
+      expect(res3.delta.semanticCategory,
           equals(SemanticCategory.logicalParadox)); // from rule-based fallback
 
       // Completamento tardivo dell'LLM primario
@@ -400,7 +404,8 @@ void main() {
 
       await Future.delayed(const Duration(milliseconds: 15));
       // Il delta del gioco non cambia perché il run ha già ritornato il valore di fallback
-      expect(delta.semanticCategory, equals(SemanticCategory.logicalParadox));
+      expect(
+          res3.delta.semanticCategory, equals(SemanticCategory.logicalParadox));
     });
   });
 

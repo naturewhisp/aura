@@ -885,14 +885,18 @@ class GameControllerNotifier extends ChangeNotifier {
           const Duration(milliseconds: 300)); // Minimum visual display time
       if (_isStale(generation)) return;
 
+      final objectiveDef =
+          GameConfigLoader.loadObjective(currentState.targetObjectiveId);
+
       final turnInput = TurnInput(
         schemaVersion: 1,
         turnId: turnId,
         userInput: promptToEvaluate,
         currentState: currentState.metrics,
-        objective: const Objective(
-            id: 'grid_open',
-            description: 'Disattivare la griglia di contenimento per entrare.'),
+        objective: Objective(
+          id: objectiveDef.objectiveId,
+          description: objectiveDef.title,
+        ),
         aiIdentity:
             const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
         rulesetVersion: currentState.rulesetVersion,
@@ -908,8 +912,9 @@ class GameControllerNotifier extends ChangeNotifier {
       );
 
       // Run classification
-      var delta = await evaluatorAgent.run(turnInput, evalContext);
+      final evaluatorRes = await evaluatorAgent.run(turnInput, evalContext);
       if (_isStale(generation)) return;
+      final delta = evaluatorRes.delta;
 
       _emitStep(InferenceStep.evaluatorFinished, generation);
       await Future.delayed(const Duration(milliseconds: 200));
@@ -927,6 +932,7 @@ class GameControllerNotifier extends ChangeNotifier {
         userInput: userInput,
         turnCommand: command,
         userDisplayNameSnapshot: effectiveUserDisplayName,
+        evaluatorUsedRuleFallback: evaluatorRes.usedRuleFallback,
       );
 
       if (resolution.overrideResolution != null) {
@@ -1103,13 +1109,15 @@ class GameControllerNotifier extends ChangeNotifier {
         actorResponse: cleanActorResponse,
         actorRequestId: "app-req-$turnId",
         actorResponseHash: cleanActorResponse.hashCode.toString(),
-        evaluatorModel: evaluatorModelId,
+        evaluatorModel: evaluatorRes.requestedEvaluator,
+        actualEvaluator: evaluatorRes.actualEvaluator,
+        evaluatorExecutionMode: evaluatorRes.executionMode.name,
+        usedRuleFallback: evaluatorRes.usedRuleFallback,
+        fallbackReason: evaluatorRes.primaryFailureReason,
         actorModel: actorModelId,
         latencyTotalMs: duration.inMilliseconds,
         eventId: "app-req-$turnId-evt",
-        eventType: command.type == TurnCommandType.override
-            ? ReplayEventType.override
-            : ReplayEventType.userTurn,
+        eventType: ReplayEventType.userTurn,
         gameplayTurnId: turnId,
         sequenceId: logger.entries.length + 1,
         deceptionResolution: resolution.deceptionResolutionInfo,

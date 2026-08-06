@@ -16,7 +16,7 @@ import 'package:test/test.dart';
 void main() {
   group('Live LM Studio Integration Test -', () {
     test('Connects to live LM Studio endpoint and generates text', () async {
-      const bridge = LocalApiInferenceBridge();
+      final bridge = LocalApiInferenceBridge();
 
       try {
         final res = await bridge.generateText(

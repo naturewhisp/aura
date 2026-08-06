@@ -284,6 +284,7 @@ class GameController {
     required String userInput,
     TurnCommand? turnCommand,
     String? userDisplayNameSnapshot,
+    bool evaluatorUsedRuleFallback = false,
   }) {
     final command = turnCommand ?? TurnCommand.parse(userInput);
     final isOverrideCommand = command.type == TurnCommandType.override;
@@ -654,7 +655,7 @@ class GameController {
     final newFlags = currentState.flags.copyWith(
       recalculationTriggered: recalculationTriggered,
       creativeStreak: newStreak,
-      lastTurnUsedFallback: false,
+      lastTurnUsedFallback: evaluatorUsedRuleFallback,
     );
 
     final updatedNarrativeMemory = currentState.narrativeMemory.copyWith(

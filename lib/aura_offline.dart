@@ -15,6 +15,8 @@ export 'src/agent_runtime/agents/actor_inference_logger.dart';
 // Inference Bridges & Runtime Adapters
 export 'src/agent_runtime/bridges/rule_based_evaluator_bridge.dart';
 export 'src/agent_runtime/bridges/local_api_inference_bridge.dart';
+export 'src/agent_runtime/bridges/structured_inference_result.dart';
+export 'src/agent_runtime/bridges/local_inference_exception.dart';
 export 'src/agent_runtime/bridges/runtime_inference_bridge.dart';
 export 'src/agent_runtime/bridges/dual_model_inference_bridge.dart';
 export 'src/agent_runtime/runtime/adapters/rule_based_inference_runtime.dart';

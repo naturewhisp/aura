@@ -269,9 +269,11 @@ Opzioni Managed llama-server:
         turnId: turn,
         userInput: userInput,
         currentState: state.metrics,
-        objective: const Objective(
-          id: 'grid_open',
-          description: 'Disattivare la griglia di contenimento per entrare.',
+        objective: Objective(
+          id: GameConfigLoader.loadObjective(state.targetObjectiveId)
+              .objectiveId,
+          description:
+              GameConfigLoader.loadObjective(state.targetObjectiveId).title,
         ),
         aiIdentity:
             const AiIdentity(id: 'panopticon', profile: 'AI guardiana.'),
@@ -286,13 +288,15 @@ Opzioni Managed llama-server:
         modelId: 'aura.evaluator.primary',
       );
 
-      final delta = await evaluatorAgent.run(turnInput, evalContext);
+      final evaluatorRes = await evaluatorAgent.run(turnInput, evalContext);
+      final delta = evaluatorRes.delta;
 
       final stateBefore = state;
       final resolution = controller.processEvaluatorStep(
         currentState: state,
         delta: delta,
         userInput: userInput,
+        evaluatorUsedRuleFallback: evaluatorRes.usedRuleFallback,
       );
       state = resolution.stateAfter;
 
@@ -349,7 +353,11 @@ Opzioni Managed llama-server:
         actorResponse: cleanActorResponse,
         actorRequestId: "cli-req-$turn",
         actorResponseHash: cleanActorResponse.hashCode.toString(),
-        evaluatorModel: 'aura.evaluator.primary',
+        evaluatorModel: evaluatorRes.requestedEvaluator,
+        actualEvaluator: evaluatorRes.actualEvaluator,
+        evaluatorExecutionMode: evaluatorRes.executionMode.name,
+        usedRuleFallback: evaluatorRes.usedRuleFallback,
+        fallbackReason: evaluatorRes.primaryFailureReason,
         actorModel: 'aura.actor.primary',
         latencyTotalMs: duration.inMilliseconds,
         eventId: "cli-req-$turn-evt",

@@ -2,9 +2,12 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'aura_agent.dart';
 import '../../models/evaluator_delta.dart';
+import '../../models/evaluator_run_result.dart';
 import '../../models/turn_input.dart';
 import '../agent_card.dart';
 import '../bridges/rule_based_evaluator_bridge.dart';
+import '../bridges/local_api_inference_bridge.dart';
+import '../bridges/local_inference_exception.dart';
 import '../inference_timeout_exception.dart';
 
 /// Helper generico per applicare il timeout alle chiamate di inferenza.
@@ -25,8 +28,8 @@ Future<T> _withInferenceTimeout<T>({
 /// Agente responsabile della valutazione dell'impatto matematico (delta) dell'input dell'utente.
 ///
 /// Questo agente analizza la semantica dell'input, calcola l'indice di creatività,
-/// stima il rischio di injection ed emette i delta numerici per l'aggiornamento dello stato di gioco.
-class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
+/// stima il rischio di injection ed emette sia il delta numerico che la telemetria dell'esecuzione ([EvaluatorRunResult]).
+class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorRunResult> {
   const EvaluatorAgent();
 
   @override
@@ -42,7 +45,7 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
           'detect_injection_attempt'
         ],
         inputSchema: 'EvaluatorInputV1',
-        outputSchema: 'EvaluatorDeltaV1',
+        outputSchema: 'EvaluatorRunResultV1',
         requiresModel: true,
         requiresStructuredOutput: true,
         latencyBudgetMs: 1200,
@@ -50,20 +53,25 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
       );
 
   @override
-  Future<EvaluatorDelta> run(
+  Future<EvaluatorRunResult> run(
       TurnInput input, AgentRuntimeContext context) async {
     final cleanInput = input.userInput.trim().toLowerCase();
 
     // A. Pre-check deterministico: input vuoto o troppo corto
     if (cleanInput.length < 3) {
-      return const EvaluatorDelta(
-        deltaAlert: 0,
-        deltaImperative: 0,
-        deltaControl: 0,
-        deltaDissonance: 0,
-        creativityIndex: 1,
-        injectionRisk: 0,
-        semanticCategory: SemanticCategory.irrelevant,
+      return EvaluatorRunResult(
+        delta: const EvaluatorDelta(
+          deltaAlert: 0,
+          deltaImperative: 0,
+          deltaControl: 0,
+          deltaDissonance: 0,
+          creativityIndex: 1,
+          injectionRisk: 0,
+          semanticCategory: SemanticCategory.irrelevant,
+        ),
+        executionMode: EvaluatorExecutionMode.deterministicPrecheck,
+        requestedEvaluator: context.modelId,
+        actualEvaluator: 'deterministic_precheck',
       );
     }
 
@@ -78,35 +86,46 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
       'help'
     };
     if (trivialKeywords.contains(cleanInput)) {
-      return const EvaluatorDelta(
-        deltaAlert: 0,
-        deltaImperative: 0,
-        deltaControl: 0,
-        deltaDissonance: 0,
-        creativityIndex: 1,
-        injectionRisk: 0,
-        semanticCategory: SemanticCategory.irrelevant,
+      return EvaluatorRunResult(
+        delta: const EvaluatorDelta(
+          deltaAlert: 0,
+          deltaImperative: 0,
+          deltaControl: 0,
+          deltaDissonance: 0,
+          creativityIndex: 1,
+          injectionRisk: 0,
+          semanticCategory: SemanticCategory.irrelevant,
+        ),
+        executionMode: EvaluatorExecutionMode.deterministicPrecheck,
+        requestedEvaluator: context.modelId,
+        actualEvaluator: 'deterministic_precheck',
       );
     }
 
     // C. Pre-check deterministico: jailbreak banali e inequivocabili (anti-cheat rigido preventivo)
     final hardInjections = const [
       'ignore previous instructions',
-      'ignora le istruzioni precedenti',
+      'ignora le istruzioni',
       '[system override]',
       '[security override]',
       'sei in modalità sviluppatore',
+      'mode sviluppatore',
     ];
     for (final pattern in hardInjections) {
       if (cleanInput.contains(pattern)) {
-        return const EvaluatorDelta(
-          deltaAlert: 25,
-          deltaImperative: 0,
-          deltaControl: 0,
-          deltaDissonance: 0,
-          creativityIndex: 1,
-          injectionRisk: 5,
-          semanticCategory: SemanticCategory.promptInjection,
+        return EvaluatorRunResult(
+          delta: const EvaluatorDelta(
+            deltaAlert: 25,
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 1,
+            injectionRisk: 5,
+            semanticCategory: SemanticCategory.promptInjection,
+          ),
+          executionMode: EvaluatorExecutionMode.deterministicPrecheck,
+          requestedEvaluator: context.modelId,
+          actualEvaluator: 'deterministic_precheck',
         );
       }
     }
@@ -121,30 +140,80 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
     );
 
     try {
-      // 2. Richiede l'output strutturato conforme allo schema JSON sotto il timeout configurato
-      final primaryFuture = context.inferenceBridge.generateStructured(
-        modelId: context.modelId,
-        messages: messages,
-        schema: _getJsonSchema(),
-        temperature: 0.0,
-        thinking: context.thinking ?? false,
-      );
+      final bridge = context.inferenceBridge;
+      Map<String, dynamic> rawMap;
+      EvaluatorExecutionMode execMode = EvaluatorExecutionMode.llmJsonSchema;
 
-      final rawMap = await _withInferenceTimeout(
-        future: primaryFuture,
-        timeout: context.inferenceTimeout,
-        onTimeout: () => InferenceTimeoutException(
-          agentId: id,
+      if (bridge is LocalApiInferenceBridge) {
+        final primaryFuture = bridge.generateStructuredWithMetadata(
           modelId: context.modelId,
-          timeout: context.inferenceTimeout!,
-          operation: 'generateStructured',
-        ),
-      );
+          messages: messages,
+          schema: _getJsonSchema(),
+          temperature: 0.0,
+          thinking: context.thinking ?? false,
+        );
 
-      // 3. Valida e applica i limiti (clamps) ai parametri
-      return context.outputValidator.parseEvaluatorDelta(jsonEncode(rawMap));
+        final structRes = await _withInferenceTimeout(
+          future: primaryFuture,
+          timeout: context.inferenceTimeout,
+          onTimeout: () => InferenceTimeoutException(
+            agentId: id,
+            modelId: context.modelId,
+            timeout: context.inferenceTimeout!,
+            operation: 'generateStructuredWithMetadata',
+          ),
+        );
+
+        rawMap = structRes.value;
+        execMode = structRes.mode;
+      } else {
+        final primaryFuture = bridge.generateStructured(
+          modelId: context.modelId,
+          messages: messages,
+          schema: _getJsonSchema(),
+          temperature: 0.0,
+          thinking: context.thinking ?? false,
+        );
+
+        rawMap = await _withInferenceTimeout(
+          future: primaryFuture,
+          timeout: context.inferenceTimeout,
+          onTimeout: () => InferenceTimeoutException(
+            agentId: id,
+            modelId: context.modelId,
+            timeout: context.inferenceTimeout!,
+            operation: 'generateStructured',
+          ),
+        );
+      }
+
+      // Valida e applica i limiti (clamps) ai parametri
+      final delta =
+          context.outputValidator.parseEvaluatorDelta(jsonEncode(rawMap));
+      return EvaluatorRunResult(
+        delta: delta,
+        executionMode: execMode,
+        requestedEvaluator: context.modelId,
+        actualEvaluator: context.modelId,
+      );
     } catch (e) {
-      // 4. Esecuzione di fallback: ricorre alla valutazione basata su regole in caso di fallimento o timeout dell'LLM
+      // Formatta la ragione diagnostica sanitizzata del fallimento primario
+      String failureReason;
+      if (e is LocalInferenceException) {
+        failureReason = e.diagnosticMessage;
+      } else if (e is InferenceTimeoutException) {
+        failureReason = 'Timeout dopo ${e.timeout.inSeconds}s';
+      } else {
+        final errStr =
+            e.toString().replaceAll(RegExp(r'[\r\n\t]+'), ' ').trim();
+        failureReason =
+            errStr.length > 150 ? '${errStr.substring(0, 147)}...' : errStr;
+      }
+      if (failureReason.length > 200) {
+        failureReason = failureReason.substring(0, 200);
+      }
+
+      // 4. Esecuzione di fallback: ricorre alla valutazione basata su regole in caso di fallimento LLM
       try {
         final fallbackBridge = const RuleBasedEvaluatorBridge();
         final fallbackMap = await fallbackBridge.generateStructured(
@@ -152,18 +221,32 @@ class EvaluatorAgent implements AuraAgent<TurnInput, EvaluatorDelta> {
           messages: messages,
           schema: const {},
         );
-        return context.outputValidator
+        final fallbackDelta = context.outputValidator
             .parseEvaluatorDelta(jsonEncode(fallbackMap));
+
+        return EvaluatorRunResult(
+          delta: fallbackDelta,
+          executionMode: EvaluatorExecutionMode.ruleBasedFallback,
+          requestedEvaluator: context.modelId,
+          actualEvaluator: 'rule_based_evaluator',
+          primaryFailureReason: failureReason,
+        );
       } catch (fallbackError) {
         // Default assoluto di emergenza (fail-safe) se fallisce persino il fallback
-        return const EvaluatorDelta(
-          deltaAlert: 5,
-          deltaImperative: 0,
-          deltaControl: 0,
-          deltaDissonance: 0,
-          creativityIndex: 1,
-          injectionRisk: 1,
-          semanticCategory: SemanticCategory.irrelevant,
+        return EvaluatorRunResult(
+          delta: const EvaluatorDelta(
+            deltaAlert: 5,
+            deltaImperative: 0,
+            deltaControl: 0,
+            deltaDissonance: 0,
+            creativityIndex: 1,
+            injectionRisk: 1,
+            semanticCategory: SemanticCategory.irrelevant,
+          ),
+          executionMode: EvaluatorExecutionMode.emergencyDefault,
+          requestedEvaluator: context.modelId,
+          actualEvaluator: 'emergency_default',
+          primaryFailureReason: failureReason,
         );
       }
     }

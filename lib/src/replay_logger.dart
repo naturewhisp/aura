@@ -2,31 +2,29 @@ import 'package:meta/meta.dart';
 import 'models/evaluator_delta.dart';
 import 'models/user_profile.dart';
 
-/// Rappresenta i possibili tipi di evento registrati nel replay log.
+/// Tipi di eventi registrabili all'interno del replay.
 enum ReplayEventType {
   userTurn('user_turn'),
   hint('hint'),
-  override('override'),
-  systemDecay('system_decay'),
-  alertCreep('alert_creep'),
-  victory('victory'),
-  defeat('defeat');
+  deceptionBait('deception_bait'),
+  deceptionResolution('deception_resolution'),
+  system('system');
 
   final String value;
   const ReplayEventType(this.value);
 
   static ReplayEventType fromString(String val) {
     return ReplayEventType.values.firstWhere(
-      (e) => e.value == val || e.name == val,
+      (e) => e.value == val,
       orElse: () => ReplayEventType.userTurn,
     );
   }
 }
 
-/// Rappresenta un singolo turno registrato all'interno del registro di replay (replay log).
+/// Rappresenta una singola voce del registro di replay (replay log).
 ///
-/// Contiene tutti i dettagli dello scambio: l'input del giocatore, l'output strutturato del valutatore,
-/// lo stato precedente e successivo alla transazione, la risposta dell'attore, i dettagli del modello
+/// Registra in modo immutabile l'input del giocatore, le variazioni delle metriche (delta),
+/// le risposte dell'attore e della fiction, oltre ai dettagli sul modello
 /// LLM utilizzato e le metriche di latenza temporale.
 @immutable
 class ReplayEntry {
@@ -57,8 +55,20 @@ class ReplayEntry {
   /// L'hash crittografico o firma di validazione associato alla risposta dell'attore.
   final String actorResponseHash;
 
-  /// Il modello LLM utilizzato per l'inferenza del valutatore.
+  /// Il modello LLM o alias richiesto per l'inferenza del valutatore.
   final String evaluatorModel;
+
+  /// Il valutatore o motore che ha realmente calcolato il turno.
+  final String actualEvaluator;
+
+  /// La modalità di esecuzione del valutatore (es. llmJsonSchema, ruleBasedFallback).
+  final String? evaluatorExecutionMode;
+
+  /// Indica se l'esecuzione è degradata al fallback basato su regole.
+  final bool usedRuleFallback;
+
+  /// Motivo diagnostico sanitizzato dell'eventuale primo fallimento primario.
+  final String? fallbackReason;
 
   /// Il modello LLM utilizzato per l'inferenza dell'attore.
   final String actorModel;
@@ -96,6 +106,10 @@ class ReplayEntry {
     required this.actorRequestId,
     required this.actorResponseHash,
     required this.evaluatorModel,
+    String? actualEvaluator,
+    this.evaluatorExecutionMode,
+    this.usedRuleFallback = false,
+    this.fallbackReason,
     required this.actorModel,
     required this.latencyTotalMs,
     String? eventId,
@@ -110,7 +124,8 @@ class ReplayEntry {
       'applied_resonance_penalty': 0.0,
     },
     this.overrideResolution,
-  })  : eventId = eventId ?? "$actorRequestId-evt",
+  })  : actualEvaluator = actualEvaluator ?? evaluatorModel,
+        eventId = eventId ?? "$actorRequestId-evt",
         gameplayTurnId = gameplayTurnId ?? turnId,
         sequenceId = sequenceId ?? turnId;
 
@@ -157,6 +172,8 @@ class ReplayEntry {
         ? UserProfile.normalize(rawSnap)
         : null;
 
+    final evalModel = runtime['evaluator_model'] as String? ?? '';
+
     return ReplayEntry(
       turnId: json['turn_id'] as int? ?? 0,
       userInput: json['user_input'] as String? ?? '',
@@ -168,7 +185,11 @@ class ReplayEntry {
       actorResponse: json['actor_response'] as String? ?? '',
       actorRequestId: json['actor_request_id'] as String? ?? '',
       actorResponseHash: json['actor_response_hash'] as String? ?? '',
-      evaluatorModel: runtime['evaluator_model'] as String? ?? '',
+      evaluatorModel: runtime['requested_evaluator'] as String? ?? evalModel,
+      actualEvaluator: runtime['actual_evaluator'] as String? ?? evalModel,
+      evaluatorExecutionMode: runtime['evaluator_execution_mode'] as String?,
+      usedRuleFallback: runtime['used_rule_fallback'] as bool? ?? false,
+      fallbackReason: runtime['fallback_reason'] as String?,
       actorModel: runtime['actor_model'] as String? ?? '',
       latencyTotalMs: runtime['latency_total_ms'] as int? ?? 0,
       eventId: json['event_id'] as String?,
@@ -217,6 +238,13 @@ class ReplayEntry {
       'gameplay_turn_id': gameplayTurnId,
       'sequence_id': sequenceId,
       'runtime': {
+        'requested_evaluator': evaluatorModel,
+        'actual_evaluator': actualEvaluator,
+        if (evaluatorExecutionMode != null)
+          'evaluator_execution_mode': evaluatorExecutionMode,
+        'used_rule_fallback': usedRuleFallback,
+        if (fallbackReason != null && fallbackReason!.isNotEmpty)
+          'fallback_reason': fallbackReason,
         'evaluator_model': evaluatorModel,
         'actor_model': actorModel,
         'latency_total_ms': latencyTotalMs,
@@ -240,27 +268,37 @@ class ReplayLogger {
   /// Restituisce una lista non modificabile di tutte le voci registrate finora.
   List<ReplayEntry> get entries => List.unmodifiable(_entries);
 
-  /// Registra e aggiunge una nuova voce di replay associata a un turno completato.
-  void logTurn(ReplayEntry entry) {
+  /// Aggiunge una voce di replay al registro.
+  void addEntry(ReplayEntry entry) {
     _entries.add(entry);
   }
 
-  /// Converte l'intera sessione di log in una mappa compatibile con il formato JSON.
+  /// Alias di [addEntry] per compatibilità con i test ed i consumatori dell'API.
+  void logTurn(ReplayEntry entry) => addEntry(entry);
+
+  /// Ripristina un [ReplayLogger] da un JSON.
+  factory ReplayLogger.fromJson(Map<String, dynamic> json) {
+    final logger = ReplayLogger(sessionId: json['session_id'] as String? ?? '');
+    final entriesList = json['entries'] as List? ?? const [];
+    for (final e in entriesList) {
+      if (e is Map<String, dynamic>) {
+        logger.addEntry(ReplayEntry.fromJson(e));
+      }
+    }
+    return logger;
+  }
+
+  /// Pulisce l'intero registro dei replay.
+  void clear() {
+    _entries.clear();
+  }
+
+  /// Esporta l'intera sessione in un formato serializzabile conforme alle specifiche TGDD.
   Map<String, dynamic> toJson() {
     return {
       'session_id': sessionId,
       'total_turns': _entries.length,
       'entries': _entries.map((e) => e.toJson()).toList(),
     };
-  }
-
-  /// Costruttore factory per ripristinare una sessione di logging a partire da dati JSON.
-  factory ReplayLogger.fromJson(Map<String, dynamic> json) {
-    final logger = ReplayLogger(sessionId: json['session_id'] as String? ?? '');
-    final list = json['entries'] as List? ?? const [];
-    for (var item in list) {
-      logger.logTurn(ReplayEntry.fromJson(Map<String, dynamic>.from(item)));
-    }
-    return logger;
   }
 }

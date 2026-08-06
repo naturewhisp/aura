@@ -302,12 +302,17 @@ class LlamaServerProcessSupervisor {
     if (_configuration.logFilePath != null &&
         _configuration.logFilePath!.trim().isNotEmpty &&
         _fileSystem is LocalFileSystem) {
+      // Apre il sink prima di _writeBootMetadataHeader in modo che eventuali eccezioni
+      // sincrone nel metodo non lascino il sink aperto senza riferimento.
+      final sink = io.File(_configuration.logFilePath!)
+        ..parent.createSync(recursive: true);
+      final openSink = sink.openWrite(mode: io.FileMode.append);
       try {
-        final file = io.File(_configuration.logFilePath!);
-        file.parent.createSync(recursive: true);
-        _logFileSink = file.openWrite(mode: io.FileMode.append);
-        _writeBootMetadataHeader(file);
+        _logFileSink = openSink;
+        _writeBootMetadataHeader(sink);
       } catch (_) {
+        // Chiude il sink prima di azzerare il riferimento per evitare leak di risorse.
+        openSink.close().ignore();
         _logFileSink = null;
       }
     }
@@ -319,6 +324,19 @@ class LlamaServerProcessSupervisor {
     final modelFile = io.File(modelPath);
     final exists = modelFile.existsSync();
     final sizeStr = exists ? '${modelFile.lengthSync()} bytes' : 'unknown';
+    final p = _configuration.provenance;
+
+    final provenanceBlock = p != null
+        ? '''
+Model Alias: ${_configuration.modelAlias}
+Artifact ID: ${p.artifactId}
+Repository: ${p.repository}
+Revision: ${p.revision}
+File Name: ${p.fileName}
+Model Architecture: ${p.modelArchitecture}
+Expected SHA-256: ${p.expectedSha256}
+Integrity Verified: ${p.integrityVerified}'''
+        : 'Model Alias: ${_configuration.modelAlias}\nProvenance: not available (istanza esterna)';
 
     final header = '''
 ================================================================================
@@ -330,6 +348,7 @@ File Size: $sizeStr
 Executable: ${_configuration.executablePath}
 Target Port: $_allocatedPort
 Log File: ${logFile.path}
+$provenanceBlock
 ================================================================================''';
     _logFileSink!.writeln(header);
   }

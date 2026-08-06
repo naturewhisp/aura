@@ -277,46 +277,90 @@ class RuntimeInferenceBridge
     _structuredCapabilityCache.clear();
   }
 
+  /// Firma grammaticale composta: presente nel corpo di un errore indica un'incompatibilità
+  /// del sampler o della grammatica strutturata di llama.cpp.
+  static bool _hasGrammarSignature(String errStr) {
+    return errStr.contains('failed to initialize samplers') ||
+        errStr.contains('unexpected empty grammar stack') ||
+        errStr.contains('grammar parse error') ||
+        errStr.contains('structured output unavailable') ||
+        errStr.contains('malformed structured output') ||
+        errStr.contains('invalid schema grammar') ||
+        errStr.contains('sampler') ||
+        errStr.contains('grammar');
+  }
+
   /// Mappa in modo preciso l'esito diagnostico del tentativo fallito di inferenza strutturata.
+  /// Restituisce uno status neutro per errori non grammaticali (es. timeout, permessi, crash).
   String _resolveAttemptStatus(Object error) {
     final errStr = error.toString().toLowerCase();
+
+    // FormatException con firma di grammatica: es. eccezione di parsing dello schema.
+    if (error is FormatException) {
+      return _hasGrammarSignature(errStr)
+          ? 'http_400_grammar_error'
+          : 'structured_generation_failed';
+    }
+
     if (error is LocalInferenceException) {
-      if (error.statusCode == 422) return 'http_422_structured_error';
-      if (error.statusCode == 400) return 'http_400_grammar_error';
+      if (error.statusCode == 422) {
+        return _hasGrammarSignature(errStr)
+            ? 'http_422_structured_error'
+            : 'http_422_request_error';
+      }
+      if (error.statusCode == 400) {
+        return _hasGrammarSignature(errStr)
+            ? 'http_400_grammar_error'
+            : 'http_400_request_error';
+      }
     }
+
+    if (error is TimeoutException) return 'timeout';
+
     if (error is RuntimeException) {
-      final code = error.failure.code;
-      if (code == RuntimeFailureCode.structuredOutputUnavailable) {
-        return 'structured_output_unavailable';
+      switch (error.failure.code) {
+        case RuntimeFailureCode.structuredOutputUnavailable:
+          return 'structured_output_unavailable';
+        case RuntimeFailureCode.malformedStructuredOutput:
+          return 'malformed_structured_output';
+        case RuntimeFailureCode.timeout:
+          return 'timeout';
+        case RuntimeFailureCode.permissionDenied:
+          return 'permission_denied';
+        case RuntimeFailureCode.backendUnavailable:
+        case RuntimeFailureCode.runtimeInitializationFailed:
+        case RuntimeFailureCode.runtimeCrashed:
+          return 'runtime_unavailable';
+        case RuntimeFailureCode.modelMissing:
+          return 'model_missing';
+        case RuntimeFailureCode.generationFailed:
+          // Per generationFailed, distinguiamo 422 da 400 dal corpo del messaggio.
+          if (errStr.contains('422') && _hasGrammarSignature(errStr)) {
+            return 'http_422_structured_error';
+          }
+          if (_hasGrammarSignature(errStr)) return 'http_400_grammar_error';
+          return 'generation_failed';
+        default:
+          return 'structured_generation_failed';
       }
-      if (code == RuntimeFailureCode.malformedStructuredOutput) {
-        return 'malformed_structured_output';
-      }
-      if (errStr.contains('422')) return 'http_422_structured_error';
     }
-    return 'http_400_grammar_error';
+
+    return 'structured_generation_failed';
   }
 
   /// Verifica se un errore di inferenza è dovuto a incompatibilità di grammatica/schema
   /// tale da giustificare il downgrade trasparente a raw JSON.
+  /// Richiede firme composte specifiche: il token generico 'schema' da solo non è sufficiente.
   bool _shouldDowngrade(Object error) {
     final errStr = error.toString().toLowerCase();
 
     if (error is FormatException) {
-      return errStr.contains('grammar') ||
-          errStr.contains('sampler') ||
-          errStr.contains('schema') ||
-          errStr.contains('unexpected empty');
+      return _hasGrammarSignature(errStr);
     }
 
     if (error is LocalInferenceException) {
-      final isGrammarSignature = errStr.contains('grammar') ||
-          errStr.contains('sampler') ||
-          errStr.contains('schema') ||
-          errStr.contains('unexpected empty') ||
-          errStr.contains('failed to initialize samplers');
       return (error.statusCode == 400 || error.statusCode == 422) &&
-          isGrammarSignature;
+          _hasGrammarSignature(errStr);
     }
 
     if (error is RuntimeException) {
@@ -326,13 +370,7 @@ class RuntimeInferenceBridge
         return true;
       }
       if (code == RuntimeFailureCode.generationFailed) {
-        return errStr.contains('grammar') ||
-            errStr.contains('sampler') ||
-            errStr.contains('schema') ||
-            errStr.contains('unexpected empty') ||
-            errStr.contains('failed to initialize samplers') ||
-            (errStr.contains('status 400') &&
-                (errStr.contains('sampler') || errStr.contains('grammar')));
+        return _hasGrammarSignature(errStr);
       }
       return false;
     }

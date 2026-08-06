@@ -28,6 +28,10 @@ class ManagedLlamaServerConfiguration {
   final String? logFilePath;
   final bool disableReasoning;
 
+  /// Provenance verificata dell'artefatto: propagata dal provisioning per l'attestazione
+  /// dell'identità crittografica nel boot log. Assente nelle istanze esterne.
+  final ManagedModelProvenance? provenance;
+
   static const List<String> allowedHosts = ['127.0.0.1', 'localhost', '::1'];
 
   static const Set<String> reservedFlags = {
@@ -77,6 +81,7 @@ class ManagedLlamaServerConfiguration {
     this.runtimeInstanceId,
     this.logFilePath,
     this.disableReasoning = true,
+    this.provenance,
   });
 
   /// Esegue la validazione formale e dei vincoli dei parametri di configurazione.
@@ -277,6 +282,46 @@ class ManagedLlamaServerConfiguration {
       runtimeInstanceId: runtimeInstanceId ?? this.runtimeInstanceId,
       logFilePath: logFilePath ?? this.logFilePath,
       disableReasoning: disableReasoning ?? this.disableReasoning,
+      provenance: provenance ?? this.provenance,
     );
   }
+}
+
+/// Provenance verificata dell'artefatto modello associato a un'istanza managed.
+///
+/// Viene propagata dal sistema di provisioning al supervisor, in modo che il boot
+/// log possa attestare l'identità crittografica e semantica del modello caricato
+/// senza dover ricalcolare l'hash da un file GGUF di diversi GB.
+final class ManagedModelProvenance {
+  /// Identificativo dell'artefatto nel catalogo A.U.R.A.
+  final String artifactId;
+
+  /// Repository Hugging Face (es. `lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF`).
+  final String repository;
+
+  /// SHA della revisione nel repository (es. `94b49547f1931930f002226bc0a68b5f10a4ee25`).
+  final String revision;
+
+  /// Nome del file dichiarato nel catalogo (es. `Ministral-3-3B-Instruct-2512-Q4_K_M.gguf`).
+  final String fileName;
+
+  /// Hash SHA-256 atteso del file, così come registrato nel catalogo firmato.
+  final String expectedSha256;
+
+  /// Indica se il provisioning ha verificato con successo l'hash SHA-256 dell'artefatto
+  /// prima di avviare il processo. `false` se la verifica è stata saltata.
+  final bool integrityVerified;
+
+  /// Architettura GGUF dichiarata nel catalogo (es. `mistral3`, `llama`).
+  final String modelArchitecture;
+
+  const ManagedModelProvenance({
+    required this.artifactId,
+    required this.repository,
+    required this.revision,
+    required this.fileName,
+    required this.expectedSha256,
+    required this.integrityVerified,
+    required this.modelArchitecture,
+  });
 }

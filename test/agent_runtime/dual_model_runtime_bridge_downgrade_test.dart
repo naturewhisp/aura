@@ -241,6 +241,7 @@ void main() {
       expect(result.attempts.length, equals(2));
       expect(result.attempts[0].mode,
           equals(EvaluatorExecutionMode.llmJsonSchema));
+      expect(result.attempts[0].resultStatus, equals('permission_denied'));
       expect(result.attempts[1].mode,
           equals(EvaluatorExecutionMode.ruleBasedFallback));
       expect(
@@ -268,6 +269,8 @@ void main() {
       expect(fakeRuntime.structuredCallCount, equals(1));
       expect(
           fakeRuntime.textCallCount, equals(0)); // Nessun tentativo raw text!
+      expect(result.attempts.length, greaterThanOrEqualTo(1));
+      expect(result.attempts[0].resultStatus, equals('timeout'));
     });
 
     test(

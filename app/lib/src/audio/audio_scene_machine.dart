@@ -136,9 +136,9 @@ class AudioSceneMachine {
           return;
         }
 
-        final double startVol =
-            _currentVolumes[targetTrack] ?? previousProfile?.volume ?? 0.0;
-        final double endVol = targetProfile.volume;
+        final double startVol = _currentVolumes[targetTrack] ??
+            (_applyDucking(previousProfile?.volume ?? 0.0));
+        final double endVol = _applyDucking(targetProfile.volume);
         final duration = targetProfile.transitionDuration;
 
         final wasAlreadyPlaying =
@@ -297,9 +297,10 @@ class AudioSceneMachine {
       final stepDuration = duration ~/ steps;
 
       final double startFromVolume = previousTrack != null
-          ? (_currentVolumes[previousTrack] ?? previousProfile?.volume ?? 0.0)
+          ? (_currentVolumes[previousTrack] ??
+              (_applyDucking(previousProfile?.volume ?? 0.0)))
           : 0.0;
-      final double endToVolume = targetProfile.volume;
+      final double endToVolume = _applyDucking(targetProfile.volume);
 
       for (int i = 1; i <= steps; i++) {
         final double t = i / steps;
@@ -545,7 +546,8 @@ class AudioSceneMachine {
         return;
       }
 
-      await player.setVolume(profile.volume);
+      final targetVolume = _applyDucking(profile.volume);
+      await player.setVolume(targetVolume);
       if (_disposed) {
         await _bestEffortStopAllNonCancellable();
         return;
@@ -582,7 +584,7 @@ class AudioSceneMachine {
         return;
       }
 
-      _currentVolumes[effectiveStableTrack] = profile.volume;
+      _currentVolumes[effectiveStableTrack] = targetVolume;
       _currentScene = stableScene;
       _currentTrack = effectiveStableTrack;
       _isTrackPlaying = true;
@@ -637,6 +639,8 @@ class AudioSceneMachine {
   /// Restituisce se l'audio è attenuato in background.
   bool get isDucked => _ducked;
 
+  double _applyDucking(double volume) => _ducked ? (volume * 0.25) : volume;
+
   /// Applica o rimuove l'attenuazione (ducking) del volume.
   Future<void> setDucked(bool ducked) async {
     if (_disposed) return;
@@ -646,8 +650,9 @@ class AudioSceneMachine {
       final player = backend.playerFor(_currentTrack!);
       final profile = audioSceneProfiles[_currentScene];
       final baseVol = profile?.volume ?? 1.0;
-      final targetVol = _ducked ? (baseVol * 0.25) : baseVol;
+      final targetVol = _applyDucking(baseVol);
       await player.setVolume(targetVol);
+      _currentVolumes[_currentTrack!] = targetVol;
     });
   }
 

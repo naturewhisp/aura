@@ -256,15 +256,20 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       if (!mounted) return;
 
       try {
+        final shell = DesktopShellProvider.maybeOf(context);
         await widget.audioService.initialize(
           appDataPath: widget.notifier.appDataPath,
           audioEnabled: widget.notifier.audioEnabled,
+          musicEnabled: shell?.state.musicEnabled,
+          sfxEnabled: shell?.state.sfxEnabled,
         );
         if (!mounted) return;
         await widget.audioService.transitionToBoot();
         if (!mounted) return;
+        final musicStatus =
+            (shell?.state.musicEnabled ?? true) ? 'BGM_ON' : 'BGM_MUTED';
         _appendBootLog(
-            "AURA_INIT> Soundscape initialized: [${widget.notifier.audioEnabled ? 'ENABLED' : 'MUTED'}].");
+            "AURA_INIT> Soundscape initialized: [${widget.notifier.audioEnabled ? 'ENABLED' : 'MUTED'}|$musicStatus].");
       } catch (audioError) {
         if (!mounted) return;
         _appendBootLog(

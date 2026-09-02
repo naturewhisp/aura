@@ -11,6 +11,7 @@ import '../audio/audio_state_resolver.dart';
 import '../widgets/audio_reactive_background.dart';
 import '../widgets/crt_grid_overlay.dart';
 import '../widgets/matrix_rain_background.dart';
+import '../platform/desktop_shell_provider.dart';
 
 /// Tipologie di finale (Outcome) della partita A.U.R.A.
 enum EndingType {
@@ -1100,7 +1101,11 @@ class _TerminalScreenState extends State<TerminalScreen>
 
   Widget _buildGlitchContainer(
       {required double intensity, required Widget child}) {
-    if (intensity <= 0.0 || !widget.notifier.shaderEnabled) return child;
+    final shell = DesktopShellProvider.maybeOf(context);
+    final reduceGraphics = shell?.state.reduceGraphicEffects ?? false;
+    if (intensity <= 0.0 || !widget.notifier.shaderEnabled || reduceGraphics) {
+      return child;
+    }
 
     final double time = DateTime.now().millisecondsSinceEpoch / 1000.0;
     return CustomPaint(

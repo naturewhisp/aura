@@ -5,6 +5,8 @@ abstract interface class BootAudioService {
   Future<void> initialize({
     required String appDataPath,
     required bool audioEnabled,
+    bool? musicEnabled,
+    bool? sfxEnabled,
   });
 
   Future<void> transitionToBoot();
@@ -19,10 +21,14 @@ final class AudioManagerBootService implements BootAudioService {
   Future<void> initialize({
     required String appDataPath,
     required bool audioEnabled,
+    bool? musicEnabled,
+    bool? sfxEnabled,
   }) {
     return AudioManager().initialize(
       appDataPath,
       audioEnabled: audioEnabled,
+      musicEnabled: musicEnabled,
+      sfxEnabled: sfxEnabled,
     );
   }
 

@@ -604,6 +604,107 @@ void main() {
     });
 
     test(
+        'setMusicEnabled(false) prima di initialize: flag preservato e nessun player parte',
+        () async {
+      final manager = AudioManager();
+      await manager.setMusicEnabled(false);
+
+      expect(manager.musicEnabled, isFalse);
+
+      await manager.initialize('test_dir', audioEnabled: true);
+
+      expect(manager.musicEnabled, isFalse);
+      expect(manager.audioEnabled, isTrue);
+
+      await manager.transitionTo(AudioSceneState.boot);
+
+      expect(manager.machine.currentScene, isNull);
+      expect(manager.machine.requestedScene, AudioSceneState.boot);
+      expect(manager.machine.isTrackPlaying, isFalse);
+      expect(manager.currentBpm, 0.0);
+    });
+
+    test('initialize con musicEnabled: false blocca la riproduzione musicale',
+        () async {
+      final manager = AudioManager();
+      await manager.transitionTo(AudioSceneState.menu);
+
+      await manager.initialize('test_dir',
+          audioEnabled: true, musicEnabled: false);
+
+      expect(manager.musicEnabled, isFalse);
+      expect(manager.machine.currentScene, isNull);
+      expect(manager.machine.requestedScene, AudioSceneState.menu);
+      expect(manager.machine.isTrackPlaying, isFalse);
+      expect(manager.currentBpm, 0.0);
+
+      // Riabilitare la musica fa partire la scena richiesta
+      await manager.setMusicEnabled(true);
+      expect(manager.musicEnabled, isTrue);
+      expect(manager.machine.currentScene, AudioSceneState.menu);
+      expect(manager.machine.isTrackPlaying, isTrue);
+    });
+
+    test(
+        'disattivazione dinamica della musica tramite setMusicEnabled(false) sospende il playback',
+        () async {
+      final manager = AudioManager();
+      await manager.initialize('test_dir',
+          audioEnabled: true, musicEnabled: true);
+      await manager.transitionTo(AudioSceneState.gameAmbient);
+
+      expect(manager.machine.currentScene, AudioSceneState.gameAmbient);
+      expect(manager.machine.isTrackPlaying, isTrue);
+
+      await manager.setMusicEnabled(false);
+      expect(manager.musicEnabled, isFalse);
+      expect(manager.machine.isTrackPlaying, isFalse);
+      expect(manager.currentBpm, 0.0);
+    });
+
+    test(
+        'setFocusDucked(true) prima di initialize viene preservato e applicato alla macchina',
+        () async {
+      final manager = AudioManager();
+      await manager.setFocusDucked(true);
+
+      await manager.initialize('test_dir',
+          audioEnabled: true, musicEnabled: true);
+      expect(manager.machine.isDucked, isTrue);
+
+      await manager.transitionTo(AudioSceneState.menu);
+      final profile = audioSceneProfiles[AudioSceneState.menu]!;
+      expect(manager.machine.getVolumeFor(profile.track),
+          closeTo(profile.volume * 0.25, 0.001));
+
+      // Ripristino del focus disattiva il ducking
+      await manager.setFocusDucked(false);
+      expect(manager.machine.isDucked, isFalse);
+      expect(manager.machine.getVolumeFor(profile.track),
+          closeTo(profile.volume, 0.001));
+    });
+
+    test('transizione durante focusDucked attivo mantiene il volume attenuato',
+        () async {
+      final manager = AudioManager();
+      await manager.initialize('test_dir',
+          audioEnabled: true, musicEnabled: true);
+      await manager.transitionTo(AudioSceneState.gameAmbient);
+
+      // Applica ducking
+      await manager.setFocusDucked(true);
+      final ambientProfile = audioSceneProfiles[AudioSceneState.gameAmbient]!;
+      expect(manager.machine.getVolumeFor(ambientProfile.track),
+          closeTo(ambientProfile.volume * 0.25, 0.001));
+
+      // Transizione mentre è attenuato verso gameTense
+      await manager.transitionTo(AudioSceneState.gameTense);
+      final tenseProfile = audioSceneProfiles[AudioSceneState.gameTense]!;
+      expect(manager.machine.getVolumeFor(tenseProfile.track),
+          closeTo(tenseProfile.volume * 0.25, 0.001));
+    });
+
+    test(
         'dispose() SFX Stato Esplicito: dispose non accede agli SFX se _sfxPlayersCreated è false',
         () async {
       final manager = AudioManager();

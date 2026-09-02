@@ -195,7 +195,9 @@ class AudioManager {
 
   /// Restituisce i BPM effettivi della traccia in esecuzione ricavati dal profilo attivo.
   double get currentBpm {
-    if (_disposed || !_initialized || !_audioEnabled) return 0.0;
+    if (_disposed || !_initialized || !_audioEnabled || !_musicEnabled) {
+      return 0.0;
+    }
     return _machine.currentBpm;
   }
 
@@ -204,22 +206,34 @@ class AudioManager {
 
   /// Restituisce il timestamp di avvio della traccia attiva.
   DateTime get trackStartTime {
-    if (_disposed || !_initialized) {
+    if (_disposed || !_initialized || !_audioEnabled || !_musicEnabled) {
       return _idleTrackStartTime;
     }
     return _machine.trackStartTime;
   }
 
   /// Inizializza il modulo audio, genera i file WAV procedurali su disco e alloca il pool dei player.
-  Future<void> initialize(String appDataPath,
-      {bool audioEnabled = true}) async {
+  Future<void> initialize(
+    String appDataPath, {
+    bool? audioEnabled,
+    bool? musicEnabled,
+    bool? sfxEnabled,
+  }) async {
     if (_disposed) {
       throw StateError("Impossibile inizializzare un AudioManager dismesso.");
     }
     if (_initialized) {
       return;
     }
-    _audioEnabled = audioEnabled;
+    if (audioEnabled != null) {
+      _audioEnabled = audioEnabled;
+    }
+    if (musicEnabled != null) {
+      _musicEnabled = musicEnabled;
+    }
+    if (sfxEnabled != null) {
+      _sfxEnabled = sfxEnabled;
+    }
 
     // Avviso specifico per la piattaforma Windows
     if (Platform.isWindows &&
@@ -241,8 +255,12 @@ class AudioManager {
         trackPaths: const {},
       );
 
-      if (!_audioEnabled) {
+      if (!_audioEnabled || !_musicEnabled) {
         await _machine.suspendAudio();
+      }
+
+      if (_focusDucked) {
+        await _machine.setDucked(true);
       }
 
       _playersCreated = true;
@@ -381,8 +399,12 @@ class AudioManager {
       trackPaths: trackPaths,
     );
 
-    if (!_audioEnabled) {
+    if (!_audioEnabled || !_musicEnabled) {
       await _machine.suspendAudio();
+    }
+
+    if (_focusDucked) {
+      await _machine.setDucked(true);
     }
 
     _playersCreated = true;
@@ -399,9 +421,11 @@ class AudioManager {
 
   /// Abilita o disabilita dinamicamente l'audio globale.
   Future<void> setAudioEnabled(bool enabled) async {
-    if (_disposed || !_playersCreated) return;
+    if (_disposed) return;
     if (_audioEnabled == enabled) return;
     _audioEnabled = enabled;
+
+    if (!_playersCreated) return;
 
     if (!_audioEnabled || !_musicEnabled) {
       await _machine.suspendAudio();
@@ -412,13 +436,15 @@ class AudioManager {
 
   /// Abilita o disabilita separatamente la musica di sottofondo (BGM).
   Future<void> setMusicEnabled(bool enabled) async {
-    if (_disposed || !_playersCreated) return;
+    if (_disposed) return;
     if (_musicEnabled == enabled) return;
     _musicEnabled = enabled;
 
-    if (!_musicEnabled) {
+    if (!_playersCreated) return;
+
+    if (!_musicEnabled || !_audioEnabled) {
       await _machine.suspendAudio();
-    } else if (_audioEnabled) {
+    } else {
       await _machine.resumeAudio();
     }
   }
@@ -431,9 +457,10 @@ class AudioManager {
 
   /// Applica o rimuove l'attenuazione audio (ducking) in risposta alla perdita di focus della finestra.
   Future<void> setFocusDucked(bool ducked) async {
-    if (_disposed || !_playersCreated) return;
+    if (_disposed) return;
     if (_focusDucked == ducked) return;
     _focusDucked = ducked;
+    if (!_playersCreated) return;
     await _machine.setDucked(_focusDucked);
   }
 
@@ -445,6 +472,10 @@ class AudioManager {
     if (!_initialized) {
       _pendingScene = nextState;
       return;
+    }
+
+    if (!_audioEnabled || !_musicEnabled) {
+      await _machine.suspendAudio();
     }
 
     try {
@@ -532,6 +563,9 @@ class AudioManager {
   void resetForTesting() {
     _initialized = false;
     _audioEnabled = true;
+    _musicEnabled = true;
+    _sfxEnabled = true;
+    _focusDucked = false;
     _playersCreated = false;
     _sfxPlayersCreated = false;
     _disposed = false;

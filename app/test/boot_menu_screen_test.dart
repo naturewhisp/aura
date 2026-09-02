@@ -542,6 +542,8 @@ class FakeBootAudioService implements BootAudioService {
   Future<void> initialize({
     required String appDataPath,
     required bool audioEnabled,
+    bool? musicEnabled,
+    bool? sfxEnabled,
   }) async {
     initializeCallCount++;
     onEvent?.call('audio:start');

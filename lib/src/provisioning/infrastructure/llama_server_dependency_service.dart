@@ -23,6 +23,7 @@ abstract interface class LlamaServerDependencyService {
     required String executablePath,
     String? variantId,
     List<String> vendorDirectories = const [],
+    bool? isBundled,
   });
 
   /// Configura e persiste il percorso dell'eseguibile `llama-server`.
@@ -482,6 +483,7 @@ final class DefaultLlamaServerDependencyService
     required String executablePath,
     String? variantId,
     List<String> vendorDirectories = const [],
+    bool? isBundled,
   }) async {
     final cleanPath = executablePath.trim();
     final now = DateTime.now().toUtc();
@@ -584,9 +586,18 @@ final class DefaultLlamaServerDependencyService
         ['--list-devices'],
         vendorDirectories: effectiveVendorDirs,
       );
+      final isBundledRuntime = isBundled ??
+          (variantId != null ||
+              cleanPath.contains(_pathResolver.bundledRoot) ||
+              cleanPath.contains(_pathResolver.appManagedRoot) ||
+              cleanPath.contains('win-x64-cuda') ||
+              cleanPath.contains('win-x64-vulkan') ||
+              cleanPath.contains('win-x64-cpu'));
+
       final (detectedAccel, gpuDeviceName) = _detectAccelerationAndDevice(
-        devicesResult?.output ?? '',
-        versionResult.output,
+        devicesResult: devicesResult,
+        fallbackOutput: versionResult.output,
+        isBundled: isBundledRuntime,
       );
 
       return LlamaServerValidationResult(
@@ -769,11 +780,15 @@ final class DefaultLlamaServerDependencyService
     return RuntimeAcceleration.cpu;
   }
 
-  (RuntimeAcceleration, String?) _detectAccelerationAndDevice(
-    String devicesOutput,
-    String fallbackOutput,
-  ) {
-    if (devicesOutput.trim().isNotEmpty) {
+  (RuntimeAcceleration, String?) _detectAccelerationAndDevice({
+    required _ProbeRunOutput? devicesResult,
+    required String fallbackOutput,
+    required bool isBundled,
+  }) {
+    if (devicesResult != null &&
+        devicesResult.isSuccess &&
+        devicesResult.output.trim().isNotEmpty) {
+      final devicesOutput = devicesResult.output;
       final matchCuda = RegExp(r'CUDA\d*:\s*([^\(\n\r]+)', caseSensitive: false)
           .firstMatch(devicesOutput);
       if (matchCuda != null) {
@@ -795,6 +810,15 @@ final class DefaultLlamaServerDependencyService
       return (RuntimeAcceleration.cpu, null);
     }
 
+    // Per i runtime bundled (o con variantId associato): un probe --list-devices vuoto o
+    // fallito viene trattato tassativamente come dato non-GPU (CPU), evitando il ritorno
+    // ai flag di compilazione di --version (es. 'built with CUDA').
+    if (isBundled) {
+      return (RuntimeAcceleration.cpu, null);
+    }
+
+    // Per soli binari legacy non-bundled privi del comando --list-devices,
+    // consentiamo il ripiego sui flag di compilazione di --version.
     final fallback = _detectAcceleration(fallbackOutput);
     return (fallback, null);
   }

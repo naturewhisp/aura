@@ -24,6 +24,7 @@ final class FakeLlamaServerDependencyService
     required String executablePath,
     String? variantId,
     List<String> vendorDirectories = const [],
+    bool? isBundled,
   }) async =>
       LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,

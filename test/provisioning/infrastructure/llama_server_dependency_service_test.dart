@@ -301,6 +301,44 @@ void main() {
     });
 
     test(
+        'validateExecutable tratta --list-devices fallito o vuoto come non-GPU (CPU) per runtime bundled invece di ripiegare su --version',
+        () async {
+      const exePath = r'C:\Tools\llama-server.exe';
+      await fileSystem.writeBytes(exePath, [1, 2, 3]);
+
+      final launcher = TestProcessLauncher((req) async {
+        if (req.executable == exePath && req.arguments.contains('--version')) {
+          return TestManagedProcess(
+            stdoutText:
+                'version: 10256 (6c8dcaa7a)\nbuilt with Clang for Windows x86_64 with CUDA',
+          );
+        }
+        if (req.executable == exePath &&
+            req.arguments.contains('--list-devices')) {
+          // Simula fallimento di --list-devices (es. crash driver, assenza DLL CUDA o uscita anomala)
+          return TestManagedProcess(exitCodeValue: 1, stdoutText: '');
+        }
+        return TestManagedProcess(exitCodeValue: 1);
+      });
+
+      final service = DefaultLlamaServerDependencyService(
+        configurationRepository: repo,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        processLauncher: launcher,
+        probeTimeout: const Duration(milliseconds: 100),
+      );
+
+      final result = await service.validateExecutable(
+        executablePath: exePath,
+        variantId: 'win-x64-cuda',
+      );
+      expect(result.isValid, isTrue);
+      expect(result.acceleration, equals(RuntimeAcceleration.cpu));
+      expect(result.gpuDeviceName, isNull);
+    });
+
+    test(
         'detect scarta variante win-x64-cuda se priva di GPU CUDA e adotta win-x64-vulkan con GPU reale',
         () async {
       final manifestDir = r'C:\Users\Test\AppData\Local\AURA\runtime';

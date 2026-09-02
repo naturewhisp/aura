@@ -1,3 +1,5 @@
+import 'dart:io' as io;
+
 import 'package:meta/meta.dart';
 
 import '../../agent_runtime/runtime/adapters/managed_llama_server/managed_llama_server_configuration.dart';
@@ -272,15 +274,22 @@ final class InferenceBootstrapBridge {
       final evaluatorLogPath =
           '$appManagedRoot/runtime/logs/evaluator_llama_server.log';
 
+      final budget = computeExecutionBudget(
+        acceleration: resolvedRuntime.effectiveAcceleration,
+        totalProcessors: io.Platform.numberOfProcessors,
+      );
+
       final actorConfig = ManagedLlamaServerConfiguration(
         executablePath: resolvedRuntime.executablePath,
         workingDirectory: resolvedRuntime.workingDirectory,
         vendorDirectories: resolvedRuntime.vendorDirectories,
         modelPath: actorPath,
         modelAlias: 'aura.actor.primary',
-        gpuLayers: 99,
+        gpuLayers: budget.gpuLayers,
+        threads: budget.actorThreads,
+        batchSize: budget.batchSize,
         logFilePath: actorLogPath,
-        startupTimeout: const Duration(seconds: 60),
+        startupTimeout: budget.actorStartupTimeout,
         shutdownTimeout: const Duration(seconds: 15),
         apiKey: 'managed-actor-secret',
         diagnosticMode: false,
@@ -293,9 +302,11 @@ final class InferenceBootstrapBridge {
         vendorDirectories: resolvedRuntime.vendorDirectories,
         modelPath: evaluatorPath,
         modelAlias: 'aura.evaluator.primary',
-        gpuLayers: 99,
+        gpuLayers: budget.gpuLayers,
+        threads: budget.evaluatorThreads,
+        batchSize: budget.batchSize,
         logFilePath: evaluatorLogPath,
-        startupTimeout: const Duration(seconds: 45),
+        startupTimeout: budget.evaluatorStartupTimeout,
         shutdownTimeout: const Duration(seconds: 10),
         apiKey: 'managed-evaluator-secret',
         diagnosticMode: false,
@@ -321,6 +332,52 @@ final class InferenceBootstrapBridge {
         reason: InferenceBootstrapFailureReason.persistedRecordUnreadable,
         sanitizedMessage: 'Impossibile leggere la configurazione persistita. '
             'Verificare i permessi sulla cartella dati di A.U.R.A.',
+      );
+    }
+  }
+
+  /// Calcola il budget di esecuzione (thread, layer GPU, batch size e timeout)
+  /// in modo deterministico in base all'accelerazione rilevata e al numero di core CPU.
+  /// Su CPU pura, riserva almeno 2 core per il sistema operativo, audio e UI Flutter,
+  /// prevenendo stuttering, starvation ed elevata contesa di thread.
+  static ({
+    int actorThreads,
+    int evaluatorThreads,
+    int gpuLayers,
+    int? batchSize,
+    Duration actorStartupTimeout,
+    Duration evaluatorStartupTimeout,
+  }) computeExecutionBudget({
+    required RuntimeAcceleration acceleration,
+    required int totalProcessors,
+  }) {
+    final isCpuOnly = acceleration == RuntimeAcceleration.cpu;
+
+    if (isCpuOnly) {
+      final availableCores = (totalProcessors > 4)
+          ? totalProcessors - 2
+          : (totalProcessors > 2 ? totalProcessors - 1 : 1);
+      final actorThreads =
+          (availableCores * 0.6).round().clamp(1, availableCores);
+      final evaluatorThreads =
+          (availableCores * 0.4).round().clamp(1, availableCores);
+
+      return (
+        actorThreads: actorThreads,
+        evaluatorThreads: evaluatorThreads,
+        gpuLayers: 0,
+        batchSize: 256,
+        actorStartupTimeout: const Duration(seconds: 120),
+        evaluatorStartupTimeout: const Duration(seconds: 90),
+      );
+    } else {
+      return (
+        actorThreads: 4.clamp(1, totalProcessors),
+        evaluatorThreads: 2.clamp(1, totalProcessors),
+        gpuLayers: 99,
+        batchSize: null,
+        actorStartupTimeout: const Duration(seconds: 60),
+        evaluatorStartupTimeout: const Duration(seconds: 45),
       );
     }
   }

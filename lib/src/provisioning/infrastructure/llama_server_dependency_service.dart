@@ -200,17 +200,13 @@ final class DefaultLlamaServerDependencyService
                 );
 
                 if (validation.isValid) {
-                  final effectiveAccel =
-                      validation.acceleration != RuntimeAcceleration.cpu
-                          ? validation.acceleration
-                          : variant.acceleration;
                   return LlamaServerDetectionResult(
                     configuredCandidate: resolvedExe,
                     isConfiguredValid: true,
                     effectiveCandidate: resolvedExe,
                     variantId: variant.id,
                     declaredAcceleration: variant.acceleration,
-                    acceleration: effectiveAccel,
+                    acceleration: validation.acceleration,
                     gpuDeviceName: validation.gpuDeviceName,
                   );
                 }
@@ -303,6 +299,7 @@ final class DefaultLlamaServerDependencyService
         });
 
       final supportedCpu = await _cpuFeatureDetector.detectCpuFeatures();
+      LlamaServerDetectionResult? validCpuFallback;
 
       for (final variant in sortedVariants) {
         final missingCpuFeatures = variant.requiredCpuFeatures
@@ -335,18 +332,38 @@ final class DefaultLlamaServerDependencyService
             );
 
             if (validation.isValid) {
-              final effectiveAccel =
-                  validation.acceleration != RuntimeAcceleration.cpu
-                      ? validation.acceleration
-                      : variant.acceleration;
-              return LlamaServerDetectionResult(
+              // Se la variante dichiara un'accelerazione GPU (CUDA o Vulkan),
+              // verifichiamo che l'hardware reale la supporti effettivamente.
+              // Se l'hardware non possiede il dispositivo accelerato (es. binario CUDA su PC senza GPU NVIDIA),
+              // non promuoviamo artificialmente la variante: memorizziamo un fallback CPU e continuiamo
+              // la scansione alla ricerca di una variante realmente supportata (es. Vulkan o CPU AVX2).
+              if (variant.acceleration == RuntimeAcceleration.cpu ||
+                  validation.acceleration == variant.acceleration) {
+                return LlamaServerDetectionResult(
+                  configuredCandidate: configuredPath,
+                  isConfiguredValid: false,
+                  detectedFallback: resolvedExe,
+                  effectiveCandidate: resolvedExe,
+                  variantId: variant.id,
+                  declaredAcceleration: variant.acceleration,
+                  acceleration: validation.acceleration,
+                  gpuDeviceName: validation.gpuDeviceName,
+                  warnings: warnings,
+                );
+              }
+
+              lastFallbackReason =
+                  'Variante ${variant.id} (target: ${variant.acceleration.name}) non dispone di dispositivo GPU '
+                  'compatibile rilevato da --list-devices. Ripiego sulla variante successiva.';
+              warnings.add(lastFallbackReason);
+              validCpuFallback ??= LlamaServerDetectionResult(
                 configuredCandidate: configuredPath,
                 isConfiguredValid: false,
                 detectedFallback: resolvedExe,
                 effectiveCandidate: resolvedExe,
                 variantId: variant.id,
                 declaredAcceleration: variant.acceleration,
-                acceleration: effectiveAccel,
+                acceleration: validation.acceleration,
                 gpuDeviceName: validation.gpuDeviceName,
                 warnings: warnings,
               );
@@ -361,6 +378,10 @@ final class DefaultLlamaServerDependencyService
             warnings.add(lastFallbackReason);
           }
         }
+      }
+
+      if (validCpuFallback != null) {
+        return validCpuFallback;
       }
     }
 
@@ -568,23 +589,13 @@ final class DefaultLlamaServerDependencyService
         versionResult.output,
       );
 
-      var finalAccel = detectedAccel;
-      if (finalAccel == RuntimeAcceleration.cpu && variantId != null) {
-        final lower = variantId.toLowerCase();
-        if (lower.contains('cuda')) {
-          finalAccel = RuntimeAcceleration.cuda;
-        } else if (lower.contains('vulkan')) {
-          finalAccel = RuntimeAcceleration.vulkan;
-        }
-      }
-
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,
         executablePath: cleanPath,
         variantId: variantId,
         detectedVersion: versionStr,
         lastValidatedAtUtc: now,
-        acceleration: finalAccel,
+        acceleration: detectedAccel,
         gpuDeviceName: gpuDeviceName,
       );
     }
@@ -762,18 +773,26 @@ final class DefaultLlamaServerDependencyService
     String devicesOutput,
     String fallbackOutput,
   ) {
-    final lowerDevices = devicesOutput.toLowerCase();
-    if (lowerDevices.contains('cuda')) {
-      final match = RegExp(r'CUDA\d*:\s*([^\(\n\r]+)', caseSensitive: false)
+    if (devicesOutput.trim().isNotEmpty) {
+      final matchCuda = RegExp(r'CUDA\d*:\s*([^\(\n\r]+)', caseSensitive: false)
           .firstMatch(devicesOutput);
-      final deviceName = match?.group(1)?.trim();
-      return (RuntimeAcceleration.cuda, deviceName);
-    }
-    if (lowerDevices.contains('vulkan')) {
-      final match = RegExp(r'Vulkan\d*:\s*([^\(\n\r]+)', caseSensitive: false)
-          .firstMatch(devicesOutput);
-      final deviceName = match?.group(1)?.trim();
-      return (RuntimeAcceleration.vulkan, deviceName);
+      if (matchCuda != null) {
+        final deviceName = matchCuda.group(1)?.trim();
+        return (RuntimeAcceleration.cuda, deviceName);
+      }
+
+      final matchVulkan =
+          RegExp(r'Vulkan\d*:\s*([^\(\n\r]+)', caseSensitive: false)
+              .firstMatch(devicesOutput);
+      if (matchVulkan != null) {
+        final deviceName = matchVulkan.group(1)?.trim();
+        return (RuntimeAcceleration.vulkan, deviceName);
+      }
+
+      // Se --list-devices è stato eseguito ma non ha rilevato dispositivi GPU validi,
+      // la macchina ospite non possiede accelerazione GPU per questo runtime:
+      // restituisce CPU puro senza farsi trarre in inganno dai flag di build di --version.
+      return (RuntimeAcceleration.cpu, null);
     }
 
     final fallback = _detectAcceleration(fallbackOutput);

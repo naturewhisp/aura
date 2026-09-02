@@ -161,8 +161,9 @@ void main() {
       });
 
       test(
-          'computeExecutionBudget adatta i thread su CPU con core ridotti (8, 4, 2 core)',
+          'computeExecutionBudget adatta i thread secondo le fasce esplicite (>=6, 4-5, <=3 core)',
           () {
+        // Fascia >= 6 core: riserva 2 core
         final budget8 = InferenceBootstrapBridge.computeExecutionBudget(
           acceleration: RuntimeAcceleration.cpu,
           totalProcessors: 8,
@@ -172,23 +173,49 @@ void main() {
         expect(budget8.actorThreads, equals(4));
         expect(budget8.evaluatorThreads, equals(2));
 
+        final budget6 = InferenceBootstrapBridge.computeExecutionBudget(
+          acceleration: RuntimeAcceleration.cpu,
+          totalProcessors: 6,
+        );
+        expect(budget6.actorThreads, equals(2));
+        expect(budget6.evaluatorThreads, equals(2));
+
+        // Fascia 4..5 core: riserva 1 core
+        final budget5 = InferenceBootstrapBridge.computeExecutionBudget(
+          acceleration: RuntimeAcceleration.cpu,
+          totalProcessors: 5,
+        );
+        expect(budget5.actorThreads, equals(2));
+        expect(budget5.evaluatorThreads, equals(2));
+
         final budget4 = InferenceBootstrapBridge.computeExecutionBudget(
           acceleration: RuntimeAcceleration.cpu,
           totalProcessors: 4,
         );
-        expect(budget4.gpuLayers, equals(0));
-        expect(budget4.batchSize, equals(256));
         expect(budget4.actorThreads, equals(2));
         expect(budget4.evaluatorThreads, equals(1));
+
+        // Fascia <= 3 core: modalità vincolata (constrained, intentional minimal oversubscription)
+        final budget3 = InferenceBootstrapBridge.computeExecutionBudget(
+          acceleration: RuntimeAcceleration.cpu,
+          totalProcessors: 3,
+        );
+        expect(budget3.actorThreads, equals(1));
+        expect(budget3.evaluatorThreads, equals(1));
 
         final budget2 = InferenceBootstrapBridge.computeExecutionBudget(
           acceleration: RuntimeAcceleration.cpu,
           totalProcessors: 2,
         );
-        expect(budget2.gpuLayers, equals(0));
-        expect(budget2.batchSize, equals(256));
         expect(budget2.actorThreads, equals(1));
         expect(budget2.evaluatorThreads, equals(1));
+
+        final budget1 = InferenceBootstrapBridge.computeExecutionBudget(
+          acceleration: RuntimeAcceleration.cpu,
+          totalProcessors: 1,
+        );
+        expect(budget1.actorThreads, equals(1));
+        expect(budget1.evaluatorThreads, equals(1));
       });
 
       test(

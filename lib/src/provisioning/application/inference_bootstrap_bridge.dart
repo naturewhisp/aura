@@ -338,8 +338,12 @@ final class InferenceBootstrapBridge {
 
   /// Calcola il budget di esecuzione (thread, layer GPU, batch size e timeout)
   /// in modo deterministico in base all'accelerazione rilevata e al numero di core CPU.
-  /// Su CPU pura, riserva almeno 2 core per il sistema operativo, audio e UI Flutter,
-  /// prevenendo stuttering, starvation ed elevata contesa di thread.
+  ///
+  /// Regole di allocazione thread CPU:
+  /// - totalProcessors >= 6: riserva 2 core (per SO, isolate UI Flutter e audio-reattivo)
+  /// - totalProcessors 4..5: riserva 1 core per la reattività minima del sistema
+  /// - totalProcessors <= 3: modalità vincolata (constrained) con sovrasottoscrizione minima
+  ///   intenzionale (1 thread Actor, 1 thread Evaluator) per garantire l'avanzamento senza deadlock.
   static ({
     int actorThreads,
     int evaluatorThreads,
@@ -354,13 +358,25 @@ final class InferenceBootstrapBridge {
     final isCpuOnly = acceleration == RuntimeAcceleration.cpu;
 
     if (isCpuOnly) {
-      final availableCores = (totalProcessors > 4)
-          ? totalProcessors - 2
-          : (totalProcessors > 2 ? totalProcessors - 1 : 1);
-      final actorThreads =
-          (availableCores * 0.6).round().clamp(1, availableCores);
-      final evaluatorThreads =
-          (availableCores * 0.4).round().clamp(1, availableCores);
+      final int actorThreads;
+      final int evaluatorThreads;
+
+      if (totalProcessors >= 6) {
+        final availableCores = totalProcessors - 2;
+        actorThreads = (availableCores * 0.6).round().clamp(1, availableCores);
+        evaluatorThreads =
+            (availableCores * 0.4).round().clamp(1, availableCores);
+      } else if (totalProcessors >= 4) {
+        final availableCores = totalProcessors - 1;
+        actorThreads = (availableCores * 0.6).round().clamp(1, availableCores);
+        evaluatorThreads =
+            (availableCores * 0.4).round().clamp(1, availableCores);
+      } else {
+        // Modalità vincolata (<= 3 core logici): sovrasottoscrizione minima intenzionale.
+        // Assegna 1 thread ad Actor ed 1 ad Evaluator per consentire l'avanzamento dei processi.
+        actorThreads = 1;
+        evaluatorThreads = 1;
+      }
 
       return (
         actorThreads: actorThreads,

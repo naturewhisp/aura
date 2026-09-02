@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:aura_core/aura_offline.dart';
+import 'package:crypto/crypto.dart';
 import '../../provisioning/provisioning_test_helpers.dart';
 import 'package:test/test.dart';
 
@@ -258,6 +259,125 @@ void main() {
       expect(result.isValid, isTrue);
       expect(result.acceleration, equals(RuntimeAcceleration.cuda));
       expect(result.gpuDeviceName, equals('NVIDIA GeForce RTX 3060'));
+    });
+
+    test(
+        'validateExecutable restituisce CPU quando --list-devices non rileva device GPU anche se variantId è win-x64-cuda',
+        () async {
+      const exePath = r'C:\Tools\llama-server.exe';
+      await fileSystem.writeBytes(exePath, [1, 2, 3]);
+
+      final launcher = TestProcessLauncher((req) async {
+        if (req.executable == exePath && req.arguments.contains('--version')) {
+          return TestManagedProcess(
+            stdoutText:
+                'version: 10256 (6c8dcaa7a)\nbuilt with Clang for Windows x86_64 with CUDA',
+          );
+        }
+        if (req.executable == exePath &&
+            req.arguments.contains('--list-devices')) {
+          return TestManagedProcess(
+            stdoutText: 'Available devices:\n  (none)\n',
+          );
+        }
+        return TestManagedProcess(exitCodeValue: 1);
+      });
+
+      final service = DefaultLlamaServerDependencyService(
+        configurationRepository: repo,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        processLauncher: launcher,
+        probeTimeout: const Duration(milliseconds: 100),
+      );
+
+      final result = await service.validateExecutable(
+        executablePath: exePath,
+        variantId: 'win-x64-cuda',
+      );
+      expect(result.isValid, isTrue);
+      expect(result.acceleration, equals(RuntimeAcceleration.cpu));
+      expect(result.gpuDeviceName, isNull);
+    });
+
+    test(
+        'detect scarta variante win-x64-cuda se priva di GPU CUDA e adotta win-x64-vulkan con GPU reale',
+        () async {
+      final manifestDir = r'C:\Users\Test\AppData\Local\AURA\runtime';
+      final cudaExe = '$manifestDir\\bin\\win-x64-cuda\\llama-server.exe';
+      final vulkanExe = '$manifestDir\\bin\\win-x64-vulkan\\llama-server.exe';
+
+      await fileSystem.writeBytes(cudaExe, [1, 2, 3]);
+      await fileSystem.writeBytes(vulkanExe, [1, 2, 3]);
+      final hash = sha256.convert([1, 2, 3]).toString().toLowerCase();
+
+      final manifestJson = '''
+{
+  "schemaVersion": 1,
+  "runtimeSetId": "aura-runtime-v1",
+  "variants": [
+    {
+      "id": "win-x64-cuda",
+      "acceleration": "cuda",
+      "targetArch": "x64",
+      "requiredCpuFeatures": [],
+      "backendCapabilities": ["cuda12"],
+      "executable": "bin/win-x64-cuda/llama-server.exe",
+      "workingDirectory": "bin/win-x64-cuda",
+      "vendorDirectories": [],
+      "files": [
+        {"path": "bin/win-x64-cuda/llama-server.exe", "sizeBytes": 3, "sha256": "$hash"}
+      ]
+    },
+    {
+      "id": "win-x64-vulkan",
+      "acceleration": "vulkan",
+      "targetArch": "x64",
+      "requiredCpuFeatures": [],
+      "backendCapabilities": ["vulkan"],
+      "executable": "bin/win-x64-vulkan/llama-server.exe",
+      "workingDirectory": "bin/win-x64-vulkan",
+      "vendorDirectories": [],
+      "files": [
+        {"path": "bin/win-x64-vulkan/llama-server.exe", "sizeBytes": 3, "sha256": "$hash"}
+      ]
+    }
+  ]
+}
+''';
+      await fileSystem.writeAsString(
+          '$manifestDir\\runtime-manifest.json', manifestJson);
+
+      final launcher = TestProcessLauncher((req) async {
+        if (req.executable == cudaExe &&
+            req.arguments.contains('--list-devices')) {
+          return TestManagedProcess(
+            stdoutText: 'Available devices:\n  (none)\n',
+          );
+        }
+        if (req.executable == vulkanExe &&
+            req.arguments.contains('--list-devices')) {
+          return TestManagedProcess(
+            stdoutText:
+                'Available devices:\n  Vulkan0: AMD Radeon RX 6700 XT (12272 MiB)\n',
+          );
+        }
+        return TestManagedProcess(stdoutText: 'version: b10256');
+      });
+
+      final service = DefaultLlamaServerDependencyService(
+        configurationRepository: repo,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        processLauncher: launcher,
+        probeTimeout: const Duration(milliseconds: 100),
+      );
+
+      final detection = await service.detect();
+      expect(detection.effectiveCandidate, equals(vulkanExe));
+      expect(detection.variantId, equals('win-x64-vulkan'));
+      expect(detection.acceleration, equals(RuntimeAcceleration.vulkan));
+      expect(detection.gpuDeviceName, equals('AMD Radeon RX 6700 XT'));
     });
   });
 }

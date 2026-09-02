@@ -33,8 +33,10 @@ final class AppManagedStoreResolver {
     final canonicalPath = candidates.canonical;
     final canonicalRecordPath =
         _join(canonicalPath, 'installation_record.json');
+    final canonicalConfigPath =
+        _join(canonicalPath, 'model_configuration.json');
 
-    // 1. Controllo presenza installation_record.json nello store canonico
+    // 1. Controllo presenza installation_record.json o model_configuration.json nello store canonico
     if (await _fileSystem.fileExists(canonicalRecordPath)) {
       try {
         final content = await _fileSystem.readAsString(canonicalRecordPath);
@@ -53,12 +55,25 @@ final class AppManagedStoreResolver {
       }
     }
 
-    // 2. Controllo esistenza della directory canonical (es. fresh install già predisposta)
-    if (await _fileSystem.directoryExists(canonicalPath)) {
-      return canonicalPath;
+    if (await _fileSystem.fileExists(canonicalConfigPath)) {
+      try {
+        final content = await _fileSystem.readAsString(canonicalConfigPath);
+        final decoded = jsonDecode(content);
+        if (decoded is! Map<String, dynamic>) {
+          throw const FormatException(
+            'model_configuration.json nello store canonico non è un oggetto Map.',
+          );
+        }
+        return canonicalPath;
+      } catch (e) {
+        // FAIL-CLOSED: configurazione canonica presente ma corrotta.
+        throw FormatException(
+          'Configurazione canonica corrotta in "$canonicalConfigPath": $e. Fail-closed.',
+        );
+      }
     }
 
-    // 3. Verifica percorsi legacy per preservare installazioni esistenti senza spostare GB di GGUF
+    // 2. Verifica percorsi legacy per preservare installazioni e configurazioni esistenti
     for (final legacyRoot in candidates.legacy) {
       final legacyRecordPath = _join(legacyRoot, 'installation_record.json');
       if (await _fileSystem.fileExists(legacyRecordPath)) {
@@ -72,9 +87,22 @@ final class AppManagedStoreResolver {
           // Record legacy malformato: ignora e prosegue verso gli altri candidati
         }
       }
+
+      final legacyConfigPath = _join(legacyRoot, 'model_configuration.json');
+      if (await _fileSystem.fileExists(legacyConfigPath)) {
+        try {
+          final content = await _fileSystem.readAsString(legacyConfigPath);
+          final decoded = jsonDecode(content);
+          if (decoded is Map<String, dynamic>) {
+            return legacyRoot;
+          }
+        } catch (_) {
+          // Config legacy malformata: ignora e prosegue
+        }
+      }
     }
 
-    // 4. Nessun dato preesistente trovato: usa lo store canonico
+    // 3. Nessun dato preesistente valido trovato (fresh install): usa lo store canonico
     return canonicalPath;
   }
 

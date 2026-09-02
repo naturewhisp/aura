@@ -1,3 +1,4 @@
+import 'dart:isolate';
 import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
 import '../domain/runtime_manifest.dart';
@@ -35,8 +36,9 @@ abstract interface class RuntimeBundleIntegrityVerifier {
 final class DefaultRuntimeBundleIntegrityVerifier
     implements RuntimeBundleIntegrityVerifier {
   final ProvisioningFileSystem _fileSystem;
+  final Map<String, RuntimeVariantIntegrityResult> _verifiedCache = {};
 
-  const DefaultRuntimeBundleIntegrityVerifier({
+  DefaultRuntimeBundleIntegrityVerifier({
     required ProvisioningFileSystem fileSystem,
   }) : _fileSystem = fileSystem;
 
@@ -45,6 +47,12 @@ final class DefaultRuntimeBundleIntegrityVerifier
     required RuntimeVariantDescriptor variant,
     required String runtimeRootPath,
   }) async {
+    final cacheKey = '$runtimeRootPath#${variant.id}';
+    final cached = _verifiedCache[cacheKey];
+    if (cached != null && cached.isValid) {
+      return cached;
+    }
+
     final missing = <String>[];
     final corrupted = <String>[];
 
@@ -66,8 +74,9 @@ final class DefaultRuntimeBundleIntegrityVerifier
           continue;
         }
 
-        final digest = sha256.convert(bytes);
-        final calculatedHash = digest.toString().toLowerCase();
+        final calculatedHash = await Isolate.run(() {
+          return sha256.convert(bytes).toString().toLowerCase();
+        });
         if (calculatedHash != entry.sha256.toLowerCase()) {
           corrupted.add(
             '${entry.path} (hash SHA-256 non corrispondente: $calculatedHash vs ${entry.sha256})',
@@ -89,7 +98,7 @@ final class DefaultRuntimeBundleIntegrityVerifier
       errorMsg = parts.join(' | ');
     }
 
-    return RuntimeVariantIntegrityResult(
+    final result = RuntimeVariantIntegrityResult(
       isValid: isValid,
       variantId: variant.id,
       rootPath: runtimeRootPath,
@@ -97,5 +106,11 @@ final class DefaultRuntimeBundleIntegrityVerifier
       corruptedFiles: List.unmodifiable(corrupted),
       errorMessage: errorMsg,
     );
+
+    if (isValid) {
+      _verifiedCache[cacheKey] = result;
+    }
+
+    return result;
   }
 }

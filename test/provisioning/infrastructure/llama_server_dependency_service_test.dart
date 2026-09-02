@@ -219,5 +219,45 @@ void main() {
       expect(detection.effectiveCandidate, equals(portableExe));
       expect(detection.warnings, isNotEmpty);
     });
+
+    test(
+        'validateExecutable rileva accelerazione CUDA e gpuDeviceName da --list-devices',
+        () async {
+      const exePath = r'C:\Tools\llama-server.exe';
+      await fileSystem.writeBytes(exePath, [1, 2, 3]);
+
+      final launcher = TestProcessLauncher((req) async {
+        if (req.executable == exePath && req.arguments.contains('--version')) {
+          return TestManagedProcess(
+            stdoutText:
+                'version: 10256 (6c8dcaa7a)\nbuilt with Clang 20.1.8 for Windows x86_64',
+          );
+        }
+        if (req.executable == exePath &&
+            req.arguments.contains('--list-devices')) {
+          return TestManagedProcess(
+            stdoutText:
+                'Available devices:\n  CUDA0: NVIDIA GeForce RTX 3060 (12287 MiB, 11253 MiB free)\n',
+          );
+        }
+        return TestManagedProcess(exitCodeValue: 1);
+      });
+
+      final service = DefaultLlamaServerDependencyService(
+        configurationRepository: repo,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        processLauncher: launcher,
+        probeTimeout: const Duration(milliseconds: 100),
+      );
+
+      final result = await service.validateExecutable(
+        executablePath: exePath,
+        variantId: 'win-x64-cuda',
+      );
+      expect(result.isValid, isTrue);
+      expect(result.acceleration, equals(RuntimeAcceleration.cuda));
+      expect(result.gpuDeviceName, equals('NVIDIA GeForce RTX 3060'));
+    });
   });
 }

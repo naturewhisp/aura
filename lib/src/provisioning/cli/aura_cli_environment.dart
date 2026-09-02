@@ -204,6 +204,10 @@ final class AuraCliEnvironment {
   ) {
     switch (os) {
       case AuraOperatingSystem.windows:
+        final localAppData = env['LOCALAPPDATA'];
+        if (localAppData != null && localAppData.isNotEmpty) {
+          return '$localAppData\\Programs\\AURA';
+        }
         final programFiles = env['ProgramFiles'];
         if (programFiles != null && programFiles.isNotEmpty) {
           return '$programFiles\\AURA';

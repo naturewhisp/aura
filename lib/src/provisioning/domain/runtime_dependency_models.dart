@@ -295,6 +295,7 @@ final class LlamaServerDetectionResult {
   final String? variantId;
   final RuntimeAcceleration declaredAcceleration;
   final RuntimeAcceleration acceleration;
+  final String? gpuDeviceName;
   final String? fallbackReason;
   final List<String> warnings;
 
@@ -306,6 +307,7 @@ final class LlamaServerDetectionResult {
     this.variantId,
     this.declaredAcceleration = RuntimeAcceleration.cpu,
     this.acceleration = RuntimeAcceleration.cpu,
+    this.gpuDeviceName,
     this.fallbackReason,
     this.warnings = const [],
   });
@@ -324,6 +326,7 @@ final class LlamaServerDetectionResult {
           variantId == other.variantId &&
           declaredAcceleration == other.declaredAcceleration &&
           acceleration == other.acceleration &&
+          gpuDeviceName == other.gpuDeviceName &&
           fallbackReason == other.fallbackReason;
 
   @override
@@ -335,6 +338,7 @@ final class LlamaServerDetectionResult {
         variantId,
         declaredAcceleration,
         acceleration,
+        gpuDeviceName,
         fallbackReason,
       );
 

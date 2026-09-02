@@ -6,13 +6,13 @@ void main() {
     const resolver = DefaultLlamaRuntimeLaunchEnvironmentResolver();
 
     test(
-        'preserva l ambiente base di sistema (SystemRoot, TEMP, etc) e fonde gli overrides',
+        'preserva l ambiente base di sistema (SystemRoot, TEMP, etc), rimuove binari esterni e preserva vendor CUDA',
         () {
       final baseEnv = {
         'SystemRoot': r'C:\Windows',
         'TEMP': r'C:\Temp',
         'PATH':
-            r'C:\Windows\System32;C:\Users\test\.lmstudio\extensions\backends\vendor\win-llama;C:\Tools',
+            r'C:\Windows\System32;C:\Users\test\.lmstudio\bin;C:\Users\test\.lmstudio\extensions\backends\vendor\win-llama-cuda12-vendor-v2;C:\Tools',
       };
 
       final overrides = {
@@ -38,12 +38,16 @@ void main() {
       expect(env['CUDA_VISIBLE_DEVICES'], equals('0'));
       expect(env['LLAMA_LOG_LEVEL'], equals('2'));
 
-      // PATH sanitizzato
+      // PATH sanitizzato: rimosso binario esterno ma preservato vendor CUDA
       final newPath = env['PATH']!;
       expect(newPath, contains(r'C:\AURA\runtime\bin\win-x64-cuda\vendor'));
       expect(newPath, contains(r'C:\Windows\System32'));
       expect(newPath, contains(r'C:\Tools'));
-      expect(newPath, isNot(contains(r'.lmstudio')));
+      expect(newPath, isNot(contains(r'C:\Users\test\.lmstudio\bin')));
+      expect(
+          newPath,
+          contains(
+              r'C:\Users\test\.lmstudio\extensions\backends\vendor\win-llama-cuda12-vendor-v2'));
     });
 
     test(

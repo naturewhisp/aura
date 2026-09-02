@@ -83,7 +83,23 @@ class _AppStartupGateState extends State<AppStartupGate> {
         String? desktopBundledRoot;
         try {
           if (!Platform.environment.containsKey('FLUTTER_TEST')) {
-            desktopBundledRoot = File(Platform.resolvedExecutable).parent.path;
+            final exeDir = File(Platform.resolvedExecutable).parent;
+            final directManifest =
+                File('${exeDir.path}\\runtime\\runtime-manifest.json');
+            if (directManifest.existsSync()) {
+              desktopBundledRoot = exeDir.path;
+            } else {
+              // Se siamo in un runner di sviluppo locale privo di runtime adiacente,
+              // verifichiamo la presenza dell'installazione per-utente (%LOCALAPPDATA%\Programs\AURA)
+              final localAppData = Platform.environment['LOCALAPPDATA'];
+              if (localAppData != null && localAppData.isNotEmpty) {
+                final installedManifest = File(
+                    '$localAppData\\Programs\\AURA\\runtime\\runtime-manifest.json');
+                if (installedManifest.existsSync()) {
+                  desktopBundledRoot = '$localAppData\\Programs\\AURA';
+                }
+              }
+            }
           }
         } catch (_) {}
         final env = AuraCliEnvironment.fromPlatform(

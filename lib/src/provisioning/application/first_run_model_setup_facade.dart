@@ -230,8 +230,14 @@ final class DefaultFirstRunModelSetupFacade
 
   @override
   Future<FirstRunSetupState> configureRuntime(String executablePath) async {
+    final detection = await _dependencyService.detect();
+    final variantId = (detection.effectiveCandidate == executablePath)
+        ? detection.variantId
+        : null;
+
     final validation = await _dependencyService.validateExecutable(
       executablePath: executablePath,
+      variantId: variantId,
     );
     if (!validation.isValid) {
       return FirstRunSetupState(
@@ -242,7 +248,9 @@ final class DefaultFirstRunModelSetupFacade
     }
 
     await _dependencyService.configureExecutable(
-        executablePath: executablePath);
+      executablePath: executablePath,
+      variantId: variantId,
+    );
     return evaluateInitialState();
   }
 

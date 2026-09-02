@@ -68,7 +68,7 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
 
     final rawPath = env[pathKey] ?? '';
 
-    // 2. Separa le voci di PATH esistenti (mantiene .lmstudio se l'eseguibile selezionato si trova in LM Studio)
+    // 2. Separa le voci di PATH esistenti (mantiene .lmstudio se l'eseguibile si trova in LM Studio o se è un percorso vendor CUDA)
     final isLmStudioPath = executablePath.toLowerCase().contains('.lmstudio') ||
         executablePath.toLowerCase().contains('lm-studio');
     final pathSeparator = io.Platform.isWindows ? ';' : ':';
@@ -77,7 +77,10 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
       if (clean.isEmpty) return false;
       if (!isLmStudioPath &&
           (clean.contains('.lmstudio') || clean.contains('lm-studio'))) {
-        return false;
+        final isVendor = clean.contains('vendor') || clean.contains('cuda');
+        if (!isVendor) {
+          return false;
+        }
       }
       return true;
     }).toList();
@@ -109,7 +112,40 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
       }
     }
 
-    // 4. Aggiunge la workingDirectory, la cartella genitore e le relative sottocartelle vendor
+    // 4. Discovery automatica di directory vendor CUDA su Windows (se presenti sul sistema)
+    if (io.Platform.isWindows) {
+      final userProfile = env['USERPROFILE'] ?? env['HOME'] ?? '';
+      if (userProfile.isNotEmpty) {
+        final lmStudioVendorRoot = io.Directory(
+          '$userProfile\\.lmstudio\\extensions\\backends\\vendor',
+        );
+        if (lmStudioVendorRoot.existsSync()) {
+          try {
+            final vendorDirs =
+                lmStudioVendorRoot.listSync().whereType<io.Directory>();
+            for (final dir in vendorDirs) {
+              if (dir.path.toLowerCase().contains('cuda')) {
+                addVendorDirIfExist(dir.path);
+              }
+            }
+          } catch (_) {}
+        }
+      }
+
+      final programFiles = env['ProgramFiles'] ?? r'C:\Program Files';
+      final cudaToolkitDir =
+          io.Directory('$programFiles\\NVIDIA GPU Computing Toolkit\\CUDA');
+      if (cudaToolkitDir.existsSync()) {
+        try {
+          final versions = cudaToolkitDir.listSync().whereType<io.Directory>();
+          for (final dir in versions) {
+            addVendorDirIfExist('${dir.path}\\bin');
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 5. Aggiunge la workingDirectory, la cartella genitore e le relative sottocartelle vendor
     if (workingDirectory.trim().isNotEmpty) {
       final workDir = workingDirectory.trim();
       addVendorDirIfExist(workDir);
@@ -124,7 +160,7 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
       addVendorDirIfExist(vendorInWork);
     }
 
-    // 5. Costruisce il nuovo PATH process-local anteponendo le directory vendor
+    // 6. Costruisce il nuovo PATH process-local anteponendo le directory vendor
     final sanitizedPath =
         [...newEntries, ...existingEntries].join(pathSeparator);
 

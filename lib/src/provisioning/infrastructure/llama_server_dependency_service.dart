@@ -117,10 +117,28 @@ final class DefaultLlamaServerDependencyService
     final effectiveSource =
         source ?? (isBundled ? RuntimeSource.bundled : RuntimeSource.external);
 
+    // Se variantId non è specificato, cerchiamo di dedurlo dal manifest o dal path
+    String? effectiveVariantId = variantId ?? validation.variantId;
+    RuntimeAcceleration effectiveAccel = validation.acceleration;
+    if (manifestResult is RuntimeManifestFound) {
+      for (final v in manifestResult.manifest.variants) {
+        final normWorkDir = v.workingDirectory.replaceAll('/', '\\');
+        if (executablePath.contains(v.id) ||
+            executablePath.contains(normWorkDir)) {
+          effectiveVariantId ??= v.id;
+          if (effectiveAccel == RuntimeAcceleration.cpu &&
+              v.acceleration != RuntimeAcceleration.cpu) {
+            effectiveAccel = v.acceleration;
+          }
+          break;
+        }
+      }
+    }
+
     final config = LlamaServerConfiguration(
       schemaVersion: 1,
       source: effectiveSource,
-      variantId: variantId ?? validation.variantId,
+      variantId: effectiveVariantId,
       externalExecutablePath: effectiveSource == RuntimeSource.external
           ? executablePath.trim()
           : null,
@@ -128,7 +146,7 @@ final class DefaultLlamaServerDependencyService
       detectedVersion: validation.detectedVersion,
       lastValidatedAtUtc: validation.lastValidatedAtUtc,
       validationStatus: validation.status,
-      acceleration: validation.acceleration,
+      acceleration: effectiveAccel,
       gpuDeviceName: validation.gpuDeviceName,
     );
 
@@ -182,13 +200,18 @@ final class DefaultLlamaServerDependencyService
                 );
 
                 if (validation.isValid) {
+                  final effectiveAccel =
+                      validation.acceleration != RuntimeAcceleration.cpu
+                          ? validation.acceleration
+                          : variant.acceleration;
                   return LlamaServerDetectionResult(
                     configuredCandidate: resolvedExe,
                     isConfiguredValid: true,
                     effectiveCandidate: resolvedExe,
                     variantId: variant.id,
                     declaredAcceleration: variant.acceleration,
-                    acceleration: validation.acceleration,
+                    acceleration: effectiveAccel,
+                    gpuDeviceName: validation.gpuDeviceName,
                   );
                 }
               }
@@ -206,8 +229,9 @@ final class DefaultLlamaServerDependencyService
             isConfiguredValid: true,
             effectiveCandidate: configuredPath,
             variantId: validation.variantId ?? persistedConfig.variantId,
-            declaredAcceleration: validation.declaredAcceleration,
+            declaredAcceleration: persistedConfig.acceleration,
             acceleration: validation.acceleration,
+            gpuDeviceName: validation.gpuDeviceName,
           );
         } else {
           warnings.add(
@@ -311,6 +335,10 @@ final class DefaultLlamaServerDependencyService
             );
 
             if (validation.isValid) {
+              final effectiveAccel =
+                  validation.acceleration != RuntimeAcceleration.cpu
+                      ? validation.acceleration
+                      : variant.acceleration;
               return LlamaServerDetectionResult(
                 configuredCandidate: configuredPath,
                 isConfiguredValid: false,
@@ -318,7 +346,8 @@ final class DefaultLlamaServerDependencyService
                 effectiveCandidate: resolvedExe,
                 variantId: variant.id,
                 declaredAcceleration: variant.acceleration,
-                acceleration: validation.acceleration,
+                acceleration: effectiveAccel,
+                gpuDeviceName: validation.gpuDeviceName,
                 warnings: warnings,
               );
             } else {
@@ -527,14 +556,36 @@ final class DefaultLlamaServerDependencyService
     );
     if (versionResult != null && versionResult.isSuccess) {
       final versionStr = _extractVersion(versionResult.output);
-      final accel = _detectAcceleration(versionResult.output);
+
+      // Probe dei dispositivi GPU via --list-devices
+      final devicesResult = await _runProbe(
+        cleanPath,
+        ['--list-devices'],
+        vendorDirectories: effectiveVendorDirs,
+      );
+      final (detectedAccel, gpuDeviceName) = _detectAccelerationAndDevice(
+        devicesResult?.output ?? '',
+        versionResult.output,
+      );
+
+      var finalAccel = detectedAccel;
+      if (finalAccel == RuntimeAcceleration.cpu && variantId != null) {
+        final lower = variantId.toLowerCase();
+        if (lower.contains('cuda')) {
+          finalAccel = RuntimeAcceleration.cuda;
+        } else if (lower.contains('vulkan')) {
+          finalAccel = RuntimeAcceleration.vulkan;
+        }
+      }
+
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,
         executablePath: cleanPath,
         variantId: variantId,
         detectedVersion: versionStr,
         lastValidatedAtUtc: now,
-        acceleration: accel,
+        acceleration: finalAccel,
+        gpuDeviceName: gpuDeviceName,
       );
     }
 
@@ -705,6 +756,28 @@ final class DefaultLlamaServerDependencyService
       return RuntimeAcceleration.vulkan;
     }
     return RuntimeAcceleration.cpu;
+  }
+
+  (RuntimeAcceleration, String?) _detectAccelerationAndDevice(
+    String devicesOutput,
+    String fallbackOutput,
+  ) {
+    final lowerDevices = devicesOutput.toLowerCase();
+    if (lowerDevices.contains('cuda')) {
+      final match = RegExp(r'CUDA\d*:\s*([^\(\n\r]+)', caseSensitive: false)
+          .firstMatch(devicesOutput);
+      final deviceName = match?.group(1)?.trim();
+      return (RuntimeAcceleration.cuda, deviceName);
+    }
+    if (lowerDevices.contains('vulkan')) {
+      final match = RegExp(r'Vulkan\d*:\s*([^\(\n\r]+)', caseSensitive: false)
+          .firstMatch(devicesOutput);
+      final deviceName = match?.group(1)?.trim();
+      return (RuntimeAcceleration.vulkan, deviceName);
+    }
+
+    final fallback = _detectAcceleration(fallbackOutput);
+    return (fallback, null);
   }
 
   String? _extractVersion(String output) {

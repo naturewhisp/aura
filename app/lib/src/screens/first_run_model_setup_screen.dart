@@ -949,7 +949,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                       filled: true,
                       fillColor: const Color(0xFF1E293B),
                       border: const OutlineInputBorder(),
-                      hintText: detected ?? r'C:\llama.cpp\llama-server.exe',
+                      hintText: detected ??
+                          'Percorso dell\'eseguibile llama-server.exe',
                       hintStyle: const TextStyle(color: Color(0xFF64748B)),
                     ),
                   ),
@@ -1262,20 +1263,55 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_isLoading)
-              const CircularProgressIndicator(color: Color(0xFF00FFC8))
-            else
+            if (_isLoading) ...[
+              const CircularProgressIndicator(color: Color(0xFF00FFC8)),
+              const SizedBox(height: 16),
+              const Text(
+                'Verifica probe in corso...',
+                style: TextStyle(
+                  color: Color(0xFF00FFC8),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Rilevamento allocazione VRAM e compatibilità hardware...',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+            ] else ...[
               const Icon(Icons.speed, color: Color(0xFF00FFC8), size: 48),
-            const SizedBox(height: 16),
-            const Text(
-              'Verifica probe in corso...',
-              style: TextStyle(color: Colors.white),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _runProbe,
-              child: const Text('AVVIA VERIFICA PROBE'),
-            ),
+              const SizedBox(height: 16),
+              const Text(
+                'VERIFICA FINALE RUNTIME',
+                style: TextStyle(
+                  color: Color(0xFF00FFC8),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Configurazione completata. Avvia la verifica probe per testare il caricamento del runtime e convalidare l\'accelerazione hardware.',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF047857),
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                icon: const Icon(Icons.play_arrow),
+                onPressed: _runProbe,
+                label: const Text(
+                  'AVVIA VERIFICA PROBE',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
           ],
         );
 

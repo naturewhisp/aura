@@ -341,7 +341,7 @@ void main() {
     await tester.pump();
     await tester.pump();
 
-    expect(find.text('Verifica probe in corso...'), findsOneWidget);
+    expect(find.text('VERIFICA FINALE RUNTIME'), findsOneWidget);
     final probeBtn = find.text('AVVIA VERIFICA PROBE');
     await tester.ensureVisible(probeBtn);
     await tester.tap(probeBtn);

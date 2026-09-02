@@ -147,5 +147,61 @@ void main() {
           await resolver.resolveEffectiveStore(candidates: candidates);
       expect(effective, equals(canonical));
     });
+
+    test(
+        '7. Canonical directory exists but empty + legacy has valid model_configuration: preserves legacy',
+        () async {
+      const canonical = r'C:\Users\TestUser\AppData\Local\AURA\store';
+      const legacy = r'C:\Users\TestUser\AppData\Roaming\AURA\models';
+
+      // Simula cartella canonica vuota (es. creata da build precedente)
+      await fileSystem.writeStringRecoverably(
+        '$canonical\\.keep',
+        '',
+      );
+
+      // Legacy contiene model_configuration.json valido
+      await fileSystem.writeStringRecoverably(
+        '$legacy\\model_configuration.json',
+        jsonEncode(
+            {'schemaVersion': 1, 'configuredAt': '2026-09-01T00:00:00Z'}),
+      );
+
+      final candidates = AppManagedStoreCandidates(
+        canonical: canonical,
+        legacy: [legacy],
+      );
+
+      final effective =
+          await resolver.resolveEffectiveStore(candidates: candidates);
+      expect(effective, equals(legacy));
+    });
+
+    test(
+        '8. Canonical has valid model_configuration.json: resolves to canonical',
+        () async {
+      const canonical = r'C:\Users\TestUser\AppData\Local\AURA\store';
+      const legacy = r'C:\Users\TestUser\AppData\Roaming\AURA\models';
+
+      await fileSystem.writeStringRecoverably(
+        '$canonical\\model_configuration.json',
+        jsonEncode(
+            {'schemaVersion': 1, 'configuredAt': '2026-09-01T00:00:00Z'}),
+      );
+      await fileSystem.writeStringRecoverably(
+        '$legacy\\model_configuration.json',
+        jsonEncode(
+            {'schemaVersion': 1, 'configuredAt': '2026-08-01T00:00:00Z'}),
+      );
+
+      final candidates = AppManagedStoreCandidates(
+        canonical: canonical,
+        legacy: [legacy],
+      );
+
+      final effective =
+          await resolver.resolveEffectiveStore(candidates: candidates);
+      expect(effective, equals(canonical));
+    });
   });
 }

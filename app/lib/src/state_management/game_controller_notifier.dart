@@ -540,6 +540,7 @@ class GameControllerNotifier extends ChangeNotifier {
     completer.future.ignore();
     _activeManagedBootstrapFuture = completer.future;
 
+    ApplicationRuntimeConfiguration? runtimeConfig;
     try {
       if (_managedBootstrapDispose != null) {
         final disposeFn = _managedBootstrapDispose!;
@@ -559,7 +560,6 @@ class GameControllerNotifier extends ChangeNotifier {
         environmentOverride: Platform.environment,
       );
 
-      ApplicationRuntimeConfiguration runtimeConfig;
       switch (resolution) {
         case ManagedDualResolution(:final topology):
           final actorProvenance = topology.actor.serverConfiguration.provenance;
@@ -645,10 +645,14 @@ class GameControllerNotifier extends ChangeNotifier {
       }
       completer.complete();
     } catch (e) {
-      onProgress?.call(
-          1.0, 'AURA_INIT> [ERROR] MANAGED INFERENCE STARTUP FAILED.');
-      onProgress?.call(1.0, 'AURA_INIT> MODEL CONFIGURATION PRESERVED.');
-      onProgress?.call(1.0, 'AURA_INIT> RUNTIME PROCESSES NOT STARTED.');
+      if (runtimeConfig?.runtimeMode ==
+              ApplicationRuntimeMode.managedLlamaServer ||
+          runtimeConfig == null) {
+        onProgress?.call(
+            1.0, 'AURA_INIT> [ERROR] MANAGED INFERENCE STARTUP FAILED.');
+        onProgress?.call(1.0, 'AURA_INIT> MODEL CONFIGURATION PRESERVED.');
+        onProgress?.call(1.0, 'AURA_INIT> RUNTIME PROCESSES NOT STARTED.');
+      }
       onProgress?.call(1.0, 'AURA_INIT> [WARN] BOOTSTRAP FAILED: $e');
       completer.completeError(e);
     } finally {

@@ -1253,29 +1253,6 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                 },
               ),
               const SizedBox(height: 24.0),
-              const Divider(
-                  color: Color(0xFF005522), thickness: 1.5, height: 40.0),
-              const Text(
-                "CONFIGURAZIONE AUDIO & SOUNDSCAPE",
-                style: TextStyle(
-                  fontFamily: 'monospace',
-                  color: Color(0xFF00FF66),
-                  fontSize: 15.0,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 1.0,
-                ),
-              ),
-              const SizedBox(height: 16.0),
-
-              // 6. Audio terminal (Soundscape) toggle
-              _buildToggleSetting(
-                "AUDIO TERMINALE (SOUNDSCAPE)",
-                "Attiva gli effetti sonori retro chiptune e la musica d'ambiente",
-                widget.notifier.audioEnabled,
-                (val) {
-                  unawaited(widget.notifier.toggleAudio(val));
-                },
-              ),
             ],
           ),
         ),
@@ -1933,6 +1910,34 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                       Row(
                         children: [
                           Checkbox(
+                            key: const Key('checkbox_audio_master_enabled'),
+                            value: widget.notifier.audioEnabled,
+                            activeColor: const Color(0xFF00FF66),
+                            checkColor: Colors.black,
+                            onChanged: (val) {
+                              if (val != null) {
+                                setState(() {
+                                  unawaited(widget.notifier.toggleAudio(val));
+                                });
+                              }
+                            },
+                          ),
+                          const Expanded(
+                            child: Text(
+                              "Audio Terminale (Master Soundscape)",
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                color: Color(0xFF00FF66),
+                                fontSize: 11.0,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      Row(
+                        children: [
+                          Checkbox(
                             key: const Key('checkbox_music_enabled'),
                             value: state.musicEnabled,
                             activeColor: const Color(0xFF00FF66),
@@ -1940,16 +1945,38 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                             onChanged: (val) {
                               if (val != null) {
                                 shellController.setMusicEnabled(val);
+                                if (val && !widget.notifier.audioEnabled) {
+                                  setState(() {
+                                    unawaited(
+                                        widget.notifier.toggleAudio(true));
+                                  });
+                                }
                               }
                             },
                           ),
-                          const Expanded(
-                            child: Text(
-                              "Musica di sottofondo (BGM)",
-                              style: TextStyle(
-                                fontFamily: 'monospace',
-                                color: Color(0xFF00FF66),
-                                fontSize: 11.0,
+                          Expanded(
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  const TextSpan(
+                                    text: "Musica di sottofondo (BGM)",
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      color: Color(0xFF00FF66),
+                                      fontSize: 11.0,
+                                    ),
+                                  ),
+                                  if (!widget.notifier.audioEnabled)
+                                    const TextSpan(
+                                      text: " [MUTED]",
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        color: Color(0xFFFFB000),
+                                        fontSize: 10.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                           ),
@@ -1965,16 +1992,38 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                             onChanged: (val) {
                               if (val != null) {
                                 shellController.setSfxEnabled(val);
+                                if (val && !widget.notifier.audioEnabled) {
+                                  setState(() {
+                                    unawaited(
+                                        widget.notifier.toggleAudio(true));
+                                  });
+                                }
                               }
                             },
                           ),
-                          const Expanded(
-                            child: Text(
-                              "Effetti sonori UI e terminale (SFX)",
-                              style: TextStyle(
-                                fontFamily: 'monospace',
-                                color: Color(0xFF00FF66),
-                                fontSize: 11.0,
+                          Expanded(
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  const TextSpan(
+                                    text: "Effetti sonori UI e terminale (SFX)",
+                                    style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      color: Color(0xFF00FF66),
+                                      fontSize: 11.0,
+                                    ),
+                                  ),
+                                  if (!widget.notifier.audioEnabled)
+                                    const TextSpan(
+                                      text: " [MUTED]",
+                                      style: TextStyle(
+                                        fontFamily: 'monospace',
+                                        color: Color(0xFFFFB000),
+                                        fontSize: 10.0,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                           ),

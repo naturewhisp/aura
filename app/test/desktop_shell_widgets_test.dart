@@ -234,18 +234,34 @@ void main() {
       expect(find.text('--- AUDIO & EFFETTI SONORI ---'), findsOneWidget);
       expect(find.text('--- GRAFICA & PRESTAZIONI ---'), findsOneWidget);
 
+      expect(find.byKey(const Key('checkbox_audio_master_enabled')),
+          findsOneWidget);
       expect(find.byKey(const Key('checkbox_music_enabled')), findsOneWidget);
       expect(find.byKey(const Key('checkbox_sfx_enabled')), findsOneWidget);
       expect(find.byKey(const Key('checkbox_reduce_graphic_effects')),
           findsOneWidget);
 
-      // Toggle music checkbox
+      // Toggle master audio checkbox
+      await tester.ensureVisible(
+          find.byKey(const Key('checkbox_audio_master_enabled')));
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.tap(find.byKey(const Key('checkbox_audio_master_enabled')));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(notifier.audioEnabled, isFalse);
+
+      // Toggle music checkbox: riattiva automaticamente master audio se era spento
       await tester
           .ensureVisible(find.byKey(const Key('checkbox_music_enabled')));
       await tester.pump(const Duration(milliseconds: 200));
       await tester.tap(find.byKey(const Key('checkbox_music_enabled')));
       await tester.pump(const Duration(milliseconds: 200));
       expect(shellController.state.musicEnabled, isFalse);
+
+      // Riattivando BGM, notifier.audioEnabled deve tornare true automaticamente
+      await tester.tap(find.byKey(const Key('checkbox_music_enabled')));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(shellController.state.musicEnabled, isTrue);
+      expect(notifier.audioEnabled, isTrue);
 
       // Toggle sfx checkbox
       await tester.ensureVisible(find.byKey(const Key('checkbox_sfx_enabled')));

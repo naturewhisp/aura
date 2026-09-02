@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aura_core/aura_offline.dart';
 import '../state_management/game_controller_notifier.dart';
@@ -62,15 +63,18 @@ class _AppStartupGateState extends State<AppStartupGate> {
     if (widget.services != null) {
       _services = widget.services;
     } else {
-      final env = AuraCliEnvironment.fromPlatform();
-      final appManagedRoot = widget.notifier.appDataPath.isNotEmpty
-          ? widget.notifier.appDataPath
-          : env.appManagedRoot;
+      String? desktopBundledRoot;
+      try {
+        if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+          desktopBundledRoot = File(Platform.resolvedExecutable).parent.path;
+        }
+      } catch (_) {}
+
+      final env = AuraCliEnvironment.fromPlatform(
+        explicitBundledRoot: desktopBundledRoot,
+      );
       _services = LocalInferenceServiceProvider.create(
         environment: env,
-        customLock: widget.notifier.appDataPath.isNotEmpty
-            ? FileBasedProvisioningLock(lockDirectory: appManagedRoot)
-            : null,
       );
     }
 
@@ -87,6 +91,39 @@ class _AppStartupGateState extends State<AppStartupGate> {
     });
 
     try {
+      if (widget.services == null &&
+          widget.firstRunFacade == null &&
+          _services != null) {
+        final currentStore = _services!.pathResolver.appManagedRoot;
+        String? desktopBundledRoot;
+        try {
+          if (!Platform.environment.containsKey('FLUTTER_TEST')) {
+            desktopBundledRoot = File(Platform.resolvedExecutable).parent.path;
+          }
+        } catch (_) {}
+        final env = AuraCliEnvironment.fromPlatform(
+          explicitBundledRoot: desktopBundledRoot,
+        );
+        if (env.candidates != null) {
+          final storeResolver =
+              AppManagedStoreResolver(fileSystem: _services!.fileSystem);
+          final effectiveStore = await storeResolver.resolveEffectiveStore(
+            candidates: env.candidates!,
+          );
+          if (effectiveStore != currentStore) {
+            final effectiveEnv = AuraCliEnvironment(
+              appManagedRoot: effectiveStore,
+              bundledRoot: _services!.pathResolver.bundledRoot,
+              candidates: env.candidates,
+            );
+            _services = LocalInferenceServiceProvider.create(
+              environment: effectiveEnv,
+              customFileSystem: _services!.fileSystem,
+            );
+          }
+        }
+      }
+
       final facade = widget.firstRunFacade ?? _services!.firstRunFacade;
       final setupState = await facade.evaluateInitialState();
 
@@ -163,6 +200,7 @@ class _AppStartupGateState extends State<AppStartupGate> {
           initializeModels: widget.initializeModels,
           firstRunFacade: widget.firstRunFacade ?? services.firstRunFacade,
           inferenceFacade: services.inferenceFacade,
+          services: services,
         );
 
       case StartupDestination.error:

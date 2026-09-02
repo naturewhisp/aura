@@ -147,7 +147,7 @@ void main() {
       final wrongSha =
           '0000000000000000000000000000000000000000000000000000000000000000';
 
-      const userPath = r'C:\Users\dendo\Downloads\my_local_model.gguf';
+      const userPath = r'C:\Users\TestUser\Downloads\my_local_model.gguf';
       await fileSystem.appendBytes(userPath, bytes);
 
       final snapshot = createSnapshot(
@@ -214,7 +214,7 @@ void main() {
     group('ingestLocalArtifact — post-hash matching', () {
       late List<int> bytes;
       late String correctSha;
-      const userPath = r'C:\Users\dendo\Downloads\model.gguf';
+      const userPath = r'C:\Users\TestUser\Downloads\model.gguf';
 
       setUp(() async {
         bytes = List.generate(256, (i) => i % 256);

@@ -30,7 +30,7 @@ void main() {
 
       if (allowDestructive) {
         final localAppData = Platform.environment['LOCALAPPDATA'] ??
-            r'C:\Users\dendo\AppData\Local';
+            r'C:\Users\TestUser\AppData\Local';
         appManagedRoot = '$localAppData\\AURA';
       } else {
         tempTestDir = Directory.systemTemp.createTempSync('AURA-integration-');

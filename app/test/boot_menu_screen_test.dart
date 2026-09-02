@@ -2,7 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:aura_core/aura_testing.dart';
+import 'package:aura_core/aura_testing.dart' hide BootstrapFallbackPolicy;
+import 'package:aura_core/aura_offline.dart' hide BootstrapFallbackPolicy;
 import 'package:aura_app/src/screens/boot_menu_screen.dart';
 import 'package:aura_app/src/audio/boot_audio_service.dart';
 import 'package:aura_app/src/state_management/game_controller_notifier.dart';
@@ -467,7 +468,65 @@ void main() {
       // Consume the pending retry sequence timers to prevent test leak errors
       await tester.pump(const Duration(seconds: 3));
     });
+
+    testWidgets(
+        'Managed inference failure emits distinct error logs preserving model configuration',
+        (WidgetTester tester) async {
+      final fakeAudio = FakeBootAudioService();
+      fakeAudio.initCompleter.complete();
+      final failingNotifier = TestFailingBootstrapNotifier(
+        bridge: MockInferenceBridge(),
+        initialState: testState,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GameControllerProvider(
+            notifier: failingNotifier,
+            child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
+              notifier: failingNotifier,
+              audioService: fakeAudio,
+            ),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump();
+
+      expect(find.textContaining('MANAGED INFERENCE STARTUP FAILED'),
+          findsOneWidget);
+      expect(
+          find.textContaining('MODEL CONFIGURATION PRESERVED'), findsOneWidget);
+      expect(
+          find.textContaining('RUNTIME PROCESSES NOT STARTED'), findsOneWidget);
+      expect(find.textContaining('CRITICAL ERROR'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 3));
+    });
   });
+}
+
+class TestFailingBootstrapNotifier extends GameControllerNotifier {
+  TestFailingBootstrapNotifier({
+    required super.bridge,
+    required super.initialState,
+  });
+
+  @override
+  Future<void> performManagedBootstrap({
+    BootstrapFallbackPolicy fallbackPolicy = BootstrapFallbackPolicy.failClosed,
+    LocalInferenceServices? services,
+    void Function(double progress, String log)? onProgress,
+  }) async {
+    onProgress?.call(
+        1.0, 'AURA_INIT> [ERROR] MANAGED INFERENCE STARTUP FAILED.');
+    onProgress?.call(1.0, 'AURA_INIT> MODEL CONFIGURATION PRESERVED.');
+    onProgress?.call(1.0, 'AURA_INIT> RUNTIME PROCESSES NOT STARTED.');
+    throw StateError('Simulated managed bootstrap failure');
+  }
 }
 
 class FakeBootAudioService implements BootAudioService {

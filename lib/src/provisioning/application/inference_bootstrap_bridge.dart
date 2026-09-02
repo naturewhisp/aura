@@ -101,12 +101,17 @@ enum InferenceBootstrapFailureReason {
 /// L'unica responsabilità è leggere il record persistito e costruire la
 /// configurazione corretta da passare al [DefaultApplicationBootstrap].
 final class InferenceBootstrapBridge {
+  /// Istanza pre-risolta dei servizi di inferenza (per riuso del contesto autoritativo).
+  final LocalInferenceServices? _services;
+
   /// Factory per la costruzione dell'ambiente CLI (override per test).
   final AuraCliEnvironment Function()? _environmentFactory;
 
   const InferenceBootstrapBridge({
+    LocalInferenceServices? services,
     AuraCliEnvironment Function()? environmentFactory,
-  }) : _environmentFactory = environmentFactory;
+  })  : _services = services,
+        _environmentFactory = environmentFactory;
 
   /// Risolve la configurazione di bootstrap leggendo il record persistito su disco.
   ///
@@ -114,21 +119,22 @@ final class InferenceBootstrapBridge {
   /// una degradazione silenziosa verso [RuleBasedResolution] in caso di errore:
   /// restituisce [InvalidResolution] con la causa tipizzata.
   Future<InferenceBootstrapResolution> resolve({
+    LocalInferenceServices? services,
     String sessionId = 'bootstrap-session',
     Map<String, String> environmentOverride = const {},
   }) async {
     try {
-      final environment = _environmentFactory != null
-          ? _environmentFactory!()
-          : AuraCliEnvironment.fromPlatform(
-              environment: environmentOverride,
-            );
+      final effectiveServices = services ??
+          _services ??
+          LocalInferenceServiceProvider.create(
+            environment: _environmentFactory != null
+                ? _environmentFactory!()
+                : AuraCliEnvironment.fromPlatform(
+                    environment: environmentOverride,
+                  ),
+          );
 
-      final services = LocalInferenceServiceProvider.create(
-        environment: environment,
-      );
-
-      final snapshot = await services.inferenceFacade.getSnapshot();
+      final snapshot = await effectiveServices.inferenceFacade.getSnapshot();
       final runtime = snapshot.runtimeConfiguration;
       final models = snapshot.modelConfiguration;
 
@@ -143,16 +149,16 @@ final class InferenceBootstrapBridge {
 
       final resolver = DefaultBundledRuntimeResolver(
         manifestRepository: DefaultRuntimeManifestRepository(
-          fileSystem: services.fileSystem,
-          pathResolver: services.pathResolver,
+          fileSystem: effectiveServices.fileSystem,
+          pathResolver: effectiveServices.pathResolver,
         ),
-        fileSystem: services.fileSystem,
-        pathResolver: services.pathResolver,
+        fileSystem: effectiveServices.fileSystem,
+        pathResolver: effectiveServices.pathResolver,
       );
 
       final resolvedRuntime = await resolver.resolve(runtime);
       if (resolvedRuntime == null ||
-          !await services.fileSystem
+          !await effectiveServices.fileSystem
               .fileExists(resolvedRuntime.executablePath)) {
         return const InvalidResolution(
           reason: InferenceBootstrapFailureReason.runtimeExecutableMissing,
@@ -205,14 +211,14 @@ final class InferenceBootstrapBridge {
         if (ref is ExternalModelReference) return (ref.absolutePath, null);
         if (ref is ManagedModelReference) {
           final record =
-              await services.installationRecordRepository.readRecord();
+              await effectiveServices.installationRecordRepository.readRecord();
           final descriptor = record.findInstallation(ref.installationId);
           if (descriptor == null ||
               descriptor.status != InstallationStatus.verified) {
             return (null, null);
           }
           final installDir =
-              services.pathResolver.resolveAppManagedRelativePath(
+              effectiveServices.pathResolver.resolveAppManagedRelativePath(
             descriptor.relativeInstallPath,
           );
           final entryFileName = descriptor.entryFileName ?? '';
@@ -242,7 +248,7 @@ final class InferenceBootstrapBridge {
 
       if (actorPath == null ||
           actorPath.trim().isEmpty ||
-          !await services.fileSystem.fileExists(actorPath)) {
+          !await effectiveServices.fileSystem.fileExists(actorPath)) {
         return const InvalidResolution(
           reason: InferenceBootstrapFailureReason.actorModelMissing,
           sanitizedMessage:
@@ -252,7 +258,7 @@ final class InferenceBootstrapBridge {
 
       if (evaluatorPath == null ||
           evaluatorPath.trim().isEmpty ||
-          !await services.fileSystem.fileExists(evaluatorPath)) {
+          !await effectiveServices.fileSystem.fileExists(evaluatorPath)) {
         return const InvalidResolution(
           reason: InferenceBootstrapFailureReason.evaluatorModelMissing,
           sanitizedMessage:
@@ -260,7 +266,7 @@ final class InferenceBootstrapBridge {
         );
       }
 
-      final appManagedRoot = environment.appManagedRoot;
+      final appManagedRoot = effectiveServices.pathResolver.appManagedRoot;
       final actorLogPath =
           '$appManagedRoot/runtime/logs/actor_llama_server.log';
       final evaluatorLogPath =

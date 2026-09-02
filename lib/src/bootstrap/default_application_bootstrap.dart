@@ -675,13 +675,29 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
         request.customHealthProbe ?? HttpLlamaServerHealthProbe();
 
     // ---------- CLEANUP STALE PROCESSES ----------
-    final appManagedRoot = request.appManagedRoot ??
-        config.appManagedRoot ??
-        r'C:\Users\dendo\AppData\Local\AURA\store';
+    final appManagedRoot = request.appManagedRoot ?? config.appManagedRoot;
+    if (appManagedRoot == null || appManagedRoot.trim().isEmpty) {
+      throw const ApplicationBootstrapException(
+        ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.incompleteConfiguration,
+          message: 'Root dati applicativi non configurata.',
+        ),
+      );
+    }
+
+    final bundledRoot = request.bundledRoot ?? config.bundledRoot;
+    if (bundledRoot == null || bundledRoot.trim().isEmpty) {
+      throw const ApplicationBootstrapException(
+        ApplicationBootstrapFailure(
+          code: ApplicationBootstrapFailureCode.incompleteConfiguration,
+          message: 'Root runtime bundled non configurata.',
+        ),
+      );
+    }
+
     final pathResolver = ProvisioningPathResolver(
       appManagedRoot: appManagedRoot,
-      bundledRoot:
-          request.bundledRoot ?? config.bundledRoot ?? r'C:\Program Files\AURA',
+      bundledRoot: bundledRoot,
     );
     final processRegistry = ProcessOwnershipRegistry(
       pathResolver: pathResolver,

@@ -65,7 +65,7 @@ void main() {
       final byteData = ByteData.sublistView(headerBytes);
       byteData.setUint32(4, 3, Endian.little);
 
-      const filePath = r'C:\Users\dendo\Downloads\custom_model.gguf';
+      const filePath = r'C:\Users\TestUser\Downloads\custom_model.gguf';
       await fileSystem.appendBytes(filePath, headerBytes);
 
       final result = await inspector.inspectLocalFile(
@@ -87,7 +87,7 @@ void main() {
       headerBytes[0] = 0x50; // 'P'
       headerBytes[1] = 0x4B; // 'K' (Zip magic)
 
-      const filePath = r'C:\Users\dendo\Downloads\not_gguf.zip';
+      const filePath = r'C:\Users\TestUser\Downloads\not_gguf.zip';
       await fileSystem.appendBytes(filePath, headerBytes);
 
       final result = await inspector.inspectLocalFile(

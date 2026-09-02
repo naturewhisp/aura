@@ -98,6 +98,7 @@ export 'src/provisioning/infrastructure/model_configuration_service.dart';
 export 'src/provisioning/infrastructure/process_ownership_record.dart';
 export 'src/provisioning/infrastructure/process_ownership_registry.dart';
 export 'src/provisioning/infrastructure/winget_dependency_adapter.dart';
+export 'src/provisioning/infrastructure/app_managed_store_resolver.dart';
 export 'src/provisioning/cli/aura_cli_environment.dart';
 export 'src/provisioning/cli/local_inference_cli_runner.dart';
 export 'src/provisioning/cli/local_inference_service_provider.dart';

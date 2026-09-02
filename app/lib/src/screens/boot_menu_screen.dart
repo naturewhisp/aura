@@ -31,6 +31,7 @@ class BootMenuScreen extends StatefulWidget {
   final LlamaServerDependencyService dependencyService;
   final FirstRunModelSetupFacade? firstRunFacade;
   final LocalInferenceFacade? inferenceFacade;
+  final LocalInferenceServices? services;
 
   /// Sotto-schermata iniziale per il testing ("boot", "settings", ecc.).
   final String initialSubScreen;
@@ -44,6 +45,7 @@ class BootMenuScreen extends StatefulWidget {
     this.initializeModels,
     this.firstRunFacade,
     this.inferenceFacade,
+    this.services,
     this.initialSubScreen = "boot",
   });
 
@@ -68,6 +70,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   Future<void>? _bootFuture;
   bool _bootCompleted = false;
   bool _hasBootError = false;
+  bool _managedBootstrapFailed = false;
   final FocusNode _focusNode = FocusNode();
   final TextEditingController _settingsDisplayNameController =
       TextEditingController();
@@ -121,6 +124,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   }
 
   Future<void> _runBootSequence() async {
+    Timer? vramProgressTimer;
     try {
       _appendBootLog("AURA_INIT> SYSTEM INITIALIZATION... OK");
       setState(() {
@@ -168,38 +172,43 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       _appendBootLog("AURA_INIT> FETCHING LOCAL MODEL CATALOG...");
 
       final ModelInitializationResult modelResult;
-      Timer? vramProgressTimer;
 
       if (widget.initializeModels != null) {
         modelResult = await widget.initializeModels!();
       } else {
-        await widget.notifier.performManagedBootstrap(
-          onProgress: (progress, log) {
-            if (!mounted) return;
-            setState(() {
-              _bootProgress = progress;
-              _bootLines.add(log);
-            });
-            if (progress >= 0.65) {
-              vramProgressTimer?.cancel();
-              vramProgressTimer = Timer.periodic(
-                const Duration(milliseconds: 140),
-                (timer) {
-                  if (!mounted) {
-                    timer.cancel();
-                    return;
-                  }
-                  setState(() {
-                    if (_bootProgress < 0.96) {
-                      _bootProgress =
-                          (_bootProgress + 0.01).clamp(0.0, 0.96).toDouble();
+        try {
+          await widget.notifier.performManagedBootstrap(
+            services: widget.services,
+            onProgress: (progress, log) {
+              if (!mounted) return;
+              setState(() {
+                _bootProgress = progress;
+                _bootLines.add(log);
+              });
+              if (progress >= 0.65) {
+                vramProgressTimer?.cancel();
+                vramProgressTimer = Timer.periodic(
+                  const Duration(milliseconds: 140),
+                  (timer) {
+                    if (!mounted) {
+                      timer.cancel();
+                      return;
                     }
-                  });
-                },
-              );
-            }
-          },
-        );
+                    setState(() {
+                      if (_bootProgress < 0.96) {
+                        _bootProgress =
+                            (_bootProgress + 0.01).clamp(0.0, 0.96).toDouble();
+                      }
+                    });
+                  },
+                );
+              }
+            },
+          );
+        } catch (e) {
+          _managedBootstrapFailed = true;
+          rethrow;
+        }
         if (!mounted) {
           vramProgressTimer?.cancel();
           return;
@@ -217,9 +226,19 @@ class _BootMenuScreenState extends State<BootMenuScreen>
           _appendBootLog("AURA_INIT> CONNECTING TO NEURAL PORT...");
           break;
         case ModelInitializationStatus.noModelsDiscovered:
-          _appendBootLog("AURA_INIT> WARNING: Nessun modello rilevato.");
-          _appendBootLog(
-              "AURA_INIT> Configurazione modelli predefinita mantenuta.");
+          if (_managedBootstrapFailed) {
+            if (!_bootLines.contains(
+                "AURA_INIT> [ERROR] MANAGED INFERENCE STARTUP FAILED.")) {
+              _appendBootLog(
+                  "AURA_INIT> [ERROR] MANAGED INFERENCE STARTUP FAILED.");
+              _appendBootLog("AURA_INIT> MODEL CONFIGURATION PRESERVED.");
+              _appendBootLog("AURA_INIT> RUNTIME PROCESSES NOT STARTED.");
+            }
+          } else {
+            _appendBootLog("AURA_INIT> WARNING: Nessun modello rilevato.");
+            _appendBootLog(
+                "AURA_INIT> Configurazione modelli predefinita mantenuta.");
+          }
           break;
         case ModelInitializationStatus.unavailable:
           _appendBootLog("AURA_INIT> WARNING: Model Router non disponibile.");
@@ -271,7 +290,15 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         _pressEnterVisible = true;
       });
     } catch (e) {
+      vramProgressTimer?.cancel();
       if (!mounted) return;
+      if (_managedBootstrapFailed &&
+          !_bootLines.contains(
+              "AURA_INIT> [ERROR] MANAGED INFERENCE STARTUP FAILED.")) {
+        _appendBootLog("AURA_INIT> [ERROR] MANAGED INFERENCE STARTUP FAILED.");
+        _appendBootLog("AURA_INIT> MODEL CONFIGURATION PRESERVED.");
+        _appendBootLog("AURA_INIT> RUNTIME PROCESSES NOT STARTED.");
+      }
       _appendBootLog("AURA_INIT> [CRITICAL ERROR] Boot fallito: $e");
       setState(() {
         _hasBootError = true;
@@ -286,6 +313,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       _logoVisible = false;
       _pressEnterVisible = false;
       _hasBootError = false;
+      _managedBootstrapFailed = false;
       _bootCompleted = false;
       _bootFuture = null;
     });
@@ -444,7 +472,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
 
   void _loadReplays() {
     try {
-      final baseDir = _getAppDataPath();
+      final baseDir = widget.notifier.appDataPath;
       final replaysDir = Directory("$baseDir/replays");
       if (replaysDir.existsSync()) {
         setState(() {
@@ -463,28 +491,6 @@ class _BootMenuScreenState extends State<BootMenuScreen>
     } catch (e) {
       debugPrint("[REPLAY] Failed to load replays: $e");
     }
-  }
-
-  String _getAppDataPath() {
-    String? path;
-    if (Platform.isWindows) {
-      final appData = Platform.environment['APPDATA'];
-      if (appData != null) {
-        path = "$appData/aura";
-      }
-    } else if (Platform.isMacOS) {
-      final home = Platform.environment['HOME'];
-      if (home != null) {
-        path = "$home/Library/Application Support/aura";
-      }
-    } else if (Platform.isLinux) {
-      final home = Platform.environment['HOME'];
-      if (home != null) {
-        path = "$home/.config/aura";
-      }
-    }
-    path ??= "replays";
-    return path;
   }
 
   void _openReplay(File file) {

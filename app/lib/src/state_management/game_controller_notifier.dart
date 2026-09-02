@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/widgets.dart';
-import 'package:aura_core/aura_offline.dart';
+import 'package:aura_core/aura_offline.dart' hide BootstrapFallbackPolicy;
 import 'package:aura_app/src/audio/audio_manager.dart';
 import 'package:aura_app/src/audio/audio_scene.dart';
 import 'package:aura_app/src/session/active_session.dart';
@@ -522,6 +522,7 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Esegue il bootstrap asincrono delle dipendenze di inferenza e aggiorna i supervisor dei modelli.
   Future<void> performManagedBootstrap({
     BootstrapFallbackPolicy fallbackPolicy = BootstrapFallbackPolicy.failClosed,
+    LocalInferenceServices? services,
     void Function(double progress, String log)? onProgress,
   }) async {
     if (_isBootstrapped) {
@@ -553,6 +554,7 @@ class GameControllerNotifier extends ChangeNotifier {
 
       const bridgeResolver = InferenceBootstrapBridge();
       final resolution = await bridgeResolver.resolve(
+        services: services,
         sessionId: gameStateNotifier.value.sessionId,
         environmentOverride: Platform.environment,
       );
@@ -560,8 +562,23 @@ class GameControllerNotifier extends ChangeNotifier {
       ApplicationRuntimeConfiguration runtimeConfig;
       switch (resolution) {
         case ManagedDualResolution(:final topology):
+          final actorProvenance = topology.actor.serverConfiguration.provenance;
+          final evaluatorProvenance =
+              topology.evaluator.serverConfiguration.provenance;
+          final actorDisplay = actorProvenance?.artifactId.isNotEmpty == true
+              ? actorProvenance!.artifactId
+              : (actorProvenance?.fileName.isNotEmpty == true
+                  ? actorProvenance!.fileName
+                  : topology.actor.modelId);
+          final evaluatorDisplay =
+              evaluatorProvenance?.artifactId.isNotEmpty == true
+                  ? evaluatorProvenance!.artifactId
+                  : (evaluatorProvenance?.fileName.isNotEmpty == true
+                      ? evaluatorProvenance!.fileName
+                      : topology.evaluator.modelId);
+
           onProgress?.call(0.30,
-              'AURA_INIT> DUAL TOPOLOGY RESOLVED: ACTOR (GEMMA 12B) + EVALUATOR (MINISTRAL 3B)');
+              'AURA_INIT> DUAL TOPOLOGY RESOLVED: ACTOR ($actorDisplay) + EVALUATOR ($evaluatorDisplay)');
           runtimeConfig = ApplicationRuntimeConfiguration(
             runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
             sessionId: gameStateNotifier.value.sessionId,
@@ -614,6 +631,8 @@ class GameControllerNotifier extends ChangeNotifier {
         ApplicationBootstrapRequest(
           configuration: runtimeConfig,
           environmentOverride: Platform.environment,
+          appManagedRoot: services?.pathResolver.appManagedRoot,
+          bundledRoot: services?.pathResolver.bundledRoot,
         ),
       );
 
@@ -626,6 +645,10 @@ class GameControllerNotifier extends ChangeNotifier {
       }
       completer.complete();
     } catch (e) {
+      onProgress?.call(
+          1.0, 'AURA_INIT> [ERROR] MANAGED INFERENCE STARTUP FAILED.');
+      onProgress?.call(1.0, 'AURA_INIT> MODEL CONFIGURATION PRESERVED.');
+      onProgress?.call(1.0, 'AURA_INIT> RUNTIME PROCESSES NOT STARTED.');
       onProgress?.call(1.0, 'AURA_INIT> [WARN] BOOTSTRAP FAILED: $e');
       completer.completeError(e);
     } finally {

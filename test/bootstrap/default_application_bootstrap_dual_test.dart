@@ -37,6 +37,8 @@ void main() {
       );
 
       final request = ApplicationBootstrapRequest(
+        appManagedRoot: r'C:\TestAura\store',
+        bundledRoot: r'C:\TestAura\bundled',
         configuration: const ApplicationRuntimeConfiguration(
           runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
           managedInferenceTopology: topology,

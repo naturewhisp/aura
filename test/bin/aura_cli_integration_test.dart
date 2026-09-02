@@ -22,12 +22,16 @@ void main() {
     group('AuraCliEnvironment Platform Resolution', () {
       test('risolve i percorsi Windows in modo corretto', () {
         final env = AuraCliEnvironment.fromPlatform(
-          environment: {'APPDATA': r'C:\Users\TestUser\AppData\Roaming'},
+          environment: {'LOCALAPPDATA': r'C:\Users\TestUser\AppData\Local'},
           targetOS: AuraOperatingSystem.windows,
         );
 
         expect(env.appManagedRoot,
-            equals(r'C:\Users\TestUser\AppData\Roaming\AURA\models'));
+            equals(r'C:\Users\TestUser\AppData\Local\AURA\store'));
+        expect(env.candidates?.canonical,
+            equals(r'C:\Users\TestUser\AppData\Local\AURA\store'));
+        expect(env.candidates?.legacy,
+            contains(r'C:\Users\TestUser\AppData\Local\AURA\models'));
       });
 
       test('risolve i percorsi Linux (XDG Data Home)', () {
@@ -36,7 +40,11 @@ void main() {
           targetOS: AuraOperatingSystem.linux,
         );
 
-        expect(env.appManagedRoot, equals('/home/testuser/.data/aura/models'));
+        expect(env.appManagedRoot, equals('/home/testuser/.data/aura/store'));
+        expect(env.candidates?.canonical,
+            equals('/home/testuser/.data/aura/store'));
+        expect(env.candidates?.legacy,
+            contains('/home/testuser/.data/aura/models'));
       });
 
       test('risolve i percorsi macOS (Application Support)', () {
@@ -46,7 +54,13 @@ void main() {
         );
 
         expect(env.appManagedRoot,
-            equals('/Users/testuser/Library/Application Support/AURA/models'));
+            equals('/Users/testuser/Library/Application Support/AURA/store'));
+        expect(env.candidates?.canonical,
+            equals('/Users/testuser/Library/Application Support/AURA/store'));
+        expect(
+            env.candidates?.legacy,
+            contains(
+                '/Users/testuser/Library/Application Support/AURA/models'));
       });
     });
 

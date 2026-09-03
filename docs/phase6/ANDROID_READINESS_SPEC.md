@@ -3,8 +3,8 @@
 **Documento:** `docs/phase6/ANDROID_READINESS_SPEC.md`  
 **Fase:** gate di uscita Fase 6 / ingresso Fase 7  
 **Tipo:** readiness assessment e vincoli architetturali  
-**Stato:** baseline iniziale; da aggiornare al termine della Fase 6.9  
-**Baseline iniziale:** `1c9015da6c5f445c13e82fa5df0c4d49e0830429`  
+**Stato:** aggiornato post Fase 6.9 e Fase 6.10; fondazione multipiattaforma pronta per i prerequisiti di Fase 7  
+**Baseline di riferimento:** Fase 6.10 consolidata  
 **Target futuro:** Android arm64
 
 ---
@@ -510,44 +510,39 @@ NOT APPLICABLE
 UNVERIFIED
 ```
 
-Baseline iniziale:
+### 18.1 Stato dei Prerequisiti Architetturali (Post-Fase 6.10)
 
 | Area | Stato | Nota |
 |---|---|---|
-| Game controller platform-neutral | READY | Nessuna autorità runtime sulle regole |
-| Agent contracts | READY | Contratti Dart condivisibili |
-| Inference abstraction | READY | Adapter Android ancora assente |
-| Windows sidecar isolation | PARTIAL | Verificare assenza di leakage nei consumer |
-| Model lifecycle contracts | READY | Storage Android da implementare |
-| Manifest schemas | PARTIAL | Verificare campi Windows-specific |
-| Catalog signing | NOT READY | Fase 6.9 |
-| Android native runtime | NOT READY | Fase 7.1 |
-| Android model store | NOT READY | Fase 7.2 |
-| Android hardware probe | NOT READY | Fase 7.0/7.3 |
-| Thermal lifecycle | NOT READY | Fase 7.4 |
-| Audio asset portability | PARTIAL | Asset Flutter presenti; test Android assenti |
-| Branding master | PARTIAL | Master canonico da confermare |
-| Android CI/release | NOT READY | Fase 7 |
-| Real device evidence | NOT READY | Spike obbligatorio |
+| Game controller platform-neutral | READY | Nessuna autorità runtime sulle regole; 100% puro Dart |
+| Agent contracts | READY | Contratti Dart condivisibili ed immutabili |
+| Inference abstraction | READY | Interfaccia `InferenceRuntime` neutrale; adapter Android pianificato in 7.1 |
+| Windows sidecar isolation | READY | Nessun leakage di Win32 o sidecar nei consumer; platform layer confinato |
+| Model lifecycle contracts | READY | Schema DTO e contratti isolati; backend storage Android pianificato in 7.2 |
+| Manifest schemas | READY | Schemi manifest privi di path o binari Windows vincolanti |
+| Catalog signing | READY | Ed25519 RFC 8032 + JCS RFC 8785 in puro Dart, verificabile su Android |
+| Android native runtime | NOT READY | Perimetro esclusivo Fase 7.1 |
+| Android model store | NOT READY | Perimetro esclusivo Fase 7.2 |
+| Android hardware probe | NOT READY | Perimetro esclusivo Fase 7.0/7.3 |
+| Thermal lifecycle | NOT READY | Perimetro esclusivo Fase 7.4 |
+| Audio asset portability | READY | Logical ID e mapping asset Flutter multipiattaforma consolidati |
+| Branding master | READY | Master iconografico disponibile per generazione icone adaptive |
+| Android CI/release | NOT READY | Perimetro esclusivo Fase 7 |
+| Real device evidence | NOT READY | Spike obbligatorio Fase 7.0 |
 
 ---
 
 ## 19. Blocker di ingresso Fase 7
 
-La Fase 7 non deve partire come implementazione estesa se restano:
+Tutti i blocker architetturali iniziali di pertinenza della fondazione sono stati risolti con successo nel corso della Fase 6:
+- [x] Core totalmente privo di dipendenze da Win32 o registry.
+- [x] Manifest universali privi di path Windows obbligatori.
+- [x] Catalog signing Ed25519 / JCS RFC 8785 formalizzato e testato in pure Dart.
+- [x] Model lifecycle separato dalla UI desktop e centralizzato in service facades.
+- [x] Runtime selection non vincolata a `llama-server.exe` nel core.
+- [x] Storage contracts e download platform-neutral.
 
-```text
-- core dipendente da Win32;
-- manifest universali con path Windows obbligatori;
-- catalog signing non definito;
-- model lifecycle non separato dalla UI desktop;
-- runtime selection hardcoded a llama-server.exe;
-- storage contract basato solo su path;
-- assenza di strategia URI;
-- nessun piano di test real device;
-```
-
-Lo spike 7.0 può iniziare anche con blocker noti, ma deve chiuderli prima della produzione.
+L'ingresso formale alla Fase 7 avverrà non appena concluso il collaudo esteso multi-hardware della Fase 6.10.
 
 ---
 

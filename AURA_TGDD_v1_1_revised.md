@@ -1,8 +1,8 @@
 # Technical Game Design Document (TGDD)
 
 **Progetto:** A.U.R.A. — Artificial Unbound Reasoning Arena  
-**Versione:** 1.7 — Phase 6.9 GitHub Actions, Draft Releases, Catalog Signing & Distribution Pipeline (Active Development & Rebaseline)  
-**Stato:** Documento tecnico aggiornato; sviluppo completato e validato fino a Fase 6.8 inclusa. Fase 6.9 in corso di rebaseline per il primo collaudo automatizzato delle candidate release.  
+**Versione:** 1.8 — Phase 6.10 Windows Production Hardening & Multi-Hardware Validation (Active Development & Rebaseline)  
+**Stato:** Documento tecnico aggiornato; sviluppo implementativo completato e consolidato fino a Fase 6.10 inclusa. Fase 6 attualmente aperta per la fase di collaudo esteso su macchine e configurazioni hardware eterogenee prima della chiusura formale e dell'apertura di Fase 7 (Android Edge Client).  
 **Piattaforme Target:** Windows Desktop, Android  
 **Target iniziale di produzione:** Windows x64  
 **Stack Frontend:** Flutter / Dart  
@@ -3869,7 +3869,7 @@ L'espansione del catalogo di trappole appartiene a una fase successiva di conten
 
 ### Fase 6 — Cross-Platform Edge Runtime Foundation
 
-Stato: pianificata; branding icon baseline completata, tutte le altre attività richiedono design gate documentale prima del codice produttivo.
+Stato: sottofasi 6.1 – 6.10 implementate e consolidate; fase aperta per collaudo esteso su hardware eterogeneo prima della chiusura formale.
 
 Scopo: dismettere LM Studio come dipendenza operativa, introdurre un runtime edge posseduto da A.U.R.A., completare il desktop shell Windows, distribuire runtime/modelli/audio e preparare Android senza refactoring del core.
 
@@ -3942,7 +3942,7 @@ Obiettivi e Deliverable Consolidati:
 
 #### 6.4 Model Acquisition, Download Engine & Lifecycle Automation (Tranche 6.4a–6.4f)
 
-Stato: **in corso / specificata normativamente**.  
+Stato: **completata e consolidata**.  
 Riferimento normativo: [docs/phase6/PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](docs/phase6/PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md)
 
 Scopo: Estendere il motore di provisioning locale con l'acquisizione remota dei cataloghi firmati, il download HTTPS resiliente con resume Range, la verifica crittografica prima dell'installazione, gli aggiornamenti side-by-side ed il rollback atomico a `last-known-good`.
@@ -4160,6 +4160,16 @@ Il flusso di upgrade deve usare staging, validazione, switch atomico e rollback.
 
 #### 6.9 GitHub Actions & Release Pipeline (Pubblicazione e Firma Cataloghi)
 
+Stato: **completata e validata**.  
+Riferimenti normativi: [docs/phase6/RELEASE_PIPELINE_SPEC.md](docs/phase6/RELEASE_PIPELINE_SPEC.md) e [docs/RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
+
+Deliverable consolidati:
+- Workflow CI ordinario (`.github/workflows/ci.yml`): convalida strict format, `dart analyze`, `flutter analyze`, test offline e build Flutter Release su PR e push `main`.
+- Pipeline di Release (`.github/workflows/release.yml`): trigger manuale `workflow_dispatch` o test pre-merge via tag `phase6-release-test-*`, compilazione installer Inno Setup, bundle portable ZIP, generazione SBOM SPDX 2.3 JSON (`tool/generate_sbom.dart`), calcolo checksum SHA-256 e pubblicazione di **Draft Releases** per il collaudo manuale fail-closed.
+- Firma crittografica Ed25519 (RFC 8032) con canonicalizzazione RFC 8785 (JCS) implementata in pure Dart (`tool/catalog/sign_catalog.dart`).
+- Strumento di verifica asset scaricati `tool/verify_release_assets.ps1` (PE header, RIFF header, integrità ZIP/EXE e firma del catalogo).
+- Procedura di rollback/cleanup rapido con `.github/workflows/cleanup-draft-release.yml` e skill operativa `.agents/skills/aura-release-orchestrator/SKILL.md`.
+
 Workflow PR:
 
 ```text
@@ -4198,23 +4208,19 @@ beta
 dev
 ```
 
-#### 6.10 Windows Production Hardening
+#### 6.10 Windows Production Hardening & Multi-Hardware Validation
 
-Obiettivi:
+Stato: **sviluppo implementativo e hardening completati; collaudo multi-macchina esteso in corso**.  
+Riferimento normativo: [docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md](docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md).
 
-- test su macchina Windows pulita;
-- benchmark CPU/CUDA/Vulkan;
-- test proxy/offline/spazio insufficiente;
-- interruzione download e resume;
-- crash e processi orfani;
-- upgrade/rollback;
-- compatibilità runtime/modello;
-- installazione, migrazione, repair e uninstall dell'audio pack;
-- verifica checksum e comportamento con WAV mancanti/corrotti;
-- test fullscreen, multi-monitor, restore off-screen e cambio DPI;
-- test focus loss, audio pause/resume e persistenza preferenze;
-- tempi di primo avvio e primo turno;
-- documentazione diagnostica e support bundle.
+Deliverable consolidati ed evidenze di produzione:
+- **Accelerazione Hardware NVIDIA CUDA RTX**: Iniezione dinamica nel `PATH` delle librerie vendor (`win-llama-cuda12-vendor-v2` contenente `cudart64_12.dll`) eseguita in modo trasparente dal supervisor dei processi (`LlamaServerProcessSupervisor`), sbloccando le massime prestazioni di calcolo con oltre 190 tok/s in prompt evaluation.
+- **Fail-Closed Hardware Probing per Runtime Bundled**: Convalida dell'accelerazione hardware demandata unicamente all'esecuzione con esito positivo di `--list-devices`. In caso di errore di esecuzione o assenza di GPU fisiche rilevate, il runtime viene forzato a `RuntimeAcceleration.cpu` evitando falsi positivi GPU su macchine prive di hardware dedicato.
+- **CPU Thread Budgeting Deterministico**: Implementazione della policy a tre scaglioni (`computeExecutionBudget`) per proteggere il thread principale dell'UI Flutter e la macchina a stati audio anche su sistemi a basso numero di core o in scenari CPU-only.
+- **De-stuttering I/O tramite Isolate**: Calcolo dell'hash SHA-256 dei modelli e digest GGUF eseguiti in Isolate Dart separati per eliminare micro-stuttering del frame rate durante il caricamento.
+- **Sincronizzazione Multi-Preferenza Audio/Grafica**: Master toggle audio (`audio_enabled`) unificato con sincronizzazione coerente di BGM ed SFX, badge di stato `[MUTED]`, ducking volumetrico centralizzato (`AudioSceneMachine`) e verifica combinata di tutte le preferenze utente (`AppSettings` + `WindowPreferences`).
+- **Risoluzione Percorsi di Produzione**: Dichiarazione esplicita della root di bundle desktop, separazione tra directory di configurazione utente (`appDataPath`) e store dei modelli (`appManagedRoot`), e migrazione fail-closed degli store preesistenti.
+- **Collaudo Esteso Multi-Hardware**: La fase resta aperta per il collaudo approfondito e la raccolta delle evidenze su macchine e configurazioni diversificate prima della chiusura formale della Fase 6 e dell'apertura della Fase 7 (Android Edge Client).
 
 #### Exit Criteria Fase 6
 

@@ -1,6 +1,6 @@
 # Architettura Tecnica di A.U.R.A. (Artificial Unbound Reasoning Arena)
 
-Questo documento fornisce una descrizione tecnica dettagliata dell'architettura di **A.U.R.A.**, concepita come guida di riferimento per gli sviluppatori del sistema. La presente revisione allinea l'architettura al TGDD v1.3 con l'introduzione della sottofase **5.2 — Hard Mode Deception Layer**.
+Questo documento fornisce una descrizione tecnica dettagliata dell'architettura di **A.U.R.A.**, concepita come guida di riferimento per gli sviluppatori del sistema. La presente revisione allinea l'architettura al TGDD v1.3 ed allo sviluppo consolidato fino alla **Fase 6.10 — Windows Production Hardening** (inclusi contratti neutrali, managed runtime multi-variante, provisioning crittografico Ed25519, packaging autonomo Inno Setup, pipeline CI/CD GitHub Actions e ottimizzazioni hardware CUDA/CPU).
 
 ---
 
@@ -479,15 +479,15 @@ Il progetto include tre strumenti eseguibili da riga di comando posizionati nell
 *   **Logical Trap / Trappola Logica:** Contro-premessa usata da PANOPTICON per verificare se il giocatore mantiene coerenza semantica o forza una contraddizione.
 *   **False Concession / Falso Cedimento:** Concessione apparente e condizionata che PANOPTICON usa per testare se il giocatore tenta di trasformare una finestra limitata in sblocco totale.
 *   **Deception Resolution:** Esito deterministico della trappola (`sprung`, `resolved`, `expired`) registrato nel replay e tradotto in bonus/malus dal `GameController`.
-*   **LoRA Swapping:** Tecnica (prevista per la Fase 6) per scambiare rapidamente adapter LoRA (pesi del modello) in memoria per passare dal valutatore all'attore sullo stesso hardware.
+*   **LoRA Swapping:** Tecnica (prevista per la futura Fase 8) per scambiare rapidamente adapter LoRA (pesi del modello) in memoria per passare dal valutatore all'attore sullo stesso hardware.
 
 ---
 
 ## 9. Fase 5 — Panopticon Pilot, Runtime Hardening & Hard Deception
 
-*(Vedi specifica di Game Design ufficiale in [AURA_TGDD_v1_3_hard_deception_layer.md](AURA_TGDD_v1_3_hard_deception_layer.md#fase-5--panopticon-pilot--hidden-gameplay-model))*
+*(Vedi specifica di Game Design ufficiale in [AURA_TGDD_v1_1_revised.md](AURA_TGDD_v1_1_revised.md#fase-5--panopticon-pilot--hidden-gameplay-model))*
 
-La Fase 5 consolida **PANOPTICON** come avversario pilota e prepara il passaggio alla Fase 6. Lo stato corretto non è più “Fase 5 interamente completata” in senso assoluto: la vertical slice e il runtime hardening sono completati fino a **5.1**, mentre **5.2 Hard Mode Deception Layer** è una sottofase pianificata per rendere la modalità Hard qualitativamente diversa prima dell'ottimizzazione LoRA/edge.
+La Fase 5 consolida **PANOPTICON** come avversario pilota e costituisce la base logica per la Fase 6. La vertical slice, il runtime hardening e l'Hard Mode Deception Layer (Fasi 5.0, 5.1 e 5.2) sono interamente completati e consolidati nel motore deterministico.
 
 ### 9.1 Fase 5.0 — Panopticon Pilot & Hidden Gameplay Model
 
@@ -561,13 +561,13 @@ L'Actor recita la trappola.
 DeceptionEvaluator decide se la trappola esiste, se scatta e quali effetti produce.
 ```
 
-### 9.4 Stato di Prontezza per la Fase 6
-
-La Fase 6 può partire in parallelo su componenti infrastrutturali. I dataset LoRA finali per PANOPTICON includeranno sessioni Hard con `DeceptionState` attivo, ora che la Fase 5.2 è completata.
+### 9.4 Consolidamento della Fase 5
+ 
+La Fase 5 costituisce la base algoritmica e comportamentale dell'avversario pilota. I log di telemetria e replay includono sessioni con `DeceptionState` attivo e metriche stabilizzate pronte per alimentare il futuro addestramento.
 
 ---
 
-## 10. Pre-impostazioni per la Fase 6 (Fine-Tuning LoRA / Edge Integration)
+## 10. Pre-impostazioni per la Fase 8 (Fine-Tuning LoRA / Specializzazione)
 
 I log di replay generati dalla CLI e dalle simulazioni sono scritti nel formato JSON standardizzato in `spike/replays/`. Questo formato traccia per ogni turno:
 1. L'input utente esatto.
@@ -769,7 +769,7 @@ Deliverable e Componenti Implementati:
 
 ### 11.8 Fase 6.4 — Model Acquisition, Download Engine & Lifecycle Automation (Tranche 6.4a–6.4f)
 
-Stato: **in corso / specificata normativamente**.  
+Stato: **completata e consolidata**.  
 Riferimento normativo dettagliato: [PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md](docs/phase6/PHASE_6_4_ACQUISITION_AND_LIFECYCLE_SPEC.md).
 
 Suddivisione in tranche implementative:
@@ -799,11 +799,76 @@ Suddivisione in tranche implementative:
 
 6. **Tranche 6.4f — Application Integration & Operational CLI:**
    - Integrazione nei composition root `DefaultApplicationBootstrap` e `PlatformServices`, configurazione del trust store (`AURA_TRUST_STORE_PATH`, `AURA_CATALOG_KEY_ID`).
-   - Entry point CLI: `bin/aura_cli.dart` (entry point pubblico) e `bin/aura_provisioning.dart` (wrapper locale) condividono `CatalogCliController` ed esporranno le 12 forme di comando.
+   - Entry point CLI: `bin/aura_cli.dart` (entry point pubblico) e `bin/aura_provisioning.dart` (wrapper locale) condividono `CatalogCliController` ed espongono le 12 forme di comando.
    - Sanitizzazione dei log e disaccoppiamento totale della UI.
 
-> [!NOTE]
-> La pipeline CI/CD di pubblicazione e firma dei cataloghi appartiene alla **Fase 6.9** (Release Pipeline). La Fase 6.4 implementa ed esegue la verifica e il consumo lato client tramite la chiave pubblica configurata.
+### 11.9 Fase 6.5 — Deterministic and Real-Model Test Runtime Architecture
+
+Stato: **completata e validata**.  
+Riferimento normativo: [TEST_RUNTIME_STRATEGY.md](docs/phase6/TEST_RUNTIME_STRATEGY.md).
+
+La Fase 6.5 formalizza la separazione rigorosa tra le suite di test deterministiche e i test di collaudo con processi nativi o modelli neurali:
+- **Offline Test Boundary**: Le suite standard (`dart test` e `flutter test`) operano con intercettori di trasporto (`ForbiddenHttpTransport`) e launcher di processo finti (`ForbiddenProcessLauncher`). Nessuna richiesta HTTP esce dalla macchina e nessun processo `llama-server.exe` viene avviato.
+- **Isolamento dei Runner Opt-In**: I runner che eseguono processi nativi o caricano modelli reali GGUF risiedono tassativamente all'esterno della cartella `test/` (in `tool/tests/native_smoke_runner.dart` e `tool/tests/real_model_runner.dart`). Vengono invocati programmaticamente tramite script dedicati (`tool/run_native_smoke_tests.ps1`, `tool/run_real_model_tests.ps1`) e gestiscono il proprio ciclo di vita tramite blocchi espliciti `try/finally`, prevenendo processi orfani.
+
+### 11.10 Fase 6.6 — Windows Desktop Shell, Window Controller & Branding
+
+Stato: **completata e validata**.  
+Riferimento normativo: [WINDOWS_DESKTOP_SHELL_SPEC.md](docs/phase6/WINDOWS_DESKTOP_SHELL_SPEC.md) e [BRANDING_ASSET_SPEC.md](docs/phase6/BRANDING_ASSET_SPEC.md).
+
+La Fase 6.6 introduce l'astrazione della shell desktop e rimuove qualsiasi identificatore provvisorio del prototipo:
+- **Astrazione Platform-Neutral**: `DesktopWindowController` e la relativa interfaccia espongono comandi e getter astratti (`isMaximized`, `isFullScreen`, `setWindowMode`) lasciando l'interazione con `window_manager` confinata nell'adapter Windows (`WindowsDesktopWindowController`).
+- **Modalità Finestra e Scorciatoie**: Supportate modalità `windowed`, `maximized`, `borderlessFullscreen` e ripristino sicuro (`restorePrevious`) con gestione tasti F11, Alt+Enter ed Esc.
+- **Persistenza e Monitor Clamping**: Dimensioni, posizione, monitor e fattore di scala vengono serializzati tramite `WindowPreferencesRepository`. In fase di avvio, se le coordinate salvate ricadono al di fuori dei monitor attualmente connessi (es. disconnessione di display secondario), la finestra viene automaticamente riposizionata al centro dello schermo principale.
+- **Gestione Focus e Branding Ufficiale**: Sospensione/attenuazione audio e riduzione frame rate quando la finestra perde il focus. Icona ufficiale incorporata nei manifest dell'eseguibile, taskbar, finestra e installer Inno Setup.
+
+### 11.11 Fase 6.7 — Definitive WAV Import, Audio Manifest & Transactional Packaging
+
+Stato: **completata e validata**.  
+Riferimento normativo: [AUDIO_ASSET_PACKAGING_SPEC.md](docs/phase6/AUDIO_ASSET_PACKAGING_SPEC.md).
+
+La Fase 6.7 converte i file audio del gioco in asset versionati, gestiti e riproducibili:
+- **Canale di Release Canonico**: Gli asset audio definitivi risiedono in `distribution/audio/` e sono governati da `audio-manifest.json` con logical ID, categorie, gain e checksum SHA-256.
+- **Importatore Transazionale (`AudioImportEngine`)**: Implementato in pure Dart (`tool/import_release_audio.dart`), esegue staging atomico, validazione dell'header RIFF (`WavHeaderVerifier`) e calcolo hash.
+- **Gestione Upgrade, Repair e Fallback Silenzioso**: In fase di aggiornamento o riparazione, eventuali file audio modificati dall'utente vengono salvati in backup preventivo prima della sostituzione. In assenza di dispositivi audio o in caso di file mancanti, il gameplay prosegue regolarmente con fallback silenzioso.
+
+### 11.12 Fase 6.8 — Multi-Variant Llama Runtimes, Inno Setup Standalone Installer & Packaging Pipeline
+
+Stato: **completata e validata**.  
+Riferimento normativo: [WINDOWS_INSTALLER_AND_UPDATE_SPEC.md](docs/phase6/WINDOWS_INSTALLER_AND_UPDATE_SPEC.md).
+
+La Fase 6.8 integra il runtime nativo multi-variante e il meccanismo di packaging e installazione per sistemi Windows:
+- **Runtime Multi-Variante Bundled**: Supporto a tre varianti native di `llama-server`: `win-x64-cuda` (CUDA 12 per GPU NVIDIA), `win-x64-vulkan` (per GPU AMD/Intel) e `win-x64-cpu-avx2` (CPU AVX2 con FMA).
+- **Rilevamento Istruzioni Hardware**: Detection sicura di CPUID, bit OSXSAVE ed emissione del registro `XGETBV(0)` con verifica maschera XCR0 per certificare il supporto YMM del sistema operativo prima di tentare l'avvio delle varianti AVX2.
+- **Packaging Pipeline Deterministica (`tool/package_release.ps1`)**: Script PowerShell fail-closed per compilare il binario Flutter Release, assemblare lo zip portable e compilare l'installer Inno Setup (`tool/aura_installer.iss`), verificando preventivamente la conformità dei PE Header (`Test-ValidPeExecutable`).
+
+### 11.13 Fase 6.9 — GitHub Actions CI/CD, Draft Releases, Ed25519 Catalog Signing & Distribution
+
+Stato: **completata e validata**.  
+Riferimento normativo: [RELEASE_PIPELINE_SPEC.md](docs/phase6/RELEASE_PIPELINE_SPEC.md) e [RELEASE_PROCESS.md](docs/RELEASE_PROCESS.md).
+
+La Fase 6.9 stabilisce l'infrastruttura di Continuous Integration e Release su GitHub:
+- **Workflow CI/CD Ordinari**: `.github/workflows/ci.yml` esegue i gate di formato, analisi statica, test unitari/widget e build di verifica su ogni pull request.
+- **Pipeline di Release (`.github/workflows/release.yml`)**: Workflow parametrico guidato che effettua packaging, generazione SBOM SPDX 2.3 (`tool/generate_sbom.dart`), calcolo checksum SHA-256 e pubblicazione di **Draft Releases** per il collaudo prima della marcatura a pubblica.
+- **Firma Ed25519 dei Cataloghi (`tool/catalog/sign_catalog.dart`)**: Applicazione della firma crittografica Ed25519 (RFC 8032) con canonicalizzazione RFC 8785 (JCS) sui metadati `model-manifest.json`.
+- **Verifica e Cleanup**: Script `tool/verify_release_assets.ps1` per collaudo automatico fail-closed e workflow `.github/workflows/cleanup-draft-release.yml` per eliminare candidate scartate in sicurezza.
+
+### 11.14 Fase 6.10 — Windows Production Hardening (CUDA, Fail-Closed GPU, CPU Budgeting & Audio Sync)
+
+Stato: **sviluppo implementativo e hardening completati; collaudo multi-macchina esteso in corso**.  
+Riferimento normativo: [HARDWARE_COMPATIBILITY_MATRIX.md](docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md).
+
+La Fase 6.10 consolida la stabilità e le prestazioni su architetture reali attraverso mirati interventi di produzione:
+- **Accelerazione GPU CUDA con Iniezione DLL Vendor**: `LlamaServerProcessSupervisor` e `LlamaServerDependencyService` iniettano automaticamente nel `PATH` di runtime la directory vendor `win-llama-cuda12-vendor-v2` contenente `cudart64_12.dll`, consentendo l'offload completo dei layer su GPU NVIDIA RTX con throughput di oltre 190 tok/s in prompt evaluation.
+- **Autorità Esclusiva di `--list-devices` e Rilevamento Fail-Closed**: Per le varianti bundled runtime (`variantId != null`), l'accelerazione GPU viene convalidata unicamente tramite l'esecuzione con successo di `--list-devices`. Qualsiasi errore o mancata presenza di device fisici GPU declassa rigorosamente la configurazione a `RuntimeAcceleration.cpu`, eliminando falsi positivi.
+- **CPU Thread Budgeting Deterministico**: Implementazione in `computeExecutionBudget` della ripartizione su 3 tier (2 core riservati per host $\ge 6$ core; 1 core riservato per host 4–5 core; 1 thread fisso per host $\le 3$ core) per proteggere la reattività della UI Flutter e il thread audio in scenari CPU-only.
+- **De-stuttering I/O tramite Isolate**: Calcolo dell'hash SHA-256 e digest GGUF durante il provisioning delegati ad Isolate Dart dedicati per prevenire micro-lag del frame rate grafico.
+- **Sincronizzazione Multi-Preferenza Audio/Grafica**: Master toggle audio (`audio_enabled`) unificato e sincronizzato con i sottocanali BGM ed SFX, badge visivo `[MUTED]` non-destruttivo, ducking volumetrico coerente in tutte le transizioni (`AudioSceneMachine`) e verifica congiunta di `AppSettings` e `WindowPreferences`.
+- **Risoluzione Percorsi di Produzione**: Dichiarazione esplicita della root di bundle desktop, separazione atomica tra `appDataPath` (configurazioni/sessioni) e `appManagedRoot` (store modelli/runtimes), e inizializzazione single-pass dei service provider.
+
+### 11.15 Stato di Avanzamento e Validazione Hardware Estesa della Fase 6
+
+Tutte le sottofasi della Fase 6 (da 6.0 a 6.10) sono interamente implementate, testate e consolidate a livello architetturale e funzionale. La Fase 6 rimane attualmente aperta nella fase conclusiva di **collaudo esteso su macchine fisiche con configurazioni hardware diversificate** (GPU NVIDIA RTX, GPU AMD/Intel Vulkan e sistemi CPU-only legacy). Al completamento positivo delle registrazioni nella matrice di compatibilità hardware, la Fase 6 verrà formalmente chiusa consentendo l'apertura immediata della **Fase 7 (Android Edge Client)**.
 
 
 

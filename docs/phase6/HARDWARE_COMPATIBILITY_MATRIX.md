@@ -2,8 +2,8 @@
 
 **Documento:** `docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md`  
 **Tipo:** documento vivo di requisiti, evidenze e certificazione  
-**Stato:** baseline iniziale  
-**Baseline iniziale:** `1c9015da6c5f445c13e82fa5df0c4d49e0830429`  
+**Stato:** aggiornato con le evidenze di Fase 6.10; collaudo multi-hardware esteso in corso  
+**Baseline corrente:** Fase 6.10 consolidata  
 **Piattaforme:** Windows x64; Android arm64 futuro
 
 ---
@@ -122,6 +122,19 @@ CUDA
 ```
 
 Il fallback deve essere tracciato e visibile.
+
+### 3.5 Autorità di `--list-devices` e Rilevamento Fail-Closed
+
+Nei binari gestiti bundled (`variantId != null`), l'accelerazione hardware GPU (CUDA o Vulkan) viene convalidata **esclusivamente tramite l'esecuzione con successo di `--list-devices`**.
+- Se il comando esce con codice d'errore (es. librerie driver assenti) o non elenca device GPU fisici, il runtime viene declassato deterministicamente a `RuntimeAcceleration.cpu`.
+- È tassativamente vietato dedurre il supporto GPU dall'output testuale generico di `--version` per i runtime gestiti, prevenendo crash o loop di avvio su macchine prive di hardware idoneo.
+
+### 3.6 CPU Thread Budgeting Deterministico
+
+Nelle esecuzioni CPU-only o durante l'inferenza dell'Evaluator su CPU, l'allocazione dei thread rispetta rigorosamente i seguenti tier calcolati in `computeExecutionBudget`:
+1. **Tier 1 (Host con $\ge 6$ core logici)**: riserva 2 core completi per l'isolate UI Flutter e il sistema operativo (es. 8 core $\rightarrow$ 6 thread disponibili).
+2. **Tier 2 (Host con 4–5 core logici)**: riserva 1 core completo per l'host e la UI (es. 4 core $\rightarrow$ 3 thread disponibili).
+3. **Tier 3 (Host con $\le 3$ core logici)**: riserva minima di 1 thread per istanza (`minThreadPerInstance: 1`) per garantire la reattività dell'interfaccia.
 
 ---
 

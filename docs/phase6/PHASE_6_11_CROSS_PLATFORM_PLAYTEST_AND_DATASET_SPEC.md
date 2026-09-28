@@ -295,7 +295,75 @@ La documentazione della release candidate deve indicare la procedura corretta:
 
 ---
 
-## 6. Criteri di Accettazione e Exit Gate (Fase 6.11)
+---
+
+## 6. Roadmap Operativa delle Sotto-Fasi (6.11.1 – 6.11.5)
+
+Per garantire uno sviluppo controllato, isolato e conforme alla **Zero Diagnostic Policy**, la Fase 6.11 è suddivisa in 5 sotto-fasi sequenziali a principio **fail-closed**: ogni sotto-fase deve soddisfare i propri test di unità e regressione prima di avviare la successiva.
+
+```mermaid
+flowchart TD
+    subgraph SOTTO_FASI [Fase 6.11 — Roadmap Esecutiva Incrementale]
+        S1["<b>6.11.1: Core POSIX & Platform Neutralization</b><br/>• ProvisioningPathResolver (leading slash / semantica posix)<br/>• ProcessOwnershipRegistry (probe non distruttiva kill -0)<br/>• RuntimeAcceleration.metal"]
+        S2["<b>6.11.2: Replay Provenance Schema</b><br/>• SessionProvenanceMetadata (statico sessione)<br/>• TurnGenerationProvenance (dinamico per-turno)<br/>• DatasetSource con fail-closed unknown<br/>• actorContextSize + evaluatorContextSize"]
+        S3["<b>6.11.3: Desktop Shell Abstraction & app/macos</b><br/>• flutter create --platforms=macos .<br/>• DesktopWindowController factory & MacOSDesktopWindowController<br/>• ApplicationShutdownCoordinator (exit cross-platform)"]
+        S4["<b>6.11.4: CI Automation & On-Demand Verification</b><br/>• .github/workflows/macos-verify.yml su runner macos-14<br/>• Build Mach-O & packaging artifact AURA.app"]
+        S5["<b>6.11.5: Release Candidate Packaging & Qualification</b><br/>• Integrazione condizionale in release.yml (solo candidate)<br/>• Playtest reale Apple Silicon M-series (10 turni)<br/>• Registrazione PLAYTEST_VERIFIED in Hardware Matrix"]
+        
+        S1 --> S2 --> S3 --> S4 --> S5
+    end
+    S5 -->|Tutti i Gate Superati| F7[Fase 7.0 — Android Edge Client]
+```
+
+### 6.11.1: Core POSIX & Platform Neutralization
+* **Obiettivo:** Neutralizzare tutte le assunzioni Win32 e i bug bloccanti nel core infrastrutturale in pure Dart.
+* **Componenti Target:**
+  * `lib/src/provisioning/infrastructure/provisioning_path_resolver.dart`: riscrittura di `canonicalizeRoot` e `_join` per supportare path assoluti Unix (`/Users/...`) e semantica `p.posix`.
+  * `lib/src/provisioning/infrastructure/process_ownership_registry.dart`: rimozione di `ProcessSignal.sigkill` nella probe di vitalità processi non-Windows; implementazione probe non distruttiva con `kill -0` e matching riga di comando `ps`.
+  * `lib/src/provisioning/domain/runtime_dependency_models.dart`: aggiunta di `RuntimeAcceleration.metal`.
+* **Test di Verifica:** Test unitari dedicati in `test/provisioning/` per path Unix e probe liveness.
+* **Exit Milestone:** `dart test` verde al 100% su Windows con zero regressioni.
+
+### 6.11.2: Replay Provenance Schema (LoRA Dataset Readiness)
+* **Obiettivo:** Estendere il dominio del replay logging con la provenance a due livelli e granularità per Attore ed Evaluator.
+* **Componenti Target:**
+  * Creazione di `lib/src/models/provenance/`: modelli `SessionProvenanceMetadata`, `TurnGenerationProvenance`, enum `DatasetSource` con variante `unknown`.
+  * `lib/src/replay_logger.dart`: integrazione di `TurnGenerationProvenance` in `ReplayEntry` e di `SessionProvenanceMetadata` nella persistenza di sessione.
+  * `lib/aura_core.dart`: export pubblico dei nuovi contratti.
+* **Test di Verifica:** `test/replay/replay_provenance_test.dart` (serializzazione JCS RFC 8785, test fail-closed per valori non riconosciuti, test di retrocompatibilità su fixture storiche senza provenance).
+* **Exit Milestone:** Test suite replay completamente verde; contratti immutabili convalidati.
+
+### 6.11.3: Desktop Shell Abstraction & app/macos Skeleton
+* **Obiettivo:** Isolare le chiamate native Win32 della UI e abilitare il target macOS desktop generato da Windows.
+* **Componenti Target:**
+  * Generazione alberatura `app/macos/` tramite `cd app; flutter create --platforms=macos .`.
+  * Refactoring di `app/lib/src/platform/windows/windows_desktop_window_controller.dart` dietro la factory `DesktopWindowController.create()`.
+  * Creazione di `MacOSDesktopWindowController` (con binding `window_manager` per macOS).
+  * Aggiornamento di `app/lib/src/state_management/application_shutdown_coordinator.dart` per eseguire `exit(0)` su macOS.
+* **Test di Verifica:** `flutter analyze` su `app/` e `flutter test` (widget tests) per garantire che l'app non assuma Windows a runtime.
+* **Exit Milestone:** Zero errori, warning o info da `flutter analyze`.
+
+### 6.11.4: CI Automation & On-Demand Verification
+* **Obiettivo:** Configurare la build pipeline on-demand su runner GitHub Actions Apple Silicon (`macos-14`).
+* **Componenti Target:**
+  * Creazione di `.github/workflows/macos-verify.yml` con trigger `workflow_dispatch`.
+  * Esecuzione sequenziale: setup Dart/Flutter $\rightarrow$ `dart test` $\rightarrow$ `flutter analyze` $\rightarrow$ `flutter test` $\rightarrow$ `flutter build macos --release`.
+  * Upload del bundle `AURA.app` compresso come artifact temporaneo.
+* **Test di Verifica:** Trigger manuale tramite `gh workflow run macos-verify.yml` e verifica del run verde su GitHub Actions.
+* **Exit Milestone:** Primo archivio Mach-O compilato in CI scaricabile dagli artifacts.
+
+### 6.11.5: Release Candidate Packaging & Playtest Qualification
+* **Obiettivo:** Allegare automaticamente l'asset macOS alle Release Candidate e validare la prima sessione reale su hardware Apple Silicon.
+* **Componenti Target:**
+  * Aggiornamento di `.github/workflows/release.yml` con job `build-macos` attivo solo per `release_kind == 'candidate'`.
+  * Esecuzione di una sessione di 10 turni su un Mac fisico M-series secondo [MACOS_PLAYTEST_GUIDE.md](../MACOS_PLAYTEST_GUIDE.md).
+  * Validazione del JSON di replay generato: verifica della presenza di `SessionProvenanceMetadata` (chip M-series, backend Metal, quantizzazione) e `TurnGenerationProvenance`.
+  * Registrazione dell'evidenza `PLAYTEST_VERIFIED` in `HARDWARE_COMPATIBILITY_MATRIX.md`.
+* **Exit Milestone:** Gate 6.11 completato al 100% $\rightarrow$ approvazione formale per l'avvio della **Fase 7.0 (Android)**.
+
+---
+
+## 7. Criteri di Accettazione e Exit Gate (Fase 6.11 Globale)
 
 La Fase 6.11 si considererà conclusa con successo quando saranno soddisfatti tutti i seguenti criteri prima di dichiarare aperto l'inizio della Fase 7.0:
 
@@ -309,8 +377,10 @@ La Fase 6.11 si considererà conclusa con successo quando saranno soddisfatti tu
 
 ---
 
-## 7. Registro delle Modifiche
+## 8. Registro delle Modifiche
 
 | Data | Commit / PR | Descrizione |
 |---|---|---|
 | 2026-09-28 | Iniziale | Creazione della specifica per la Fase 6.11 (Cross-Platform Playtest & Dataset Readiness) |
+| 2026-09-28 | Revisione 1 | Allineamento schemaVersion 1.1.0, disaccoppiamento actor/evaluatorContextSize e fail-closed DatasetSource |
+| 2026-09-28 | Revisione 2 | Scomposizione della Fase 6.11 in 5 sotto-fasi operative sequenziali (6.11.1 – 6.11.5) |

@@ -4219,12 +4219,13 @@ Deliverable consolidati ed evidenze di produzione:
 - **CPU Thread Budgeting Deterministico**: Implementazione della policy a tre scaglioni (`computeExecutionBudget`) per proteggere il thread principale dell'UI Flutter e la macchina a stati audio anche su sistemi a basso numero di core o in scenari CPU-only.
 - **De-stuttering I/O tramite Isolate**: Calcolo dell'hash SHA-256 dei modelli e digest GGUF eseguiti in Isolate Dart separati per eliminare micro-stuttering del frame rate durante il caricamento.
 - **Sincronizzazione Multi-Preferenza Audio/Grafica**: Master toggle audio (`audio_enabled`) unificato con sincronizzazione coerente di BGM ed SFX, badge di stato `[MUTED]`, ducking volumetrico centralizzato (`AudioSceneMachine`) e verifica combinata di tutte le preferenze utente (`AppSettings` + `WindowPreferences`).
+- **Risoluzione Percorsi di Produzione**: Dichiarazione esplicita della root di bundle desktop, separazione atomica tra `appDataPath` (configurazioni/sessioni) e `appManagedRoot` (store modelli/runtimes), e inizializzazione single-pass dei service provider.
 - **Collaudo Esteso Multi-Hardware**: La fase resta aperta per il collaudo approfondito e la raccolta delle evidenze su macchine e configurazioni diversificate prima della chiusura formale della Fase 6 e dell'apertura della Fase 7 (Android Edge Client).
 
 #### Fase 6.11 — Cross-Platform Playtest & Dataset Readiness
 
 Prima dell'apertura della Fase 7 (Android Edge Client), la Fase 6 viene estesa con una sottofase sperimentale macOS Apple Silicon articolata in 5 step controllati (6.11.1 – 6.11.5) e finalizzata a:
-- **Sanificazione delle assunzioni Windows/POSIX**: disaccoppiamento della semantica di piattaforma dall'host per garantire che i test POSIX siano verificati al 100% da Windows via `dart test`, eliminando i percorsi hardcoded in `ProvisioningPathResolver` e correggendo la probe di vitalità processi in `ProcessOwnershipRegistry`;
+- **Sanificazione delle assunzioni Windows/POSIX**: disaccoppiamento della semantica di piattaforma dall'host (`PlatformContext` / command runner iniettabile) in `ProvisioningPathResolver` e `ProcessOwnershipRegistry`. La semantica POSIX modellata viene coperta deterministicamente dalla suite unit/contract eseguita sul runner Windows, mentre la correttezza dell'integrazione nativa POSIX/Darwin viene verificata sul runner macOS nella Fase 6.11.4;
 - **Provenance dei replay per i futuri dataset LoRA (Fase 8)**: tracciamento a due livelli (`SessionProvenanceMetadata` + `TurnGenerationProvenance`) con modelli Attore ed Evaluator separati (SHA-256, quantizzazioni e context size distinti) e parsing fail-closed su `DatasetSource.unknown`;
 - **Astrazione della shell Flutter**: isolamento di `DesktopWindowController` per finestre macOS desktop;
 - **Build e verifiche tramite CI secondaria**: workflow GitHub Actions su runner `macos-14` (Apple Silicon ARM64) on-demand e packaging condizionato nelle sole Release Candidate (`release_kind == 'candidate'`);
@@ -4234,7 +4235,7 @@ Prima dell'apertura della Fase 7 (Android Edge Client), la Fase 6 viene estesa c
 > **Development and Verification Authority:**  
 > Lo sviluppo della Fase 6.11 continua prevalentemente sulla workstation Windows. **L'esito autorevole delle suite automatiche è quello prodotto dai workflow GitHub Actions.**  
 > - **Windows runner (`windows-latest`):** costituisce il **gate primario di regressione**;  
-> - **macOS runner (`macos-14`):** viene introdotto esclusivamente come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
+> - **macOS runner (`macos-14`):** può essere utilizzato nella Fase 6.11.3 esclusivamente come strumento di scaffolding/toolchain per generare `app/macos/` (non costituisce un gate di verifica della sottofase); viene introdotto come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
 > - **Hardware Apple Silicon fisico:** è richiesto soltanto per la **qualification manuale finale** della Fase 6.11.5 (`EXPERIMENTAL / PLAYTEST TARGET`).
 > 
 > Specifica esecutiva completa: [`docs/phase6/PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md`](docs/phase6/PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md).

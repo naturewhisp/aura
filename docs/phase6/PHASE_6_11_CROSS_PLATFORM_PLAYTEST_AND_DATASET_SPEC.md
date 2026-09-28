@@ -25,7 +25,7 @@ L'obiettivo della Fase 6.11 è duplice, sinergico e rigorosamente circoscritto:
 > **Development and Verification Authority:**  
 > Lo sviluppo della Fase 6.11 continua prevalentemente sulla workstation Windows. **L'esito autorevole delle suite automatiche è quello prodotto dai workflow GitHub Actions.**  
 > - **Windows runner (`windows-latest`):** costituisce il **gate primario di regressione**;  
-> - **macOS runner (`macos-14`):** viene introdotto esclusivamente come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
+> - **macOS runner (`macos-14`):** può essere utilizzato nella Fase 6.11.3 esclusivamente come strumento di scaffolding/toolchain per generare `app/macos/` (non costituisce un gate di verifica della sottofase); viene introdotto come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
 > - **Hardware Apple Silicon fisico:** è richiesto soltanto per la **qualification manuale finale** della Fase 6.11.5.
 >
 > ```text
@@ -161,7 +161,7 @@ Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano 
     "hardwareClass": "apple_silicon_m3_pro_18gb",
     "gitCommit": "18db44ae751859c0258cb2909f2bcf74ddc79e49",
     "appVersion": "0.6.11-rc.1",
-    "runtimeBackend": "managed_llama_server",
+    "runtimeBackend": "external_http",
     "runtimeAcceleration": "metal",
     "llamaCppBuild": "b4210",
     "actorModelId": "google/gemma-4-12b-it-qat-q4_0",
@@ -205,11 +205,7 @@ Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano 
 ### 3.4 Shell Desktop macOS (`app/`)
 
 1. **Generazione Scheletro Piattaforma:**
-   Esecuzione una tantum da ambiente di sviluppo Windows:
-   ```bash
-   cd app
-   flutter create --platforms=macos .
-   ```
+   La generazione iniziale di `app/macos` viene eseguita una tantum su un runner GitHub Actions macOS con versione Flutter fissata. L'alberatura generata viene quindi acquisita come artifact, riportata nella working copy Windows e versionata nel repository. La workstation dello sviluppatore non richiede macOS né Xcode.  
    Genera i target Xcode nativi (`Runner.xcodeproj`, `Info.plist`, `AppInfo.xcconfig`) e integra automaticamente i binding macOS dei plugin già presenti nel `pubspec.yaml` (`window_manager`, `screen_retriever`, `audioplayers`).
 
 2. **Astrazione `DesktopWindowController`:**
@@ -343,13 +339,13 @@ flowchart TD
 
 ### 6.11.1: Core POSIX & Platform Neutralization
 * **Obiettivo:** Neutralizzare tutte le assunzioni Win32 e i bug bloccanti nel core infrastrutturale in pure Dart.
-* **Disaccoppiamento Semantico Host/Target:** Il path resolver e il registry dei processi separano la semantica logica (Windows vs POSIX) dall'host di esecuzione corrente (es. via `PlatformContext` o iniezione di command runner). Questo garantisce che i test unitari eseguiti da Windows con `dart test` possano verificare deterministicamente sia i percorsi Windows (`C:\...`) sia quelli POSIX (`/Users/...`), e che la costruzione dei comandi di probe (`kill -0`, `ps -p`) sia convalidata al 100% prima della CI.
+* **Disaccoppiamento Semantico Host/Target:** Il path resolver e il registry dei processi separano la semantica logica (Windows vs POSIX) dall'host di esecuzione corrente (es. via `PlatformContext` o iniezione di command runner). La semantica POSIX modellata (canonicalizzazione percorsi, separatori, costruzione dei comandi di probe e parsing delle risposte simulate) viene coperta deterministicamente dalla suite unit/contract eseguita sul runner Windows. La correttezza dell'integrazione nativa POSIX/Darwin viene verificata sul runner macOS nella Fase 6.11.4.
 * **Componenti Target:**
   * `lib/src/provisioning/infrastructure/provisioning_path_resolver.dart`: riscrittura di `canonicalizeRoot` e `_join` per supportare path assoluti Unix (`/Users/...`) e semantica `p.posix`.
   * `lib/src/provisioning/infrastructure/process_ownership_registry.dart`: rimozione di `ProcessSignal.sigkill` nella probe di vitalità processi non-Windows; implementazione probe non distruttiva con `kill -0` e matching riga di comando `ps`.
   * `lib/src/provisioning/domain/runtime_dependency_models.dart`: aggiunta di `RuntimeAcceleration.metal`.
 * **Test di Verifica:** Test unitari dedicati in `test/provisioning/` per path Unix e probe liveness eseguibili interamente da Windows.
-* **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde**, inclusi i test deterministici della semantica Windows e POSIX; la verifica POSIX nativa viene effettuata successivamente dal runner macOS nella 6.11.4.
+* **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde**, inclusi i test deterministici della semantica Windows e POSIX modellata; la verifica dell'integrazione nativa POSIX/Darwin viene effettuata successivamente dal runner macOS nella 6.11.4.
 
 ### 6.11.2: Replay Provenance Schema (LoRA Dataset Readiness)
 * **Obiettivo:** Estendere il dominio del replay logging con la provenance a due livelli e granularità per Attore ed Evaluator.
@@ -363,12 +359,12 @@ flowchart TD
 ### 6.11.3: Desktop Shell Abstraction & app/macos Skeleton
 * **Obiettivo:** Isolare le chiamate native Win32 della UI e predisporre l'alberatura macOS nativa per la compilazione in CI.
 * **Componenti Target:**
-  * Predisposizione dell'alberatura `app/macos/` tramite ambiente macOS CI / runner appropriato (rispettando il vincolo della toolchain Flutter «Target macOS — On macOS only»).
+  * Predisposizione dell'alberatura `app/macos/` generata una tantum su un runner macOS CI come puro strumento di scaffolding/toolchain, acquisita come artifact e versionata nel repository (non costituisce un gate di verifica della sottofase).
   * Refactoring di `app/lib/src/platform/windows/windows_desktop_window_controller.dart` dietro la factory astratta `DesktopWindowController.create()`.
   * Creazione di `MacOSDesktopWindowController` (in puro Dart/Flutter con binding `window_manager` per macOS).
   * Aggiornamento di `app/lib/src/state_management/application_shutdown_coordinator.dart` per eseguire `exit(0)` su macOS.
 * **Test di Verifica:** `flutter analyze` su `app/` e `flutter test` (widget tests) per garantire che l'app non assuma Windows a runtime.
-* **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde** (zero regressioni e zero diagnostic issues sui test di widget e shell); la compilazione Mach-O effettiva appartiene alla 6.11.4.
+* **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde** (zero regressioni e zero diagnostic issues sui test di widget e shell). Il runner macOS in questa sottofase interviene unicamente come strumento di toolchain per generare l'artifact `app/macos/`; il primo gate autorevole di compatibilità macOS è la Fase 6.11.4.
 
 ### 6.11.4: CI Automation & On-Demand Verification
 * **Obiettivo:** Configurare la build pipeline on-demand su runner GitHub Actions Apple Silicon (`macos-14`).

@@ -872,7 +872,7 @@ Stato: **specifica esecutiva approvata; roadmap a 5 sotto-fasi (6.11.1 – 6.11.
 Riferimento normativo: [PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md](docs/phase6/PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md) e [DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md](docs/phase6/DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md).
 
 Prima dell'apertura formale della Fase 7 (Android Edge Client), la Fase 6 viene estesa e chiusa con una sottofase sperimentale macOS Apple Silicon finalizzata a:
-- **Sanificazione delle Assunzioni Windows/POSIX nel Core**: Disaccoppiamento della semantica di piattaforma dall'host (`PlatformContext` / command runner iniettabile) in `ProvisioningPathResolver` e `ProcessOwnershipRegistry`, consentendo la verifica deterministica al 100% da Windows via `dart test`, lasciando alla CI macOS solo la verifica di integrazione;
+- **Sanificazione delle Assunzioni Windows/POSIX nel Core**: Disaccoppiamento della semantica di piattaforma dall'host (`PlatformContext` / command runner iniettabile) in `ProvisioningPathResolver` e `ProcessOwnershipRegistry`. La semantica POSIX modellata viene coperta deterministicamente dalla suite unit/contract eseguita sul runner Windows, mentre la correttezza dell'integrazione nativa POSIX/Darwin viene verificata sul runner macOS nella Fase 6.11.4;
 - **Replay Provenance Schema a Due Livelli per LoRA (Fase 8)**: Standardizzazione di `SessionProvenanceMetadata` (ambiente, architettura, build `llama.cpp`, modelli Attore ed Evaluator separati con relativi SHA-256, quantizzazioni e `actorContextSize`/`evaluatorContextSize`) e `TurnGenerationProvenance` (sampling effettivo per-turno e latenze), con parsing fail-closed su `DatasetSource.unknown`;
 - **Astrazione Desktop Shell**: Predisposizione della factory `DesktopWindowController` con implementazione `MacOSDesktopWindowController` e shutdown coordinato cross-platform;
 - **Build CI Apple Silicon**: Workflow GitHub Actions `macos-verify.yml` su runner nativi `macos-14` (ARM64) e job di release condizionato in `release.yml` attivo esclusivamente per le Release Candidate (`release_kind == 'candidate'`);
@@ -882,7 +882,7 @@ Prima dell'apertura formale della Fase 7 (Android Edge Client), la Fase 6 viene 
 > **Development and Verification Authority:**  
 > Lo sviluppo della Fase 6.11 continua prevalentemente sulla workstation Windows. **L'esito autorevole delle suite automatiche è quello prodotto dai workflow GitHub Actions.**  
 > - **Windows runner (`windows-latest`):** costituisce il **gate primario di regressione**;  
-> - **macOS runner (`macos-14`):** viene introdotto esclusivamente come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
+> - **macOS runner (`macos-14`):** può essere utilizzato nella Fase 6.11.3 esclusivamente come strumento di scaffolding/toolchain per generare `app/macos/` (non costituisce un gate di verifica della sottofase); viene introdotto come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
 > - **Hardware Apple Silicon fisico:** è richiesto soltanto per la **qualification manuale finale** della Fase 6.11.5 (`EXPERIMENTAL / PLAYTEST TARGET`).
 
 ### 11.16 Stato di Avanzamento e Transizione verso la Fase 7

@@ -327,7 +327,7 @@ Nel file di log della sessione (`replay_<sessionId>.json`), la struttura finale 
     "hardwareClass": "apple_silicon_m3_pro_18gb",
     "gitCommit": "18db44ae751859c0258cb2909f2bcf74ddc79e49",
     "appVersion": "0.6.11-rc.1",
-    "runtimeBackend": "managed_llama_server",
+    "runtimeBackend": "external_http",
     "runtimeAcceleration": "metal",
     "llamaCppBuild": "b4210",
     "actorModelId": "google/gemma-4-12b-it-qat-q4_0",

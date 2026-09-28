@@ -4,7 +4,7 @@
 **Tipo:** documento vivo di requisiti, evidenze e certificazione  
 **Stato:** aggiornato con le evidenze di Fase 6.10; collaudo multi-hardware esteso in corso  
 **Baseline corrente:** Fase 6.10 consolidata  
-**Piattaforme:** Windows x64; Android arm64 futuro
+**Piattaforme:** Windows x64; macOS arm64 (target sperimentale playtest); Android arm64 futuro
 
 ---
 
@@ -17,7 +17,8 @@ Questa matrice separa:
 3. probe runtime;
 4. smoke test;
 5. inferenza reale;
-6. certificazione manuale.
+6. playtest verificato;
+7. certificazione manuale.
 
 La parola “supportato” non deve essere usata senza specificare il livello di evidenza.
 
@@ -31,6 +32,7 @@ DETECTED
 PROBE_PASSED
 SMOKE_PASSED
 INFERENCE_PASSED
+PLAYTEST_VERIFIED
 MANUALLY_CERTIFIED
 FAILED
 BLOCKED
@@ -62,6 +64,10 @@ Runtime inizializzato e operazione minima controllata completata.
 ### INFERENCE_PASSED
 
 Modello reale caricato e generazione completata.
+
+### PLAYTEST_VERIFIED
+
+Sessione di gioco reale (almeno 10 turni) completata con successo da un playtester su hardware identificato, con replay log e metadati di provenance validati. Non equivale a certificazione di produzione per l'utente finale.
 
 ### MANUALLY_CERTIFIED
 
@@ -224,6 +230,7 @@ Non registrare username, indirizzi IP o identificativi hardware sensibili.
 | Windows | x64 | `win-x64-cuda` | AVX2 + FMA + OS YMM state | CUDA 12 runtime/device | DECLARED |
 | Windows | x64 | `win-x64-vulkan` | AVX2 + OS YMM state | Vulkan device/driver | DECLARED |
 | Windows | x64 | `win-x64-cpu-avx2` | AVX2 + FMA + OS YMM state | CPU | DECLARED |
+| macOS | arm64 | `macos-arm64-metal` (playtest) | ARM NEON / Apple Silicon M1-M4 | Metal API / Unified Memory | PLAYTEST_TARGET |
 | Android | arm64 | TBD | TBD after spike | Native llama.cpp/AICore optional | UNVERIFIED |
 
 ---
@@ -615,7 +622,23 @@ La Fase 6.10 deve completare almeno:
 
 ---
 
-## 20. Gate Fase 7.0
+## 20. Gate Fase 6.11 (macOS Apple Silicon Playtest Target)
+
+La sottofase 6.11 deve dimostrare almeno:
+
+```text
+- runner GitHub Actions macos-14: build Mach-O release completata senza errori;
+- una macchina reale Apple Silicon (M1/M2/M3/M4);
+- inferenza Metal completata con modello attore e valutatore;
+- latenza di generazione e token/s registrati;
+- almeno una sessione reale (10 turni) completata con stato PLAYTEST_VERIFIED;
+- file di replay JSON con schema provenance completo e validato;
+- isolamento del perimetro: nessun impatto sul ciclo di vita o installer Windows.
+```
+
+---
+
+## 21. Gate Fase 7.0
 
 La sezione Android deve includere almeno:
 
@@ -635,7 +658,7 @@ La sezione Android deve includere almeno:
 
 ---
 
-## 21. Criteri di qualità del documento
+## 22. Criteri di qualità del documento
 
 ```text
 - nessun supporto dichiarato senza livello evidenza;
@@ -650,10 +673,11 @@ La sezione Android deve includere almeno:
 
 ---
 
-## 22. Registro modifiche
+## 23. Registro modifiche
 
 | Data | Commit | Modifica |
 |---|---|---|
 | 2026-08-04 | `1c9015d` baseline | Creazione matrice iniziale |
+| 2026-09-28 | `fase6.11` spec | Integrazione target sperimentale macOS Apple Silicon (playtest) e livello PLAYTEST_VERIFIED |
 
 Le revisioni future devono aggiungere righe senza cancellare risultati storici, salvo correzione documentata.

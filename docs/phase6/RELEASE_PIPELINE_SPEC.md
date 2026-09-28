@@ -719,6 +719,7 @@ Asset opzionali:
 
 ```text
 AURA-AudioPack-<version>.zip
+aura-v<version>-macos-arm64.zip (esclusivamente nelle Release Candidate con release_kind: candidate, Fase 6.11)
 catalog signature files
 public key metadata
 provenance attestations

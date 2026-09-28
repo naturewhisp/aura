@@ -541,8 +541,9 @@ Tutti i blocker architetturali iniziali di pertinenza della fondazione sono stat
 - [x] Model lifecycle separato dalla UI desktop e centralizzato in service facades.
 - [x] Runtime selection non vincolata a `llama-server.exe` nel core.
 - [x] Storage contracts e download platform-neutral.
+- [ ] Fase 6.11 completata: sanificazione percorsi POSIX (`ProvisioningPathResolver`), probe non distruttiva in `ProcessOwnershipRegistry`, astrazione `DesktopWindowController` e integrazione schema provenance replay (`ReplayProvenanceMetadata`).
 
-L'ingresso formale alla Fase 7 avverrà non appena concluso il collaudo esteso multi-hardware della Fase 6.10.
+L'ingresso formale alla Fase 7 avverrà al completamento del collaudo esteso multi-hardware della Fase 6.10 e della sottofase di de-risking 6.11 (Cross-Platform Playtest & Dataset Readiness).
 
 ---
 

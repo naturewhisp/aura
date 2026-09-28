@@ -121,13 +121,13 @@ In `lib/src/provisioning/domain/runtime_dependency_models.dart`:
 ### 3.3 Schema di Provenance dei Replay (LoRA Dataset Readiness)
 
 Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano confluire in un dataset omogeneo e scientificamente curato per i modelli LoRA, l'architettura dei replay adotta una **struttura gerarchica a due livelli**:
-1. **`SessionProvenance` (a livello di sessione / file di log):** cattura i parametri costanti della macchina, del commit, dell'OS, dei modelli e dei rispettivi artifact SHA/quantizzazioni sia per l'Attore sia per il Valutatore;
-2. **`GenerationProvenance` (a livello di singolo turno / `ReplayEntry`):** traccia i parametri dinamici specifici del turno (sampling effettivo, fallback, modalità di esecuzione e latenza).
+1. **`SessionProvenanceMetadata` (a livello di sessione / file di log):** cattura i parametri costanti della macchina, del commit, dell'OS, dei modelli e dei rispettivi artifact SHA/quantizzazioni/context window sia per l'Attore sia per il Valutatore;
+2. **`TurnGenerationProvenance` (a livello di singolo turno / `ReplayEntry`):** traccia i parametri dinamici specifici del turno (sampling effettivo, fallback, modalità di esecuzione e latenza).
 
 ```json
 {
   "sessionProvenance": {
-    "schemaVersion": "1.0.0",
+    "schemaVersion": "1.1.0",
     "datasetSource": "human_playtest",
     "platform": "macos",
     "osVersion": "Darwin 24.1.0 (macOS 15.1)",
@@ -141,10 +141,11 @@ Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano 
     "actorModelId": "google/gemma-4-12b-it-qat-q4_0",
     "actorModelSha256": "3a8b...4f21",
     "actorQuantization": "Q4_0",
+    "actorContextSize": 8192,
     "evaluatorModelId": "mistralai/ministral-3-3b",
     "evaluatorModelSha256": "7c1e...90da",
     "evaluatorQuantization": "Q4_K_M",
-    "contextSize": 8192,
+    "evaluatorContextSize": 4096,
     "sessionId": "aura-session-20260928-193000-01",
     "anonymizedTesterId": "tester-alpha-04"
   },
@@ -171,7 +172,7 @@ Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano 
 }
 ```
 
-*I dettagli completi del modello, dei campi e delle regole di retrocompatibilità sono specificati nel documento gemello [`docs/phase6/DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md`](file:///c:/Users/dendo/Documents/GitHub/aura/docs/phase6/DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md).*
+*I dettagli completi del modello, dei campi e delle regole di retrocompatibilità sono specificati nel documento gemello [DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md](DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md).*
 
 ---
 
@@ -271,7 +272,7 @@ Il workflow principale di rilascio viene arricchito con un job `build-macos` con
 ## 5. Guida Operativa per i Playtester macOS
 
 La guida operativa destinata direttamente ai tester è documentata nel file indipendente:
-👉 [`docs/MACOS_PLAYTEST_GUIDE.md`](file:///c:/Users/dendo/Documents/GitHub/aura/docs/MACOS_PLAYTEST_GUIDE.md)
+👉 [MACOS_PLAYTEST_GUIDE.md](../MACOS_PLAYTEST_GUIDE.md)
 
 Poiché l'eseguibile non è firmato con certificati Apple Developer a pagamento, i tester che scaricano `aura-v0.6.11-rc.X-macos-arm64.zip` dalla pagina della Release Candidate incontreranno la protezione di Apple Gatekeeper.
 
@@ -300,7 +301,7 @@ La Fase 6.11 si considererà conclusa con successo quando saranno soddisfatti tu
 
 - [ ] **G1 (Core POSIX Integrity):** La suite di test unitari `dart test` viene eseguita su un runner `macos-14` in CI completando con esito verde al 100% senza fallimenti di percorsi o probe.
 - [ ] **G2 (Static Analysis Parity):** `flutter analyze` e `dart analyze` passano con 0 errori, 0 warning e 0 info su ambiente macOS ("Zero Diagnostic Policy").
-- [ ] **G3 (Provenance Validation):** La classe `ReplayProvenance` è integrata in `ReplayEntry`. È presente un test di regressione che valida la serializzazione e deserializzazione con replay storici senza provenance (retrocompatibilità verificata).
+- [ ] **G3 (Provenance Validation):** I modelli `SessionProvenanceMetadata` e `TurnGenerationProvenance` sono integrati nel replay logger. È presente un test di regressione che valida la serializzazione e deserializzazione con replay storici senza provenance (retrocompatibilità verificata).
 - [ ] **G4 (Compilation & Packaging CI):** Il workflow on-demand `macos-verify.yml` compila con successo il bundle `AURA.app` in meno di 10 minuti su GitHub Actions.
 - [ ] **G5 (Release Candidate Attachment):** Una Release Candidate creata con `release_kind: candidate` include tra gli asset scaricabili l'archivio `aura-v*-macos-arm64.zip`.
 - [ ] **G6 (Playtest Verification):** Almeno una sessione reale completa di 10 turni viene giocata con successo su hardware Apple Silicon (M1/M2/M3/M4) e il relativo log di replay JSON viene validato con tutti i campi di provenance compilati.

@@ -55,7 +55,8 @@ classDiagram
         +String evaluatorModelId
         +String evaluatorModelSha256
         +String evaluatorQuantization
-        +int contextSize
+        +int actorContextSize
+        +int evaluatorContextSize
         +String sessionId
         +String? anonymizedTesterId
     }
@@ -163,8 +164,11 @@ class SessionProvenanceMetadata {
   final String evaluatorModelSha256;
   final String evaluatorQuantization;
 
-  /// Dimensione del contesto impostata per l'inferenza (es. 8192).
-  final int contextSize;
+  /// Dimensione del contesto impostata per l'inferenza dell'attore (es. 8192).
+  final int actorContextSize;
+
+  /// Dimensione del contesto impostata per l'inferenza del valutatore (es. 4096 o 8192).
+  final int evaluatorContextSize;
 
   /// Identificatore univoco della sessione di playtest.
   final String sessionId;
@@ -190,7 +194,8 @@ class SessionProvenanceMetadata {
     required this.evaluatorModelId,
     required this.evaluatorModelSha256,
     required this.evaluatorQuantization,
-    required this.contextSize,
+    required this.actorContextSize,
+    required this.evaluatorContextSize,
     required this.sessionId,
     this.anonymizedTesterId,
   });
@@ -213,7 +218,8 @@ class SessionProvenanceMetadata {
     'evaluatorModelId': evaluatorModelId,
     'evaluatorModelSha256': evaluatorModelSha256,
     'evaluatorQuantization': evaluatorQuantization,
-    'contextSize': contextSize,
+    'actorContextSize': actorContextSize,
+    'evaluatorContextSize': evaluatorContextSize,
     'sessionId': sessionId,
     if (anonymizedTesterId != null) 'anonymizedTesterId': anonymizedTesterId,
   };
@@ -237,7 +243,8 @@ class SessionProvenanceMetadata {
       evaluatorModelId: json['evaluatorModelId'] as String? ?? 'unknown',
       evaluatorModelSha256: json['evaluatorModelSha256'] as String? ?? '',
       evaluatorQuantization: json['evaluatorQuantization'] as String? ?? 'unknown',
-      contextSize: json['contextSize'] as int? ?? 0,
+      actorContextSize: json['actorContextSize'] as int? ?? (json['contextSize'] as int? ?? 0),
+      evaluatorContextSize: json['evaluatorContextSize'] as int? ?? (json['contextSize'] as int? ?? 0),
       sessionId: json['sessionId'] as String? ?? 'unknown',
       anonymizedTesterId: json['anonymizedTesterId'] as String?,
     );
@@ -329,7 +336,8 @@ Nel file di log della sessione (`replay_<sessionId>.json`), la struttura finale 
     "evaluatorModelId": "mistralai/ministral-3-3b",
     "evaluatorModelSha256": "7c1e...90da",
     "evaluatorQuantization": "Q4_K_M",
-    "contextSize": 8192,
+    "actorContextSize": 8192,
+    "evaluatorContextSize": 4096,
     "sessionId": "session-20260928-193000",
     "anonymizedTesterId": "tester-alpha-04"
   },

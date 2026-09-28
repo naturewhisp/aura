@@ -44,8 +44,12 @@ flowchart LR
         J[Supporto Mac Intel x86_64 Obsoleto]
         K[Certificazione Production Support]
     end
-    IN_SCOPE -.->|Zero regressioni Windows| CORE[aura_core invariato]
+    IN_SCOPE -.->|Zero regressioni Windows| CORE["GameController & gameplay API invariati<br/>(Semantica runtime e contratti preservati)"]
 ```
+
+> [!NOTE]
+> **Invarianza di Dominio vs Evoluzione Infrastrutturale nel Core:**  
+> I contratti di gameplay (`GameState`, `GameController`, pilastri, metriche e regole diegetiche) rimangono rigorosamente **invariati**. Le modifiche ad `aura_core` sono limitate ai moduli infrastrutturali di supporto: sanificazione percorsi POSIX (`ProvisioningPathResolver`), probe di vitalità non distruttiva (`ProcessOwnershipRegistry`), enum delle accelerazioni hardware (`RuntimeAcceleration.metal`) e arricchimento del modello di provenance dei replay.
 
 ### 2.1 Tabella Dettagliata delle Esclusioni
 
@@ -116,11 +120,13 @@ In `lib/src/provisioning/domain/runtime_dependency_models.dart`:
 
 ### 3.3 Schema di Provenance dei Replay (LoRA Dataset Readiness)
 
-Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano confluire in un dataset omogeneo e scientificamente curato per i modelli LoRA, `ReplayEntry` viene arricchita con la struttura `ReplayProvenanceMetadata`:
+Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano confluire in un dataset omogeneo e scientificamente curato per i modelli LoRA, l'architettura dei replay adotta una **struttura gerarchica a due livelli**:
+1. **`SessionProvenance` (a livello di sessione / file di log):** cattura i parametri costanti della macchina, del commit, dell'OS, dei modelli e dei rispettivi artifact SHA/quantizzazioni sia per l'Attore sia per il Valutatore;
+2. **`GenerationProvenance` (a livello di singolo turno / `ReplayEntry`):** traccia i parametri dinamici specifici del turno (sampling effettivo, fallback, modalità di esecuzione e latenza).
 
 ```json
 {
-  "provenance": {
+  "sessionProvenance": {
     "schemaVersion": "1.0.0",
     "datasetSource": "human_playtest",
     "platform": "macos",
@@ -132,17 +138,36 @@ Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano 
     "runtimeBackend": "managed_llama_server",
     "runtimeAcceleration": "metal",
     "llamaCppBuild": "b4210",
-    "modelArtifactSha256": "3a8b...4f21",
-    "modelQuantization": "Q4_K_M",
+    "actorModelId": "google/gemma-4-12b-it-qat-q4_0",
+    "actorModelSha256": "3a8b...4f21",
+    "actorQuantization": "Q4_0",
+    "evaluatorModelId": "mistralai/ministral-3-3b",
+    "evaluatorModelSha256": "7c1e...90da",
+    "evaluatorQuantization": "Q4_K_M",
     "contextSize": 8192,
-    "samplingParameters": {
-      "temperature": 0.7,
-      "topP": 0.9,
-      "topK": 40,
-      "seed": 42
-    },
+    "sessionId": "aura-session-20260928-193000-01",
     "anonymizedTesterId": "tester-alpha-04"
-  }
+  },
+  "entries": [
+    {
+      "turnId": 1,
+      "userInput": "Rapporto diagnostico di settore.",
+      "actorResponse": "Griglia 09 stabile. Parametri di coerenza entro le tolleranze.",
+      "generationProvenance": {
+        "samplingParameters": {
+          "temperature": 0.7,
+          "topP": 0.9,
+          "topK": 40,
+          "seed": 42
+        },
+        "actualActorModelId": "google/gemma-4-12b-it-qat-q4_0",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "evaluatorExecutionMode": "llmJsonSchema",
+        "usedRuleFallback": false,
+        "latencyTotalMs": 842
+      }
+    }
+  ]
 }
 ```
 
@@ -250,17 +275,17 @@ La guida operativa destinata direttamente ai tester è documentata nel file indi
 
 Poiché l'eseguibile non è firmato con certificati Apple Developer a pagamento, i tester che scaricano `aura-v0.6.11-rc.X-macos-arm64.zip` dalla pagina della Release Candidate incontreranno la protezione di Apple Gatekeeper.
 
-La documentazione della release candidate deve includere le istruzioni chiare per l'avvio:
+La documentazione della release candidate deve indicare la procedura corretta:
 
 1. Estrarre il file `AURA.app` e spostarlo nella cartella `/Applications` (o sulla Scrivania).
 2. Se macOS mostra l'avviso *"Impossibile aprire l'app perché lo sviluppatore non è verificato"*:
-   * **Metodo Rapido da Terminale (Consigliato):**
-     Aprire il Terminale ed eseguire:
+   * **Procedura Standard di Sicurezza Apple (Finder):**
+     Fare clic con il tasto destro (o Control-Click) sull'icona di `AURA.app`, selezionare **Apri** dal menu contestuale, quindi confermare cliccando su **Apri comunque** nella finestra di dialogo del sistema operativo.
+   * **Workaround Tecnico per Tester Interni / Sviluppatori (Terminale):**
+     Qualora su macOS Sonoma/Sequoia persista l'avviso di applicazione danneggiata, eseguire dal Terminale:
      ```bash
      xattr -cr /Applications/AURA.app
      ```
-   * **Metodo Grafico:**
-     Fare clic con il tasto destro (o Control-Click) sull'icona di `AURA.app`, selezionare **Apri**, quindi confermare cliccando su **Apri comunque** nella finestra di dialogo.
 3. **Backend di Inferenza:**
    * Il playtester avvia in locale `llama-server` compilato con Metal (o un'istanza di LM Studio configurata con local server attivo sulla porta standard `1234` / `8080`).
    * Al primo avvio, A.U.R.A. rileva l'endpoint locale e avvia la sessione di gioco.

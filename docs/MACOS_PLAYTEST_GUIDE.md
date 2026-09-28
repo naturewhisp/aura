@@ -47,20 +47,21 @@ Poiché si tratta di una build sperimentale per playtester e non di un'applicazi
 
 Puoi autorizzare l'applicazione in due modi:
 
-#### Metodo A: Comando Rapido da Terminale (Consigliato — 5 secondi)
-1. Apri l'applicazione **Terminale** di macOS (premi `Cmd + Spazio`, digita `Terminale` e premi Invio).
-2. Incolla ed esegui il seguente comando (se hai spostato l'app in `/Applications`):
-   ```bash
-   xattr -cr /Applications/AURA.app
-   ```
-   *(Questo comando rimuove l'attributo di quarantena web impostato da macOS sui file scaricati dal browser).*
-
-#### Metodo B: Procedura Grafica dal Finder
-1. Apri il **Finder** e naviga nella cartella **Applicazioni**.
+#### Metodo Standard di Sicurezza Apple (Procedura Grafica dal Finder)
+1. Apri il **Finder** e naviga nella cartella **Applicazioni** (o ovunque tu abbia posizionato l'app).
 2. Fai **clic con il tasto destro** (oppure tieni premuto il tasto `Control` e fai clic) sull'icona di **AURA**.
 3. Seleziona **Apri** dal menu contestuale.
 4. Nella finestra di dialogo che compare, fai clic sul pulsante **Apri comunque**.
-*(Questa operazione va eseguita solo la prima volta; ai successivi avvii l'app si aprirà normalmente con un doppio clic).*
+*(Questa operazione è la procedura ufficiale raccomandata da Apple per consentire l'override esplicito dell'utente su app prive di firma notarizzata. Va eseguita solo al primo avvio; ai successivi avvii l'app si aprirà normalmente con un doppio clic).*
+
+#### Workaround Tecnico per Tester Interni e Sviluppatori (Terminale)
+Se su versioni recenti di macOS (Sonoma o Sequoia) il sistema impedisce l'override grafico mostrando l'avviso bloccante *"L'applicazione è danneggiata"*, puoi rimuovere l'attributo di quarantena web impostato dal browser tramite un singolo comando di terminale:
+1. Apri l'applicazione **Terminale** di macOS (`Cmd + Spazio`, digita `Terminale` e premi Invio).
+2. Esegui il comando:
+   ```bash
+   xattr -cr /Applications/AURA.app
+   ```
+*(Questo workaround tecnico disattiva il flag `com.apple.quarantine` dal bundle applicativo).*
 
 ---
 

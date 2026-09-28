@@ -21,6 +21,32 @@ L'obiettivo della Fase 6.11 è duplice, sinergico e rigorosamente circoscritto:
 2. **De-risking e Validazione della Neutralità della Piattaforma per la Fase 7 (Android Edge Client):**  
    macOS funge da **testbed POSIX intermedio**. Essendo un sistema operativo Unix conforme ma desktop, consente di far emergere e sanificare tutte le assunzioni Win32 latenti nel core (`ProvisioningPathResolver`, probe di vitalità processi, separatori di percorso, astrazione della shell grafica) prima di affrontare la complessità multidimensionale di Android (JNI/FFI, lifecycle mobile, memoria limitata, storage scoped e thermal throttling).
 
+> [!IMPORTANT]
+> **Development and Verification Authority:**  
+> Lo sviluppo della Fase 6.11 continua prevalentemente sulla workstation Windows. **L'esito autorevole delle suite automatiche è quello prodotto dai workflow GitHub Actions.**  
+> - **Windows runner (`windows-latest`):** costituisce il **gate primario di regressione**;  
+> - **macOS runner (`macos-14`):** viene introdotto esclusivamente come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
+> - **Hardware Apple Silicon fisico:** è richiesto soltanto per la **qualification manuale finale** della Fase 6.11.5.
+>
+> ```text
+> SVILUPPO
+> Windows locale
+>    │
+>    ▼
+> commit / push
+>    │
+>    ▼
+> VERIFICA AUTOREVOLE
+> GitHub Actions
+>    ├── Windows runner → gate primario / regressione continua
+>    └── macOS runner  → gate secondario / compatibilità cross-platform (da 6.11.4)
+>                             │
+>                             ▼
+>                      Mac fisico reale
+>                      solo 6.11.5
+>                      qualification finale (PLAYTEST_VERIFIED)
+> ```
+
 ---
 
 ## 2. Matrice dei Confini (In-Scope vs Out-of-Scope)
@@ -317,12 +343,13 @@ flowchart TD
 
 ### 6.11.1: Core POSIX & Platform Neutralization
 * **Obiettivo:** Neutralizzare tutte le assunzioni Win32 e i bug bloccanti nel core infrastrutturale in pure Dart.
+* **Disaccoppiamento Semantico Host/Target:** Il path resolver e il registry dei processi separano la semantica logica (Windows vs POSIX) dall'host di esecuzione corrente (es. via `PlatformContext` o iniezione di command runner). Questo garantisce che i test unitari eseguiti da Windows con `dart test` possano verificare deterministicamente sia i percorsi Windows (`C:\...`) sia quelli POSIX (`/Users/...`), e che la costruzione dei comandi di probe (`kill -0`, `ps -p`) sia convalidata al 100% prima della CI.
 * **Componenti Target:**
   * `lib/src/provisioning/infrastructure/provisioning_path_resolver.dart`: riscrittura di `canonicalizeRoot` e `_join` per supportare path assoluti Unix (`/Users/...`) e semantica `p.posix`.
   * `lib/src/provisioning/infrastructure/process_ownership_registry.dart`: rimozione di `ProcessSignal.sigkill` nella probe di vitalità processi non-Windows; implementazione probe non distruttiva con `kill -0` e matching riga di comando `ps`.
   * `lib/src/provisioning/domain/runtime_dependency_models.dart`: aggiunta di `RuntimeAcceleration.metal`.
-* **Test di Verifica:** Test unitari dedicati in `test/provisioning/` per path Unix e probe liveness.
-* **Exit Milestone:** `dart test` verde al 100% su Windows con zero regressioni.
+* **Test di Verifica:** Test unitari dedicati in `test/provisioning/` per path Unix e probe liveness eseguibili interamente da Windows.
+* **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde**, inclusi i test deterministici della semantica Windows e POSIX; la verifica POSIX nativa viene effettuata successivamente dal runner macOS nella 6.11.4.
 
 ### 6.11.2: Replay Provenance Schema (LoRA Dataset Readiness)
 * **Obiettivo:** Estendere il dominio del replay logging con la provenance a due livelli e granularità per Attore ed Evaluator.
@@ -331,17 +358,17 @@ flowchart TD
   * `lib/src/replay_logger.dart`: integrazione di `TurnGenerationProvenance` in `ReplayEntry` e di `SessionProvenanceMetadata` nella persistenza di sessione.
   * `lib/aura_core.dart`: export pubblico dei nuovi contratti.
 * **Test di Verifica:** `test/replay/replay_provenance_test.dart` (serializzazione JCS RFC 8785, test fail-closed per valori non riconosciuti, test di retrocompatibilità su fixture storiche senza provenance).
-* **Exit Milestone:** Test suite replay completamente verde; contratti immutabili convalidati.
+* **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde** (`dart analyze`, `dart test`, `flutter analyze`, `flutter test` $\rightarrow$ GREEN); retrocompatibilità certificata.
 
 ### 6.11.3: Desktop Shell Abstraction & app/macos Skeleton
-* **Obiettivo:** Isolare le chiamate native Win32 della UI e abilitare il target macOS desktop generato da Windows.
+* **Obiettivo:** Isolare le chiamate native Win32 della UI e predisporre l'alberatura macOS nativa per la compilazione in CI.
 * **Componenti Target:**
-  * Generazione alberatura `app/macos/` tramite `cd app; flutter create --platforms=macos .`.
-  * Refactoring di `app/lib/src/platform/windows/windows_desktop_window_controller.dart` dietro la factory `DesktopWindowController.create()`.
-  * Creazione di `MacOSDesktopWindowController` (con binding `window_manager` per macOS).
+  * Predisposizione dell'alberatura `app/macos/` tramite ambiente macOS CI / runner appropriato (rispettando il vincolo della toolchain Flutter «Target macOS — On macOS only»).
+  * Refactoring di `app/lib/src/platform/windows/windows_desktop_window_controller.dart` dietro la factory astratta `DesktopWindowController.create()`.
+  * Creazione di `MacOSDesktopWindowController` (in puro Dart/Flutter con binding `window_manager` per macOS).
   * Aggiornamento di `app/lib/src/state_management/application_shutdown_coordinator.dart` per eseguire `exit(0)` su macOS.
 * **Test di Verifica:** `flutter analyze` su `app/` e `flutter test` (widget tests) per garantire che l'app non assuma Windows a runtime.
-* **Exit Milestone:** Zero errori, warning o info da `flutter analyze`.
+* **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde** (zero regressioni e zero diagnostic issues sui test di widget e shell); la compilazione Mach-O effettiva appartiene alla 6.11.4.
 
 ### 6.11.4: CI Automation & On-Demand Verification
 * **Obiettivo:** Configurare la build pipeline on-demand su runner GitHub Actions Apple Silicon (`macos-14`).
@@ -350,16 +377,16 @@ flowchart TD
   * Esecuzione sequenziale: setup Dart/Flutter $\rightarrow$ `dart test` $\rightarrow$ `flutter analyze` $\rightarrow$ `flutter test` $\rightarrow$ `flutter build macos --release`.
   * Upload del bundle `AURA.app` compresso come artifact temporaneo.
 * **Test di Verifica:** Trigger manuale tramite `gh workflow run macos-verify.yml` e verifica del run verde su GitHub Actions.
-* **Exit Milestone:** Primo archivio Mach-O compilato in CI scaricabile dagli artifacts.
+* **Exit Milestone (Gate Autorevole):** **GitHub Actions macOS (`macos-14`) completamente verde** (`dart test`, `flutter analyze`, `flutter test`, `flutter build macos --release`); primo archivio Mach-O compilato in CI scaricabile dagli artifacts.
 
 ### 6.11.5: Release Candidate Packaging & Playtest Qualification
-* **Obiettivo:** Allegare automaticamente l'asset macOS alle Release Candidate e validare la prima sessione reale su hardware Apple Silicon.
+* **Obiettivo:** Allegare automaticamente l'asset macOS alle Release Candidate e qualificare la sessione reale su hardware Apple Silicon.
 * **Componenti Target:**
   * Aggiornamento di `.github/workflows/release.yml` con job `build-macos` attivo solo per `release_kind == 'candidate'`.
   * Esecuzione di una sessione di 10 turni su un Mac fisico M-series secondo [MACOS_PLAYTEST_GUIDE.md](../MACOS_PLAYTEST_GUIDE.md).
   * Validazione del JSON di replay generato: verifica della presenza di `SessionProvenanceMetadata` (chip M-series, backend Metal, quantizzazione) e `TurnGenerationProvenance`.
   * Registrazione dell'evidenza `PLAYTEST_VERIFIED` in `HARDWARE_COMPATIBILITY_MATRIX.md`.
-* **Exit Milestone:** Gate 6.11 completato al 100% $\rightarrow$ approvazione formale per l'avvio della **Fase 7.0 (Android)**.
+* **Exit Milestone (Qualification Manuale):** Qualification manuale finale su Mac fisico Apple Silicon ($\ge 10$ turni); replay JSON validato; evidenza `PLAYTEST_VERIFIED` registrata in `HARDWARE_COMPATIBILITY_MATRIX.md` $\rightarrow$ **Semaforo verde per l'avvio della Fase 7.0 (Android)**.
 
 ---
 

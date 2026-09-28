@@ -866,9 +866,28 @@ La Fase 6.10 consolida la stabilità e le prestazioni su architetture reali attr
 - **Sincronizzazione Multi-Preferenza Audio/Grafica**: Master toggle audio (`audio_enabled`) unificato e sincronizzato con i sottocanali BGM ed SFX, badge visivo `[MUTED]` non-destruttivo, ducking volumetrico coerente in tutte le transizioni (`AudioSceneMachine`) e verifica congiunta di `AppSettings` e `WindowPreferences`.
 - **Risoluzione Percorsi di Produzione**: Dichiarazione esplicita della root di bundle desktop, separazione atomica tra `appDataPath` (configurazioni/sessioni) e `appManagedRoot` (store modelli/runtimes), e inizializzazione single-pass dei service provider.
 
-### 11.15 Stato di Avanzamento e Validazione Hardware Estesa della Fase 6
+### 11.15 Fase 6.11 — Cross-Platform Playtest & Dataset Readiness
 
-Tutte le sottofasi della Fase 6 (da 6.0 a 6.10) sono interamente implementate, testate e consolidate a livello architetturale e funzionale. La Fase 6 rimane attualmente aperta nella fase conclusiva di **collaudo esteso su macchine fisiche con configurazioni hardware diversificate** (GPU NVIDIA RTX, GPU AMD/Intel Vulkan e sistemi CPU-only legacy). Al completamento positivo delle registrazioni nella matrice di compatibilità hardware, la Fase 6 verrà formalmente chiusa consentendo l'apertura immediata della **Fase 7 (Android Edge Client)**.
+Stato: **specifica esecutiva approvata; roadmap a 5 sotto-fasi (6.11.1 – 6.11.5) formalizzata**.  
+Riferimento normativo: [PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md](docs/phase6/PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md) e [DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md](docs/phase6/DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md).
+
+Prima dell'apertura formale della Fase 7 (Android Edge Client), la Fase 6 viene estesa e chiusa con una sottofase sperimentale macOS Apple Silicon finalizzata a:
+- **Sanificazione delle Assunzioni Windows/POSIX nel Core**: Disaccoppiamento della semantica di piattaforma dall'host (`PlatformContext` / command runner iniettabile) in `ProvisioningPathResolver` e `ProcessOwnershipRegistry`, consentendo la verifica deterministica al 100% da Windows via `dart test`, lasciando alla CI macOS solo la verifica di integrazione;
+- **Replay Provenance Schema a Due Livelli per LoRA (Fase 8)**: Standardizzazione di `SessionProvenanceMetadata` (ambiente, architettura, build `llama.cpp`, modelli Attore ed Evaluator separati con relativi SHA-256, quantizzazioni e `actorContextSize`/`evaluatorContextSize`) e `TurnGenerationProvenance` (sampling effettivo per-turno e latenze), con parsing fail-closed su `DatasetSource.unknown`;
+- **Astrazione Desktop Shell**: Predisposizione della factory `DesktopWindowController` con implementazione `MacOSDesktopWindowController` e shutdown coordinato cross-platform;
+- **Build CI Apple Silicon**: Workflow GitHub Actions `macos-verify.yml` su runner nativi `macos-14` (ARM64) e job di release condizionato in `release.yml` attivo esclusivamente per le Release Candidate (`release_kind == 'candidate'`);
+- **Playtest su Mac Fisico**: Validazione di sessioni reali su chip Apple Silicon M-series per il conferimento del livello `PLAYTEST_VERIFIED`.
+
+> [!IMPORTANT]
+> **Development and Verification Authority:**  
+> Lo sviluppo della Fase 6.11 continua prevalentemente sulla workstation Windows. **L'esito autorevole delle suite automatiche è quello prodotto dai workflow GitHub Actions.**  
+> - **Windows runner (`windows-latest`):** costituisce il **gate primario di regressione**;  
+> - **macOS runner (`macos-14`):** viene introdotto esclusivamente come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
+> - **Hardware Apple Silicon fisico:** è richiesto soltanto per la **qualification manuale finale** della Fase 6.11.5 (`EXPERIMENTAL / PLAYTEST TARGET`).
+
+### 11.16 Stato di Avanzamento e Transizione verso la Fase 7
+
+Tutte le sottofasi della Fase 6 (da 6.0 a 6.10) sono interamente implementate, testate e consolidate a livello architetturale e funzionale. Con l'approvazione delle specifiche della **Fase 6.11**, il collaudo multi-hardware Windows di 6.10 prosegue in parallelo all'esecuzione ordinata dei 5 step incrementali (6.11.1–6.11.5). Al soddisfacimento degli exit criteria della 6.11 e alla registrazione delle evidenze nella matrice hardware, la Fase 6 verrà formalmente dichiarata conclusa, aprendo i battenti della **Fase 7 (Android Edge Client)** su una fondazione nativamente e comprovatamente platform-neutral.
 
 
 

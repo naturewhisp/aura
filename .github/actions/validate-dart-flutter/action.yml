@@ -1,0 +1,67 @@
+name: 'Validate Dart & Flutter'
+description: 'Unified cross-platform verification suite (Format, Analyze, Unit & Widget Tests for aura_core and aura_app)'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Dart
+      uses: dart-lang/setup-dart@v1
+      with:
+        sdk: '3.12.1'
+
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.44.1'
+        channel: 'stable'
+        cache: true
+
+    - name: Verify Toolchain
+      shell: bash
+      run: |
+        echo "=== Host Architecture ==="
+        uname -m
+        echo "=== Dart Version ==="
+        dart --version
+        echo "=== Flutter Version ==="
+        flutter --version
+
+    - name: Install Core Dependencies
+      shell: bash
+      run: dart pub get --enforce-lockfile
+
+    - name: Core Format Check
+      shell: bash
+      run: dart format --output=none --set-exit-if-changed lib test bin tool
+
+    - name: Core Static Analysis
+      shell: bash
+      run: dart analyze .
+
+    - name: Core Unit Tests
+      shell: bash
+      run: dart test
+
+    - name: Install App Dependencies
+      shell: bash
+      run: |
+        cd app
+        flutter pub get --enforce-lockfile
+
+    - name: App Format Check
+      shell: bash
+      run: |
+        cd app
+        dart format --output=none --set-exit-if-changed lib test
+
+    - name: App Static Analysis
+      shell: bash
+      run: |
+        cd app
+        flutter analyze
+
+    - name: App Unit & Widget Tests
+      shell: bash
+      run: |
+        cd app
+        flutter test

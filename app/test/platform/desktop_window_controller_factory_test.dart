@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:aura_app/src/platform/desktop_host_platform.dart';
@@ -113,14 +113,22 @@ final class FakeDesktopWindowBindings implements DesktopWindowBindings {
 
 void main() {
   group('DesktopHostPlatform & Factory', () {
-    test('detectHostPlatform riconosce la piattaforma corrente', () {
-      final detected = DesktopWindowControllerFactory.detectHostPlatform();
-      if (Platform.isWindows) {
-        expect(detected, equals(DesktopHostPlatform.windows));
-      } else if (Platform.isMacOS) {
-        expect(detected, equals(DesktopHostPlatform.macos));
-      } else {
-        expect(detected, equals(DesktopHostPlatform.other));
+    test('detectHostPlatform riconosce deterministicamente ogni piattaforma',
+        () {
+      try {
+        debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+        expect(DesktopWindowControllerFactory.detectHostPlatform(),
+            equals(DesktopHostPlatform.windows));
+
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        expect(DesktopWindowControllerFactory.detectHostPlatform(),
+            equals(DesktopHostPlatform.macos));
+
+        debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+        expect(DesktopWindowControllerFactory.detectHostPlatform(),
+            equals(DesktopHostPlatform.other));
+      } finally {
+        debugDefaultTargetPlatformOverride = null;
       }
     });
 

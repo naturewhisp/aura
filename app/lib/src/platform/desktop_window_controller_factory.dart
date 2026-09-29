@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:aura_core/aura_core.dart';
 import 'desktop_host_platform.dart';
@@ -10,13 +9,15 @@ import 'macos/macos_desktop_window_controller.dart';
 /// Factory per l'istanziazione del [DesktopWindowController] appropriato in base
 /// alla piattaforma host runtime, disaccoppiando il composition root dai dettagli Win32/Darwin.
 abstract final class DesktopWindowControllerFactory {
-  /// Rileva la piattaforma host corrente.
+  /// Rileva la piattaforma host corrente tramite [defaultTargetPlatform].
   @visibleForTesting
   static DesktopHostPlatform detectHostPlatform() {
     if (kIsWeb) return DesktopHostPlatform.other;
-    if (Platform.isWindows) return DesktopHostPlatform.windows;
-    if (Platform.isMacOS) return DesktopHostPlatform.macos;
-    return DesktopHostPlatform.other;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.windows => DesktopHostPlatform.windows,
+      TargetPlatform.macOS => DesktopHostPlatform.macos,
+      _ => DesktopHostPlatform.other,
+    };
   }
 
   /// Crea il controller della finestra desktop per la piattaforma runtime attiva.

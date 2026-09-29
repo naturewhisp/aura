@@ -24,63 +24,8 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set up Dart
-        uses: dart-lang/setup-dart@v1
-        with:
-          sdk: '3.12.1'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.44.1'
-          channel: 'stable'
-          cache: true
-
-      - name: Verify Toolchain
-        shell: pwsh
-        run: |
-          dart --version
-          flutter --version
-
-      - name: Install Core Dependencies
-        shell: pwsh
-        run: dart pub get --enforce-lockfile
-
-      - name: Core Format Check
-        shell: pwsh
-        run: dart format --output=none --set-exit-if-changed lib test bin tool
-
-      - name: Core Static Analysis
-        shell: pwsh
-        run: dart analyze .
-
-      - name: Core Unit Tests
-        shell: pwsh
-        run: dart test
-
-      - name: Install App Dependencies
-        shell: pwsh
-        run: |
-          Set-Location app
-          flutter pub get --enforce-lockfile
-
-      - name: App Format Check
-        shell: pwsh
-        run: |
-          Set-Location app
-          dart format --output=none --set-exit-if-changed lib test
-
-      - name: App Static Analysis
-        shell: pwsh
-        run: |
-          Set-Location app
-          flutter analyze
-
-      - name: App Unit & Widget Tests
-        shell: pwsh
-        run: |
-          Set-Location app
-          flutter test
+      - name: Run Shared Dart & Flutter Validation
+        uses: ./.github/actions/validate-dart-flutter
 
       - name: App Flutter Windows Release Build
         shell: pwsh

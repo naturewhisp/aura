@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:meta/meta.dart';
 import '../domain/runtime_manifest.dart';
 import 'provisioning_file_system.dart';
@@ -67,7 +66,7 @@ final class DefaultRuntimeManifestRepository
   @override
   Future<RuntimeManifestReadResult> readManifestResult(
       {String? customRoot}) async {
-    final sep = Platform.pathSeparator;
+    final sep = _pathResolver.separator;
     final searchRoots = [
       if (customRoot != null && customRoot.trim().isNotEmpty) customRoot.trim(),
       '${_pathResolver.bundledRoot}${sep}runtime',

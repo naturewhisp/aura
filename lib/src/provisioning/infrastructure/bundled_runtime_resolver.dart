@@ -53,10 +53,12 @@ final class DefaultBundledRuntimeResolver implements BundledRuntimeResolver {
       final rawPath = config.externalExecutablePath ?? config.executablePath;
       if (rawPath.trim().isEmpty) return null;
 
-      final cleanPath = rawPath.replaceAll('/', r'\');
+      final cleanPath = _pathResolver.isPosix
+          ? rawPath.replaceAll('\\', '/')
+          : rawPath.replaceAll('/', '\\');
       if (!await _fileSystem.fileExists(cleanPath)) return null;
 
-      final lastSlash = cleanPath.lastIndexOf(r'\');
+      final lastSlash = cleanPath.lastIndexOf(RegExp(r'[\\/]'));
       final workDir = lastSlash > 0 ? cleanPath.substring(0, lastSlash) : '.';
 
       return ResolvedLlamaRuntime(
@@ -97,7 +99,7 @@ final class DefaultBundledRuntimeResolver implements BundledRuntimeResolver {
       return null;
     }
 
-    final lastSlash = manifestPath.lastIndexOf(r'\');
+    final lastSlash = manifestPath.lastIndexOf(RegExp(r'[\\/]'));
     final manifestRoot = lastSlash > 0
         ? manifestPath.substring(0, lastSlash)
         : _pathResolver.bundledRoot;
@@ -136,12 +138,17 @@ final class DefaultBundledRuntimeResolver implements BundledRuntimeResolver {
       return null;
     }
 
+    final sep = _pathResolver.separator;
     String joinPath(String base, String relative) {
+      final normalizedRel = _pathResolver.isPosix
+          ? relative.replaceAll('\\', '/')
+          : relative.replaceAll('/', '\\');
       final cleanBase =
-          base.replaceAll('/', r'\').replaceAll(RegExp(r'\\+$'), '');
-      final cleanRel =
-          relative.replaceAll('/', r'\').replaceAll(RegExp(r'^\\+'), '');
-      return '$cleanBase\\$cleanRel';
+          base.endsWith(sep) ? base.substring(0, base.length - 1) : base;
+      final cleanRel = normalizedRel.startsWith(sep)
+          ? normalizedRel.substring(1)
+          : normalizedRel;
+      return '$cleanBase$sep$cleanRel';
     }
 
     final absExePath = joinPath(manifestRoot, variant.executable);

@@ -201,7 +201,8 @@ final class ArtifactIngestionEngine {
       await _fileSystem.createDirectory(stagingPath);
 
       // 2. Acquisizione dell'artefatto in staging
-      final rawIngestedFilePath = '$stagingPath\\${artifact.fileName}';
+      final sep = _pathResolver.separator;
+      final rawIngestedFilePath = '$stagingPath$sep${artifact.fileName}';
 
       switch (artifact.sourceKind) {
         case CatalogArtifactSourceKind.remoteHttps:
@@ -237,7 +238,7 @@ final class ArtifactIngestionEngine {
       final isZip = artifact.compression == CatalogCompressionFormat.zip ||
           rawIngestedFilePath.toLowerCase().endsWith('.zip');
 
-      final extractedDir = '$stagingPath\\extracted';
+      final extractedDir = '$stagingPath${sep}extracted';
       await _fileSystem.createDirectory(extractedDir);
 
       String stagingSourceForInstall;

@@ -502,8 +502,9 @@ final class ProvisioningCoordinator {
     CatalogArtifactSnapshot provenance,
   ) async {
     try {
-      final markerPath = '$finalPath\\commit.marker';
-      final recordPath = '$finalPath\\installation_record.json';
+      final sep = Platform.pathSeparator;
+      final markerPath = '$finalPath${sep}commit.marker';
+      final recordPath = '$finalPath${sep}installation_record.json';
 
       if (!await _fileSystem.fileExists(markerPath) ||
           !await _fileSystem.fileExists(recordPath)) {
@@ -540,7 +541,7 @@ final class ProvisioningCoordinator {
           entryFileName.contains('/')) {
         return false;
       }
-      final ggufPath = '$finalPath\\$entryFileName';
+      final ggufPath = '$finalPath$sep$entryFileName';
       if (!await _fileSystem.fileExists(ggufPath)) return false;
 
       final physicalSize = await _fileSystem.getFileSize(ggufPath);
@@ -1055,7 +1056,8 @@ final class ProvisioningCoordinator {
           lastRepairedAt: nowIso,
         );
 
-        final localRecordJsonPath = '$targetPath\\installation_record.json';
+        final localRecordJsonPath =
+            '$targetPath${Platform.pathSeparator}installation_record.json';
         await _fileSystem.writeStringRecoverably(
           localRecordJsonPath,
           const JsonEncoder.withIndent('  ')
@@ -1536,7 +1538,7 @@ final class ProvisioningCoordinator {
       if (await _fileSystem.directoryExists(trashRoot)) {
         final trashItems = await _fileSystem.listDirectory(trashRoot);
         for (final item in trashItems) {
-          final trashItemPath = '$trashRoot\\$item';
+          final trashItemPath = '$trashRoot${Platform.pathSeparator}$item';
           final instId = item.split('_').first;
           final desc = currentRecord.findInstallation(instId);
 
@@ -1770,7 +1772,8 @@ final class ProvisioningCoordinator {
         );
         filesystemCommitted = true;
 
-        final localRecordJsonPath = '$finalPath\\installation_record.json';
+        final localRecordJsonPath =
+            '$finalPath${Platform.pathSeparator}installation_record.json';
         await _fileSystem.writeStringRecoverably(
           localRecordJsonPath,
           const JsonEncoder.withIndent('  ').convert(descriptor.toJson()),
@@ -1913,8 +1916,9 @@ final class ProvisioningCoordinator {
     required String absolutePath,
     required InstalledArtifactDescriptor expectedDescriptor,
   }) async {
-    final localRecordPath = '$absolutePath\\installation_record.json';
-    final commitMarkerPath = '$absolutePath\\commit.marker';
+    final sep = Platform.pathSeparator;
+    final localRecordPath = '$absolutePath${sep}installation_record.json';
+    final commitMarkerPath = '$absolutePath${sep}commit.marker';
 
     if (!await _fileSystem.fileExists(localRecordPath) ||
         !await _fileSystem.fileExists(commitMarkerPath)) {

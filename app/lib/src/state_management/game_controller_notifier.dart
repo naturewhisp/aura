@@ -1140,7 +1140,6 @@ class GameControllerNotifier extends ChangeNotifier {
       final turnProv = TurnGenerationProvenance(
         samplingParameters: const {
           'temperature': 0.7,
-          'top_p': 0.95,
         },
         actualActorModelId: actorModelId,
         actualEvaluatorModelId: evaluatorRes.actualEvaluator,

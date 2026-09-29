@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 
+import 'dataset_source.dart';
+
 /// Livello di severità del riscontro generato durante la validazione della provenance.
 enum ProvenanceValidationSeverity {
   /// Avviso o raccomandazione che non pregiudica l'eleggibilità del record.
@@ -54,38 +56,65 @@ class ProvenanceValidationIssue {
 
 /// Esito complessivo della validazione dei metadati di provenance.
 ///
-/// Distingue rigorosamente tra:
-/// - **Deserializzabile**: il record JSON è stato letto senza errori sintattici.
-/// - **Valido**: la struttura e i vincoli semantici di dominio sono rispettati.
-/// - **Dataset Eligible**: il record possiede tutte le garanzie scientifiche e di
-///   integrità richieste per il fine-tuning e addestramento (Fase 8).
+/// Distingue rigorosamente i quattro livelli semantici:
+/// - [isStructurallyValid]: assenza di errori strutturali o di schema bloccanti.
+/// - [isScientificallyComplete]: nessun valore presunto, omesso o 'unknown' nei metadati critici.
+/// - [isCuratable]: scientificamente completo e con fonte nota ([datasetSource] != [DatasetSource.unknown]).
+/// - [isLoraTrainingEligible]: eleggibile per il training LoRA dell'Attore (richiede tassativamente [DatasetSource.humanPlaytest]).
 @immutable
 class ProvenanceValidationResult {
   /// Elenco dei riscontri o delle violazioni individuate.
   final List<ProvenanceValidationIssue> issues;
 
-  const ProvenanceValidationResult([this.issues = const []]);
+  /// Fonte del dataset associata alla provenance validata.
+  final DatasetSource datasetSource;
 
-  /// Indica se la provenance non presenta errori strutturali bloccanti.
-  bool get isValid =>
+  const ProvenanceValidationResult([
+    this.issues = const [],
+    this.datasetSource = DatasetSource.unknown,
+  ]);
+
+  /// Indica se la provenance non presenta errori strutturali o di schema bloccanti.
+  bool get isStructurallyValid =>
       !issues.any((i) => i.severity == ProvenanceValidationSeverity.error);
 
-  /// Indica se la provenance è pienamente valida ed eleggibile per il dataset ML.
-  bool get isDatasetEligible => isValid && !issues.any((i) => i.isDisqualifier);
+  /// Alias retrocompatibile per [isStructurallyValid].
+  bool get isValid => isStructurallyValid;
+
+  /// Indica se la provenance è scientificamente completa (nessun valore presunto o mancante).
+  bool get isScientificallyComplete =>
+      isStructurallyValid && !issues.any((i) => i.isDisqualifier);
+
+  /// Alias retrocompatibile per [isScientificallyComplete].
+  bool get isComplete => isScientificallyComplete;
+
+  /// Indica se il record è curabile (scientificamente completo e con fonte nota).
+  bool get isCuratable =>
+      isScientificallyComplete && datasetSource != DatasetSource.unknown;
+
+  /// Indica se il record è pienamente eleggibile per il training LoRA con human feedback (Fase 8).
+  ///
+  /// Esclude categoricamente simulazioni sintetiche o sessioni di valutazione sviluppatore.
+  bool get isLoraTrainingEligible =>
+      isCuratable && datasetSource == DatasetSource.humanPlaytest;
+
+  /// Alias retrocompatibile per [isLoraTrainingEligible].
+  bool get isDatasetEligible => isLoraTrainingEligible;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is ProvenanceValidationResult &&
           runtimeType == other.runtimeType &&
+          datasetSource == other.datasetSource &&
           _issuesEqual(issues, other.issues);
 
   @override
-  int get hashCode => Object.hashAll(issues);
+  int get hashCode => Object.hash(datasetSource, Object.hashAll(issues));
 
   @override
   String toString() =>
-      'ProvenanceValidationResult(valid: $isValid, eligible: $isDatasetEligible, issues: ${issues.length})';
+      'ProvenanceValidationResult(structurallyValid: $isStructurallyValid, scientificallyComplete: $isScientificallyComplete, curatable: $isCuratable, loraEligible: $isLoraTrainingEligible, source: ${datasetSource.wireValue}, issues: ${issues.length})';
 
   static bool _issuesEqual(
       List<ProvenanceValidationIssue> a, List<ProvenanceValidationIssue> b) {

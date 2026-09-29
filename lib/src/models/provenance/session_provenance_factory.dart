@@ -9,9 +9,10 @@ import 'session_provenance_metadata.dart';
 /// e architettura del processore, combinandoli con le informazioni del runtime di inferenza.
 abstract final class SessionProvenanceFactory {
   /// Hash Git commit di fallback registrato al momento della compilazione.
+  /// Se non impostato tramite `--dart-define=AURA_GIT_COMMIT=...`, vale 'unknown'.
   static const String defaultGitCommit = String.fromEnvironment(
     'AURA_GIT_COMMIT',
-    defaultValue: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
+    defaultValue: 'unknown',
   );
 
   /// Rileva l'architettura della CPU host in modo normalizzato.
@@ -27,6 +28,9 @@ abstract final class SessionProvenanceFactory {
   }
 
   /// Crea un'istanza [SessionProvenanceMetadata] pre-compilata con i dati ambientali dell'host.
+  ///
+  /// In assenza di valori espliciti o misurati per commit, accelerazione, build o hash SHA-256 dei modelli,
+  /// i campi assumono il valore fail-closed 'unknown' o stringa vuota per garantire l'integrità scientifica.
   static SessionProvenanceMetadata create({
     required String sessionId,
     required DatasetSource datasetSource,
@@ -37,16 +41,14 @@ abstract final class SessionProvenanceFactory {
     String? gitCommit,
     String appVersion = '0.1.0',
     String runtimeBackend = 'managed_llama_server',
-    String runtimeAcceleration = 'cpu',
-    String llamaCppBuild = 'b4210',
+    String runtimeAcceleration = 'unknown',
+    String llamaCppBuild = 'unknown',
     String actorModelId = 'google/gemma-4-12b-qat',
-    String actorModelSha256 =
-        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    String actorModelSha256 = '',
     String actorQuantization = 'Q4_0',
     int actorContextSize = 8192,
     String evaluatorModelId = 'mistralai/ministral-3-3b',
-    String evaluatorModelSha256 =
-        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+    String evaluatorModelSha256 = '',
     String evaluatorQuantization = 'Q4_K_M',
     int evaluatorContextSize = 4096,
     String? anonymizedTesterId,

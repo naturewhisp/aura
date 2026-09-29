@@ -1878,6 +1878,13 @@ void _sessionTests() {
       expect(entry.generationProvenance!.actualActorModelId,
           equals(notifier.actorModelId));
 
+      // Verifica che i parametri di campionamento contengano solo quelli effettivamente applicati
+      expect(
+          entry.generationProvenance!.samplingParameters.containsKey('top_p'),
+          isFalse);
+      expect(entry.generationProvenance!.samplingParameters['temperature'],
+          equals(0.7));
+
       // Verifica del file salvato su disco
       final savedReplay = File(
           '${tempDir.path}/replays/play_session_${notifier.gameStateNotifier.value.sessionId}.json');
@@ -1890,9 +1897,29 @@ void _sessionTests() {
           equals('human_playtest'));
       expect(jsonMap['entries'][0]['generationProvenance'], isNotNull);
 
+      // In assenza di un backend reale con modelli GGUF hash-verificati, la provenance
+      // iniziale di default è strutturalmente valida ma fail-closed per la completezza scientifica
       final val = notifier.logger.validateProvenance();
-      expect(val.isValid, isTrue);
-      expect(val.isDatasetEligible, isTrue);
+      expect(val.isStructurallyValid, isTrue);
+      expect(val.isScientificallyComplete, isFalse);
+      expect(val.isLoraTrainingEligible, isFalse);
+
+      // Se arricchita con metadati completi verificati, la sessione diventa eleggibile
+      notifier.logger.sessionProvenance =
+          notifier.logger.sessionProvenance!.copyWith(
+        gitCommit: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
+        runtimeAcceleration: 'cuda',
+        llamaCppBuild: 'b4210',
+        actorModelSha256:
+            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        evaluatorModelSha256:
+            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+      );
+      final enrichedVal = notifier.logger.validateProvenance();
+      expect(enrichedVal.isStructurallyValid, isTrue);
+      expect(enrichedVal.isScientificallyComplete, isTrue);
+      expect(enrichedVal.isCuratable, isTrue);
+      expect(enrichedVal.isLoraTrainingEligible, isTrue);
     });
   });
 

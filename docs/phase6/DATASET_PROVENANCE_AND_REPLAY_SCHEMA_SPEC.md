@@ -350,9 +350,7 @@ Nel file di log della sessione (`play_session_<sessionId>.json`), la struttura f
       "actor_response": "Griglia stabile. Nessuna anomalia rilevata.",
       "generationProvenance": {
         "samplingParameters": {
-          "temperature": 0.7,
-          "top_p": 0.9,
-          "seed": 42
+          "temperature": 0.7
         },
         "actualActorModelId": "google/gemma-4-12b-it-qat-q4_0",
         "actualEvaluatorModelId": "mistralai/ministral-3-3b",
@@ -371,13 +369,15 @@ Per garantire massime prestazioni a runtime ed evitare freeze del thread UI dura
 2. **Dataset / Signing Export (Fase 8):** Gli strumenti di esportazione e firma del dataset applicano categoricamente la canonicalizzazione RFC 8785 (JCS) tramite [`Rfc8785JcsCanonicalizer`](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart) prima di calcolare l'hash di integrità o la firma Ed25519 del file.
 
 ### 4.2 Invarianti e Distinzione dei Livelli di Validazione
-Il modello di dominio adotta rigorosamente il principio a tre stadi:
+Il modello di dominio adotta rigorosamente il principio di verità scientifica a quattro stadi:
 ```text
-DESERIALIZABLE ≠ VALID PROVENANCE ≠ DATASET ELIGIBLE
+DESERIALIZABLE ≠ STRUCTURALLY VALID ≠ SCIENTIFICALLY COMPLETE ≠ CURATABLE ≠ LORA TRAINING ELIGIBLE
 ```
 - **Deserializzabile:** I replay storici o con campi parziali vengono letti da `fromJson` senza lanciare eccezioni (fail-closed, campi null o default unknown).
-- **Valido (`validate().isValid` / `isComplete`):** La provenance soddisfa tutti i vincoli semantici di integrità (session ID coincidenti tra container e provenance, commit SHA valido, dimensioni contesto > 0, modelli e backend non unknown).
-- **Dataset Eligible (`validate().isDatasetEligible`):** La provenance è valida e la fonte del dato è esplicitamente classificata e scientificamente verificabile (`datasetSource != DatasetSource.unknown`).
+- **Strutturalmente Valido (`validate().isStructurallyValid` / `isValid`):** La provenance soddisfa i vincoli sintattici e di schema di base (session ID valido, schemaVersion, piattaforma, architettura e backend presenti).
+- **Scientificamente Completo (`validate().isScientificallyComplete` / `isComplete`):** Nessun parametro critico è omesso o impostato a `'unknown'` o a valori sintetici di comodo: commit Git SHA a 40 caratteri verificato, SHA-256 dei modelli a 64 caratteri validi, contextSize > 0, build di llama.cpp e accelerazione hardware esplicite e verificate.
+- **Curabile (`validate().isCuratable`):** Scientificamente completo e con fonte esplicitamente classificata (`datasetSource != DatasetSource.unknown`), utilizzabile per benchmark e analisi offline.
+- **Eleggibile per Training LoRA (`validate().isLoraTrainingEligible` / `isDatasetEligible`):** Curabile e proveniente rigorosamente da sessioni umane (`datasetSource == DatasetSource.humanPlaytest`). Dati sintetici (`syntheticSimulation`) ed esecuzioni di sviluppo (`developerEvaluation`) sono categoricamente esclusi dal corpus di fine-tuning dell'Attore.
 
 ### 4.3 Invariante di Session ID
 È proibito esportare o memorizzare replay in cui `ReplayLogger.sessionId != sessionProvenance.sessionId`. In caso di disallineamento, il sistema rifiuta l'assegnazione con `ArgumentError` e blocca la serializzazione con `StateError`.

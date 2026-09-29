@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 import 'models/evaluator_delta.dart';
+import 'models/provenance/dataset_source.dart';
 import 'models/provenance/provenance_validation.dart';
 import 'models/provenance/session_provenance_metadata.dart';
 import 'models/provenance/turn_generation_provenance.dart';
@@ -404,13 +405,16 @@ class ReplayLogger {
   /// Concretizza il principio: DESERIALIZABLE != VALID != DATASET ELIGIBLE.
   ProvenanceValidationResult validateProvenance() {
     if (_sessionProvenance == null) {
-      return const ProvenanceValidationResult([
-        ProvenanceValidationIssue(
-          field: 'sessionProvenance',
-          message: 'sessionProvenance assente nella sessione di replay',
-          severity: ProvenanceValidationSeverity.datasetDisqualifier,
-        ),
-      ]);
+      return const ProvenanceValidationResult(
+        [
+          ProvenanceValidationIssue(
+            field: 'sessionProvenance',
+            message: 'sessionProvenance assente nella sessione di replay',
+            severity: ProvenanceValidationSeverity.datasetDisqualifier,
+          ),
+        ],
+        DatasetSource.unknown,
+      );
     }
     final issues = List<ProvenanceValidationIssue>.from(
         _sessionProvenance!.validate().issues);
@@ -433,7 +437,10 @@ class ReplayLogger {
         ));
       }
     }
-    return ProvenanceValidationResult(issues);
+    return ProvenanceValidationResult(
+      issues,
+      _sessionProvenance!.datasetSource,
+    );
   }
 
   /// Pulisce l'intero registro dei replay.

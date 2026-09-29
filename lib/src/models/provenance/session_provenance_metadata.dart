@@ -347,6 +347,14 @@ class SessionProvenanceMetadata {
           severity: ProvenanceValidationSeverity.datasetDisqualifier,
         ));
       }
+      if (llamaCppBuild.trim().isEmpty || llamaCppBuild == 'unknown') {
+        issues.add(const ProvenanceValidationIssue(
+          field: 'llamaCppBuild',
+          message:
+              'llamaCppBuild non specificato o sconosciuto per managed_llama_server',
+          severity: ProvenanceValidationSeverity.datasetDisqualifier,
+        ));
+      }
     }
 
     // 5. Host & Runtime
@@ -376,7 +384,7 @@ class SessionProvenanceMetadata {
       issues.add(const ProvenanceValidationIssue(
         field: 'runtimeAcceleration',
         message: 'runtimeAcceleration non specificata o sconosciuta',
-        severity: ProvenanceValidationSeverity.error,
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
       ));
     }
     if (sessionId.trim().isEmpty || sessionId == 'unknown') {
@@ -387,14 +395,26 @@ class SessionProvenanceMetadata {
       ));
     }
 
-    return ProvenanceValidationResult(issues);
+    return ProvenanceValidationResult(issues, datasetSource);
   }
 
-  /// Indica se la provenance soddisfa tutti i vincoli strutturali.
-  bool get isComplete => validate().isValid;
+  /// Indica se la provenance non presenta errori strutturali o di schema bloccanti.
+  bool get isStructurallyValid => validate().isStructurallyValid;
 
-  /// Indica se la provenance è valida ed eleggibile per il dataset ML (Fase 8).
-  bool get isDatasetEligible => validate().isDatasetEligible;
+  /// Indica se la provenance è scientificamente completa (nessun valore presunto o mancante).
+  bool get isScientificallyComplete => validate().isScientificallyComplete;
+
+  /// Indica se il record è curabile (scientificamente completo e con fonte nota).
+  bool get isCuratable => validate().isCuratable;
+
+  /// Indica se il record è pienamente eleggibile per il training LoRA (human-only).
+  bool get isLoraTrainingEligible => validate().isLoraTrainingEligible;
+
+  /// Alias retrocompatibile per [isScientificallyComplete].
+  bool get isComplete => isScientificallyComplete;
+
+  /// Alias retrocompatibile per [isLoraTrainingEligible].
+  bool get isDatasetEligible => isLoraTrainingEligible;
 
   @override
   String toString() =>

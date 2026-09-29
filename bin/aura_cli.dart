@@ -361,7 +361,6 @@ Opzioni Managed llama-server:
       final turnProv = TurnGenerationProvenance(
         samplingParameters: const {
           'temperature': 0.7,
-          'top_p': 0.95,
         },
         actualActorModelId: 'aura.actor.primary',
         actualEvaluatorModelId: evaluatorRes.actualEvaluator,

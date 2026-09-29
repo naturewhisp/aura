@@ -268,7 +268,6 @@ Future<void> runStaticSimulation({
     final turnProv = TurnGenerationProvenance(
       samplingParameters: const {
         'temperature': 0.7,
-        'top_p': 0.95,
       },
       actualActorModelId: isOnline ? actorModel : 'static_fallback',
       actualEvaluatorModelId: evaluatorRes.actualEvaluator,
@@ -432,7 +431,6 @@ Future<void> runInteractiveSimulation({
     final turnProv = TurnGenerationProvenance(
       samplingParameters: const {
         'temperature': 0.7,
-        'top_p': 0.95,
       },
       actualActorModelId: actorModel,
       actualEvaluatorModelId: evaluatorRes.actualEvaluator,

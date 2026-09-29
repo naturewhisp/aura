@@ -5,6 +5,11 @@ import 'package:aura_core/aura_core.dart';
 import 'package:test/test.dart';
 
 void main() {
+  const validSha256Actor =
+      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+  const validSha256Eval =
+      'f4b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
   group('DatasetSource', () {
     test('riconosce correttamente i valori validi', () {
       expect(
@@ -48,11 +53,6 @@ void main() {
   });
 
   group('SessionProvenanceMetadata', () {
-    const validSha256Actor =
-        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-    const validSha256Eval =
-        'f4b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
-
     const fullMetadata = SessionProvenanceMetadata(
       schemaVersion: '1.1.0',
       datasetSource: DatasetSource.humanPlaytest,
@@ -121,22 +121,35 @@ void main() {
       // È deserializzabile senza eccezioni...
       expect(emptyDeserialized, isNotNull);
 
-      // ...ma NON è valida e NON è dataset eligible!
+      // ...ma NON è valida e NON è scientificamente completa né dataset eligible!
       final validation = emptyDeserialized.validate();
+      expect(validation.isStructurallyValid, isFalse);
       expect(validation.isValid, isFalse);
+      expect(validation.isScientificallyComplete, isFalse);
+      expect(validation.isCuratable, isFalse);
+      expect(validation.isLoraTrainingEligible, isFalse);
       expect(validation.isDatasetEligible, isFalse);
-      expect(emptyDeserialized.isComplete, isFalse);
-      expect(emptyDeserialized.isDatasetEligible, isFalse);
+      expect(emptyDeserialized.isStructurallyValid, isFalse);
+      expect(emptyDeserialized.isScientificallyComplete, isFalse);
+      expect(emptyDeserialized.isCuratable, isFalse);
+      expect(emptyDeserialized.isLoraTrainingEligible, isFalse);
       expect(validation.issues.any((i) => i.field == 'datasetSource'), isTrue);
       expect(validation.issues.any((i) => i.field == 'gitCommit'), isTrue);
       expect(
           validation.issues.any((i) => i.field == 'actorContextSize'), isTrue);
 
-      // fullMetadata è invece valida ed eligible
+      // fullMetadata è invece strutturalmente valida, completa, curatable ed eligible (humanPlaytest)
       final fullVal = fullMetadata.validate();
-      expect(fullVal.isValid, isTrue, reason: fullVal.issues.toString());
+      expect(fullVal.isStructurallyValid, isTrue,
+          reason: fullVal.issues.toString());
+      expect(fullVal.isScientificallyComplete, isTrue);
+      expect(fullVal.isCuratable, isTrue);
+      expect(fullVal.isLoraTrainingEligible, isTrue);
       expect(fullVal.isDatasetEligible, isTrue);
-      expect(fullMetadata.isComplete, isTrue);
+      expect(fullMetadata.isStructurallyValid, isTrue);
+      expect(fullMetadata.isScientificallyComplete, isTrue);
+      expect(fullMetadata.isCuratable, isTrue);
+      expect(fullMetadata.isLoraTrainingEligible, isTrue);
       expect(fullMetadata.isDatasetEligible, isTrue);
     });
 
@@ -368,14 +381,18 @@ void main() {
     test('roundtrip con sessionProvenance e turni registrati', () {
       final sessionProv = SessionProvenanceFactory.create(
         sessionId: 'session-logger-1',
-        datasetSource: DatasetSource.syntheticSimulation,
+        datasetSource: DatasetSource.humanPlaytest,
         platform: 'windows',
         osVersion: 'Windows 11',
         architecture: 'x86_64',
+        gitCommit: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
         runtimeBackend: 'managed_llama_server',
         runtimeAcceleration: 'cuda',
-        actorModelId: 'gemma',
-        evaluatorModelId: 'ministral',
+        llamaCppBuild: 'b4210',
+        actorModelId: 'google/gemma-4-12b-qat',
+        actorModelSha256: validSha256Actor,
+        evaluatorModelId: 'mistralai/ministral-3-3b',
+        evaluatorModelSha256: validSha256Eval,
       );
 
       final logger = ReplayLogger(
@@ -429,8 +446,38 @@ void main() {
           restoredLogger.entries.first.generationProvenance, equals(turnProv));
 
       final validation = restoredLogger.validateProvenance();
-      expect(validation.isValid, isTrue);
+      expect(validation.isStructurallyValid, isTrue);
+      expect(validation.isScientificallyComplete, isTrue);
+      expect(validation.isCuratable, isTrue);
+      expect(validation.isLoraTrainingEligible, isTrue);
       expect(validation.isDatasetEligible, isTrue);
+    });
+
+    test(
+        'simulazioni sintetiche complete sono curatable ma categoricamente NON loraTrainingEligible',
+        () {
+      final simProv = SessionProvenanceFactory.create(
+        sessionId: 'session-sim-1',
+        datasetSource: DatasetSource.syntheticSimulation,
+        platform: 'windows',
+        osVersion: 'Windows 11',
+        architecture: 'x86_64',
+        gitCommit: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
+        runtimeBackend: 'managed_llama_server',
+        runtimeAcceleration: 'cuda',
+        llamaCppBuild: 'b4210',
+        actorModelId: 'google/gemma-4-12b-qat',
+        actorModelSha256: validSha256Actor,
+        evaluatorModelId: 'mistralai/ministral-3-3b',
+        evaluatorModelSha256: validSha256Eval,
+      );
+
+      final val = simProv.validate();
+      expect(val.isStructurallyValid, isTrue);
+      expect(val.isScientificallyComplete, isTrue);
+      expect(val.isCuratable, isTrue);
+      expect(val.isLoraTrainingEligible, isFalse);
+      expect(val.isDatasetEligible, isFalse);
     });
 
     test(
@@ -495,7 +542,9 @@ void main() {
   });
 
   group('SessionProvenanceFactory', () {
-    test('produce metadati conformi e validi per default di runtime', () {
+    test(
+        'in assenza di parametri espliciti o osservati, produce campi unknown/vuoti fail-closed',
+        () {
       final prov = SessionProvenanceFactory.create(
         sessionId: 'factory-test-session',
         datasetSource: DatasetSource.humanPlaytest,
@@ -504,7 +553,40 @@ void main() {
       expect(prov.sessionId, equals('factory-test-session'));
       expect(prov.platform, isNotEmpty);
       expect(prov.architecture, isNotEmpty);
-      expect(prov.gitCommit, isNotEmpty);
+      expect(prov.actorModelSha256, isEmpty);
+      expect(prov.evaluatorModelSha256, isEmpty);
+      expect(prov.runtimeAcceleration, equals('unknown'));
+      expect(prov.llamaCppBuild, equals('unknown'));
+      // È strutturalmente valida come record base, ma scientificamente incompleta
+      expect(prov.isStructurallyValid, isTrue);
+      expect(prov.isScientificallyComplete, isFalse);
+      expect(prov.isCuratable, isFalse);
+      expect(prov.isLoraTrainingEligible, isFalse);
+    });
+
+    test(
+        'con parametri espliciti osservati completi, produce provenance pienamente valida ed eligible',
+        () {
+      final prov = SessionProvenanceFactory.create(
+        sessionId: 'factory-full-session',
+        datasetSource: DatasetSource.humanPlaytest,
+        platform: 'windows',
+        osVersion: 'Windows 11',
+        architecture: 'x86_64',
+        gitCommit: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
+        runtimeBackend: 'managed_llama_server',
+        runtimeAcceleration: 'cuda',
+        llamaCppBuild: 'b4210',
+        actorModelId: 'google/gemma-4-12b-qat',
+        actorModelSha256: validSha256Actor,
+        evaluatorModelId: 'mistralai/ministral-3-3b',
+        evaluatorModelSha256: validSha256Eval,
+      );
+
+      expect(prov.isStructurallyValid, isTrue);
+      expect(prov.isScientificallyComplete, isTrue);
+      expect(prov.isCuratable, isTrue);
+      expect(prov.isLoraTrainingEligible, isTrue);
       expect(prov.isComplete, isTrue);
       expect(prov.isDatasetEligible, isTrue);
     });

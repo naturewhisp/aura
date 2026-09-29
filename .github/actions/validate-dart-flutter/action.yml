@@ -36,7 +36,7 @@ runs:
 
     - name: Core Static Analysis
       shell: bash
-      run: dart analyze .
+      run: dart analyze --fatal-infos .
 
     - name: Core Unit Tests
       shell: bash
@@ -58,7 +58,7 @@ runs:
       shell: bash
       run: |
         cd app
-        flutter analyze
+        flutter analyze --fatal-infos
 
     - name: App Unit & Widget Tests
       shell: bash

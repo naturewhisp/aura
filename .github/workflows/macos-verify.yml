@@ -2,8 +2,6 @@ name: macOS Darwin Verification
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ fase6 ]
 
 permissions:
   contents: read
@@ -70,34 +68,44 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$APP"
 
           echo "=== Extracted Compiled Entitlements ==="
-          ENTITLEMENTS=$(codesign -d --entitlements :- "$APP" 2>&1)
-          echo "$ENTITLEMENTS"
+          codesign -d --entitlements :- "$APP" > compiled-entitlements.plist 2>/dev/null
+          cat compiled-entitlements.plist
 
-          if ! echo "$ENTITLEMENTS" | grep -q "com.apple.security.app-sandbox"; then
-            echo "::error::Missing com.apple.security.app-sandbox entitlement"
+          SANDBOX=$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.app-sandbox" compiled-entitlements.plist 2>/dev/null || echo "false")
+          CLIENT=$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.network.client" compiled-entitlements.plist 2>/dev/null || echo "false")
+
+          echo "Parsed app-sandbox: $SANDBOX"
+          echo "Parsed network.client: $CLIENT"
+
+          if [ "$SANDBOX" != "true" ]; then
+            echo "::error::com.apple.security.app-sandbox is not true (got: $SANDBOX)"
+            rm -f compiled-entitlements.plist
             exit 1
           fi
 
-          if ! echo "$ENTITLEMENTS" | grep -q "com.apple.security.network.client"; then
-            echo "::error::Missing com.apple.security.network.client entitlement"
+          if [ "$CLIENT" != "true" ]; then
+            echo "::error::com.apple.security.network.client is not true (got: $CLIENT)"
+            rm -f compiled-entitlements.plist
             exit 1
           fi
 
-          if echo "$ENTITLEMENTS" | grep -q "com.apple.security.network.server"; then
+          if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" compiled-entitlements.plist >/dev/null 2>&1; then
             echo "::error::Forbidden com.apple.security.network.server found in Release entitlements!"
+            rm -f compiled-entitlements.plist
             exit 1
           fi
 
-          echo "✅ Compiled entitlements & signatures strictly verified!"
+          rm -f compiled-entitlements.plist
+          echo "✅ Compiled entitlements & signatures strictly verified (PlistBuddy semantic validation)!"
 
       - name: Package macOS Application Bundle (ditto)
         shell: bash
         run: |
-          ditto -c -k --keepParent app/build/macos/Build/Products/Release/aura_app.app aura_app-macos-arm64.zip
+          ditto -c -k --keepParent app/build/macos/Build/Products/Release/aura_app.app aura_app-macos-universal.zip
 
       - name: Upload macOS Application Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aura_app-macos-arm64
-          path: aura_app-macos-arm64.zip
+          name: aura_app-macos-universal
+          path: aura_app-macos-universal.zip
           retention-days: 7

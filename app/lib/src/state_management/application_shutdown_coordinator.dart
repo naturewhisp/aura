@@ -72,7 +72,7 @@ final class ApplicationShutdownCoordinator {
       // 4. Uscita dal processo nativo
       if (onNativeExit != null) {
         onNativeExit!();
-      } else if (Platform.isWindows) {
+      } else if (Platform.isWindows || Platform.isMacOS) {
         debugPrint('[SHUTDOWN] Uscita dal processo nativo.');
         exit(0);
       }

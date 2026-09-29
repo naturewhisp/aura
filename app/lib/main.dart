@@ -8,7 +8,7 @@ import 'src/state_management/desktop_shell_controller.dart';
 import 'src/state_management/application_shutdown_coordinator.dart';
 import 'src/platform/desktop_shell_provider.dart';
 import 'src/platform/desktop_shortcuts.dart';
-import 'src/platform/windows/windows_desktop_window_controller.dart';
+import 'src/platform/desktop_window_controller_factory.dart';
 import 'src/screens/terminal_screen.dart';
 import 'src/screens/app_startup_gate.dart';
 import 'src/audio/audio_manager.dart';
@@ -98,8 +98,8 @@ class _AuraAppState extends State<AuraApp> with WidgetsBindingObserver {
   }
 
   void _initDesktopShell() {
-    _windowController =
-        widget.desktopWindowController ?? WindowsDesktopWindowController();
+    _windowController = widget.desktopWindowController ??
+        DesktopWindowControllerFactory.create();
 
     _prefsRepo = WindowPreferencesRepository(
       storeDirectoryPath: widget.notifier.appDataPath,

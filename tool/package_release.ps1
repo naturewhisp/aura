@@ -62,6 +62,7 @@ try {
 $buildDir = "$projectRoot\build"
 $stagingDir = "$buildDir\release-staging"
 $runtimeStagingDir = "$buildDir\runtime-staging"
+$releaseRootDir = "$projectRoot\release"
 
 if (Test-Path $stagingDir) {
     Remove-Item -Path $stagingDir -Recurse -Force
@@ -210,6 +211,21 @@ $releaseManifest = [ordered]@{
     authenticodeSigned = $false
     modelsBundled = $false
 }
+
+$expectedMacZip = "$releaseRootDir\aura-v$Version-macos-universal.zip"
+if ($ReleaseKind -eq "candidate") {
+    if (Test-Path $expectedMacZip) {
+        $releaseManifest["macosCandidateFile"] = "aura-v$Version-macos-universal.zip"
+        Write-Host "Incluso asset macOS candidate in release-manifest.json: aura-v$Version-macos-universal.zip" -ForegroundColor Green
+    }
+} elseif ($ReleaseKind -eq "official") {
+    $forbiddenMacAssets = Get-ChildItem -Path $releaseRootDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '(?i)-macos-.*\.zip$' }
+    if ($forbiddenMacAssets) {
+        throw "[FAIL-CLOSED] Official release contains forbidden macOS asset(s): $($forbiddenMacAssets.Name -join ', ')"
+    }
+}
+
 $releaseManifestJson = $releaseManifest | ConvertTo-Json -Depth 5
 Set-Content -Path "$stagingDir\release-manifest.json" -Value $releaseManifestJson -Encoding UTF8
 
@@ -382,6 +398,14 @@ if ($isccPath) {
 Write-Host "Calcolo checksum per gli asset di GitHub Release..." -ForegroundColor Yellow
 $relSumsFile = "$releaseRootDir\AURA-$Version-SHA256SUMS.txt"
 $releaseAssets = Get-ChildItem -Path $releaseRootDir -File | Where-Object { $_.Name -ne "AURA-$Version-SHA256SUMS.txt" }
+
+if ($ReleaseKind -eq "official") {
+    $forbiddenMacInSums = $releaseAssets | Where-Object { $_.Name -match '(?i)-macos-.*\.zip$' }
+    if ($forbiddenMacInSums) {
+        throw "[FAIL-CLOSED] Official release staging contains forbidden macOS asset(s): $($forbiddenMacInSums.Name -join ', ')"
+    }
+}
+
 $relSumLines = @()
 foreach ($ra in $releaseAssets) {
     $rHash = (Get-FileHash -Path $ra.FullName -Algorithm SHA256).Hash.ToLower()

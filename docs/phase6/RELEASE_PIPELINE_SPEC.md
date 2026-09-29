@@ -719,12 +719,15 @@ Asset opzionali:
 
 ```text
 AURA-AudioPack-<version>.zip
-aura-v<version>-macos-arm64.zip (esclusivamente nelle Release Candidate con release_kind: candidate, Fase 6.11)
+aura-v<version>-macos-universal.zip (esclusivamente nelle Release Candidate con release_kind: candidate, Fase 6.11)
 catalog signature files
 public key metadata
 provenance attestations
 debug symbols
 ```
+
+> [!CAUTION]
+> **Invariante di Piattaforma macOS**: L'asset `aura-v<version>-macos-universal.zip` è compilato e allegato esclusivamente nei workflow con `release_kind: candidate`. Nelle release ufficiali (`release_kind: official`), la presenza di qualsiasi archivio macOS o riferimento in `release-manifest.json` / `SHA256SUMS.txt` costituisce una violazione bloccante e causa il fallimento fail-closed immediato di `tool/verify_release_assets.ps1`.
 
 I nomi effettivi già prodotti dagli script possono essere mantenuti. Un cambio di naming deve essere atomico e documentato.
 

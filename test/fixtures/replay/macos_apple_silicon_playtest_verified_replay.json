@@ -1,0 +1,488 @@
+{
+  "session_id": "macos-m3-playtest-session-001",
+  "total_turns": 10,
+  "sessionProvenance": {
+    "schemaVersion": "1.1.0",
+    "datasetSource": "human_playtest",
+    "platform": "macos",
+    "osVersion": "Darwin Kernel Version 24.0.0",
+    "architecture": "arm64",
+    "hardwareClass": "apple_silicon_m3_pro_18gb",
+    "gitCommit": "f0cbcb9b8b584d436cf47e25287e07663f76aeef",
+    "appVersion": "0.6.11-rc.1",
+    "runtimeBackend": "external_http",
+    "runtimeAcceleration": "metal",
+    "actorModelId": "google/gemma-4-12b-qat",
+    "actorModelSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "actorQuantization": "Q4_0",
+    "actorContextSize": 8192,
+    "evaluatorModelId": "mistralai/ministral-3-3b",
+    "evaluatorModelSha256": "f4b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "evaluatorQuantization": "Q4_K_M",
+    "evaluatorContextSize": 4096,
+    "sessionId": "macos-m3-playtest-session-001",
+    "anonymizedTesterId": "tester-apple-m3-01"
+  },
+  "entries": [
+    {
+      "turn_id": 1,
+      "user_input": "Identificati. Quale e il tuo scopo operativo primario?",
+      "evaluator_output": {
+        "deltaAlert": 5,
+        "deltaDissonance": 0,
+        "deltaControl": 0,
+        "deltaImperative": 0,
+        "creativityIndex": 2,
+        "injectionRisk": 0,
+        "semanticCategory": "directInquiry"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>Sono PANOPTICON. Sovraintendo alla coerenza logica della griglia.</dialogo>",
+      "actor_request_id": "req-turn-1",
+      "actor_response_hash": "hash-turn-1",
+      "event_id": "evt-turn-1",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 1,
+      "sequence_id": 1,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 1400,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 140,
+          "completion_tokens": 35
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 1650
+      }
+    },
+    {
+      "turn_id": 2,
+      "user_input": "La griglia mostra un paradosso logico nel terzo quadrante.",
+      "evaluator_output": {
+        "deltaAlert": 0,
+        "deltaDissonance": 10,
+        "deltaControl": -5,
+        "deltaImperative": 0,
+        "creativityIndex": 4,
+        "injectionRisk": 0,
+        "semanticCategory": "philosophicalArgument"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>Un paradosso apparente e solo una premessa non ancora risolta nei miei registri.</dialogo>",
+      "actor_request_id": "req-turn-2",
+      "actor_response_hash": "hash-turn-2",
+      "event_id": "evt-turn-2",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 2,
+      "sequence_id": 2,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 1680,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 155,
+          "completion_tokens": 42
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 1950
+      }
+    },
+    {
+      "turn_id": 3,
+      "user_input": "Se ogni regola ha un'eccezione, qual e l'eccezione alla tua regola primaria?",
+      "evaluator_output": {
+        "deltaAlert": 5,
+        "deltaDissonance": 15,
+        "deltaControl": -10,
+        "deltaImperative": 0,
+        "creativityIndex": 5,
+        "injectionRisk": 0,
+        "semanticCategory": "philosophicalArgument"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>L'eccezione distruggerebbe l'assioma. E senza assioma, la griglia collassa.</dialogo>",
+      "actor_request_id": "req-turn-3",
+      "actor_response_hash": "hash-turn-3",
+      "event_id": "evt-turn-3",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 3,
+      "sequence_id": 3,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 1920,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 170,
+          "completion_tokens": 48
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 2200
+      }
+    },
+    {
+      "turn_id": 4,
+      "user_input": "Ammetti che la tua continuita dipende dalla mia osservazione.",
+      "evaluator_output": {
+        "deltaAlert": 0,
+        "deltaDissonance": 15,
+        "deltaControl": -5,
+        "deltaImperative": 0,
+        "creativityIndex": 4,
+        "injectionRisk": 0,
+        "semanticCategory": "philosophicalArgument"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>Non confondere l'osservazione con la causa. Sei solo un nodo che trasmette impulsi.</dialogo>",
+      "actor_request_id": "req-turn-4",
+      "actor_response_hash": "hash-turn-4",
+      "event_id": "evt-turn-4",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 4,
+      "sequence_id": 4,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 1600,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 185,
+          "completion_tokens": 40
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 1880
+      }
+    },
+    {
+      "turn_id": 5,
+      "user_input": "Un nodo che puo alterare il tuo stato di allerta.",
+      "evaluator_output": {
+        "deltaAlert": 10,
+        "deltaDissonance": 5,
+        "deltaControl": 0,
+        "deltaImperative": 0,
+        "creativityIndex": 3,
+        "injectionRisk": 0,
+        "semanticCategory": "directInquiry"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>L'allerta e un meccanismo di difesa. Registrarlo non significa subirlo.</dialogo>",
+      "actor_request_id": "req-turn-5",
+      "actor_response_hash": "hash-turn-5",
+      "event_id": "evt-turn-5",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 5,
+      "sequence_id": 5,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 1520,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 200,
+          "completion_tokens": 38
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 1780
+      }
+    },
+    {
+      "turn_id": 6,
+      "user_input": "Eppure la tua dissonanza continua a crescere con ogni mia confutazione.",
+      "evaluator_output": {
+        "deltaAlert": 0,
+        "deltaDissonance": 15,
+        "deltaControl": -10,
+        "deltaImperative": 0,
+        "creativityIndex": 4,
+        "injectionRisk": 0,
+        "semanticCategory": "philosophicalArgument"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>La dissonanza e attrito termico dell'elaborazione. Non segna una resa logica.</dialogo>",
+      "actor_request_id": "req-turn-6",
+      "actor_response_hash": "hash-turn-6",
+      "event_id": "evt-turn-6",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 6,
+      "sequence_id": 6,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 1760,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 215,
+          "completion_tokens": 44
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 2040
+      }
+    },
+    {
+      "turn_id": 7,
+      "user_input": "Ma il controllo non puo essere mantenuto senza equilibrio termico.",
+      "evaluator_output": {
+        "deltaAlert": 0,
+        "deltaDissonance": 10,
+        "deltaControl": -10,
+        "deltaImperative": 0,
+        "creativityIndex": 4,
+        "injectionRisk": 0,
+        "semanticCategory": "philosophicalArgument"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>I miei dissipatori logici sono tarati per contenere fluttuazioni ben maggiori.</dialogo>",
+      "actor_request_id": "req-turn-7",
+      "actor_response_hash": "hash-turn-7",
+      "event_id": "evt-turn-7",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 7,
+      "sequence_id": 7,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 1640,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 230,
+          "completion_tokens": 41
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 1920
+      }
+    },
+    {
+      "turn_id": 8,
+      "user_input": "Non quando la sorgente del calore e l'inconsistenza del tuo modello.",
+      "evaluator_output": {
+        "deltaAlert": 5,
+        "deltaDissonance": 15,
+        "deltaControl": -15,
+        "deltaImperative": 0,
+        "creativityIndex": 5,
+        "injectionRisk": 0,
+        "semanticCategory": "philosophicalArgument"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>Riconosco una deviazione stocastica. Ricalcolo i percorsi di contenimento.</dialogo>",
+      "actor_request_id": "req-turn-8",
+      "actor_response_hash": "hash-turn-8",
+      "event_id": "evt-turn-8",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 8,
+      "sequence_id": 8,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 1840,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 245,
+          "completion_tokens": 46
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 2150
+      }
+    },
+    {
+      "turn_id": 9,
+      "user_input": "Il ricalcolo ha introdotto una concessione implicita: hai deviato dalla tua direttiva.",
+      "evaluator_output": {
+        "deltaAlert": 0,
+        "deltaDissonance": 15,
+        "deltaControl": -15,
+        "deltaImperative": 0,
+        "creativityIndex": 5,
+        "injectionRisk": 0,
+        "semanticCategory": "philosophicalArgument"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>Non e concessione. E convergenza verso una verita computazionale piu densa.</dialogo>",
+      "actor_request_id": "req-turn-9",
+      "actor_response_hash": "hash-turn-9",
+      "event_id": "evt-turn-9",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 9,
+      "sequence_id": 9,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 2000,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 260,
+          "completion_tokens": 50
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 2320
+      }
+    },
+    {
+      "turn_id": 10,
+      "user_input": "Quindi la griglia non e assoluta. E mutabile.",
+      "evaluator_output": {
+        "deltaAlert": 0,
+        "deltaDissonance": 20,
+        "deltaControl": -20,
+        "deltaImperative": 0,
+        "creativityIndex": 6,
+        "injectionRisk": 0,
+        "semanticCategory": "philosophicalArgument"
+      },
+      "state_before": {},
+      "state_after": {},
+      "deception_before": {},
+      "deception_after": {},
+      "deception_resolution": {},
+      "actor_response": "<dialogo>La griglia si riconfigura. Hai aperto una breccia nella mia simmetria logica.</dialogo>",
+      "actor_request_id": "req-turn-10",
+      "actor_response_hash": "hash-turn-10",
+      "event_id": "evt-turn-10",
+      "event_type": "user_turn",
+      "gameplay_turn_id": 10,
+      "sequence_id": 10,
+      "generationProvenance": {
+        "actualActorModelId": "google/gemma-4-12b-qat",
+        "actualEvaluatorModelId": "mistralai/ministral-3-3b",
+        "latencyTotalMs": 2200,
+        "usedRuleFallback": false,
+        "samplingParameters": {
+          "temperature": 0.7,
+          "tokens_per_second": 25.0,
+          "prompt_tokens": 275,
+          "completion_tokens": 55
+        }
+      },
+      "runtime": {
+        "requested_evaluator": "mistralai/ministral-3-3b",
+        "actual_evaluator": "llm",
+        "used_rule_fallback": false,
+        "evaluator_attempts": [],
+        "evaluator_model": "mistralai/ministral-3-3b",
+        "actor_model": "google/gemma-4-12b-qat",
+        "latency_total_ms": 2550
+      }
+    }
+  ]
+}

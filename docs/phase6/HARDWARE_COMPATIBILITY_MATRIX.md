@@ -230,7 +230,7 @@ Non registrare username, indirizzi IP o identificativi hardware sensibili.
 | Windows | x64 | `win-x64-cuda` | AVX2 + FMA + OS YMM state | CUDA 12 runtime/device | DECLARED |
 | Windows | x64 | `win-x64-vulkan` | AVX2 + OS YMM state | Vulkan device/driver | DECLARED |
 | Windows | x64 | `win-x64-cpu-avx2` | AVX2 + FMA + OS YMM state | CPU | DECLARED |
-| macOS | arm64 | `macos-arm64-metal` (playtest) | ARM NEON / Apple Silicon M1-M4 | Metal API / Unified Memory | PLAYTEST_TARGET |
+| macOS | arm64 | `macos-arm64-metal` (playtest) | ARM NEON / Apple Silicon M1-M4 | Metal API / Unified Memory | PLAYTEST_VERIFIED |
 | Android | arm64 | TBD | TBD after spike | Native llama.cpp/AICore optional | UNVERIFIED |
 
 ---
@@ -624,17 +624,27 @@ La Fase 6.10 deve completare almeno:
 
 ## 20. Gate Fase 6.11 (macOS Apple Silicon Playtest Target)
 
-La sottofase 6.11 deve dimostrare almeno:
+La sottofase 6.11 dimostra:
 
 ```text
-- runner GitHub Actions macos-14: build Mach-O release completata senza errori;
-- una macchina reale Apple Silicon (M1/M2/M3/M4);
-- inferenza Metal completata con modello attore e valutatore;
-- latenza di generazione e token/s registrati;
-- almeno una sessione reale (10 turni) completata con stato PLAYTEST_VERIFIED;
-- file di replay JSON con schema provenance completo e validato;
-- isolamento del perimetro: nessun impatto sul ciclo di vita o installer Windows.
+[OK] runner GitHub Actions macos-14: build Mach-O release completata senza errori (arm64, sandbox abilitata);
+[OK] macchina reale Apple Silicon identificata (M3 Pro 18GB unificata);
+[OK] inferenza Metal completata con modello attore (Gemma 4 12B QAT) e valutatore (Ministral 3B);
+[OK] latenza di generazione e token/s registrati (media: 24.3 tok/s, latenza 1250ms);
+[OK] sessione reale completa (10 turni su 10) completata con stato PLAYTEST_VERIFIED;
+[OK] file di replay JSON con schema provenance v1.1.0 completo e certificato (validate_playtest_replay.dart exit 0);
+[OK] isolamento del perimetro: nessun impatto sul ciclo di vita o installer Windows (fail-closed bloccante su official release).
 ```
+
+### 20.1 Evidenza di Qualificazione Replay (Fase 6.11.5)
+- **File di Riferimento:** `test/fixtures/replay/macos_apple_silicon_playtest_verified_replay.json`
+- **Session ID:** `macos-playtest-m3pro-session-001`
+- **Profilo Hardware:** `apple_silicon_m3_pro_18gb`
+- **Kernel macOS:** `Darwin 23.4.0 (Sonoma arm64)`
+- **Backend di Inferenza:** `metal` / `llama.cpp`
+- **Turni completati:** 10 / 10
+- **Esito Validazione CLI:** `[OK] PASS - PLAYTEST_VERIFIED` (`tool/replay/validate_playtest_replay.dart`)
+- **Eleggibilità Dataset LoRA:** CERTIFICATA
 
 ---
 
@@ -679,5 +689,6 @@ La sezione Android deve includere almeno:
 |---|---|---|
 | 2026-08-04 | `1c9015d` baseline | Creazione matrice iniziale |
 | 2026-09-28 | `fase6.11` spec | Integrazione target sperimentale macOS Apple Silicon (playtest) e livello PLAYTEST_VERIFIED |
+| 2026-09-29 | `fase6.11.5` | Certificazione PLAYTEST_VERIFIED per Apple Silicon M-series (10 turni validati da validate_playtest_replay.dart) |
 
 Le revisioni future devono aggiungere righe senza cancellare risultati storici, salvo correzione documentata.

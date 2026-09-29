@@ -1,8 +1,12 @@
 param(
     [string]$Version = "0.1.0",
     [string]$ReleaseDir = "",
-    [switch]$RequireInstaller
+    [string]$ReleaseKind = "candidate",
+    [switch]$RequireInstaller,
+    [switch]$RequireMacOsAsset
 )
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
 
 $ErrorActionPreference = "Stop"
 
@@ -91,6 +95,19 @@ if ([string]::IsNullOrWhiteSpace($relManifest.sourceCommit)) {
 }
 if (-not $relManifest.signedCatalogs) {
     throw "[FAIL-CLOSED] release-manifest.json dichiara signedCatalogs: false"
+}
+
+if ($ReleaseKind -eq "official") {
+    if ($relManifest.macosCandidateFile) {
+        throw "[FAIL-CLOSED] Official release-manifest.json contains forbidden macosCandidateFile: $($relManifest.macosCandidateFile)"
+    }
+} elseif ($ReleaseKind -eq "candidate" -and $RequireMacOsAsset) {
+    if (-not $relManifest.macosCandidateFile) {
+        throw "[FAIL-CLOSED] Candidate release-manifest.json missing required macosCandidateFile"
+    }
+    if ($relManifest.macosCandidateFile -ne "aura-v$Version-macos-universal.zip") {
+        throw "[FAIL-CLOSED] macosCandidateFile in release-manifest.json ($($relManifest.macosCandidateFile)) non corrisponde a aura-v$Version-macos-universal.zip"
+    }
 }
 
 # 4. Verifica runtime-manifest.json e varianti
@@ -239,6 +256,60 @@ foreach ($line in $sumLines) {
             throw "[FAIL-CLOSED] Checksum mismatch su asset di release $relFile! Atteso: $expHash, Calcolato: $actHash"
         }
     }
+}
+
+# 10. Verifiche di integrita ed isolamento per macOS (Candidate vs Official fail-closed)
+if ($ReleaseKind -eq "official") {
+    $forbiddenMacAssets = Get-ChildItem -Path $targetReleaseDir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '(?i)-macos-.*\.zip$' }
+    if ($forbiddenMacAssets) {
+        throw "[FAIL-CLOSED] Official release contains forbidden macOS asset(s): $($forbiddenMacAssets.Name -join ', ')"
+    }
+
+    $forbiddenChecksumLines = $sumLines | Where-Object { $_ -match '(?i)\s+.*-macos-.*\.zip$' }
+    if ($forbiddenChecksumLines) {
+        throw "[FAIL-CLOSED] Official SHA256SUMS contains forbidden macOS entry: $($forbiddenChecksumLines -join '; ')"
+    }
+} elseif ($ReleaseKind -eq "candidate" -and $RequireMacOsAsset) {
+    $macZip = "$targetReleaseDir\aura-v$Version-macos-universal.zip"
+    Write-Host "Verifica dell'archivio macOS universale candidate: $macZip..." -ForegroundColor Yellow
+    if (-not (Test-Path $macZip)) {
+        throw "[FAIL-CLOSED] Asset macOS richiesto (-RequireMacOsAsset) non trovato in: $macZip"
+    }
+    if ((Get-Item $macZip).Length -lt 1000000) {
+        throw "[FAIL-CLOSED] Dimensione asset macOS non plausibile (< 1MB): $macZip"
+    }
+    try {
+        $zipStream = [System.IO.Compression.ZipFile]::OpenRead($macZip)
+        $hasApp = $false
+        foreach ($entry in $zipStream.Entries) {
+            if ($entry.FullName -like "*AURA.app*" -or $entry.FullName -like "*aura_app.app*") {
+                $hasApp = $true
+                break
+            }
+        }
+        $zipStream.Dispose()
+        if (-not $hasApp) {
+            throw "[FAIL-CLOSED] L'archivio macOS non contiene il bundle applicativo AURA.app: $macZip"
+        }
+    } catch {
+        throw "[FAIL-CLOSED] Verifica integrita archivio ZIP macOS fallita: $_"
+    }
+
+    $macHashFound = $false
+    foreach ($line in $sumLines) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $parts = $line -split '\s+'
+        if ($parts.Length -ge 2 -and $parts[1].Trim() -eq "aura-v$Version-macos-universal.zip") {
+            $macHashFound = $true
+            break
+        }
+    }
+    if (-not $macHashFound) {
+        throw "[FAIL-CLOSED] Asset macOS aura-v$Version-macos-universal.zip non presente in AURA-$Version-SHA256SUMS.txt"
+    }
+
+    Write-Host "✅ Asset macOS universale candidate verificato con successo!" -ForegroundColor Green
 }
 
 if ($RequireInstaller) {

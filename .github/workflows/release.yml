@@ -38,10 +38,110 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build-macos:
+    name: macOS Candidate Packaging (Apple Silicon)
+    runs-on: macos-14
+    timeout-minutes: 25
+    if: ${{ inputs.release_kind == 'candidate' }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Validate Release Parameters
+        id: mac-params
+        shell: bash
+        run: |
+          VER="${{ inputs.version }}"
+          VER="${VER#v}"
+          KIND="${{ inputs.release_kind }}"
+          echo "Building macOS asset for version $VER (kind: $KIND)"
+          if [ "$KIND" != "candidate" ]; then
+            echo "::error::build-macos job must only run for release_kind == 'candidate'"
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Run Shared Dart & Flutter Validation
+        uses: ./.github/actions/validate-dart-flutter
+
+      - name: Build macOS Release Application
+        shell: bash
+        run: |
+          cd app
+          flutter build macos --release
+
+      - name: Validate Mach-O Architecture (Fail-Closed)
+        shell: bash
+        run: |
+          APP="app/build/macos/Build/Products/Release/aura_app.app"
+          BIN="$APP/Contents/MacOS/aura_app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::Bundle directory missing: $APP"
+            exit 1
+          fi
+          if [ ! -f "$BIN" ]; then
+            echo "::error::Executable binary missing: $BIN"
+            exit 1
+          fi
+          ARCHS="$(lipo -archs "$BIN")"
+          echo "=== Mach-O Architectures: $ARCHS ==="
+          if ! echo "$ARCHS" | grep -qw "arm64"; then
+            echo "::error::Binary missing required arm64 architecture, got: $ARCHS"
+            exit 1
+          fi
+          echo "✅ Mach-O architecture strictly verified (contains native arm64: $ARCHS)!"
+
+      - name: Validate Compiled Entitlements & Signature (Fail-Closed)
+        shell: bash
+        run: |
+          APP="app/build/macos/Build/Products/Release/aura_app.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -d --entitlements :- "$APP" > compiled-entitlements.plist 2>/dev/null
+          SANDBOX=$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.app-sandbox" compiled-entitlements.plist 2>/dev/null || echo "false")
+          CLIENT=$(/usr/libexec/PlistBuddy -c "Print :com.apple.security.network.client" compiled-entitlements.plist 2>/dev/null || echo "false")
+          if [ "$SANDBOX" != "true" ]; then
+            echo "::error::com.apple.security.app-sandbox is not true (got: $SANDBOX)"
+            rm -f compiled-entitlements.plist
+            exit 1
+          fi
+          if [ "$CLIENT" != "true" ]; then
+            echo "::error::com.apple.security.network.client is not true (got: $CLIENT)"
+            rm -f compiled-entitlements.plist
+            exit 1
+          fi
+          if /usr/libexec/PlistBuddy -c "Print :com.apple.security.network.server" compiled-entitlements.plist >/dev/null 2>&1; then
+            echo "::error::Forbidden com.apple.security.network.server found in Release entitlements!"
+            rm -f compiled-entitlements.plist
+            exit 1
+          fi
+          rm -f compiled-entitlements.plist
+          echo "✅ Compiled entitlements & signatures strictly verified!"
+
+      - name: Package macOS Application Bundle (ditto)
+        shell: bash
+        run: |
+          VER="${{ steps.mac-params.outputs.version }}"
+          cp -R app/build/macos/Build/Products/Release/aura_app.app AURA.app
+          ZIP_NAME="aura-v${VER}-macos-universal.zip"
+          ditto -c -k --keepParent AURA.app "$ZIP_NAME"
+          echo "=== Checksum SHA256 of $ZIP_NAME ==="
+          shasum -a 256 "$ZIP_NAME"
+          ls -la "$ZIP_NAME"
+
+      - name: Upload macOS Release Candidate Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-release-candidate-asset
+          path: aura-v${{ steps.mac-params.outputs.version }}-macos-universal.zip
+          retention-days: 5
+
   release:
     name: Build, Verify, Sign & Draft Release
     runs-on: windows-latest
     timeout-minutes: 45
+    needs: [build-macos]
+    if: always() && (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped')
 
     permissions:
       contents: write
@@ -174,6 +274,28 @@ jobs:
               throw "[FAIL-CLOSED] Acquisizione binari llama.cpp fallita: $($_.Exception.Message)"
           }
 
+      - name: Download macOS Candidate Asset
+        if: ${{ steps.params.outputs.release_kind == 'candidate' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-release-candidate-asset
+          path: release/
+
+      - name: Validate Downloaded macOS Candidate Asset
+        if: ${{ steps.params.outputs.release_kind == 'candidate' }}
+        shell: pwsh
+        run: |
+          $ver = "${{ steps.params.outputs.version }}"
+          $macZip = "release\aura-v$ver-macos-universal.zip"
+          if (-not (Test-Path $macZip)) {
+              throw "[FAIL-CLOSED] Asset macOS atteso non trovato in release/: $macZip"
+          }
+          $item = Get-Item $macZip
+          if ($item.Length -lt 1000000) {
+              throw "[FAIL-CLOSED] Asset macOS in release/ ha dimensione non plausibile (< 1MB): $($item.Length) bytes"
+          }
+          Write-Host "✅ Asset macOS verificato con successo in release/: $macZip ($($item.Length) bytes)" -ForegroundColor Green
+
       - name: Package Standalone Release
         shell: pwsh
         env:
@@ -213,12 +335,17 @@ jobs:
           CATALOG_SIGNING_KEY_ID: ${{ secrets.CATALOG_SIGNING_KEY_ID }}
         run: |
           $ver = "${{ steps.params.outputs.version }}"
+          $kind = "${{ steps.params.outputs.release_kind }}"
           $reqInst = [bool]::Parse("${{ steps.params.outputs.require_installer }}")
           $params = @{
               Version = $ver
+              ReleaseKind = $kind
           }
           if ($reqInst) {
               $params.RequireInstaller = $true
+          }
+          if ($kind -eq "candidate") {
+              $params.RequireMacOsAsset = $true
           }
           try {
               & .\tool\verify_release_assets.ps1 @params
@@ -239,6 +366,7 @@ jobs:
           $llamaCppTag = $runtimeLock.llamaCppTag
 
           $isCandidateMsg = if ($kind -eq "candidate") { "`n> [!WARNING]`n> **TEST BUILD — DO NOT REDISTRIBUTE**`n" } else { "" }
+          $macComponent = if ($kind -eq "candidate") { "- **Asset macOS Universale (Experimental Playtest)**: ``aura-v$ver-macos-universal.zip`` (Apple Silicon arm64 / Intel x86_64)`n" } else { "" }
 
           $notes = @"
           # A.U.R.A. v$ver ($chan / $kind)
@@ -247,7 +375,7 @@ jobs:
           $isCandidateMsg
           ## Componenti inclusi
           - **Applicazione Desktop**: Flutter Release Windows x64
-          - **Runtime Local Inference**: llama.cpp ($llamaCppTag) multi-variante
+          $macComponent- **Runtime Local Inference**: llama.cpp ($llamaCppTag) multi-variante
             - ``win-x64-cuda`` (NVIDIA CUDA 12)
             - ``win-x64-vulkan`` (Vulkan API Generic)
             - ``win-x64-cpu-avx2`` (CPU High-Performance Fallback)

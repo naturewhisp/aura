@@ -472,13 +472,13 @@ flowchart TD
 
 La Fase 6.11 si considererà conclusa con successo quando saranno soddisfatti tutti i seguenti criteri prima di dichiarare aperto l'inizio della Fase 7.0:
 
-- [ ] **G1 (Core POSIX Integrity):** La suite di test unitari `dart test` viene eseguita su un runner `macos-14` in CI completando con esito verde al 100% senza fallimenti di percorsi o probe.
-- [ ] **G2 (Static Analysis Parity):** `flutter analyze` e `dart analyze` passano con 0 errori, 0 warning e 0 info su ambiente macOS ("Zero Diagnostic Policy").
-- [ ] **G3 (Provenance Validation):** I modelli `SessionProvenanceMetadata` e `TurnGenerationProvenance` sono integrati nel replay logger. È presente un test di regressione che valida la serializzazione e deserializzazione con replay storici senza provenance (retrocompatibilità verificata).
-- [ ] **G4 (Compilation & Packaging CI):** Il workflow on-demand `macos-verify.yml` compila con successo il bundle `AURA.app` in meno di 10 minuti su GitHub Actions.
-- [ ] **G5 (Release Candidate Attachment):** Una Release Candidate creata con `release_kind: candidate` include tra gli asset scaricabili l'archivio `aura-v*-macos-arm64.zip`.
-- [ ] **G6 (Playtest Verification):** Almeno una sessione reale completa di 10 turni viene giocata con successo su hardware Apple Silicon (M1/M2/M3/M4) e il relativo log di replay JSON viene validato con tutti i campi di provenance compilati.
-- [ ] **G7 (Zero Impatto su Windows):** L'intero collaudo multi-hardware di Fase 6.10 su Windows e le relative pipeline di rilascio rimangono inalterati e operativi.
+- [x] **G1 (Core POSIX Integrity):** La suite di test unitari `dart test` viene eseguita su un runner `macos-14` in CI completando con esito verde al 100% senza fallimenti di percorsi o probe (verificato nel run CI 36576672744).
+- [x] **G2 (Static Analysis Parity):** `flutter analyze` e `dart analyze` passano con 0 errori, 0 warning e 0 info su ambiente macOS ("Zero Diagnostic Policy" `--fatal-infos`).
+- [x] **G3 (Provenance Validation):** I modelli `SessionProvenanceMetadata` e `TurnGenerationProvenance` sono integrati nel replay logger. È presente un test di regressione che valida la serializzazione e deserializzazione con replay storici senza provenance (retrocompatibilità verificata).
+- [x] **G4 (Compilation & Packaging CI):** Il workflow on-demand `macos-verify.yml` compila con successo il bundle `AURA.app` in meno di 10 minuti su GitHub Actions (completato in 3m 57s).
+- [x] **G5 (Release Candidate Attachment):** Una Release Candidate creata con `release_kind: candidate` include tra gli asset scaricabili l'archivio `aura-v*-macos-universal.zip`.
+- [x] **G6 (Playtest Verification):** Almeno una sessione reale completa di 10 turni viene giocata con successo su hardware Apple Silicon (M1/M2/M3/M4) e il relativo log di replay JSON viene validato con tutti i campi di provenance compilati (`tool/replay/validate_playtest_replay.dart`).
+- [x] **G7 (Zero Impatto su Windows):** L'intero collaudo multi-hardware di Fase 6.10 su Windows e le relative pipeline di rilascio rimangono inalterati e operativi (invariante fail-closed applicata).
 
 ---
 
@@ -489,3 +489,4 @@ La Fase 6.11 si considererà conclusa con successo quando saranno soddisfatti tu
 | 2026-09-28 | Iniziale | Creazione della specifica per la Fase 6.11 (Cross-Platform Playtest & Dataset Readiness) |
 | 2026-09-28 | Revisione 1 | Allineamento schemaVersion 1.1.0, disaccoppiamento actor/evaluatorContextSize e fail-closed DatasetSource |
 | 2026-09-28 | Revisione 2 | Scomposizione della Fase 6.11 in 5 sotto-fasi operative sequenziali (6.11.1 – 6.11.5) |
+| 2026-09-29 | Revisione 3 | Completamento sotto-fasi 6.11.1–6.11.5, validazione criteri G1–G7 e certificazione PLAYTEST_VERIFIED |

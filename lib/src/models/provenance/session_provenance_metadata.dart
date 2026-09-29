@@ -313,6 +313,22 @@ class SessionProvenanceMetadata {
       ));
     }
 
+    if (actorQuantization.trim().isEmpty || actorQuantization == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'actorQuantization',
+        message: 'actorQuantization non specificata o sconosciuta',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+    if (evaluatorQuantization.trim().isEmpty ||
+        evaluatorQuantization == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'evaluatorQuantization',
+        message: 'evaluatorQuantization non specificata o sconosciuta',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+
     if (actorContextSize <= 0) {
       issues.add(const ProvenanceValidationIssue(
         field: 'actorContextSize',
@@ -358,6 +374,22 @@ class SessionProvenanceMetadata {
     }
 
     // 5. Host & Runtime
+    if (appVersion.trim().isEmpty || appVersion == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'appVersion',
+        message: 'appVersion non specificata o sconosciuta',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+    if (hardwareClass.trim().isEmpty ||
+        hardwareClass == 'unknown' ||
+        hardwareClass == 'generic') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'hardwareClass',
+        message: 'hardwareClass non specificata, generica o sconosciuta',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
     if (platform.trim().isEmpty || platform == 'unknown') {
       issues.add(const ProvenanceValidationIssue(
         field: 'platform',
@@ -372,11 +404,17 @@ class SessionProvenanceMetadata {
         severity: ProvenanceValidationSeverity.error,
       ));
     }
-    if (runtimeBackend.trim().isEmpty || runtimeBackend == 'unknown') {
+    if (runtimeBackend.trim().isEmpty) {
       issues.add(const ProvenanceValidationIssue(
         field: 'runtimeBackend',
-        message: 'runtimeBackend non specificato o sconosciuto',
+        message: 'runtimeBackend non specificato',
         severity: ProvenanceValidationSeverity.error,
+      ));
+    } else if (runtimeBackend == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'runtimeBackend',
+        message: 'runtimeBackend non ancora determinato o sconosciuto',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
       ));
     }
     if (runtimeAcceleration.trim().isEmpty ||

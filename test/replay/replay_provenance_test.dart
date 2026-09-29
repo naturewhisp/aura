@@ -173,6 +173,44 @@ void main() {
               .issues
               .any((i) => i.field == 'evaluatorContextSize'),
           isTrue);
+
+      final unknownActorQuant =
+          fullMetadata.copyWith(actorQuantization: 'unknown');
+      expect(unknownActorQuant.isDatasetEligible, isFalse);
+      expect(
+          unknownActorQuant
+              .validate()
+              .issues
+              .any((i) => i.field == 'actorQuantization'),
+          isTrue);
+
+      final unknownEvalQuant =
+          fullMetadata.copyWith(evaluatorQuantization: 'unknown');
+      expect(unknownEvalQuant.isDatasetEligible, isFalse);
+      expect(
+          unknownEvalQuant
+              .validate()
+              .issues
+              .any((i) => i.field == 'evaluatorQuantization'),
+          isTrue);
+
+      final genericHardware = fullMetadata.copyWith(hardwareClass: 'generic');
+      expect(genericHardware.isDatasetEligible, isFalse);
+      expect(
+          genericHardware
+              .validate()
+              .issues
+              .any((i) => i.field == 'hardwareClass'),
+          isTrue);
+
+      final unknownAppVersion = fullMetadata.copyWith(appVersion: 'unknown');
+      expect(unknownAppVersion.isDatasetEligible, isFalse);
+      expect(
+          unknownAppVersion
+              .validate()
+              .issues
+              .any((i) => i.field == 'appVersion'),
+          isTrue);
     });
 
     test('gestisce fallback retrocompatibile su contextSize unificato', () {
@@ -379,20 +417,26 @@ void main() {
 
   group('ReplayLogger con Provenance e Invariante Session ID', () {
     test('roundtrip con sessionProvenance e turni registrati', () {
-      final sessionProv = SessionProvenanceFactory.create(
+      final sessionProv = SessionProvenanceFactory.fromRuntimeObservation(
         sessionId: 'session-logger-1',
         datasetSource: DatasetSource.humanPlaytest,
         platform: 'windows',
         osVersion: 'Windows 11',
         architecture: 'x86_64',
+        hardwareClass: 'pc_windows_x86_64',
         gitCommit: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
+        appVersion: '0.1.0',
         runtimeBackend: 'managed_llama_server',
         runtimeAcceleration: 'cuda',
         llamaCppBuild: 'b4210',
         actorModelId: 'google/gemma-4-12b-qat',
         actorModelSha256: validSha256Actor,
+        actorQuantization: 'Q4_0',
+        actorContextSize: 8192,
         evaluatorModelId: 'mistralai/ministral-3-3b',
         evaluatorModelSha256: validSha256Eval,
+        evaluatorQuantization: 'Q4_K_M',
+        evaluatorContextSize: 4096,
       );
 
       final logger = ReplayLogger(
@@ -456,20 +500,26 @@ void main() {
     test(
         'simulazioni sintetiche complete sono curatable ma categoricamente NON loraTrainingEligible',
         () {
-      final simProv = SessionProvenanceFactory.create(
+      final simProv = SessionProvenanceFactory.fromRuntimeObservation(
         sessionId: 'session-sim-1',
         datasetSource: DatasetSource.syntheticSimulation,
         platform: 'windows',
         osVersion: 'Windows 11',
         architecture: 'x86_64',
+        hardwareClass: 'pc_windows_x86_64',
         gitCommit: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
+        appVersion: '0.1.0',
         runtimeBackend: 'managed_llama_server',
         runtimeAcceleration: 'cuda',
         llamaCppBuild: 'b4210',
         actorModelId: 'google/gemma-4-12b-qat',
         actorModelSha256: validSha256Actor,
+        actorQuantization: 'Q4_0',
+        actorContextSize: 8192,
         evaluatorModelId: 'mistralai/ministral-3-3b',
         evaluatorModelSha256: validSha256Eval,
+        evaluatorQuantization: 'Q4_K_M',
+        evaluatorContextSize: 4096,
       );
 
       final val = simProv.validate();
@@ -553,10 +603,18 @@ void main() {
       expect(prov.sessionId, equals('factory-test-session'));
       expect(prov.platform, isNotEmpty);
       expect(prov.architecture, isNotEmpty);
+      expect(prov.actorModelId, equals('unknown'));
       expect(prov.actorModelSha256, isEmpty);
+      expect(prov.actorQuantization, equals('unknown'));
+      expect(prov.actorContextSize, equals(0));
+      expect(prov.evaluatorModelId, equals('unknown'));
       expect(prov.evaluatorModelSha256, isEmpty);
+      expect(prov.evaluatorQuantization, equals('unknown'));
+      expect(prov.evaluatorContextSize, equals(0));
+      expect(prov.runtimeBackend, equals('unknown'));
       expect(prov.runtimeAcceleration, equals('unknown'));
       expect(prov.llamaCppBuild, equals('unknown'));
+      expect(prov.appVersion, equals('unknown'));
       // È strutturalmente valida come record base, ma scientificamente incompleta
       expect(prov.isStructurallyValid, isTrue);
       expect(prov.isScientificallyComplete, isFalse);
@@ -564,23 +622,48 @@ void main() {
       expect(prov.isLoraTrainingEligible, isFalse);
     });
 
-    test(
-        'con parametri espliciti osservati completi, produce provenance pienamente valida ed eligible',
+    test('createIncomplete produce metadati identici ai default fail-closed',
         () {
-      final prov = SessionProvenanceFactory.create(
+      final incomplete = SessionProvenanceFactory.createIncomplete(
+        sessionId: 'factory-incomplete-session',
+        datasetSource: DatasetSource.humanPlaytest,
+      );
+
+      expect(incomplete.sessionId, equals('factory-incomplete-session'));
+      expect(incomplete.actorModelId, equals('unknown'));
+      expect(incomplete.evaluatorModelId, equals('unknown'));
+      expect(incomplete.actorQuantization, equals('unknown'));
+      expect(incomplete.evaluatorQuantization, equals('unknown'));
+      expect(incomplete.actorContextSize, equals(0));
+      expect(incomplete.evaluatorContextSize, equals(0));
+      expect(incomplete.runtimeBackend, equals('unknown'));
+      expect(incomplete.appVersion, equals('unknown'));
+      expect(incomplete.isScientificallyComplete, isFalse);
+    });
+
+    test(
+        'fromRuntimeObservation con osservazioni complete produce provenance pienamente valida ed eligible',
+        () {
+      final prov = SessionProvenanceFactory.fromRuntimeObservation(
         sessionId: 'factory-full-session',
         datasetSource: DatasetSource.humanPlaytest,
         platform: 'windows',
         osVersion: 'Windows 11',
         architecture: 'x86_64',
+        hardwareClass: 'pc_windows_x86_64',
         gitCommit: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
+        appVersion: '0.1.0',
         runtimeBackend: 'managed_llama_server',
         runtimeAcceleration: 'cuda',
         llamaCppBuild: 'b4210',
         actorModelId: 'google/gemma-4-12b-qat',
         actorModelSha256: validSha256Actor,
+        actorQuantization: 'Q4_0',
+        actorContextSize: 8192,
         evaluatorModelId: 'mistralai/ministral-3-3b',
         evaluatorModelSha256: validSha256Eval,
+        evaluatorQuantization: 'Q4_K_M',
+        evaluatorContextSize: 4096,
       );
 
       expect(prov.isStructurallyValid, isTrue);

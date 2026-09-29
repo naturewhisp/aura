@@ -294,7 +294,7 @@ class GameControllerNotifier extends ChangeNotifier {
   ReplayLogger _createLogger(String sessionId) {
     return ReplayLogger(
       sessionId: sessionId,
-      sessionProvenance: SessionProvenanceFactory.create(
+      sessionProvenance: SessionProvenanceFactory.createIncomplete(
         sessionId: sessionId,
         datasetSource: DatasetSource.humanPlaytest,
         actorModelId: actorModelId,
@@ -598,6 +598,25 @@ class GameControllerNotifier extends ChangeNotifier {
             actorModelId: topology.actor.modelId,
             evaluatorModelId: topology.evaluator.modelId,
           );
+
+          final catalog = ModelCatalog.initialDefault();
+          final actorCatalog = catalog.findModel(topology.actor.modelId);
+          final evaluatorCatalog =
+              catalog.findModel(topology.evaluator.modelId);
+          if (logger.sessionProvenance != null) {
+            logger.sessionProvenance = logger.sessionProvenance!.copyWith(
+              runtimeBackend: 'managed_llama_server',
+              actorModelId: topology.actor.modelId,
+              actorModelSha256: actorProvenance?.expectedSha256,
+              actorQuantization: actorCatalog?.quantization,
+              actorContextSize: topology.actor.serverConfiguration.contextSize,
+              evaluatorModelId: topology.evaluator.modelId,
+              evaluatorModelSha256: evaluatorProvenance?.expectedSha256,
+              evaluatorQuantization: evaluatorCatalog?.quantization,
+              evaluatorContextSize:
+                  topology.evaluator.serverConfiguration.contextSize,
+            );
+          }
         case ExternalResolution(:final endpoint):
           onProgress?.call(
               0.30, 'AURA_INIT> EXTERNAL OPENAI ENDPOINT RESOLVED: $endpoint');
@@ -1333,7 +1352,7 @@ class GameControllerNotifier extends ChangeNotifier {
       if (await replayFile.exists()) {
         final replayContent = await replayFile.readAsString();
         logger = ReplayLogger.fromJson(jsonDecode(replayContent));
-        logger.sessionProvenance ??= SessionProvenanceFactory.create(
+        logger.sessionProvenance ??= SessionProvenanceFactory.createIncomplete(
           sessionId: state.sessionId,
           datasetSource: DatasetSource.humanPlaytest,
           actorModelId: actorModelId,

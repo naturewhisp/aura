@@ -1907,13 +1907,21 @@ void _sessionTests() {
       // Se arricchita con metadati completi verificati, la sessione diventa eleggibile
       notifier.logger.sessionProvenance =
           notifier.logger.sessionProvenance!.copyWith(
+        appVersion: '0.1.0',
+        runtimeBackend: 'managed_llama_server',
         gitCommit: '2fa8cea71c7263b65ef345f1b13ec1e89cf29900',
         runtimeAcceleration: 'cuda',
         llamaCppBuild: 'b4210',
+        actorModelId: 'google/gemma-4-12b-qat',
         actorModelSha256:
             'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        actorQuantization: 'Q4_0',
+        actorContextSize: 8192,
+        evaluatorModelId: 'mistralai/ministral-3-3b',
         evaluatorModelSha256:
             'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        evaluatorQuantization: 'Q4_K_M',
+        evaluatorContextSize: 4096,
       );
       final enrichedVal = notifier.logger.validateProvenance();
       expect(enrichedVal.isStructurallyValid, isTrue);

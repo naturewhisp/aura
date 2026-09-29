@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:isolate';
 import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
@@ -57,8 +58,11 @@ final class DefaultRuntimeBundleIntegrityVerifier
     final corrupted = <String>[];
 
     for (final entry in variant.files) {
+      final normalizedEntryPath = Platform.isWindows
+          ? entry.path.replaceAll('/', '\\')
+          : entry.path.replaceAll('\\', '/');
       final absoluteFilePath =
-          '$runtimeRootPath\\${entry.path.replaceAll('/', '\\')}';
+          '$runtimeRootPath${Platform.pathSeparator}$normalizedEntryPath';
 
       if (!await _fileSystem.fileExists(absoluteFilePath)) {
         missing.add(entry.path);

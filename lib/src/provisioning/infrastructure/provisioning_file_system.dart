@@ -231,7 +231,8 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       }
       await for (final entity in sourceDir.list(recursive: false)) {
         final relativeName = entity.path.substring(sourceDir.path.length + 1);
-        final destPath = '${targetDir.path}\\$relativeName';
+        final destPath =
+            '${targetDir.path}${Platform.pathSeparator}$relativeName';
 
         if (entity is Directory) {
           await copyDirectory(entity.path, destPath);

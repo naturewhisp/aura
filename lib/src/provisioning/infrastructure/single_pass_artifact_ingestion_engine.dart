@@ -130,7 +130,7 @@ final class SinglePassArtifactIngestionEngine {
     );
 
     final finalInstallPath =
-        '${_pathResolver.appManagedRoot}\\$relativeInstallPath';
+        '${_pathResolver.appManagedRoot}${Platform.pathSeparator}$relativeInstallPath';
     final temporaryInstallPath = '$finalInstallPath.installing-$operationId';
 
     // sourceKind derivato univocamente da sourceOwnership
@@ -146,7 +146,7 @@ final class SinglePassArtifactIngestionEngine {
     await _fileSystem.createDirectory(temporaryInstallPath);
 
     final destinationFilePath =
-        '$temporaryInstallPath\\${provenanceSnapshot.fileName}';
+        '$temporaryInstallPath${Platform.pathSeparator}${provenanceSnapshot.fileName}';
 
     int bytesRead = 0;
     String calculatedSha256 = '';
@@ -386,7 +386,7 @@ final class SinglePassArtifactIngestionEngine {
     );
 
     final finalInstallPath =
-        '${_pathResolver.appManagedRoot}\\$relativeInstallPath';
+        '${_pathResolver.appManagedRoot}${Platform.pathSeparator}$relativeInstallPath';
     final temporaryInstallPath = '$finalInstallPath.installing-$operationId';
 
     // Pulisce eventuale .installing residuo
@@ -400,7 +400,7 @@ final class SinglePassArtifactIngestionEngine {
 
       // Rename placeholder → nome canonico (avviene PRIMA della scrittura di record e marker)
       final canonicalFilePath =
-          '$temporaryInstallPath\\${matchedSnapshot.fileName}';
+          '$temporaryInstallPath${Platform.pathSeparator}${matchedSnapshot.fileName}';
       await _fileSystem.renameFile(
           placeholderPath.replaceFirst(localTempDir, temporaryInstallPath),
           canonicalFilePath);
@@ -464,7 +464,8 @@ final class SinglePassArtifactIngestionEngine {
       status: InstallationStatus.verified,
     );
 
-    final recordJsonPath = '$temporaryInstallPath\\installation_record.json';
+    final recordJsonPath =
+        '$temporaryInstallPath${Platform.pathSeparator}installation_record.json';
     await _fileSystem.writeStringRecoverably(
       recordJsonPath,
       const JsonEncoder.withIndent('  ').convert(descriptor.toJson()),
@@ -478,7 +479,8 @@ final class SinglePassArtifactIngestionEngine {
       'sha256': calculatedSha256,
       'preparedAtUtc': nowIso,
     };
-    final markerJsonPath = '$temporaryInstallPath\\commit.marker';
+    final markerJsonPath =
+        '$temporaryInstallPath${Platform.pathSeparator}commit.marker';
     await _fileSystem.writeStringRecoverably(
       markerJsonPath,
       const JsonEncoder.withIndent('  ').convert(markerPayload),

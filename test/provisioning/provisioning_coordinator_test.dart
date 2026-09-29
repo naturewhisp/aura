@@ -298,10 +298,11 @@ void main() {
         manifest: sampleManifest,
       );
 
-      await coordinator.activateInstallation(
+      final actRes = await coordinator.activateInstallation(
         installationId: provRes.installationId!,
         operationId: 'op-act-1',
       );
+      expect(actRes.success, isTrue);
 
       final remRes = await coordinator.removeInstallation(
         installationId: provRes.installationId!,

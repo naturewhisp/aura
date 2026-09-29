@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:meta/meta.dart';
 import '../domain/runtime_manifest.dart';
 import 'provisioning_file_system.dart';
@@ -66,16 +67,17 @@ final class DefaultRuntimeManifestRepository
   @override
   Future<RuntimeManifestReadResult> readManifestResult(
       {String? customRoot}) async {
+    final sep = Platform.pathSeparator;
     final searchRoots = [
       if (customRoot != null && customRoot.trim().isNotEmpty) customRoot.trim(),
-      '${_pathResolver.bundledRoot}\\runtime',
-      '${_pathResolver.appManagedRoot}\\runtime',
+      '${_pathResolver.bundledRoot}${sep}runtime',
+      '${_pathResolver.appManagedRoot}${sep}runtime',
       _pathResolver.bundledRoot,
       _pathResolver.appManagedRoot,
     ];
 
     for (final root in searchRoots) {
-      final candidatePath = '$root\\runtime-manifest.json';
+      final candidatePath = '$root${sep}runtime-manifest.json';
       if (await _fileSystem.fileExists(candidatePath)) {
         try {
           final content = await _fileSystem.readAsString(candidatePath);

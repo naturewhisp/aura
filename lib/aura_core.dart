@@ -28,6 +28,8 @@ export 'src/override/override_resolver.dart';
 export 'src/models/provenance/dataset_source.dart';
 export 'src/models/provenance/session_provenance_metadata.dart';
 export 'src/models/provenance/turn_generation_provenance.dart';
+export 'src/models/provenance/provenance_validation.dart';
+export 'src/models/provenance/session_provenance_factory.dart';
 export 'src/replay_logger.dart';
 export 'src/constants.dart';
 

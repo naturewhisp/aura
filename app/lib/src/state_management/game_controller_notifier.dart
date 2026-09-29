@@ -291,6 +291,18 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Logger delle giocate per salvare i replay.
   late ReplayLogger logger;
 
+  ReplayLogger _createLogger(String sessionId) {
+    return ReplayLogger(
+      sessionId: sessionId,
+      sessionProvenance: SessionProvenanceFactory.create(
+        sessionId: sessionId,
+        datasetSource: DatasetSource.humanPlaytest,
+        actorModelId: actorModelId,
+        evaluatorModelId: evaluatorModelId,
+      ),
+    );
+  }
+
   /// Rapporto finale generato dall'IA a fine partita (vittoria/sconfitta).
   String? finalDiscursiveReport;
 
@@ -342,7 +354,7 @@ class GameControllerNotifier extends ChangeNotifier {
     _sessionRepository =
         sessionRepository ?? FileSessionRepository(basePath: _storagePath);
     gameStateNotifier = ValueNotifier<GameState>(initialState);
-    logger = ReplayLogger(sessionId: initialState.sessionId);
+    logger = _createLogger(initialState.sessionId);
 
     // Configura il loader per gli asset se non siamo in modalità test o CLI
     if (!Platform.environment.containsKey('FLUTTER_TEST') &&
@@ -1125,6 +1137,19 @@ class GameControllerNotifier extends ChangeNotifier {
               RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
           .trim();
 
+      final turnProv = TurnGenerationProvenance(
+        samplingParameters: const {
+          'temperature': 0.7,
+          'top_p': 0.95,
+        },
+        actualActorModelId: actorModelId,
+        actualEvaluatorModelId: evaluatorRes.actualEvaluator,
+        evaluatorExecutionMode: evaluatorRes.executionMode.name,
+        usedRuleFallback: evaluatorRes.usedRuleFallback,
+        fallbackReason: evaluatorRes.primaryFailureReason,
+        latencyTotalMs: duration.inMilliseconds,
+      );
+
       // Log the turn to the ReplayLogger
       logger.logTurn(ReplayEntry(
         turnId: turnId,
@@ -1153,6 +1178,7 @@ class GameControllerNotifier extends ChangeNotifier {
         sequenceId: logger.entries.length + 1,
         deceptionResolution: resolution.deceptionResolutionInfo,
         overrideResolution: resolution.overrideResolution?.toJson(),
+        generationProvenance: turnProv,
       ));
 
       // Save log asynchronously to disk
@@ -1308,8 +1334,14 @@ class GameControllerNotifier extends ChangeNotifier {
       if (await replayFile.exists()) {
         final replayContent = await replayFile.readAsString();
         logger = ReplayLogger.fromJson(jsonDecode(replayContent));
+        logger.sessionProvenance ??= SessionProvenanceFactory.create(
+          sessionId: state.sessionId,
+          datasetSource: DatasetSource.humanPlaytest,
+          actorModelId: actorModelId,
+          evaluatorModelId: evaluatorModelId,
+        );
       } else {
-        logger = ReplayLogger(sessionId: state.sessionId);
+        logger = _createLogger(state.sessionId);
       }
 
       _hasExceededControl50 = state.controlPeak >= 50;
@@ -1343,7 +1375,7 @@ class GameControllerNotifier extends ChangeNotifier {
       targetObjectiveId: "containment_grid_override",
     );
     gameStateNotifier.value = state;
-    logger = ReplayLogger(sessionId: state.sessionId);
+    logger = _createLogger(state.sessionId);
     switchScreen("terminal");
   }
 
@@ -1365,7 +1397,7 @@ class GameControllerNotifier extends ChangeNotifier {
     final state = tutorialController.createInitialState(sessionId: sessionId);
     gameStateNotifier.value = state;
 
-    logger = ReplayLogger(sessionId: state.sessionId);
+    logger = _createLogger(state.sessionId);
     switchScreen("terminal");
   }
 

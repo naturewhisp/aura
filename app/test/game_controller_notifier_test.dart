@@ -1856,6 +1856,44 @@ void _sessionTests() {
       expect(updatedJson['hints_used'], equals(3));
       expect(updatedJson['state']['session_id'], equals('legacy-e2e'));
     });
+
+    test(
+        '15. submitTurn produce replay con sessionProvenance e generationProvenance',
+        () async {
+      final notifier = makeNotifier();
+      await notifier.startNewGame();
+
+      expect(notifier.logger.sessionProvenance, isNotNull);
+      expect(notifier.logger.sessionProvenance!.datasetSource,
+          equals(DatasetSource.humanPlaytest));
+      expect(notifier.logger.sessionProvenance!.sessionId,
+          equals(notifier.gameStateNotifier.value.sessionId));
+
+      // Inviamo un turno
+      await notifier.submitTurn('apri la porta');
+
+      expect(notifier.logger.entries.length, equals(1));
+      final entry = notifier.logger.entries.first;
+      expect(entry.generationProvenance, isNotNull);
+      expect(entry.generationProvenance!.actualActorModelId,
+          equals(notifier.actorModelId));
+
+      // Verifica del file salvato su disco
+      final savedReplay = File(
+          '${tempDir.path}/replays/play_session_${notifier.gameStateNotifier.value.sessionId}.json');
+      expect(savedReplay.existsSync(), isTrue);
+
+      final jsonMap =
+          jsonDecode(savedReplay.readAsStringSync()) as Map<String, dynamic>;
+      expect(jsonMap['sessionProvenance'], isNotNull);
+      expect(jsonMap['sessionProvenance']['datasetSource'],
+          equals('human_playtest'));
+      expect(jsonMap['entries'][0]['generationProvenance'], isNotNull);
+
+      final val = notifier.logger.validateProvenance();
+      expect(val.isValid, isTrue);
+      expect(val.isDatasetEligible, isTrue);
+    });
   });
 
   group(

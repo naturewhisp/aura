@@ -233,7 +233,21 @@ Opzioni Managed llama-server:
       targetObjectiveId: "containment_grid_override",
     );
 
-    final logger = ReplayLogger(sessionId: state.sessionId);
+    final logger = ReplayLogger(
+      sessionId: state.sessionId,
+      sessionProvenance: SessionProvenanceFactory.create(
+        sessionId: state.sessionId,
+        datasetSource: DatasetSource.developerEvaluation,
+        actorModelId: runtimeConfig.actorModelId,
+        evaluatorModelId: runtimeConfig.evaluatorModelId,
+        runtimeBackend:
+            result.runtimeMode == ApplicationRuntimeMode.managedLlamaServer
+                ? 'managed_llama_server'
+                : (result.runtimeMode == ApplicationRuntimeMode.ruleBased
+                    ? 'rule_based'
+                    : 'external_http'),
+      ),
+    );
     final activeBridge = result.activeBridge;
     const characterProfile = kPanopticonCharacterProfile;
 
@@ -344,6 +358,19 @@ Opzioni Managed llama-server:
               RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
           .trim();
 
+      final turnProv = TurnGenerationProvenance(
+        samplingParameters: const {
+          'temperature': 0.7,
+          'top_p': 0.95,
+        },
+        actualActorModelId: 'aura.actor.primary',
+        actualEvaluatorModelId: evaluatorRes.actualEvaluator,
+        evaluatorExecutionMode: evaluatorRes.executionMode.name,
+        usedRuleFallback: evaluatorRes.usedRuleFallback,
+        fallbackReason: evaluatorRes.primaryFailureReason,
+        latencyTotalMs: duration.inMilliseconds,
+      );
+
       logger.logTurn(ReplayEntry(
         turnId: turn,
         userInput: userInput,
@@ -361,6 +388,7 @@ Opzioni Managed llama-server:
         actorModel: 'aura.actor.primary',
         latencyTotalMs: duration.inMilliseconds,
         eventId: "cli-req-$turn-evt",
+        generationProvenance: turnProv,
       ));
 
       print(TermColor.paint("\nPANOPTICON:", TermColor.magenta, isBold: true));

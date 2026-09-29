@@ -111,7 +111,21 @@ void main(List<String> args) async {
       targetObjectiveId: "containment_grid_override",
     );
 
-    final logger = ReplayLogger(sessionId: state.sessionId);
+    final logger = ReplayLogger(
+      sessionId: state.sessionId,
+      sessionProvenance: SessionProvenanceFactory.create(
+        sessionId: state.sessionId,
+        datasetSource: DatasetSource.syntheticSimulation,
+        actorModelId: actorModel,
+        evaluatorModelId: evaluatorModel,
+        runtimeBackend:
+            result.runtimeMode == ApplicationRuntimeMode.managedLlamaServer
+                ? 'managed_llama_server'
+                : (result.runtimeMode == ApplicationRuntimeMode.ruleBased
+                    ? 'rule_based'
+                    : 'external_http'),
+      ),
+    );
 
     if (mode == 'static') {
       final inputs = staticPaths[path] ?? staticPaths['victory']!;
@@ -251,6 +265,19 @@ Future<void> runStaticSimulation({
             RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
         .trim();
 
+    final turnProv = TurnGenerationProvenance(
+      samplingParameters: const {
+        'temperature': 0.7,
+        'top_p': 0.95,
+      },
+      actualActorModelId: isOnline ? actorModel : 'static_fallback',
+      actualEvaluatorModelId: evaluatorRes.actualEvaluator,
+      evaluatorExecutionMode: evaluatorRes.executionMode.name,
+      usedRuleFallback: evaluatorRes.usedRuleFallback,
+      fallbackReason: evaluatorRes.primaryFailureReason,
+      latencyTotalMs: duration.inMilliseconds,
+    );
+
     logger.logTurn(ReplayEntry(
       turnId: turn,
       userInput: userInput,
@@ -271,6 +298,7 @@ Future<void> runStaticSimulation({
       eventType: ReplayEventType.userTurn,
       gameplayTurnId: turn,
       sequenceId: logger.entries.length + 1,
+      generationProvenance: turnProv,
     ));
 
     if (outcome == GameOutcome.victory) {
@@ -401,6 +429,19 @@ Future<void> runInteractiveSimulation({
             RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
         .trim();
 
+    final turnProv = TurnGenerationProvenance(
+      samplingParameters: const {
+        'temperature': 0.7,
+        'top_p': 0.95,
+      },
+      actualActorModelId: actorModel,
+      actualEvaluatorModelId: evaluatorRes.actualEvaluator,
+      evaluatorExecutionMode: evaluatorRes.executionMode.name,
+      usedRuleFallback: evaluatorRes.usedRuleFallback,
+      fallbackReason: evaluatorRes.primaryFailureReason,
+      latencyTotalMs: duration.inMilliseconds,
+    );
+
     logger.logTurn(ReplayEntry(
       turnId: turn,
       userInput: userInput,
@@ -421,6 +462,7 @@ Future<void> runInteractiveSimulation({
       eventType: ReplayEventType.userTurn,
       gameplayTurnId: turn,
       sequenceId: logger.entries.length + 1,
+      generationProvenance: turnProv,
     ));
 
     if (outcome == GameOutcome.victory) {

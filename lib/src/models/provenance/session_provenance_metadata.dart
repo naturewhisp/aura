@@ -1,6 +1,7 @@
 import 'package:meta/meta.dart';
 
 import 'dataset_source.dart';
+import 'provenance_validation.dart';
 
 /// Metadati di provenance a livello di sessione di gioco per la curatela del dataset (Fase 8).
 ///
@@ -258,6 +259,142 @@ class SessionProvenanceMetadata {
         evaluatorContextSize,
         Object.hash(sessionId, anonymizedTesterId),
       ]);
+
+  /// Valida la consistenza strutturale e l'integrità scientifica della provenance.
+  ProvenanceValidationResult validate() {
+    final issues = <ProvenanceValidationIssue>[];
+
+    // 1. Schema version
+    if (schemaVersion.trim().isEmpty || schemaVersion == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'schemaVersion',
+        message: 'schemaVersion non specificata o sconosciuta',
+        severity: ProvenanceValidationSeverity.error,
+      ));
+    }
+
+    // 2. Dataset source
+    if (datasetSource == DatasetSource.unknown) {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'datasetSource',
+        message:
+            'datasetSource non classificata (unknown): disqualificato da dataset',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+
+    // 3. Git commit SHA (esadecimale da 7 a 40 caratteri, non 'unknown')
+    final commitHex = RegExp(r'^[0-9a-fA-F]{7,40}$');
+    if (gitCommit.trim().isEmpty ||
+        gitCommit == 'unknown' ||
+        !commitHex.hasMatch(gitCommit.trim())) {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'gitCommit',
+        message: 'gitCommit non è un hash commit SHA valido',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+
+    // 4. Modelli e parametri contextSize
+    if (actorModelId.trim().isEmpty ||
+        actorModelId == 'unknown' ||
+        actorModelId == 'none') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'actorModelId',
+        message: 'actorModelId non specificato o sconosciuto',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+    if (evaluatorModelId.trim().isEmpty || evaluatorModelId == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'evaluatorModelId',
+        message: 'evaluatorModelId non specificato o sconosciuto',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+
+    if (actorContextSize <= 0) {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'actorContextSize',
+        message: 'actorContextSize deve essere maggiore di zero',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+    if (evaluatorContextSize <= 0) {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'evaluatorContextSize',
+        message: 'evaluatorContextSize deve essere maggiore di zero',
+        severity: ProvenanceValidationSeverity.datasetDisqualifier,
+      ));
+    }
+
+    // Se backend managed_llama_server, gli hash sha256 dei modelli devono essere validi (64 char hex)
+    final sha256Hex = RegExp(r'^[0-9a-fA-F]{64}$');
+    if (runtimeBackend == 'managed_llama_server') {
+      if (!sha256Hex.hasMatch(actorModelSha256.trim())) {
+        issues.add(const ProvenanceValidationIssue(
+          field: 'actorModelSha256',
+          message:
+              'actorModelSha256 deve essere un hash SHA-256 esadecimale a 64 caratteri valido per managed_llama_server',
+          severity: ProvenanceValidationSeverity.datasetDisqualifier,
+        ));
+      }
+      if (!sha256Hex.hasMatch(evaluatorModelSha256.trim())) {
+        issues.add(const ProvenanceValidationIssue(
+          field: 'evaluatorModelSha256',
+          message:
+              'evaluatorModelSha256 deve essere un hash SHA-256 esadecimale a 64 caratteri valido per managed_llama_server',
+          severity: ProvenanceValidationSeverity.datasetDisqualifier,
+        ));
+      }
+    }
+
+    // 5. Host & Runtime
+    if (platform.trim().isEmpty || platform == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'platform',
+        message: 'platform non specificata o sconosciuta',
+        severity: ProvenanceValidationSeverity.error,
+      ));
+    }
+    if (architecture.trim().isEmpty || architecture == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'architecture',
+        message: 'architecture non specificata o sconosciuta',
+        severity: ProvenanceValidationSeverity.error,
+      ));
+    }
+    if (runtimeBackend.trim().isEmpty || runtimeBackend == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'runtimeBackend',
+        message: 'runtimeBackend non specificato o sconosciuto',
+        severity: ProvenanceValidationSeverity.error,
+      ));
+    }
+    if (runtimeAcceleration.trim().isEmpty ||
+        runtimeAcceleration == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'runtimeAcceleration',
+        message: 'runtimeAcceleration non specificata o sconosciuta',
+        severity: ProvenanceValidationSeverity.error,
+      ));
+    }
+    if (sessionId.trim().isEmpty || sessionId == 'unknown') {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'sessionId',
+        message: 'sessionId non specificato o sconosciuto',
+        severity: ProvenanceValidationSeverity.error,
+      ));
+    }
+
+    return ProvenanceValidationResult(issues);
+  }
+
+  /// Indica se la provenance soddisfa tutti i vincoli strutturali.
+  bool get isComplete => validate().isValid;
+
+  /// Indica se la provenance è valida ed eleggibile per il dataset ML (Fase 8).
+  bool get isDatasetEligible => validate().isDatasetEligible;
 
   @override
   String toString() =>

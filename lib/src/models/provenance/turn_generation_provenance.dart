@@ -23,40 +23,56 @@ class TurnGenerationProvenance {
   /// Indica se l'inferenza primaria neurale è fallita ed è intervenuto il fallback deterministico.
   final bool usedRuleFallback;
 
+  /// Motivo diagnostico sanitizzato del fallback deterministico (se intervenuto).
+  final String? fallbackReason;
+
   /// Latenza totale di elaborazione misurata per questo turno (ms).
   final int latencyTotalMs;
 
-  const TurnGenerationProvenance({
-    required this.samplingParameters,
+  TurnGenerationProvenance({
+    Map<String, dynamic> samplingParameters = const {},
     required this.actualActorModelId,
     required this.actualEvaluatorModelId,
     this.evaluatorExecutionMode,
     this.usedRuleFallback = false,
+    this.fallbackReason,
     required this.latencyTotalMs,
-  });
+  }) : samplingParameters = Map.unmodifiable(samplingParameters);
 
   /// Converte l'istanza in una mappa JSON.
   Map<String, dynamic> toJson() => {
-        'samplingParameters': samplingParameters,
+        'samplingParameters': Map<String, dynamic>.from(samplingParameters),
         'actualActorModelId': actualActorModelId,
         'actualEvaluatorModelId': actualEvaluatorModelId,
         if (evaluatorExecutionMode != null)
           'evaluatorExecutionMode': evaluatorExecutionMode,
         'usedRuleFallback': usedRuleFallback,
+        if (fallbackReason != null) 'fallbackReason': fallbackReason,
         'latencyTotalMs': latencyTotalMs,
       };
 
   /// Ripristina un'istanza [TurnGenerationProvenance] a partire da una mappa JSON.
   factory TurnGenerationProvenance.fromJson(Map<String, dynamic> json) {
+    final rawParams =
+        (json['samplingParameters'] ?? json['sampling_parameters']) as Map? ??
+            const {};
     return TurnGenerationProvenance(
-      samplingParameters: Map<String, dynamic>.from(
-          json['samplingParameters'] as Map? ?? const {}),
-      actualActorModelId: json['actualActorModelId'] as String? ?? 'unknown',
-      actualEvaluatorModelId:
-          json['actualEvaluatorModelId'] as String? ?? 'unknown',
-      evaluatorExecutionMode: json['evaluatorExecutionMode'] as String?,
-      usedRuleFallback: json['usedRuleFallback'] as bool? ?? false,
-      latencyTotalMs: json['latencyTotalMs'] as int? ?? 0,
+      samplingParameters: Map<String, dynamic>.from(rawParams),
+      actualActorModelId: json['actualActorModelId'] as String? ??
+          json['actual_actor_model_id'] as String? ??
+          'unknown',
+      actualEvaluatorModelId: json['actualEvaluatorModelId'] as String? ??
+          json['actual_evaluator_model_id'] as String? ??
+          'unknown',
+      evaluatorExecutionMode: (json['evaluatorExecutionMode'] ??
+          json['evaluator_execution_mode']) as String?,
+      usedRuleFallback:
+          (json['usedRuleFallback'] ?? json['used_rule_fallback']) as bool? ??
+              false,
+      fallbackReason:
+          (json['fallbackReason'] ?? json['fallback_reason']) as String?,
+      latencyTotalMs:
+          (json['latencyTotalMs'] ?? json['latency_total_ms']) as int? ?? 0,
     );
   }
 
@@ -67,6 +83,7 @@ class TurnGenerationProvenance {
     String? actualEvaluatorModelId,
     String? evaluatorExecutionMode,
     bool? usedRuleFallback,
+    String? fallbackReason,
     int? latencyTotalMs,
   }) {
     return TurnGenerationProvenance(
@@ -77,6 +94,7 @@ class TurnGenerationProvenance {
       evaluatorExecutionMode:
           evaluatorExecutionMode ?? this.evaluatorExecutionMode,
       usedRuleFallback: usedRuleFallback ?? this.usedRuleFallback,
+      fallbackReason: fallbackReason ?? this.fallbackReason,
       latencyTotalMs: latencyTotalMs ?? this.latencyTotalMs,
     );
   }
@@ -90,19 +108,27 @@ class TurnGenerationProvenance {
           actualEvaluatorModelId == other.actualEvaluatorModelId &&
           evaluatorExecutionMode == other.evaluatorExecutionMode &&
           usedRuleFallback == other.usedRuleFallback &&
+          fallbackReason == other.fallbackReason &&
           latencyTotalMs == other.latencyTotalMs &&
           _mapsEqual(samplingParameters, other.samplingParameters);
 
   @override
-  int get hashCode => Object.hash(
-        actualActorModelId,
-        actualEvaluatorModelId,
-        evaluatorExecutionMode,
-        usedRuleFallback,
-        latencyTotalMs,
-        Object.hashAll(
-            samplingParameters.entries.map((e) => Object.hash(e.key, e.value))),
-      );
+  int get hashCode {
+    final sortedEntries = samplingParameters.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final paramsHash = Object.hashAll(
+      sortedEntries.map((e) => Object.hash(e.key, e.value)),
+    );
+    return Object.hash(
+      actualActorModelId,
+      actualEvaluatorModelId,
+      evaluatorExecutionMode,
+      usedRuleFallback,
+      fallbackReason,
+      latencyTotalMs,
+      paramsHash,
+    );
+  }
 
   @override
   String toString() =>

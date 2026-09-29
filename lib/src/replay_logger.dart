@@ -1,5 +1,6 @@
 import 'package:meta/meta.dart';
 import 'models/evaluator_delta.dart';
+import 'models/provenance/provenance_validation.dart';
 import 'models/provenance/session_provenance_metadata.dart';
 import 'models/provenance/turn_generation_provenance.dart';
 import 'models/user_profile.dart';
@@ -343,16 +344,28 @@ class ReplayLogger {
   /// L'identificatore univoco della sessione di gioco associata.
   final String sessionId;
 
+  SessionProvenanceMetadata? _sessionProvenance;
+
   /// I metadati di provenance dell'intera sessione di gioco.
-  SessionProvenanceMetadata? sessionProvenance;
+  SessionProvenanceMetadata? get sessionProvenance => _sessionProvenance;
+  set sessionProvenance(SessionProvenanceMetadata? val) {
+    if (val != null && val.sessionId != sessionId) {
+      throw ArgumentError(
+        'Disallineamento sessionId: ReplayLogger ha "$sessionId" ma sessionProvenance ha "${val.sessionId}"',
+      );
+    }
+    _sessionProvenance = val;
+  }
 
   final List<ReplayEntry> _entries = [];
 
   /// Inizializza il logger per la sessione specificata.
   ReplayLogger({
     required this.sessionId,
-    this.sessionProvenance,
-  });
+    SessionProvenanceMetadata? sessionProvenance,
+  }) {
+    this.sessionProvenance = sessionProvenance;
+  }
 
   /// Restituisce una lista non modificabile di tutte le voci registrate finora.
   List<ReplayEntry> get entries => List.unmodifiable(_entries);
@@ -367,13 +380,14 @@ class ReplayLogger {
 
   /// Ripristina un [ReplayLogger] da un JSON.
   factory ReplayLogger.fromJson(Map<String, dynamic> json) {
+    final parsedSessionId = json['session_id'] as String? ?? '';
     final provJson = json['sessionProvenance'] as Map<String, dynamic>? ??
         json['session_provenance'] as Map<String, dynamic>?;
     final prov =
         provJson != null ? SessionProvenanceMetadata.fromJson(provJson) : null;
 
     final logger = ReplayLogger(
-      sessionId: json['session_id'] as String? ?? '',
+      sessionId: parsedSessionId,
       sessionProvenance: prov,
     );
     final entriesList = json['entries'] as List? ?? const [];
@@ -385,6 +399,43 @@ class ReplayLogger {
     return logger;
   }
 
+  /// Esegue la validazione integrata della sessione e di tutti i turni registrati.
+  ///
+  /// Concretizza il principio: DESERIALIZABLE != VALID != DATASET ELIGIBLE.
+  ProvenanceValidationResult validateProvenance() {
+    if (_sessionProvenance == null) {
+      return const ProvenanceValidationResult([
+        ProvenanceValidationIssue(
+          field: 'sessionProvenance',
+          message: 'sessionProvenance assente nella sessione di replay',
+          severity: ProvenanceValidationSeverity.datasetDisqualifier,
+        ),
+      ]);
+    }
+    final issues = List<ProvenanceValidationIssue>.from(
+        _sessionProvenance!.validate().issues);
+
+    if (_entries.isEmpty) {
+      issues.add(const ProvenanceValidationIssue(
+        field: 'entries',
+        message: 'Nessun turno registrato nel replay',
+        severity: ProvenanceValidationSeverity.warning,
+      ));
+    } else {
+      final missingTurnProv =
+          _entries.where((e) => e.generationProvenance == null).length;
+      if (missingTurnProv > 0) {
+        issues.add(ProvenanceValidationIssue(
+          field: 'generationProvenance',
+          message:
+              '$missingTurnProv/${_entries.length} turni sono privi di generationProvenance',
+          severity: ProvenanceValidationSeverity.datasetDisqualifier,
+        ));
+      }
+    }
+    return ProvenanceValidationResult(issues);
+  }
+
   /// Pulisce l'intero registro dei replay.
   void clear() {
     _entries.clear();
@@ -392,11 +443,17 @@ class ReplayLogger {
 
   /// Esporta l'intera sessione in un formato serializzabile conforme alle specifiche TGDD.
   Map<String, dynamic> toJson() {
+    if (_sessionProvenance != null &&
+        _sessionProvenance!.sessionId != sessionId) {
+      throw StateError(
+        'Disallineamento critico sessionId: ReplayLogger.sessionId ($sessionId) != sessionProvenance.sessionId (${_sessionProvenance!.sessionId})',
+      );
+    }
     return {
       'session_id': sessionId,
       'total_turns': _entries.length,
-      if (sessionProvenance != null)
-        'sessionProvenance': sessionProvenance!.toJson(),
+      if (_sessionProvenance != null)
+        'sessionProvenance': _sessionProvenance!.toJson(),
       'entries': _entries.map((e) => e.toJson()).toList(),
     };
   }

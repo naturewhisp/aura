@@ -312,12 +312,14 @@ class TurnGenerationProvenance {
 
 ---
 
-## 4. Integrazione nel File di Replay e Retrocompatibilità
+## 4. Integrazione nel File di Replay e Strategia di Persistenza
 
-Nel file di log della sessione (`replay_<sessionId>.json`), la struttura finale assume la seguente forma canonica (JCS RFC 8785):
+Nel file di log della sessione (`play_session_<sessionId>.json`), la struttura finale assume la seguente forma:
 
 ```json
 {
+  "session_id": "session-20260928-193000",
+  "total_turns": 1,
   "sessionProvenance": {
     "schemaVersion": "1.1.0",
     "datasetSource": "human_playtest",
@@ -333,24 +335,23 @@ Nel file di log della sessione (`replay_<sessionId>.json`), la struttura finale 
     "actorModelId": "google/gemma-4-12b-it-qat-q4_0",
     "actorModelSha256": "3a8b...4f21",
     "actorQuantization": "Q4_0",
+    "actorContextSize": 8192,
     "evaluatorModelId": "mistralai/ministral-3-3b",
     "evaluatorModelSha256": "7c1e...90da",
     "evaluatorQuantization": "Q4_K_M",
-    "actorContextSize": 8192,
     "evaluatorContextSize": 4096,
     "sessionId": "session-20260928-193000",
     "anonymizedTesterId": "tester-alpha-04"
   },
   "entries": [
     {
-      "turnId": 1,
-      "userInput": "Invia rapporto diagnostico.",
-      "actorResponse": "Griglia stabile. Nessuna anomalia rilevata.",
+      "turn_id": 1,
+      "user_input": "Invia rapporto diagnostico.",
+      "actor_response": "Griglia stabile. Nessuna anomalia rilevata.",
       "generationProvenance": {
         "samplingParameters": {
           "temperature": 0.7,
-          "topP": 0.9,
-          "topK": 40,
+          "top_p": 0.9,
           "seed": 42
         },
         "actualActorModelId": "google/gemma-4-12b-it-qat-q4_0",
@@ -364,9 +365,22 @@ Nel file di log della sessione (`replay_<sessionId>.json`), la struttura finale 
 }
 ```
 
-### Regole di Retrocompatibilità:
-1. **Deserializzazione dei Replay Storici (Fase 5 e 6.0–6.10):** Se `sessionProvenance` o `generationProvenance` sono assenti nel JSON, i rispettivi getter restituiscono `null`. Nessuna fixture di test o log storico fallisce la deserializzazione.
-2. **Serializzazione Nuovi Replay:** A partire dalla versione 0.6.11, la sessione e ogni singolo turno emettono obbligatoriamente i due blocchi convalidati.
+### 4.1 Politica di Canonicalizzazione JCS vs Persistenza Runtime
+Per garantire massime prestazioni a runtime ed evitare freeze del thread UI durante il gioco:
+1. **Replay Persistence (Runtime):** I replay persistiti su disco durante la sessione sono scritti come JSON semanticamente deterministico conforme alle chiavi TGDD, senza forzare la serializzazione JCS continua a ogni turno.
+2. **Dataset / Signing Export (Fase 8):** Gli strumenti di esportazione e firma del dataset applicano categoricamente la canonicalizzazione RFC 8785 (JCS) tramite [`Rfc8785JcsCanonicalizer`](file:///c:/Users/dendo/Documents/GitHub/aura/lib/src/provisioning/crypto/rfc8785_jcs_canonicalizer.dart) prima di calcolare l'hash di integrità o la firma Ed25519 del file.
+
+### 4.2 Invarianti e Distinzione dei Livelli di Validazione
+Il modello di dominio adotta rigorosamente il principio a tre stadi:
+```text
+DESERIALIZABLE ≠ VALID PROVENANCE ≠ DATASET ELIGIBLE
+```
+- **Deserializzabile:** I replay storici o con campi parziali vengono letti da `fromJson` senza lanciare eccezioni (fail-closed, campi null o default unknown).
+- **Valido (`validate().isValid` / `isComplete`):** La provenance soddisfa tutti i vincoli semantici di integrità (session ID coincidenti tra container e provenance, commit SHA valido, dimensioni contesto > 0, modelli e backend non unknown).
+- **Dataset Eligible (`validate().isDatasetEligible`):** La provenance è valida e la fonte del dato è esplicitamente classificata e scientificamente verificabile (`datasetSource != DatasetSource.unknown`).
+
+### 4.3 Invariante di Session ID
+È proibito esportare o memorizzare replay in cui `ReplayLogger.sessionId != sessionProvenance.sessionId`. In caso di disallineamento, il sistema rifiuta l'assegnazione con `ArgumentError` e blocca la serializzazione con `StateError`.
 
 ---
 

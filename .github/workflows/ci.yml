@@ -2,9 +2,10 @@ name: CI Validation
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, fase6 ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, fase6 ]
+  workflow_dispatch:
 
 permissions:
   contents: read

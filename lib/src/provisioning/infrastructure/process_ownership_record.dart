@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
 
@@ -32,8 +33,15 @@ final class ProcessOwnershipRecord {
   });
 
   /// Calcola lo SHA-256 canonicalizzato per i percorsi (eseguibile/modello) per confronto sicuro.
-  static String hashPath(String path) {
-    final canonical = path.trim().replaceAll('/', r'\').toLowerCase();
+  ///
+  /// - Su Windows: case-insensitive (`toLowerCase()`) e separatori normalizzati a backslash (`\`).
+  /// - Su POSIX: case-sensitive (case preservato) e separatori normalizzati a slash (`/`).
+  static String hashPath(String path, {bool? isWindows}) {
+    final win = isWindows ?? Platform.isWindows;
+    final trimmed = path.trim();
+    final canonical = win
+        ? trimmed.replaceAll('/', r'\').toLowerCase()
+        : trimmed.replaceAll(r'\', '/');
     final bytes = utf8.encode(canonical);
     return sha256.convert(bytes).toString();
   }

@@ -187,7 +187,8 @@ void main() {
       );
 
       final exePath = '/usr/local/bin/llama-server';
-      final exeHash = ProcessOwnershipRecord.hashPath(exePath);
+      final exeHash =
+          ProcessOwnershipRecord.hashPath(exePath, isWindows: false);
 
       var killCalledWithPid = 0;
       fakeRunner.onCommand('kill', (args) {
@@ -202,11 +203,8 @@ void main() {
         return ProcessResult(3, 1, '', 'Unknown kill args');
       });
 
-      fakeRunner.onCommand('ps', (args) {
-        expect(args, contains('4321'));
-        expect(args, contains('command='));
-        return ProcessResult(
-            4, 0, '$exePath --port 30201 --model /models/actor.gguf', '');
+      fakeRunner.onCommand('lsof', (args) {
+        return ProcessResult(4, 0, 'p4321\nftxt\nn$exePath\n', '');
       });
 
       final record = ProcessOwnershipRecord(
@@ -232,6 +230,127 @@ void main() {
       expect(cleaned.length, equals(1));
       expect(cleaned.first.pid, equals(4321));
       expect(killCalledWithPid, equals(4321));
+      expect(await posixRegistry.getRecord('actor'), isNull);
+    });
+
+    test('Branch POSIX risolve correttamente path con spazi tramite lsof (-Fn)',
+        () async {
+      final posixRegistry = ProcessOwnershipRegistry(
+        pathResolver: pathResolver,
+        lock: InMemoryProvisioningLock(),
+        commandRunner: fakeRunner,
+        isWindows: false,
+      );
+
+      const exePath = '/Applications/AURA Runtime/llama-server';
+      final exeHash =
+          ProcessOwnershipRecord.hashPath(exePath, isWindows: false);
+
+      var killNineCalled = false;
+      fakeRunner.onCommand('kill', (args) {
+        if (args.contains('-0')) {
+          return ProcessResult(1, 0, '', '');
+        }
+        if (args.contains('-9')) {
+          killNineCalled = true;
+          return ProcessResult(2, 0, '', '');
+        }
+        return ProcessResult(3, 1, '', '');
+      });
+
+      fakeRunner.onCommand('lsof', (args) {
+        expect(args, contains('-Fn'));
+        expect(args, contains('7777'));
+        return ProcessResult(4, 0, 'p7777\nftxt\nn$exePath\n', '');
+      });
+
+      final record = ProcessOwnershipRecord(
+        schemaVersion: 1,
+        pid: 7777,
+        role: 'evaluator',
+        ownerInstanceId: 'stale-space-instance',
+        parentPid: 1000,
+        executablePathHash: exeHash,
+        modelPathHash: 'hash-model',
+        modelAlias: 'aura.evaluator.primary',
+        port: 30202,
+        startedAt: DateTime.now(),
+        state: 'ready',
+      );
+
+      await posixRegistry.registerRecord(record);
+
+      final cleaned = await posixRegistry.cleanupStaleProcesses(
+        currentOwnerInstanceId: 'new-instance',
+      );
+
+      expect(cleaned.length, equals(1));
+      expect(cleaned.first.pid, equals(7777));
+      expect(killNineCalled, isTrue);
+      expect(await posixRegistry.getRecord('evaluator'), isNull);
+    });
+
+    test(
+        'Branch POSIX fallback su ps rileva correttamente percorso con spazi prima degli argomenti',
+        () async {
+      final posixRegistry = ProcessOwnershipRegistry(
+        pathResolver: pathResolver,
+        lock: InMemoryProvisioningLock(),
+        commandRunner: fakeRunner,
+        isWindows: false,
+      );
+
+      const exePath = '/Applications/AURA Runtime/llama-server';
+      final exeHash =
+          ProcessOwnershipRecord.hashPath(exePath, isWindows: false);
+
+      var killNineCalled = false;
+      fakeRunner.onCommand('kill', (args) {
+        if (args.contains('-0')) {
+          return ProcessResult(1, 0, '', '');
+        }
+        if (args.contains('-9')) {
+          killNineCalled = true;
+          return ProcessResult(2, 0, '', '');
+        }
+        return ProcessResult(3, 1, '', '');
+      });
+
+      // Simula lsof non disponibile o fallito
+      fakeRunner.onCommand('lsof', (args) {
+        return ProcessResult(4, 1, '', 'lsof: not found');
+      });
+
+      fakeRunner.onCommand('ps', (args) {
+        expect(args, contains('8888'));
+        expect(args, contains('command='));
+        return ProcessResult(
+            5, 0, '$exePath --port 30201 --model /models/actor.gguf', '');
+      });
+
+      final record = ProcessOwnershipRecord(
+        schemaVersion: 1,
+        pid: 8888,
+        role: 'actor',
+        ownerInstanceId: 'stale-space-ps-instance',
+        parentPid: 1000,
+        executablePathHash: exeHash,
+        modelPathHash: 'hash-model',
+        modelAlias: 'aura.actor.primary',
+        port: 30201,
+        startedAt: DateTime.now(),
+        state: 'ready',
+      );
+
+      await posixRegistry.registerRecord(record);
+
+      final cleaned = await posixRegistry.cleanupStaleProcesses(
+        currentOwnerInstanceId: 'new-instance',
+      );
+
+      expect(cleaned.length, equals(1));
+      expect(cleaned.first.pid, equals(8888));
+      expect(killNineCalled, isTrue);
       expect(await posixRegistry.getRecord('actor'), isNull);
     });
 
@@ -294,7 +413,7 @@ void main() {
       );
 
       const exePath = r'C:\Tools\llama-server.exe';
-      final exeHash = ProcessOwnershipRecord.hashPath(exePath);
+      final exeHash = ProcessOwnershipRecord.hashPath(exePath, isWindows: true);
 
       var taskkillCalled = false;
       fakeRunner.onCommand('tasklist', (args) {
@@ -336,6 +455,55 @@ void main() {
       expect(cleaned.first.pid, equals(8888));
       expect(taskkillCalled, isTrue);
       expect(await winRegistry.getRecord('actor'), isNull);
+    });
+  });
+
+  group('ProcessOwnershipRecord.hashPath Platform-Awareness Tests -', () {
+    test(
+        'hashPath su POSIX preserva il case e non collide tra maiuscole e minuscole',
+        () {
+      final pathUpper = '/Users/Test/llama-server';
+      final pathLower = '/users/test/llama-server';
+
+      final hashUpper =
+          ProcessOwnershipRecord.hashPath(pathUpper, isWindows: false);
+      final hashLower =
+          ProcessOwnershipRecord.hashPath(pathLower, isWindows: false);
+
+      expect(hashUpper, isNot(equals(hashLower)));
+    });
+
+    test('hashPath su Windows collassa il case (case-insensitive)', () {
+      final pathUpper = r'C:\Users\Test\llama-server.exe';
+      final pathLower = r'c:\users\test\llama-server.exe';
+
+      final hashUpper =
+          ProcessOwnershipRecord.hashPath(pathUpper, isWindows: true);
+      final hashLower =
+          ProcessOwnershipRecord.hashPath(pathLower, isWindows: true);
+
+      expect(hashUpper, equals(hashLower));
+    });
+
+    test(
+        'hashPath normalizza i separatori a slash su POSIX e backslash su Windows',
+        () {
+      final posixSlash = '/opt/aura/bin/llama-server';
+      final posixBackslash = r'\opt\aura\bin\llama-server';
+
+      expect(
+        ProcessOwnershipRecord.hashPath(posixSlash, isWindows: false),
+        equals(
+            ProcessOwnershipRecord.hashPath(posixBackslash, isWindows: false)),
+      );
+
+      final winBackslash = r'C:\Aura\bin\llama-server.exe';
+      final winSlash = 'C:/Aura/bin/llama-server.exe';
+
+      expect(
+        ProcessOwnershipRecord.hashPath(winBackslash, isWindows: true),
+        equals(ProcessOwnershipRecord.hashPath(winSlash, isWindows: true)),
+      );
     });
   });
 }

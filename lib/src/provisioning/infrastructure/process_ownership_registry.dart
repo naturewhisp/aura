@@ -38,6 +38,108 @@ final class StandardProcessCommandRunner implements ProcessCommandRunner {
   }
 }
 
+/// Astrazione per la risoluzione dell'identità/percorso dell'eseguibile dato un PID.
+abstract interface class ProcessExecutablePathResolver {
+  Future<String?> resolveExecutablePath(int pid);
+}
+
+/// Implementazione standard di [ProcessExecutablePathResolver] basata su comandi di sistema.
+final class StandardProcessExecutablePathResolver
+    implements ProcessExecutablePathResolver {
+  final ProcessCommandRunner _commandRunner;
+  final bool _isWindows;
+
+  StandardProcessExecutablePathResolver({
+    ProcessCommandRunner commandRunner = const StandardProcessCommandRunner(),
+    bool? isWindows,
+  })  : _commandRunner = commandRunner,
+        _isWindows = isWindows ?? Platform.isWindows;
+
+  @override
+  Future<String?> resolveExecutablePath(int pid) async {
+    if (_isWindows) {
+      return _resolveWindows(pid);
+    } else {
+      return _resolvePosix(pid);
+    }
+  }
+
+  Future<String?> _resolveWindows(int pid) async {
+    try {
+      final exeRes = await _commandRunner.run(
+        'wmic',
+        [
+          'process',
+          'where',
+          'ProcessId=$pid',
+          'get',
+          'ExecutablePath',
+        ],
+        timeout: const Duration(seconds: 2),
+      );
+
+      if (exeRes.exitCode != 0) return null;
+      final lines = (exeRes.stdout as String)
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty && l.toLowerCase() != 'executablepath')
+          .toList();
+
+      if (lines.isEmpty) return null;
+      final first = lines.first;
+      if (first.toLowerCase().startsWith('executablepath=')) {
+        return first.substring('executablepath='.length).trim();
+      }
+      return first;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _resolvePosix(int pid) async {
+    // 1. Tentativo primario: lsof -a -p <pid> -d txt -Fn (macOS / BSD)
+    // -Fn fornisce output machine-readable privo di ambiguità anche con spazi nel path.
+    try {
+      final lsofRes = await _commandRunner.run(
+        'lsof',
+        ['-a', '-p', '$pid', '-d', 'txt', '-Fn'],
+        timeout: const Duration(seconds: 2),
+      );
+      if (lsofRes.exitCode == 0) {
+        final stdoutText = lsofRes.stdout as String;
+        for (final line in stdoutText.split('\n')) {
+          final trimmed = line.trim();
+          if (trimmed.startsWith('n/')) {
+            return trimmed.substring(1);
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback: ps -p <pid> -o command=
+    // Isola l'eseguibile gestendo i percorsi contenenti spazi che terminano prima dei flag d'avvio (es. ' -').
+    try {
+      final psRes = await _commandRunner.run(
+        'ps',
+        ['-p', '$pid', '-o', 'command='],
+        timeout: const Duration(seconds: 2),
+      );
+      if (psRes.exitCode == 0) {
+        final commandOutput = (psRes.stdout as String).trim();
+        if (commandOutput.isNotEmpty) {
+          final flagIndex = commandOutput.indexOf(' -');
+          if (flagIndex != -1) {
+            return commandOutput.substring(0, flagIndex).trim();
+          }
+          return commandOutput;
+        }
+      }
+    } catch (_) {}
+
+    return null;
+  }
+}
+
 /// Superficie di gestione persistente per la tracciabilità e la bonifica atomica dei processi managed AURA.
 @immutable
 final class ProcessOwnershipRegistry {
@@ -46,6 +148,7 @@ final class ProcessOwnershipRegistry {
   final ProcessExistenceChecker? _customChecker;
   final ProcessTerminator? _customTerminator;
   final ProcessCommandRunner _commandRunner;
+  final ProcessExecutablePathResolver _executablePathResolver;
   final bool _isWindows;
 
   ProcessOwnershipRegistry({
@@ -54,6 +157,7 @@ final class ProcessOwnershipRegistry {
     ProcessExistenceChecker? processChecker,
     ProcessTerminator? processTerminator,
     ProcessCommandRunner? commandRunner,
+    ProcessExecutablePathResolver? executablePathResolver,
     bool? isWindows,
   })  : _pathResolver = pathResolver,
         _lock = lock ??
@@ -66,7 +170,13 @@ final class ProcessOwnershipRegistry {
         _customChecker = processChecker,
         _customTerminator = processTerminator,
         _commandRunner = commandRunner ?? const StandardProcessCommandRunner(),
-        _isWindows = isWindows ?? Platform.isWindows;
+        _isWindows = isWindows ?? Platform.isWindows,
+        _executablePathResolver = executablePathResolver ??
+            StandardProcessExecutablePathResolver(
+              commandRunner:
+                  commandRunner ?? const StandardProcessCommandRunner(),
+              isWindows: isWindows ?? Platform.isWindows,
+            );
 
   /// Directory dei file di registro processi.
   String get processesDirectory => _pathResolver.join(
@@ -201,55 +311,47 @@ final class ProcessOwnershipRegistry {
     });
   }
 
-  /// Verifica se il PID e attivo ed il percorso dell'eseguibile corrisponde all'hash registrato.
+  /// Verifica se il PID è attivo ed il percorso dell'eseguibile corrisponde all'hash registrato.
   Future<bool> _isProcessAliveAndMatching(ProcessOwnershipRecord record) async {
     if (_customChecker != null) {
       return _customChecker!(record);
     }
 
+    // 1. Controllo non distruttivo dell'esistenza del processo
+    final isAlive = await _isProcessAlive(record.pid);
+    if (!isAlive) return false;
+
+    // 2. Risoluzione dell'eseguibile e confronto SHA-256 platform-aware
+    final exePath =
+        await _executablePathResolver.resolveExecutablePath(record.pid);
+    if (exePath == null || exePath.isEmpty) return false;
+
+    final currentHash =
+        ProcessOwnershipRecord.hashPath(exePath, isWindows: _isWindows);
+    return currentHash == record.executablePathHash;
+  }
+
+  /// Verifica la liveness del PID in modo non distruttivo sulla piattaforma corrente.
+  Future<bool> _isProcessAlive(int pid) async {
     if (!_isWindows) {
       try {
-        // 1. Controllo non distruttivo dell'esistenza del processo via kill -0
         final killRes = await _commandRunner.run(
           'kill',
-          ['-0', '${record.pid}'],
+          ['-0', '$pid'],
           timeout: const Duration(seconds: 2),
         );
-        if (killRes.exitCode != 0) {
-          return false;
-        }
-
-        // 2. Ispezione della riga di comando del processo via ps
-        final psRes = await _commandRunner.run(
-          'ps',
-          ['-p', '${record.pid}', '-o', 'command='],
-          timeout: const Duration(seconds: 2),
-        );
-        if (psRes.exitCode != 0) {
-          return false;
-        }
-
-        final commandOutput = (psRes.stdout as String).trim();
-        if (commandOutput.isEmpty) {
-          return false;
-        }
-
-        // Il primo token della riga di comando corrisponde al binario/eseguibile
-        final exePath = commandOutput.split(RegExp(r'\s+')).first;
-        final currentHash = ProcessOwnershipRecord.hashPath(exePath);
-        return currentHash == record.executablePathHash;
+        return killRes.exitCode == 0;
       } catch (_) {
         return false;
       }
     }
 
     try {
-      // 1. Controllo ultra-veloce dell'esistenza del PID tramite tasklist
       final tasklistRes = await _commandRunner.run(
         'tasklist',
         [
           '/FI',
-          'PID eq ${record.pid}',
+          'PID eq $pid',
           '/FO',
           'CSV',
           '/NH',
@@ -259,36 +361,9 @@ final class ProcessOwnershipRegistry {
 
       if (tasklistRes.exitCode != 0) return false;
       final stdoutText = (tasklistRes.stdout as String).trim();
-      if (stdoutText.isEmpty ||
-          stdoutText.contains('INFO:') ||
-          !stdoutText.contains('"${record.pid}"')) {
-        return false;
-      }
-
-      // 2. Se attivo, verifichiamo il percorso dell'eseguibile via wmic
-      final exeRes = await _commandRunner.run(
-        'wmic',
-        [
-          'process',
-          'where',
-          'ProcessId=${record.pid}',
-          'get',
-          'ExecutablePath',
-        ],
-        timeout: const Duration(seconds: 2),
-      );
-
-      if (exeRes.exitCode != 0) return false;
-      final lines = (exeRes.stdout as String)
-          .split('\n')
-          .map((l) => l.trim())
-          .where((l) => l.isNotEmpty && l.toLowerCase() != 'executablepath')
-          .toList();
-
-      if (lines.isEmpty) return false;
-      final exePath = lines.first;
-      final currentHash = ProcessOwnershipRecord.hashPath(exePath);
-      return currentHash == record.executablePathHash;
+      return stdoutText.isNotEmpty &&
+          !stdoutText.contains('INFO:') &&
+          stdoutText.contains('"$pid"');
     } catch (_) {
       return false;
     }

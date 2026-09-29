@@ -2,6 +2,8 @@ name: macOS Darwin Verification
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ fase6 ]
 
 permissions:
   contents: read

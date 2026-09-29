@@ -56,77 +56,120 @@ final class InMemoryProvisioningLock implements ProvisioningLock {
 /// Implementazione di file lock inter-processo atomico con fallback intra-processo e timeout controllato.
 final class FileBasedProvisioningLock implements ProvisioningLock {
   final String _lockDirectory;
-  final InMemoryProvisioningLock _inMemoryLock;
   final Duration acquisitionTimeout;
   final Duration retryInterval;
   final Duration maxWaitDuration;
+
+  /// Registro statico delle chiavi correntemente acquisite all'interno dello stesso processo.
+  /// Necessario su sistemi POSIX (macOS/Linux) dove i lock `fcntl` a livello kernel
+  /// sono associati al processo (PID) e non al singolo file handle, rendendo necessaria
+  /// la mutua esclusione cooperativa tra istanze concorrenti nello stesso runtime Dart.
+  static final Set<String> _heldProcessKeys = {};
 
   FileBasedProvisioningLock({
     required String lockDirectory,
     this.acquisitionTimeout = const Duration(milliseconds: 100),
     this.retryInterval = const Duration(milliseconds: 50),
     this.maxWaitDuration = const Duration(seconds: 5),
-  })  : _lockDirectory = lockDirectory,
-        _inMemoryLock = InMemoryProvisioningLock();
+  }) : _lockDirectory = lockDirectory;
 
   @override
   Future<T> synchronized<T>(
     String key,
     Future<T> Function() action,
   ) async {
-    return _inMemoryLock.synchronized(key, () async {
-      final sanitizedKey = key.replaceAll(RegExp(r'[^\w\.-]'), '_');
-      final lockDir = Directory(_lockDirectory);
-      if (!await lockDir.exists()) {
-        await lockDir.create(recursive: true);
+    final sanitizedKey = key.replaceAll(RegExp(r'[^\w\.-]'), '_');
+    if (sanitizedKey.isEmpty) {
+      throw const ProvisioningException(
+        reason: ProvisioningFailureReason.installationConflict,
+        message: 'La chiave di lock non può essere vuota.',
+      );
+    }
+
+    final stopwatch = Stopwatch()..start();
+    final processKey = '$_lockDirectory:$sanitizedKey';
+
+    final lockDir = Directory(_lockDirectory);
+    if (!await lockDir.exists()) {
+      await lockDir.create(recursive: true);
+    }
+
+    final lockFilePath =
+        '${lockDir.path}${Platform.pathSeparator}$sanitizedKey.lock';
+    final lockFile = File(lockFilePath);
+
+    RandomAccessFile? raf;
+    var acquired = false;
+
+    while (!acquired) {
+      if (_heldProcessKeys.contains(processKey)) {
+        if (stopwatch.elapsed >= maxWaitDuration) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.installationConflict,
+            message:
+                'Timeout durante l\'attesa del lock intra-processo per la risorsa "$key" su "$lockFilePath" entro ${maxWaitDuration.inMilliseconds}ms.',
+          );
+        }
+        await Future.delayed(retryInterval);
+        continue;
       }
 
-      final lockFilePath =
-          '${lockDir.path}${Platform.pathSeparator}$sanitizedKey.lock';
-      final lockFile = File(lockFilePath);
+      RandomAccessFile? candidateRaf;
+      try {
+        candidateRaf = await lockFile.open(mode: FileMode.write);
+        await candidateRaf.lock(FileLock.exclusive).timeout(acquisitionTimeout);
 
-      RandomAccessFile? raf;
-      final stopwatch = Stopwatch()..start();
-      var acquired = false;
+        if (_heldProcessKeys.contains(processKey)) {
+          try {
+            await candidateRaf.unlock();
+          } catch (_) {}
+          try {
+            await candidateRaf.close();
+          } catch (_) {}
 
-      while (!acquired) {
-        RandomAccessFile? candidateRaf;
-        try {
-          candidateRaf = await lockFile.open(mode: FileMode.write);
-          await candidateRaf
-              .lock(FileLock.exclusive)
-              .timeout(acquisitionTimeout);
-          raf = candidateRaf;
-          acquired = true;
-        } catch (_) {
-          if (candidateRaf != null) {
-            try {
-              await candidateRaf.close();
-            } catch (_) {}
-          }
           if (stopwatch.elapsed >= maxWaitDuration) {
             throw ProvisioningException(
               reason: ProvisioningFailureReason.installationConflict,
               message:
-                  'Impossibile acquisire il file lock inter-processo per "$key" su "$lockFilePath" entro il timeout di ${maxWaitDuration.inMilliseconds}ms.',
+                  'Timeout durante l\'acquisizione del lock per la risorsa "$key" su "$lockFilePath" entro ${maxWaitDuration.inMilliseconds}ms.',
             );
           }
           await Future.delayed(retryInterval);
+          continue;
         }
-      }
 
-      try {
-        return await action();
-      } finally {
-        if (raf != null) {
+        _heldProcessKeys.add(processKey);
+        raf = candidateRaf;
+        acquired = true;
+      } catch (_) {
+        if (candidateRaf != null) {
           try {
-            await raf.unlock();
-          } catch (_) {}
-          try {
-            await raf.close();
+            await candidateRaf.close();
           } catch (_) {}
         }
+        if (stopwatch.elapsed >= maxWaitDuration) {
+          throw ProvisioningException(
+            reason: ProvisioningFailureReason.installationConflict,
+            message:
+                'Impossibile acquisire il file lock inter-processo per "$key" su "$lockFilePath" entro il timeout di ${maxWaitDuration.inMilliseconds}ms.',
+          );
+        }
+        await Future.delayed(retryInterval);
       }
-    });
+    }
+
+    try {
+      return await action();
+    } finally {
+      _heldProcessKeys.remove(processKey);
+      if (raf != null) {
+        try {
+          await raf.unlock();
+        } catch (_) {}
+        try {
+          await raf.close();
+        } catch (_) {}
+      }
+    }
   }
 }

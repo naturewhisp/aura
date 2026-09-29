@@ -108,6 +108,13 @@ final class ZipArchiveExtractor implements ArchiveExtractor {
 
     int totalExtractedBytes = 0;
 
+    final isPosix = canonicalTargetDir.startsWith('/') &&
+        !canonicalTargetDir.startsWith(r'\\');
+    final sep = isPosix ? '/' : r'\';
+    final canonicalTargetDirWithSep = canonicalTargetDir.endsWith(sep)
+        ? canonicalTargetDir.toLowerCase()
+        : '${canonicalTargetDir.toLowerCase()}$sep';
+
     for (final entry in archive) {
       cancellationToken?.throwIfCancelled();
 
@@ -117,15 +124,13 @@ final class ZipArchiveExtractor implements ArchiveExtractor {
       // Protezione anti-Zip Slip basata su segmenti esatti
       _validateZipEntrySegments(rawName);
 
-      final normalizedEntryPath = rawName.replaceAll('/', r'\');
-      final fullTargetPath = '$canonicalTargetDir\\$normalizedEntryPath';
+      final normalizedEntryPath = isPosix
+          ? rawName.replaceAll(r'\', '/')
+          : rawName.replaceAll('/', r'\');
+      final fullTargetPath = '$canonicalTargetDir$sep$normalizedEntryPath';
       final canonicalEntryPath = ProvisioningPathResolver.canonicalizeRoot(
         entry.isFile ? File(fullTargetPath).parent.path : fullTargetPath,
       );
-
-      final canonicalTargetDirWithSep = canonicalTargetDir.endsWith(r'\')
-          ? canonicalTargetDir.toLowerCase()
-          : '${canonicalTargetDir.toLowerCase()}\\';
 
       if (!canonicalEntryPath
               .toLowerCase()

@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:aura_core/aura_offline.dart';
 import 'package:aura_core/aura_testing.dart';
 import 'package:crypto/crypto.dart';
@@ -399,11 +401,11 @@ void main() {
 
   group('Real Manifest & DefaultCpuFeatureDetector End-to-End Discovery', () {
     test(
-        'convalida tutte e tre le varianti del manifest reale con DefaultCpuFeatureDetector',
-        () async {
-      final fs = MemoryProvisioningFileSystem();
+      'convalida tutte e tre le varianti del manifest reale con DefaultCpuFeatureDetector',
+      () async {
+        final fs = MemoryProvisioningFileSystem();
 
-      const realManifestContent = '''
+        const realManifestContent = '''
 {
   "schemaVersion": 1,
   "runtimeSetId": "aura-runtime-v0.1.0",
@@ -465,45 +467,50 @@ void main() {
 }
 ''';
 
-      final root = r'C:\AURA_REAL_MANIFEST_TEST';
-      await fs.writeAsString(
-          '$root\\runtime\\runtime-manifest.json', realManifestContent);
-      await fs.writeBytes('$root\\runtime\\bin\\win-x64-cuda\\llama-server.exe',
-          List.filled(1000, 0));
-      await fs.writeBytes(
-          '$root\\runtime\\bin\\win-x64-vulkan\\llama-server.exe',
-          List.filled(1000, 0));
-      await fs.writeBytes(
-          '$root\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
-          List.filled(1000, 0));
+        final root = r'C:\AURA_REAL_MANIFEST_TEST';
+        await fs.writeAsString(
+            '$root\\runtime\\runtime-manifest.json', realManifestContent);
+        await fs.writeBytes(
+            '$root\\runtime\\bin\\win-x64-cuda\\llama-server.exe',
+            List.filled(1000, 0));
+        await fs.writeBytes(
+            '$root\\runtime\\bin\\win-x64-vulkan\\llama-server.exe',
+            List.filled(1000, 0));
+        await fs.writeBytes(
+            '$root\\runtime\\bin\\win-x64-cpu-avx2\\llama-server.exe',
+            List.filled(1000, 0));
 
-      final pathResolver = ProvisioningPathResolver(
-        appManagedRoot: r'C:\AppData\aura',
-        bundledRoot: root,
-      );
+        final pathResolver = ProvisioningPathResolver(
+          appManagedRoot: r'C:\AppData\aura',
+          bundledRoot: root,
+        );
 
-      final service = DefaultLlamaServerDependencyService(
-        configurationRepository: JsonModelConfigurationRepository(
-          storeDirectoryPath: r'C:\AppData\aura\store',
+        final service = DefaultLlamaServerDependencyService(
+          configurationRepository: JsonModelConfigurationRepository(
+            storeDirectoryPath: r'C:\AppData\aura\store',
+            fileSystem: fs,
+            lock: InMemoryProvisioningLock(),
+          ),
           fileSystem: fs,
-          lock: InMemoryProvisioningLock(),
-        ),
-        fileSystem: fs,
-        pathResolver: pathResolver,
-        processLauncher: FakeProcessLauncher(
-          processFactory: () {
-            final proc = FakeManagedProcess();
-            proc.emitStdout('version: 10255 (66fa168a5)\nbuild: 10255');
-            proc.completeExit(0);
-            return proc;
-          },
-        ),
-        cpuFeatureDetector: const DefaultCpuFeatureDetector(),
-      );
+          pathResolver: pathResolver,
+          processLauncher: FakeProcessLauncher(
+            processFactory: () {
+              final proc = FakeManagedProcess();
+              proc.emitStdout('version: 10255 (66fa168a5)\nbuild: 10255');
+              proc.completeExit(0);
+              return proc;
+            },
+          ),
+          cpuFeatureDetector: const DefaultCpuFeatureDetector(),
+        );
 
-      final detection = await service.detect();
-      expect(detection.effectiveCandidate, isNotNull);
-    });
+        final detection = await service.detect();
+        expect(detection.effectiveCandidate, isNotNull);
+      },
+      skip: !Platform.isWindows
+          ? 'Richiede host Windows per CPUID nativo x86/Windows'
+          : null,
+    );
 
     test(
         'scarta le varianti AVX2 per CPU legacy (es. Core i7-2600 Sandy Bridge senza AVX2)',

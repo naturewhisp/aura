@@ -22,29 +22,39 @@ L'obiettivo della Fase 6.11 è duplice, sinergico e rigorosamente circoscritto:
    macOS funge da **testbed POSIX intermedio**. Essendo un sistema operativo Unix conforme ma desktop, consente di far emergere e sanificare tutte le assunzioni Win32 latenti nel core (`ProvisioningPathResolver`, probe di vitalità processi, separatori di percorso, astrazione della shell grafica) prima di affrontare la complessità multidimensionale di Android (JNI/FFI, lifecycle mobile, memoria limitata, storage scoped e thermal throttling).
 
 > [!IMPORTANT]
-> **Development and Verification Authority:**  
+> **Development and Verification Authority & Architettura CI:**  
 > Lo sviluppo della Fase 6.11 continua prevalentemente sulla workstation Windows. **L'esito autorevole delle suite automatiche è quello prodotto dai workflow GitHub Actions.**  
-> - **Windows runner (`windows-latest`):** costituisce il **gate primario di regressione**;  
-> - **macOS runner (`macos-14`):** può essere utilizzato nella Fase 6.11.3 esclusivamente come strumento di scaffolding/toolchain per generare `app/macos/` (non costituisce un gate di verifica della sottofase); viene introdotto come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4;  
+> - **Windows runner (`windows-latest`):** costituisce il **gate primario di regressione** (automatico su push/PR su `main` e `fase6`);  
+> - **macOS runner (`macos-14`):** può essere utilizzato nella Fase 6.11.3 esclusivamente come strumento di scaffolding/toolchain per generare `app/macos/` (non costituisce un gate di verifica della sottofase); viene introdotto come **gate secondario di compatibilità cross-platform** a partire dalla Fase 6.11.4 (on-demand via `workflow_dispatch` o filtri mirati `paths:`);  
 > - **Hardware Apple Silicon fisico:** è richiesto soltanto per la **qualification manuale finale** della Fase 6.11.5.
 >
+> Per massimizzare il riuso senza appiattire la gerarchia semantica in una matrix indifferenziata, i controlli comuni vengono incapsulati in una **Composite Action condivisa** (`.github/actions/validate-dart-flutter/action.yml`) consumata da entrambi i workflow dedicati:
+>
 > ```text
-> SVILUPPO
-> Windows locale
->    │
->    ▼
-> commit / push
->    │
->    ▼
-> VERIFICA AUTOREVOLE
-> GitHub Actions
->    ├── Windows runner → gate primario / regressione continua
->    └── macOS runner  → gate secondario / compatibilità cross-platform (da 6.11.4)
->                             │
->                             ▼
->                      Mac fisico reale
->                      solo 6.11.5
->                      qualification finale (PLAYTEST_VERIFIED)
+>                        codice
+>                          │
+>                          ▼
+>                  shared validation
+>                   composite action
+>                     /          \
+>                    /            \
+>                   ▼              ▼
+>         validate-windows    validate-macos
+>          windows-latest        macos-14
+>               │                 │
+>               │                 │
+>        PRIMARY GATE       SECONDARY GATE
+>         (ci.yml)         (macos-verify.yml)
+>               │                 │
+>         Windows build      macOS build
+>         manifests          AURA.app artifact
+>               │                 │
+>               └────────┬────────┘
+>                        ▼
+>                  Release Candidate
+>                        │
+>                        ▼
+>                  Mac fisico 6.11.5
 > ```
 
 ---
@@ -367,13 +377,20 @@ flowchart TD
 * **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde** (zero regressioni e zero diagnostic issues sui test di widget e shell). Il runner macOS in questa sottofase interviene unicamente come strumento di toolchain per generare l'artifact `app/macos/`; il primo gate autorevole di compatibilità macOS è la Fase 6.11.4.
 
 ### 6.11.4: CI Automation & On-Demand Verification
-* **Obiettivo:** Configurare la build pipeline on-demand su runner GitHub Actions Apple Silicon (`macos-14`).
-* **Componenti Target:**
-  * Creazione di `.github/workflows/macos-verify.yml` con trigger `workflow_dispatch`.
-  * Esecuzione sequenziale: setup Dart/Flutter $\rightarrow$ `dart test` $\rightarrow$ `flutter analyze` $\rightarrow$ `flutter test` $\rightarrow$ `flutter build macos --release`.
-  * Upload del bundle `AURA.app` compresso come artifact temporaneo.
+* **Obiettivo:** Configurare la build pipeline on-demand su runner GitHub Actions Apple Silicon (`macos-14`) ed eliminare ogni duplicazione di controlli CI tramite una **Composite Action condivisa**.
+* **Architettura dei Gate e Componenti Target:**
+  * **Composite Action Condivisa (`.github/actions/validate-dart-flutter/action.yml`):**
+    * Incapsula tutti i controlli cross-platform: setup Dart (`3.12.1`) e Flutter (`3.44.1`), `dart pub get`, `dart format check`, `dart analyze .`, `dart test`, `flutter pub get`, `dart format app`, `flutter analyze` e `flutter test`.
+    * Funge da *Single Source of Truth*: ogni nuovo test o regola statica aggiunta al repository viene ereditata automaticamente da entrambi i runner senza rischio di disallineamento.
+  * **Refactoring Gate Primario (`.github/workflows/ci.yml`):**
+    * Eseguito su `windows-latest` ad ogni push/PR su `main` e `fase6`.
+    * Invoca `validate-dart-flutter`, seguito da `flutter build windows --release`, validazione fail-closed dei manifest e actionlint.
+  * **Gate Secondario macOS (`.github/workflows/macos-verify.yml`):**
+    * Eseguito su runner Apple Silicon (`macos-14`), attivato on-demand via `workflow_dispatch` (o filtri mirati `paths:`).
+    * Invoca `validate-dart-flutter`, seguito da `flutter build macos --release`.
+    * Confezionamento e upload del bundle `AURA.app` compresso come artifact temporaneo della CI.
 * **Test di Verifica:** Trigger manuale tramite `gh workflow run macos-verify.yml` e verifica del run verde su GitHub Actions.
-* **Exit Milestone (Gate Autorevole):** **GitHub Actions macOS (`macos-14`) completamente verde** (`dart test`, `flutter analyze`, `flutter test`, `flutter build macos --release`); primo archivio Mach-O compilato in CI scaricabile dagli artifacts.
+* **Exit Milestone (Gate Autorevole):** **GitHub Actions macOS (`macos-14`) completamente verde** (`validate-dart-flutter` + `flutter build macos --release`); primo archivio Mach-O compilato in CI scaricabile dagli artifacts.
 
 ### 6.11.5: Release Candidate Packaging & Playtest Qualification
 * **Obiettivo:** Allegare automaticamente l'asset macOS alle Release Candidate e qualificare la sessione reale su hardware Apple Silicon.

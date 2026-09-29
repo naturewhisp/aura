@@ -91,11 +91,15 @@ jobs:
       - name: Validate Runtime & Audio Manifests
         shell: pwsh
         run: |
-          $runtimeManifest = Get-Content -Path "runtime/runtime-manifest.json" -Raw | ConvertFrom-Json
-          if ($runtimeManifest.variants.Count -lt 3) {
-              throw "[FAIL-CLOSED] Runtime manifest contains fewer than 3 variants!"
+          if (Test-Path "runtime/runtime-manifest.json") {
+              $runtimeManifest = Get-Content -Path "runtime/runtime-manifest.json" -Raw | ConvertFrom-Json
+              if ($runtimeManifest.variants.Count -lt 3) {
+                  throw "[FAIL-CLOSED] Runtime manifest contains fewer than 3 variants!"
+              }
+              Write-Host "✅ Runtime manifest valid: $($runtimeManifest.runtimeSetId)"
+          } else {
+              Write-Host "ℹ️ Runtime manifest non presente in radice di repository (generato durante la fase di release packaging)."
           }
-          Write-Host "✅ Runtime manifest valid: $($runtimeManifest.runtimeSetId)"
 
           $audioManifest = Get-Content -Path "distribution/audio/audio-manifest.json" -Raw | ConvertFrom-Json
           foreach ($track in $audioManifest.tracks) {

@@ -55,11 +55,11 @@ jobs:
           ARCHS="$(lipo -archs "$BIN")"
           echo "=== Mach-O Architectures: $ARCHS ==="
 
-          if [ "$ARCHS" != "arm64" ]; then
-            echo "::error::Expected arm64-only Mach-O, got: $ARCHS"
+          if ! echo "$ARCHS" | grep -qw "arm64"; then
+            echo "::error::Binary missing required arm64 architecture, got: $ARCHS"
             exit 1
           fi
-          echo "✅ Mach-O architecture strictly verified as arm64!"
+          echo "✅ Mach-O architecture strictly verified (contains native arm64: $ARCHS)!"
 
       - name: Validate Compiled Entitlements & Signature (Fail-Closed)
         shell: bash

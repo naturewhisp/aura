@@ -368,25 +368,22 @@ jobs:
           $isCandidateMsg = if ($kind -eq "candidate") { "`n> [!WARNING]`n> **TEST BUILD — DO NOT REDISTRIBUTE**`n" } else { "" }
           $macComponent = if ($kind -eq "candidate") { "- **Asset macOS Universale (Experimental Playtest)**: ``aura-v$ver-macos-universal.zip`` (Apple Silicon arm64 / Intel x86_64)`n" } else { "" }
           $macInstructions = if ($kind -eq "candidate") {
-@"
+              @'
 
-## Istruzioni Rapide per Tester macOS (Apple Silicon Playtest)
-1. **Download ed Estrazione**: Scarica ed estrai ``aura-v$ver-macos-universal.zip`` per ottenere l'applicazione ``AURA.app``.
-2. **Bypass Gatekeeper (Build Sperimentale non firmata)**:
-   - Fai click con il tasto destro su ``AURA.app`` -> seleziona **Apri** -> clicca **Apri comunque**;
-   - Oppure apri il Terminale ed esegui:
-     ```bash
-     xattr -cr /percorso/di/AURA.app
-     ```
-3. **Avvio Backend di Inferenza Locale (Metal)**:
-   - Avvia [LM Studio](https://lmstudio.ai/) su Mac (o ``llama-server`` compilato con supporto Metal) in ascolto sulla porta standard ``http://127.0.0.1:1234``;
-   - Carica un modello supportato (es. Attore: ``google/gemma-4-12b-it-qat-q4_0`` o ``gemma-2-9b-it``; Valutatore: ``mistralai/ministral-3-3b``).
-4. **Sessione di Playtest e Log**:
-   - Avvia ``AURA.app`` (si connetterà automaticamente a ``localhost:1234``);
-   - Gioca una sessione di almeno 10 turni per consentire la maturazione delle metriche diegetiche;
-   - Al termine, condividi il file di log salvato in ``~/Library/Application Support/AURA/replays/``.
-*(Per la documentazione completa di installazione e troubleshooting, consulta la [Guida Operativa Playtest macOS](https://github.com/naturewhisp/aura/blob/fase6/docs/MACOS_PLAYTEST_GUIDE.md)).*
-"@
+          ## Istruzioni Rapide per Tester macOS (Apple Silicon Playtest)
+          1. **Download ed Estrazione**: Scarica ed estrai `aura-v{0}-macos-universal.zip` per ottenere l'applicazione `AURA.app`.
+          2. **Bypass Gatekeeper (Build Sperimentale non firmata)**:
+             - Fai click con il tasto destro su `AURA.app` -> seleziona **Apri** -> clicca **Apri comunque**;
+             - Oppure apri il Terminale ed esegui: `xattr -cr /Applications/AURA.app`
+          3. **Avvio Backend di Inferenza Locale (Metal)**:
+             - Avvia LM Studio su Mac (o `llama-server` compilato con supporto Metal) in ascolto sulla porta standard `http://127.0.0.1:1234`;
+             - Carica un modello supportato (es. Attore: `google/gemma-4-12b-it-qat-q4_0` o `gemma-2-9b-it`; Valutatore: `mistralai/ministral-3-3b`).
+          4. **Sessione di Playtest e Log**:
+             - Avvia `AURA.app` (si connetterà automaticamente a `localhost:1234`);
+             - Gioca una sessione di almeno 10 turni per consentire la maturazione delle metriche diegetiche;
+             - Al termine, condividi il file di log salvato in `~/Library/Application Support/AURA/replays/`.
+          *(Per la documentazione completa di installazione e troubleshooting, consulta la [Guida Operativa Playtest macOS](https://github.com/naturewhisp/aura/blob/fase6/docs/MACOS_PLAYTEST_GUIDE.md)).*
+          '@ -f $ver
           } else { "" }
 
           $notes = @"

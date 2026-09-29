@@ -218,28 +218,73 @@ Per garantire che le sessioni giocate su macOS (e in futuro su Android) possano 
    La generazione iniziale di `app/macos` viene eseguita una tantum su un runner GitHub Actions macOS con versione Flutter fissata. L'alberatura generata viene quindi acquisita come artifact, riportata nella working copy Windows e versionata nel repository. La workstation dello sviluppatore non richiede macOS né Xcode.  
    Genera i target Xcode nativi (`Runner.xcodeproj`, `Info.plist`, `AppInfo.xcconfig`) e integra automaticamente i binding macOS dei plugin già presenti nel `pubspec.yaml` (`window_manager`, `screen_retriever`, `audioplayers`).
 
-2. **Astrazione `DesktopWindowController`:**
+2. **Astrazione `DesktopWindowController` e Binding Nativi:**
    Ristrutturazione del controller finestra in `app/lib/src/platform/`:
-   * Creazione della factory astratta:
+   * **Enum `DesktopHostPlatform`:** per disaccoppiare la logica di dispatch dalla variabile globale `Platform.operatingSystem`:
      ```dart
-     abstract class DesktopWindowController {
-       static DesktopWindowController create() {
-         if (Platform.isWindows) return WindowsDesktopWindowController();
-         if (Platform.isMacOS) return MacOSDesktopWindowController();
-         return NoOpDesktopWindowController();
-       }
-       Future<void> initialize();
-       Future<ActiveWindowMode> getActiveMode();
-       Future<WindowGeometry> getGeometry();
-       Future<void> setMode(ActiveWindowMode mode);
-       // ...
+     enum DesktopHostPlatform { windows, macos, other }
+     ```
+   * **Facciata `DesktopWindowBindings`:** estrae le chiamate dirette a `window_manager` e `screen_retriever` consentendo l'iniezione di `FakeDesktopWindowBindings` per convalidare deterministicamente il controller macOS su host Windows:
+     ```dart
+     abstract interface class DesktopWindowBindings {
+       Future<void> ensureInitialized();
+       void addListener(wm.WindowListener listener);
+       void removeListener(wm.WindowListener listener);
+       Future<void> setPreventClose(bool isPreventClose);
+       Future<void> setMinimumSize(Size size);
+       Future<bool> isFullScreen();
+       Future<bool> isMaximized();
+       Future<Offset> getPosition();
+       Future<Size> getSize();
+       Future<void> setFullScreen(bool isFullScreen);
+       Future<void> maximize();
+       Future<void> unmaximize();
+       Future<void> setBounds(Rect bounds);
+       Future<void> destroy();
+       Future<List<DisplayDescriptor>> getDisplays();
      }
      ```
-   * Creazione di `MacOSDesktopWindowController`: implementa le medesime logiche di `window_manager` adattate al comportamento del windowing macOS (gestione del fullscreen nativo macOS vs borderless, rispetto delle dimensioni minime consentite).
-   * Modifica di `main.dart` per istanziare `DesktopWindowController.create()`.
+   * **Factory `DesktopWindowControllerFactory`:**
+     ```dart
+     abstract final class DesktopWindowControllerFactory {
+       static DesktopWindowController create() => createFor(detectHostPlatform());
+
+       @visibleForTesting
+       static DesktopHostPlatform detectHostPlatform() {
+         if (Platform.isWindows) return DesktopHostPlatform.windows;
+         if (Platform.isMacOS) return DesktopHostPlatform.macos;
+         return DesktopHostPlatform.other;
+       }
+
+       @visibleForTesting
+       static DesktopWindowController createFor(
+         DesktopHostPlatform platform, {
+         DesktopWindowBindings? customBindings,
+       }) {
+         return switch (platform) {
+           DesktopHostPlatform.windows => WindowsDesktopWindowController(),
+           DesktopHostPlatform.macos => MacOSDesktopWindowController(
+               bindings: customBindings ?? const WindowManagerDesktopWindowBindings(),
+             ),
+           DesktopHostPlatform.other => const NoOpDesktopWindowController(),
+         };
+       }
+     }
+     ```
+   * **Semantica del Fullscreen Cross-Platform:**
+     Il contratto core `ActiveWindowMode.borderlessFullscreen` funge da modalità logica di "occupazione a pieno schermo":
+     - su Windows: semantica desktop fullscreen/borderless;
+     - su macOS: semantica nativa AppKit fullscreen (`windowManager.setFullScreen(true)`).
+   * **Modifica di `main.dart`:** istanziazione tramite `DesktopWindowControllerFactory.create()`, eliminando ogni riferimento e import diretto a `WindowsDesktopWindowController`.
 
 3. **Shutdown Applicativo (`ApplicationShutdownCoordinator`):**
-   * Correggere il metodo `requestShutdown()` in `app/lib/src/state_management/application_shutdown_coordinator.dart` per garantire l'invocazione di `exit(0)` sia su Windows sia su macOS, prevenendo che l'applicazione rimanga appesa nel Dock al termine del salvataggio dello stato.
+   * Preservazione rigorosa dell'ordine di spegnimento asincrono coordinato:
+     $$\text{flush preferenze} \rightarrow \text{notifier.shutdown()} \rightarrow \text{closeWindow()} \rightarrow \text{dispose()} \rightarrow \text{exit(0)}$$
+   * Estensione dell'uscita del processo a `Platform.isWindows || Platform.isMacOS`, evitando che su macOS l'applicazione rimanga appesa nel Dock. Nei test viene sempre impiegato `onNativeExit` per prevenire la terminazione del test runner.
+
+4. **Entitlements macOS Hardening (Principio del Minimo Privilegio):**
+   * `DebugProfile.entitlements`: `app-sandbox` (true), preserva `network.server` (richiesto da Flutter toolchain), aggiunge `network.client` (true).
+   * `Release.entitlements`: `app-sandbox` (true), `network.client` (true). `network.server` è categoricamente **escluso** poiché A.U.R.A. effettua solo richieste client in uscita verso `127.0.0.1` o server remoti e non apre socket di ascolto in ingresso.
 
 ---
 
@@ -368,13 +413,33 @@ flowchart TD
 
 ### 6.11.3: Desktop Shell Abstraction & app/macos Skeleton
 * **Obiettivo:** Isolare le chiamate native Win32 della UI e predisporre l'alberatura macOS nativa per la compilazione in CI.
-* **Componenti Target:**
-  * Predisposizione dell'alberatura `app/macos/` generata una tantum su un runner macOS CI come puro strumento di scaffolding/toolchain, acquisita come artifact e versionata nel repository (non costituisce un gate di verifica della sottofase).
-  * Refactoring di `app/lib/src/platform/windows/windows_desktop_window_controller.dart` dietro la factory astratta `DesktopWindowController.create()`.
-  * Creazione di `MacOSDesktopWindowController` (in puro Dart/Flutter con binding `window_manager` per macOS).
-  * Aggiornamento di `app/lib/src/state_management/application_shutdown_coordinator.dart` per eseguire `exit(0)` su macOS.
-* **Test di Verifica:** `flutter analyze` su `app/` e `flutter test` (widget tests) per garantire che l'app non assuma Windows a runtime.
-* **Exit Milestone (Gate Autorevole):** **GitHub Actions Windows completamente verde** (zero regressioni e zero diagnostic issues sui test di widget e shell). Il runner macOS in questa sottofase interviene unicamente come strumento di toolchain per generare l'artifact `app/macos/`; il primo gate autorevole di compatibilità macOS è la Fase 6.11.4.
+* **Articolazione Operativa a 6 Step:**
+  * **6.11.3A — Platform Abstraction:** Introduzione dell'enum `DesktopHostPlatform { windows, macos, other }`, implementazione di `NoOpDesktopWindowController` e della factory con dispatch testabile `DesktopWindowControllerFactory.createFor(DesktopHostPlatform platform)`.
+  * **6.11.3B — macOS Controller & Injectable Bindings:** Definizione della facciata `DesktopWindowBindings` (con implementazione reale `WindowManagerDesktopWindowBindings` e `FakeDesktopWindowBindings` per i test) e implementazione di `MacOSDesktopWindowController`. Mappatura esplicita di `ActiveWindowMode.borderlessFullscreen` sulla semantica nativa AppKit fullscreen.
+  * **6.11.3C — Composition Root & Shutdown:** Disaccoppiamento di `app/lib/main.dart` tramite la factory; aggiornamento di `ApplicationShutdownCoordinator` con uscita pulita `exit(0)` su Windows e macOS, preservando l'ordine rigoroso:
+    $$\text{flush} \rightarrow \text{notifier.shutdown()} \rightarrow \text{closeWindow()} \rightarrow \text{dispose()} \rightarrow \text{exit(0)}$$
+  * **6.11.3D — One-Shot macOS Scaffolding:** Generazione dell'alberatura nativa su runner GitHub Actions `macos-14` (Apple Silicon M1) con Flutter `3.44.1`:
+    ```bash
+    cd app && flutter create --platforms=macos --org com.naturewhisp --project-name aura_app .
+    ```
+    Acquisizione ed integrazione nel repository sia di `app/macos/**` sia dell'aggiornamento di `app/.metadata`.
+  * **6.11.3E — Entitlements Hardening (Minimo Privilegio):**
+    - `DebugProfile.entitlements`: `app-sandbox` (true), `network.server` (true, preservato per toolchain Flutter), `network.client` (true).
+    - `Release.entitlements`: `app-sandbox` (true), `network.client` (true). `network.server` è categoricamente **escluso** da Release.
+  * **6.11.3F — Windows Authoritative Gate:** Convalida statica e dinamica (`dart analyze`, `dart test`, `flutter analyze`, `flutter test`, `flutter build windows --release`) sul runner Windows CI. Nessuna build macOS né workflow permanente macOS viene introdotto in questa sottofase (demandati alla 6.11.4).
+* **Test di Verifica:** `desktop_window_controller_factory_test.dart` per factory, controller NoOp e controller macOS con fake bindings; test di regressione su widget e shell.
+* **Exit Milestone e Checklist di Uscita Finale (Gate Autorevole Windows):**
+  - [ ] `app/lib/main.dart` non conosce né importa `WindowsDesktopWindowController`
+  - [ ] `DesktopWindowControllerFactory` coperta deterministicamente per Windows, macOS e other
+  - [ ] `NoOpDesktopWindowController` completamente testato
+  - [ ] `MacOSDesktopWindowController` coperto tramite fake native bindings su Windows runner
+  - [ ] Shutdown coordinato Windows + macOS modellato e testato
+  - [ ] `app/macos/` versionato nel repository
+  - [ ] `app/.metadata` aggiornato con la piattaforma macOS registrata
+  - [ ] `com.apple.security.network.client` presente in DebugProfile e Release entitlements
+  - [ ] `com.apple.security.network.server` presente solo in DebugProfile e categoricamente assente in Release
+  - [ ] Nessuna CI macOS permanente ancora introdotta
+  - [ ] **GitHub Actions `windows-latest` (`ci.yml`) completamente verde** (format, analyze, test core, test app, build windows)
 
 ### 6.11.4: CI Automation & On-Demand Verification
 * **Obiettivo:** Configurare la build pipeline on-demand su runner GitHub Actions Apple Silicon (`macos-14`) ed eliminare ogni duplicazione di controlli CI tramite una **Composite Action condivisa**.

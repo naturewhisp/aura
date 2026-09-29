@@ -111,4 +111,4 @@ jobs:
           Write-Host "✅ Audio manifest & assets valid: $($audioManifest.audioSetId)"
 
       - name: Run Actionlint Workflow Linter
-        uses: rhysd/actionlint-action@v1
+        uses: raven-actions/actionlint@v2

@@ -11,6 +11,33 @@ typedef ProcessExistenceChecker = Future<bool> Function(
     ProcessOwnershipRecord record);
 typedef ProcessTerminator = Future<bool> Function(int pid);
 
+/// Astrazione per l'esecuzione di comandi di sistema per l'ispezione dei processi.
+abstract interface class ProcessCommandRunner {
+  Future<ProcessResult> run(
+    String executable,
+    List<String> arguments, {
+    Duration? timeout,
+  });
+}
+
+/// Implementazione standard di [ProcessCommandRunner] basata su [Process.run].
+final class StandardProcessCommandRunner implements ProcessCommandRunner {
+  const StandardProcessCommandRunner();
+
+  @override
+  Future<ProcessResult> run(
+    String executable,
+    List<String> arguments, {
+    Duration? timeout,
+  }) async {
+    final future = Process.run(executable, arguments);
+    if (timeout != null) {
+      return future.timeout(timeout);
+    }
+    return future;
+  }
+}
+
 /// Superficie di gestione persistente per la tracciabilità e la bonifica atomica dei processi managed AURA.
 @immutable
 final class ProcessOwnershipRegistry {
@@ -18,34 +45,39 @@ final class ProcessOwnershipRegistry {
   final ProvisioningLock _lock;
   final ProcessExistenceChecker? _customChecker;
   final ProcessTerminator? _customTerminator;
+  final ProcessCommandRunner _commandRunner;
+  final bool _isWindows;
 
   ProcessOwnershipRegistry({
     required ProvisioningPathResolver pathResolver,
     ProvisioningLock? lock,
     ProcessExistenceChecker? processChecker,
     ProcessTerminator? processTerminator,
+    ProcessCommandRunner? commandRunner,
+    bool? isWindows,
   })  : _pathResolver = pathResolver,
         _lock = lock ??
             FileBasedProvisioningLock(
-              lockDirectory:
-                  _join(pathResolver.appManagedRoot, r'runtime\processes'),
+              lockDirectory: pathResolver.join(
+                pathResolver.appManagedRoot,
+                pathResolver.join('runtime', 'processes'),
+              ),
             ),
         _customChecker = processChecker,
-        _customTerminator = processTerminator;
+        _customTerminator = processTerminator,
+        _commandRunner = commandRunner ?? const StandardProcessCommandRunner(),
+        _isWindows = isWindows ?? Platform.isWindows;
 
   /// Directory dei file di registro processi.
-  String get processesDirectory =>
-      _join(_pathResolver.appManagedRoot, r'runtime\processes');
-
-  static String _join(String p1, String p2) =>
-      p1.endsWith(r'\') || p1.endsWith('/')
-          ? '$p1$p2'
-          : '$p1${Platform.pathSeparator}$p2';
+  String get processesDirectory => _pathResolver.join(
+        _pathResolver.appManagedRoot,
+        _pathResolver.join('runtime', 'processes'),
+      );
 
   /// Percorso del file JSON di registro per un dato ruolo.
   String recordPathForRole(String role) {
     final cleanRole = role.trim().toLowerCase();
-    return _join(processesDirectory, '$cleanRole.json');
+    return _pathResolver.join(processesDirectory, '$cleanRole.json');
   }
 
   /// Acquisisce il lock inter-processo di bootstrap per la sincronizzazione del ciclo di vita.
@@ -175,9 +207,37 @@ final class ProcessOwnershipRegistry {
       return _customChecker!(record);
     }
 
-    if (!Platform.isWindows) {
+    if (!_isWindows) {
       try {
-        return Process.killPid(record.pid, ProcessSignal.sigkill);
+        // 1. Controllo non distruttivo dell'esistenza del processo via kill -0
+        final killRes = await _commandRunner.run(
+          'kill',
+          ['-0', '${record.pid}'],
+          timeout: const Duration(seconds: 2),
+        );
+        if (killRes.exitCode != 0) {
+          return false;
+        }
+
+        // 2. Ispezione della riga di comando del processo via ps
+        final psRes = await _commandRunner.run(
+          'ps',
+          ['-p', '${record.pid}', '-o', 'command='],
+          timeout: const Duration(seconds: 2),
+        );
+        if (psRes.exitCode != 0) {
+          return false;
+        }
+
+        final commandOutput = (psRes.stdout as String).trim();
+        if (commandOutput.isEmpty) {
+          return false;
+        }
+
+        // Il primo token della riga di comando corrisponde al binario/eseguibile
+        final exePath = commandOutput.split(RegExp(r'\s+')).first;
+        final currentHash = ProcessOwnershipRecord.hashPath(exePath);
+        return currentHash == record.executablePathHash;
       } catch (_) {
         return false;
       }
@@ -185,13 +245,17 @@ final class ProcessOwnershipRegistry {
 
     try {
       // 1. Controllo ultra-veloce dell'esistenza del PID tramite tasklist
-      final tasklistRes = await Process.run('tasklist', [
-        '/FI',
-        'PID eq ${record.pid}',
-        '/FO',
-        'CSV',
-        '/NH',
-      ]).timeout(const Duration(seconds: 2));
+      final tasklistRes = await _commandRunner.run(
+        'tasklist',
+        [
+          '/FI',
+          'PID eq ${record.pid}',
+          '/FO',
+          'CSV',
+          '/NH',
+        ],
+        timeout: const Duration(seconds: 2),
+      );
 
       if (tasklistRes.exitCode != 0) return false;
       final stdoutText = (tasklistRes.stdout as String).trim();
@@ -201,14 +265,18 @@ final class ProcessOwnershipRegistry {
         return false;
       }
 
-      // 2. Se attivo, verifichiamo il percorso dell'eseguibile
-      final exeRes = await Process.run('wmic', [
-        'process',
-        'where',
-        'ProcessId=${record.pid}',
-        'get',
-        'ExecutablePath',
-      ]).timeout(const Duration(seconds: 2));
+      // 2. Se attivo, verifichiamo il percorso dell'eseguibile via wmic
+      final exeRes = await _commandRunner.run(
+        'wmic',
+        [
+          'process',
+          'where',
+          'ProcessId=${record.pid}',
+          'get',
+          'ExecutablePath',
+        ],
+        timeout: const Duration(seconds: 2),
+      );
 
       if (exeRes.exitCode != 0) return false;
       final lines = (exeRes.stdout as String)
@@ -232,15 +300,30 @@ final class ProcessOwnershipRegistry {
       return _customTerminator!(pid);
     }
 
-    if (Platform.isWindows) {
+    if (_isWindows) {
       try {
-        final result = await Process.run('taskkill', ['/F', '/PID', '$pid']);
+        final result = await _commandRunner.run(
+          'taskkill',
+          ['/F', '/PID', '$pid'],
+        );
         return result.exitCode == 0;
       } catch (_) {
         return false;
       }
     } else {
-      return Process.killPid(pid, ProcessSignal.sigkill);
+      try {
+        final result = await _commandRunner.run(
+          'kill',
+          ['-9', '$pid'],
+        );
+        if (result.exitCode == 0) return true;
+      } catch (_) {}
+
+      try {
+        return Process.killPid(pid, ProcessSignal.sigkill);
+      } catch (_) {
+        return false;
+      }
     }
   }
 }

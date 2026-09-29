@@ -777,6 +777,9 @@ final class DefaultLlamaServerDependencyService
     if (lower.contains('vulkan') || lower.contains('ggml-vulkan')) {
       return RuntimeAcceleration.vulkan;
     }
+    if (lower.contains('metal') || lower.contains('ggml-metal')) {
+      return RuntimeAcceleration.metal;
+    }
     return RuntimeAcceleration.cpu;
   }
 
@@ -802,6 +805,14 @@ final class DefaultLlamaServerDependencyService
       if (matchVulkan != null) {
         final deviceName = matchVulkan.group(1)?.trim();
         return (RuntimeAcceleration.vulkan, deviceName);
+      }
+
+      final matchMetal =
+          RegExp(r'Metal\d*:\s*([^\(\n\r]+)', caseSensitive: false)
+              .firstMatch(devicesOutput);
+      if (matchMetal != null) {
+        final deviceName = matchMetal.group(1)?.trim();
+        return (RuntimeAcceleration.metal, deviceName);
       }
 
       // Se --list-devices è stato eseguito ma non ha rilevato dispositivi GPU validi,

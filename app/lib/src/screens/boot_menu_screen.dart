@@ -154,6 +154,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       final accelLabel = switch (detection.acceleration) {
         RuntimeAcceleration.cuda => 'CUDA (NVIDIA GPU ACCELERATED)',
         RuntimeAcceleration.vulkan => 'VULKAN (GPU ACCELERATED)',
+        RuntimeAcceleration.metal => 'METAL (APPLE SILICON GPU ACCELERATED)',
         RuntimeAcceleration.cpu => 'CPU (FALLBACK / NO GPU ACCELERATION)',
       };
 
@@ -1190,6 +1191,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                             'CUDA (NVIDIA GPU ACCELERATED)',
                           RuntimeAcceleration.vulkan =>
                             'VULKAN (GPU ACCELERATED)',
+                          RuntimeAcceleration.metal =>
+                            'METAL (APPLE SILICON GPU ACCELERATED)',
                           RuntimeAcceleration.cpu => 'CPU (AVX2 FALLBACK)',
                           null => 'Rilevamento in corso...',
                         };

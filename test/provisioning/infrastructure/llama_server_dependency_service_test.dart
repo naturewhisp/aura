@@ -417,5 +417,35 @@ void main() {
       expect(detection.acceleration, equals(RuntimeAcceleration.vulkan));
       expect(detection.gpuDeviceName, equals('AMD Radeon RX 6700 XT'));
     });
+
+    test(
+        'validateExecutable riconosce accelerazione Metal da probe --list-devices',
+        () async {
+      final metalExe = r'C:\Tools\llama-server-metal';
+      await fileSystem.createDirectory(r'C:\Tools');
+      await fileSystem.writeAsString(metalExe, 'dummy');
+
+      final launcher = TestProcessLauncher((req) async {
+        if (req.arguments.contains('--list-devices')) {
+          return TestManagedProcess(
+            stdoutText: 'Available devices:\n  Metal: Apple M3 Pro (18 GiB)\n',
+          );
+        }
+        return TestManagedProcess(stdoutText: 'version: b4210 (Metal)');
+      });
+
+      final service = DefaultLlamaServerDependencyService(
+        configurationRepository: repo,
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        processLauncher: launcher,
+        probeTimeout: const Duration(milliseconds: 100),
+      );
+
+      final result = await service.validateExecutable(executablePath: metalExe);
+      expect(result.isValid, isTrue);
+      expect(result.acceleration, equals(RuntimeAcceleration.metal));
+      expect(result.gpuDeviceName, equals('Apple M3 Pro'));
+    });
   });
 }

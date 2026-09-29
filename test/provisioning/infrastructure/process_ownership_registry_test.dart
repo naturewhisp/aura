@@ -168,4 +168,196 @@ void main() {
       expect(await registry.getRecord('actor'), isNull);
     });
   });
+
+  group('System Process Probe Tests (POSIX & Windows) -', () {
+    late FakeProcessCommandRunner fakeRunner;
+
+    setUp(() {
+      fakeRunner = FakeProcessCommandRunner();
+    });
+
+    test(
+        'Branch POSIX rileva processo vivo e corrispondente tramite kill -0 e ps',
+        () async {
+      final posixRegistry = ProcessOwnershipRegistry(
+        pathResolver: pathResolver,
+        lock: InMemoryProvisioningLock(),
+        commandRunner: fakeRunner,
+        isWindows: false,
+      );
+
+      final exePath = '/usr/local/bin/llama-server';
+      final exeHash = ProcessOwnershipRecord.hashPath(exePath);
+
+      var killCalledWithPid = 0;
+      fakeRunner.onCommand('kill', (args) {
+        if (args.contains('-0')) {
+          expect(args, contains('4321'));
+          return ProcessResult(1, 0, '', '');
+        }
+        if (args.contains('-9')) {
+          killCalledWithPid = int.parse(args.last);
+          return ProcessResult(2, 0, '', '');
+        }
+        return ProcessResult(3, 1, '', 'Unknown kill args');
+      });
+
+      fakeRunner.onCommand('ps', (args) {
+        expect(args, contains('4321'));
+        expect(args, contains('command='));
+        return ProcessResult(
+            4, 0, '$exePath --port 30201 --model /models/actor.gguf', '');
+      });
+
+      final record = ProcessOwnershipRecord(
+        schemaVersion: 1,
+        pid: 4321,
+        role: 'actor',
+        ownerInstanceId: 'stale-instance-posix',
+        parentPid: 1000,
+        executablePathHash: exeHash,
+        modelPathHash: 'hash-model',
+        modelAlias: 'aura.actor.primary',
+        port: 30201,
+        startedAt: DateTime.now(),
+        state: 'ready',
+      );
+
+      await posixRegistry.registerRecord(record);
+
+      final cleaned = await posixRegistry.cleanupStaleProcesses(
+        currentOwnerInstanceId: 'new-active-instance',
+      );
+
+      expect(cleaned.length, equals(1));
+      expect(cleaned.first.pid, equals(4321));
+      expect(killCalledWithPid, equals(4321));
+      expect(await posixRegistry.getRecord('actor'), isNull);
+    });
+
+    test(
+        'Branch POSIX bonifica record stale se kill -0 indica che il PID non esiste',
+        () async {
+      final posixRegistry = ProcessOwnershipRegistry(
+        pathResolver: pathResolver,
+        lock: InMemoryProvisioningLock(),
+        commandRunner: fakeRunner,
+        isWindows: false,
+      );
+
+      var killMinusNineCalled = false;
+      fakeRunner.onCommand('kill', (args) {
+        if (args.contains('-0')) {
+          return ProcessResult(1, 1, '', 'No such process');
+        }
+        if (args.contains('-9')) {
+          killMinusNineCalled = true;
+          return ProcessResult(2, 0, '', '');
+        }
+        return ProcessResult(3, 1, '', '');
+      });
+
+      final record = ProcessOwnershipRecord(
+        schemaVersion: 1,
+        pid: 5555,
+        role: 'evaluator',
+        ownerInstanceId: 'stale-instance',
+        parentPid: 1000,
+        executablePathHash: 'any-hash',
+        modelPathHash: 'hash-model',
+        modelAlias: 'aura.evaluator.primary',
+        port: 30202,
+        startedAt: DateTime.now(),
+        state: 'ready',
+      );
+
+      await posixRegistry.registerRecord(record);
+
+      final cleaned = await posixRegistry.cleanupStaleProcesses(
+        currentOwnerInstanceId: 'current-instance',
+      );
+
+      expect(cleaned.length, equals(1));
+      expect(cleaned.first.pid, equals(5555));
+      expect(killMinusNineCalled, isFalse);
+      expect(await posixRegistry.getRecord('evaluator'), isNull);
+    });
+
+    test(
+        'Branch Windows rileva processo vivo e corrispondente tramite tasklist e wmic',
+        () async {
+      final winRegistry = ProcessOwnershipRegistry(
+        pathResolver: pathResolver,
+        lock: InMemoryProvisioningLock(),
+        commandRunner: fakeRunner,
+        isWindows: true,
+      );
+
+      const exePath = r'C:\Tools\llama-server.exe';
+      final exeHash = ProcessOwnershipRecord.hashPath(exePath);
+
+      var taskkillCalled = false;
+      fakeRunner.onCommand('tasklist', (args) {
+        return ProcessResult(
+            1, 0, '"llama-server.exe","8888","Console","1","50.000 K"', '');
+      });
+
+      fakeRunner.onCommand('wmic', (args) {
+        return ProcessResult(2, 0, 'ExecutablePath\n$exePath\n', '');
+      });
+
+      fakeRunner.onCommand('taskkill', (args) {
+        taskkillCalled = true;
+        expect(args, contains('8888'));
+        return ProcessResult(3, 0, '', '');
+      });
+
+      final record = ProcessOwnershipRecord(
+        schemaVersion: 1,
+        pid: 8888,
+        role: 'actor',
+        ownerInstanceId: 'stale-win-instance',
+        parentPid: 1000,
+        executablePathHash: exeHash,
+        modelPathHash: 'hash-model',
+        modelAlias: 'aura.actor.primary',
+        port: 30201,
+        startedAt: DateTime.now(),
+        state: 'ready',
+      );
+
+      await winRegistry.registerRecord(record);
+
+      final cleaned = await winRegistry.cleanupStaleProcesses(
+        currentOwnerInstanceId: 'current-win-instance',
+      );
+
+      expect(cleaned.length, equals(1));
+      expect(cleaned.first.pid, equals(8888));
+      expect(taskkillCalled, isTrue);
+      expect(await winRegistry.getRecord('actor'), isNull);
+    });
+  });
+}
+
+final class FakeProcessCommandRunner implements ProcessCommandRunner {
+  final Map<String, ProcessResult Function(List<String> args)> _handlers = {};
+
+  void onCommand(
+      String executable, ProcessResult Function(List<String> args) handler) {
+    _handlers[executable] = handler;
+  }
+
+  @override
+  Future<ProcessResult> run(
+    String executable,
+    List<String> arguments, {
+    Duration? timeout,
+  }) async {
+    final handler = _handlers[executable];
+    if (handler != null) {
+      return handler(arguments);
+    }
+    return ProcessResult(0, 1, '', 'Unknown command: $executable');
+  }
 }

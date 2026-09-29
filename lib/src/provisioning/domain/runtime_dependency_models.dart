@@ -8,6 +8,9 @@ enum RuntimeAcceleration {
   /// Accelerazione GPU cross-platform via Vulkan SDK.
   vulkan,
 
+  /// Accelerazione GPU nativa Apple Silicon / Apple GPU via Metal.
+  metal,
+
   /// Esecuzione standard su CPU senza accelerazione GPU dedicata.
   cpu,
 }

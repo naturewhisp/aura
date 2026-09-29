@@ -7,6 +7,10 @@ import '../domain/provisioning_options.dart';
 final class ProvisioningPathResolver {
   final String appManagedRoot;
   final String bundledRoot;
+  final bool isPosix;
+
+  /// Separatore di percorso attivo per il contesto di esecuzione del resolver.
+  String get separator => isPosix ? '/' : r'\';
 
   static final RegExp _invalidCharsRegex = RegExp(r'[<>:"|?*\x00-\x1F]');
   static final RegExp _reservedWindowsNamesRegex = RegExp(
@@ -19,7 +23,11 @@ final class ProvisioningPathResolver {
   ProvisioningPathResolver({
     required String appManagedRoot,
     required String bundledRoot,
-  })  : appManagedRoot = canonicalizeRoot(appManagedRoot),
+    bool? isPosix,
+  })  : isPosix = isPosix ??
+            (appManagedRoot.trim().startsWith('/') &&
+                !appManagedRoot.trim().startsWith(r'\\')),
+        appManagedRoot = canonicalizeRoot(appManagedRoot),
         bundledRoot = canonicalizeRoot(bundledRoot) {
     _validateRoot('appManagedRoot', this.appManagedRoot);
     _validateRoot('bundledRoot', this.bundledRoot);
@@ -34,22 +42,51 @@ final class ProvisioningPathResolver {
   }
 
   /// Normalizza una root di percorso rimuovendo separatori duplicati, segmenti `.` e trailing slash ridondanti.
+  /// Supporta sia la semantica POSIX (`/Users/...`) sia la semantica Windows (`C:\...` e `\\...`).
   static String canonicalizeRoot(String root) {
-    final trimmed = root.trim().replaceAll('/', r'\');
+    final trimmed = root.trim();
     if (trimmed.isEmpty) return trimmed;
 
-    final isUnc = trimmed.startsWith(r'\\');
+    final isPosix = trimmed.startsWith('/') &&
+        !trimmed.startsWith('//') &&
+        !trimmed.startsWith(r'\\');
+
+    if (isPosix) {
+      final rawSegments = trimmed.split(RegExp(r'[\\/]'));
+      final cleanSegments = <String>[];
+      for (final seg in rawSegments) {
+        final s = seg.trim();
+        if (s.isEmpty || s == '.') {
+          continue;
+        }
+        if (s == '..') {
+          throw const ProvisioningException(
+            reason: ProvisioningFailureReason.invalidCatalog,
+            message: 'Path traversal ("..") non ammesso nel percorso di root.',
+          );
+        }
+        cleanSegments.add(s);
+      }
+
+      if (cleanSegments.isEmpty) {
+        return '/';
+      }
+      return '/${cleanSegments.join('/')}';
+    }
+
+    final normalized = trimmed.replaceAll('/', r'\');
+    final isUnc = normalized.startsWith(r'\\');
     var prefix = '';
-    var rest = trimmed;
+    var rest = normalized;
 
     if (isUnc) {
       prefix = r'\\';
-      rest = trimmed.substring(2);
+      rest = normalized.substring(2);
     } else {
-      final driveMatch = RegExp(r'^[A-Za-z]:').firstMatch(trimmed);
+      final driveMatch = RegExp(r'^[A-Za-z]:').firstMatch(normalized);
       if (driveMatch != null) {
         prefix = driveMatch.group(0)!;
-        rest = trimmed.substring(prefix.length);
+        rest = normalized.substring(prefix.length);
       }
     }
 
@@ -110,19 +147,19 @@ final class ProvisioningPathResolver {
 
   /// Path del file `installation_record.json`.
   String get installationRecordPath =>
-      _join(appManagedRoot, 'installation_record.json');
+      _joinPath(appManagedRoot, 'installation_record.json');
 
   /// Path del file `active_state.json`.
-  String get activeStatePath => _join(appManagedRoot, 'active_state.json');
+  String get activeStatePath => _joinPath(appManagedRoot, 'active_state.json');
 
   /// Path della directory dei runtime app-managed.
-  String get runtimesDirectory => _join(appManagedRoot, 'runtimes');
+  String get runtimesDirectory => _joinPath(appManagedRoot, 'runtimes');
 
   /// Path della directory dei modelli app-managed.
-  String get modelsDirectory => _join(appManagedRoot, 'models');
+  String get modelsDirectory => _joinPath(appManagedRoot, 'models');
 
   /// Path della directory di staging temporaneo.
-  String get stagingDirectory => _join(appManagedRoot, 'staging');
+  String get stagingDirectory => _joinPath(appManagedRoot, 'staging');
 
   /// Sanitizza un identificatore di operazione per uso sicuro come file di staging.
   String sanitizeOperationId(String operationId) {
@@ -138,28 +175,29 @@ final class ProvisioningPathResolver {
 
   /// Path del file `.part` temporaneo di staging per un'operazione.
   String stagingPartPath(String operationId) =>
-      _join(stagingDirectory, '${sanitizeOperationId(operationId)}.part');
+      _joinPath(stagingDirectory, '${sanitizeOperationId(operationId)}.part');
 
   /// Path del file `.checkpoint.json` per un'operazione.
-  String stagingCheckpointPath(String operationId) => _join(
+  String stagingCheckpointPath(String operationId) => _joinPath(
       stagingDirectory, '${sanitizeOperationId(operationId)}.checkpoint.json');
 
   /// Path della directory di cache HTTP/download.
-  String get cacheDirectory => _join(appManagedRoot, 'cache');
+  String get cacheDirectory => _joinPath(appManagedRoot, 'cache');
 
   /// Path del file `cached_catalog_envelope.json`.
   String get catalogCacheEnvelopePath =>
-      _join(cacheDirectory, 'cached_catalog_envelope.json');
+      _joinPath(cacheDirectory, 'cached_catalog_envelope.json');
 
   /// Path del file `lkg_catalog_metadata.json`.
   String get lkgCatalogMetadataPath =>
-      _join(cacheDirectory, 'lkg_catalog_metadata.json');
+      _joinPath(cacheDirectory, 'lkg_catalog_metadata.json');
 
   /// Path della directory dei log.
-  String get logsDirectory => _join(appManagedRoot, 'logs');
+  String get logsDirectory => _joinPath(appManagedRoot, 'logs');
 
   /// Path della directory del runtime bundled.
-  String get bundledRuntimeDirectory => _join(bundledRoot, 'bundled_runtime');
+  String get bundledRuntimeDirectory =>
+      _joinPath(bundledRoot, 'bundled_runtime');
 
   /// Calcola il path di installazione relativo per un artefatto.
   String resolveRelativeInstallPath({
@@ -197,7 +235,7 @@ final class ProvisioningPathResolver {
       );
     }
 
-    final rawSegments = trimmed.replaceAll('/', '\\').split('\\');
+    final rawSegments = trimmed.split(RegExp(r'[\\/]'));
     final cleanSegments = <String>[];
     for (final seg in rawSegments) {
       final s = seg.trim();
@@ -212,14 +250,16 @@ final class ProvisioningPathResolver {
       );
     }
 
-    final relJoined = cleanSegments.join('\\');
-    final resolvedAbsolute = canonicalizeRoot(_join(appManagedRoot, relJoined));
+    final relJoined = cleanSegments.join(separator);
+    final resolvedAbsolute =
+        canonicalizeRoot(_joinPath(appManagedRoot, relJoined));
 
     // Boundary Check: assicura che il percorso risolto si trovi rigorosamente all'interno di appManagedRoot
     final normRoot = _canonicalizeKey(appManagedRoot);
     final normResolved = _canonicalizeKey(resolvedAbsolute);
 
-    if (!normResolved.startsWith(normRoot)) {
+    if (!(normResolved == normRoot ||
+        normResolved.startsWith('$normRoot$separator'))) {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message:
@@ -240,12 +280,12 @@ final class ProvisioningPathResolver {
     final installDirAbsolute =
         resolveAppManagedRelativePath(relativeInstallPath);
     final resolvedFilePath =
-        canonicalizeRoot(_join(installDirAbsolute, cleanEntryName));
+        canonicalizeRoot(_joinPath(installDirAbsolute, cleanEntryName));
 
     final normDir = _canonicalizeKey(installDirAbsolute);
     final normFile = _canonicalizeKey(resolvedFilePath);
 
-    if (!normFile.startsWith(normDir)) {
+    if (!(normFile == normDir || normFile.startsWith('$normDir$separator'))) {
       throw ProvisioningException(
         reason: ProvisioningFailureReason.invalidCatalog,
         message:
@@ -260,8 +300,8 @@ final class ProvisioningPathResolver {
   String resolveAbsolutePath(String relativePath) =>
       resolveAppManagedRelativePath(relativePath);
 
-  /// Helper pubblico per unire due componenti di path in stile Windows.
-  String join(String part1, String part2) => _join(part1, part2);
+  /// Helper pubblico per unire due componenti di path rispettando il separatore del resolver.
+  String join(String part1, String part2) => _joinPath(part1, part2);
 
   /// Calcola il path assoluto di installazione finale sotto la root app-managed.
   String resolveAbsoluteInstallPath({
@@ -274,7 +314,7 @@ final class ProvisioningPathResolver {
       artifactId: artifactId,
       buildOrVersionId: buildOrVersionId,
     );
-    return _join(appManagedRoot, relative.replaceAll('/', '\\'));
+    return _joinPath(appManagedRoot, relative.replaceAll('/', separator));
   }
 
   /// Calcola il path assoluto di installazione finale per un [CatalogArtifact].
@@ -293,7 +333,7 @@ final class ProvisioningPathResolver {
   String resolveBundledArtifactPath(CatalogArtifact artifact) {
     final assetId = artifact.bundledAssetId ?? artifact.fileName;
     final cleanAssetId = sanitizeSegment(assetId);
-    return _join(bundledRoot, cleanAssetId);
+    return _joinPath(bundledRoot, cleanAssetId);
   }
 
   /// Calcola il path della directory temporanea intermedia per l'installazione atomica.
@@ -309,23 +349,23 @@ final class ProvisioningPathResolver {
   /// Calcola il path assoluto della directory di staging per un'operazione.
   String resolveStagingDirectory(String operationId) {
     final cleanOpId = sanitizeSegment(operationId);
-    return _join(stagingDirectory, cleanOpId);
+    return _joinPath(stagingDirectory, cleanOpId);
   }
 
   /// Directory radice della quarantena per staging gestiti corrotti.
-  String get quarantineDirectory => _join(stagingDirectory, 'quarantine');
+  String get quarantineDirectory => _joinPath(stagingDirectory, 'quarantine');
 
   /// Calcola il path assoluto della directory di quarantena per una specifica operazione.
   String quarantineOperationPath(String operationId) {
     final cleanOpId = sanitizeSegment(operationId);
-    return _join(quarantineDirectory, cleanOpId);
+    return _joinPath(quarantineDirectory, cleanOpId);
   }
 
   /// Calcola il path assoluto della directory temporanea per l'import locale single-pass.
   /// Struttura: `staging/local-import/<operationId>/`
   String localImportTempPath(String operationId) {
     final cleanOpId = sanitizeSegment(operationId);
-    return _join(_join(stagingDirectory, 'local-import'), cleanOpId);
+    return _joinPath(_joinPath(stagingDirectory, 'local-import'), cleanOpId);
   }
 
   /// Sanitizza e valida rigorosamente un singolo segmento di path.
@@ -389,14 +429,26 @@ final class ProvisioningPathResolver {
     return trimmed;
   }
 
-  /// Helper interno per unire due componenti di path in stile Windows.
-  static String _join(String part1, String part2) {
+  /// Helper d'istanza per unire due componenti di path rispettando il separatore del resolver.
+  String _joinPath(String part1, String part2) {
     final p1 = part1.endsWith(r'\') || part1.endsWith('/')
         ? part1.substring(0, part1.length - 1)
         : part1;
     final p2 = part2.startsWith(r'\') || part2.startsWith('/')
         ? part2.substring(1)
         : part2;
-    return '$p1\\$p2';
+    return '$p1$separator$p2';
+  }
+
+  /// Helper statico per unire due componenti di path in stile Windows o POSIX.
+  static String staticJoin(String part1, String part2,
+      {String separator = r'\'}) {
+    final p1 = part1.endsWith(r'\') || part1.endsWith('/')
+        ? part1.substring(0, part1.length - 1)
+        : part1;
+    final p2 = part2.startsWith(r'\') || part2.startsWith('/')
+        ? part2.substring(1)
+        : part2;
+    return '$p1$separator$p2';
   }
 }

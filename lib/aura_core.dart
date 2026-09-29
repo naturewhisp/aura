@@ -25,6 +25,9 @@ export 'src/models/override_status.dart';
 export 'src/models/override_ineligibility_reason.dart';
 export 'src/models/override_resolution.dart';
 export 'src/override/override_resolver.dart';
+export 'src/models/provenance/dataset_source.dart';
+export 'src/models/provenance/session_provenance_metadata.dart';
+export 'src/models/provenance/turn_generation_provenance.dart';
 export 'src/replay_logger.dart';
 export 'src/constants.dart';
 

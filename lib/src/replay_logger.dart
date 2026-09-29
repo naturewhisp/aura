@@ -1,5 +1,7 @@
 import 'package:meta/meta.dart';
 import 'models/evaluator_delta.dart';
+import 'models/provenance/session_provenance_metadata.dart';
+import 'models/provenance/turn_generation_provenance.dart';
 import 'models/user_profile.dart';
 
 /// Tipi di eventi registrabili all'interno del replay.
@@ -98,6 +100,9 @@ class ReplayEntry {
   /// L'esito dettagliato della risoluzione dell'override in questo turno, se applicabile.
   final Map<String, dynamic>? overrideResolution;
 
+  /// I metadati di provenance per la generazione del singolo turno di dialogo.
+  final TurnGenerationProvenance? generationProvenance;
+
   /// Costruttore costante per inizializzare una voce di replay.
   const ReplayEntry({
     required this.turnId,
@@ -129,6 +134,7 @@ class ReplayEntry {
       'applied_resonance_penalty': 0.0,
     },
     this.overrideResolution,
+    this.generationProvenance,
   })  : actualEvaluator = actualEvaluator ?? evaluatorModel,
         eventId = eventId ?? "$actorRequestId-evt",
         gameplayTurnId = gameplayTurnId ?? turnId,
@@ -183,6 +189,12 @@ class ReplayEntry {
             .toList() ??
         const [];
 
+    final genProvJson = json['generationProvenance'] as Map<String, dynamic>? ??
+        json['generation_provenance'] as Map<String, dynamic>?;
+    final genProv = genProvJson != null
+        ? TurnGenerationProvenance.fromJson(genProvJson)
+        : null;
+
     return ReplayEntry(
       turnId: json['turn_id'] as int? ?? 0,
       userInput: json['user_input'] as String? ?? '',
@@ -208,6 +220,63 @@ class ReplayEntry {
       sequenceId: json['sequence_id'] as int?,
       deceptionResolution: deceptionResolutionMap,
       overrideResolution: overrideResMap,
+      generationProvenance: genProv,
+    );
+  }
+
+  /// Crea una copia dell'istanza sostituendo solo i campi specificati.
+  ReplayEntry copyWith({
+    int? turnId,
+    String? userInput,
+    String? displayNameSnapshot,
+    EvaluatorDelta? evaluatorOutput,
+    Map<String, dynamic>? stateBefore,
+    Map<String, dynamic>? stateAfter,
+    String? actorResponse,
+    String? actorRequestId,
+    String? actorResponseHash,
+    String? evaluatorModel,
+    String? actualEvaluator,
+    String? evaluatorExecutionMode,
+    bool? usedRuleFallback,
+    String? fallbackReason,
+    List<Map<String, dynamic>>? evaluatorAttempts,
+    String? actorModel,
+    int? latencyTotalMs,
+    String? eventId,
+    ReplayEventType? eventType,
+    int? gameplayTurnId,
+    int? sequenceId,
+    Map<String, dynamic>? deceptionResolution,
+    Map<String, dynamic>? overrideResolution,
+    TurnGenerationProvenance? generationProvenance,
+  }) {
+    return ReplayEntry(
+      turnId: turnId ?? this.turnId,
+      userInput: userInput ?? this.userInput,
+      displayNameSnapshot: displayNameSnapshot ?? this.displayNameSnapshot,
+      evaluatorOutput: evaluatorOutput ?? this.evaluatorOutput,
+      stateBefore: stateBefore ?? this.stateBefore,
+      stateAfter: stateAfter ?? this.stateAfter,
+      actorResponse: actorResponse ?? this.actorResponse,
+      actorRequestId: actorRequestId ?? this.actorRequestId,
+      actorResponseHash: actorResponseHash ?? this.actorResponseHash,
+      evaluatorModel: evaluatorModel ?? this.evaluatorModel,
+      actualEvaluator: actualEvaluator ?? this.actualEvaluator,
+      evaluatorExecutionMode:
+          evaluatorExecutionMode ?? this.evaluatorExecutionMode,
+      usedRuleFallback: usedRuleFallback ?? this.usedRuleFallback,
+      fallbackReason: fallbackReason ?? this.fallbackReason,
+      evaluatorAttempts: evaluatorAttempts ?? this.evaluatorAttempts,
+      actorModel: actorModel ?? this.actorModel,
+      latencyTotalMs: latencyTotalMs ?? this.latencyTotalMs,
+      eventId: eventId ?? this.eventId,
+      eventType: eventType ?? this.eventType,
+      gameplayTurnId: gameplayTurnId ?? this.gameplayTurnId,
+      sequenceId: sequenceId ?? this.sequenceId,
+      deceptionResolution: deceptionResolution ?? this.deceptionResolution,
+      overrideResolution: overrideResolution ?? this.overrideResolution,
+      generationProvenance: generationProvenance ?? this.generationProvenance,
     );
   }
 
@@ -247,6 +316,8 @@ class ReplayEntry {
       'event_type': eventType.value,
       'gameplay_turn_id': gameplayTurnId,
       'sequence_id': sequenceId,
+      if (generationProvenance != null)
+        'generationProvenance': generationProvenance!.toJson(),
       'runtime': {
         'requested_evaluator': evaluatorModel,
         'actual_evaluator': actualEvaluator,
@@ -271,10 +342,17 @@ class ReplayEntry {
 class ReplayLogger {
   /// L'identificatore univoco della sessione di gioco associata.
   final String sessionId;
+
+  /// I metadati di provenance dell'intera sessione di gioco.
+  SessionProvenanceMetadata? sessionProvenance;
+
   final List<ReplayEntry> _entries = [];
 
   /// Inizializza il logger per la sessione specificata.
-  ReplayLogger({required this.sessionId});
+  ReplayLogger({
+    required this.sessionId,
+    this.sessionProvenance,
+  });
 
   /// Restituisce una lista non modificabile di tutte le voci registrate finora.
   List<ReplayEntry> get entries => List.unmodifiable(_entries);
@@ -289,7 +367,15 @@ class ReplayLogger {
 
   /// Ripristina un [ReplayLogger] da un JSON.
   factory ReplayLogger.fromJson(Map<String, dynamic> json) {
-    final logger = ReplayLogger(sessionId: json['session_id'] as String? ?? '');
+    final provJson = json['sessionProvenance'] as Map<String, dynamic>? ??
+        json['session_provenance'] as Map<String, dynamic>?;
+    final prov =
+        provJson != null ? SessionProvenanceMetadata.fromJson(provJson) : null;
+
+    final logger = ReplayLogger(
+      sessionId: json['session_id'] as String? ?? '',
+      sessionProvenance: prov,
+    );
     final entriesList = json['entries'] as List? ?? const [];
     for (final e in entriesList) {
       if (e is Map<String, dynamic>) {
@@ -309,6 +395,8 @@ class ReplayLogger {
     return {
       'session_id': sessionId,
       'total_turns': _entries.length,
+      if (sessionProvenance != null)
+        'sessionProvenance': sessionProvenance!.toJson(),
       'entries': _entries.map((e) => e.toJson()).toList(),
     };
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import '../domain/catalog_manifest.dart';
 import '../domain/configured_model_reference.dart';
@@ -264,7 +265,7 @@ final class DefaultLocalInferencePreflightEngine
       descriptor.relativeInstallPath,
     );
     final entryFileName = descriptor.entryFileName ?? '';
-    final entryFilePath = '$installDir\\$entryFileName';
+    final entryFilePath = '$installDir${Platform.pathSeparator}$entryFileName';
 
     if (!await _fileSystem.fileExists(entryFilePath)) {
       return _ModelCheckFailure(

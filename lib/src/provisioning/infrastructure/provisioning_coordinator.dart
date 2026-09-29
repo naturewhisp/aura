@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import '../domain/activation_state.dart';
 import '../domain/catalog_artifact_snapshot.dart';
 import '../domain/catalog_manifest.dart';
@@ -572,7 +573,8 @@ final class ProvisioningCoordinator {
   /// un contratto esplicito nel filesystem abstraction corrente.
   Future<int> reconcileUnindexedInstallations() async {
     return _lock.synchronized(_lockKey, () async {
-      final modelsRoot = '${_pathResolver.appManagedRoot}\\models';
+      final sep = Platform.pathSeparator;
+      final modelsRoot = '${_pathResolver.appManagedRoot}${sep}models';
       if (!await _fileSystem.directoryExists(modelsRoot)) return 0;
 
       int reconciledCount = 0;
@@ -587,16 +589,16 @@ final class ProvisioningCoordinator {
 
       final artifactDirs = await _fileSystem.listDirectory(modelsRoot);
       for (final artifactSub in artifactDirs) {
-        final artifactDir = '$modelsRoot\\$artifactSub';
+        final artifactDir = '$modelsRoot$sep$artifactSub';
         final versionDirs = await _fileSystem.listDirectory(artifactDir);
 
         for (final versionSub in versionDirs) {
           // 1. Esclusione directory .installing residue
           if (installingPattern.hasMatch(versionSub)) continue;
 
-          final versionDir = '$artifactDir\\$versionSub';
-          final markerPath = '$versionDir\\commit.marker';
-          final recordPath = '$versionDir\\installation_record.json';
+          final versionDir = '$artifactDir$sep$versionSub';
+          final markerPath = '$versionDir${sep}commit.marker';
+          final recordPath = '$versionDir${sep}installation_record.json';
 
           if (!await _fileSystem.fileExists(markerPath) ||
               !await _fileSystem.fileExists(recordPath)) {
@@ -672,14 +674,14 @@ final class ProvisioningCoordinator {
             //     finali corrispondano al path fisico scansionato (artifactSub\versionSub),
             //     normalizzando i separatori di directory.
             final normalizedRecordPath =
-                descriptor.relativeInstallPath.replaceAll('/', '\\');
-            final expectedSuffix = '$artifactSub\\$versionSub';
+                descriptor.relativeInstallPath.replaceAll(r'\', '/');
+            final expectedSuffix = '$artifactSub/$versionSub';
             if (!normalizedRecordPath.endsWith(expectedSuffix)) {
               continue;
             }
 
             // 11. File GGUF presente fisicamente
-            final ggufPath = '$versionDir\\$entryFileName';
+            final ggufPath = '$versionDir$sep$entryFileName';
             if (!await _fileSystem.fileExists(ggufPath)) continue;
 
             // 12. Dimensione fisica del GGUF == sizeBytes del record
@@ -1327,8 +1329,10 @@ final class ProvisioningCoordinator {
 
       final targetPath = _pathResolver
           .resolveAppManagedRelativePath(descriptor.relativeInstallPath);
-      final trashDir = '${_pathResolver.appManagedRoot}\\staging\\trash';
-      final trashPath = '$trashDir\\${installationId}_$operationId';
+      final sep = Platform.pathSeparator;
+      final trashDir =
+          '${_pathResolver.appManagedRoot}${sep}staging${sep}trash';
+      final trashPath = '$trashDir$sep${installationId}_$operationId';
 
       bool trashMoved = false;
       bool targetExisted = false;
@@ -1417,8 +1421,10 @@ final class ProvisioningCoordinator {
       int deactivatedNoFallbackCount = 0;
       int unresolvedRoleMismatchCount = 0;
 
-      final modelsRoot = '${_pathResolver.appManagedRoot}\\models';
-      final trashRoot = '${_pathResolver.appManagedRoot}\\staging\\trash';
+      final sep = Platform.pathSeparator;
+      final modelsRoot = '${_pathResolver.appManagedRoot}${sep}models';
+      final trashRoot =
+          '${_pathResolver.appManagedRoot}${sep}staging${sep}trash';
       final currentRecord = await _recordRepository.readRecord();
       final currentState = await _activationRepository.readState();
 
@@ -1431,11 +1437,11 @@ final class ProvisioningCoordinator {
       if (await _fileSystem.directoryExists(modelsRoot)) {
         final artifactDirs = await _fileSystem.listDirectory(modelsRoot);
         for (final artifactSub in artifactDirs) {
-          final artifactDir = '$modelsRoot\\$artifactSub';
+          final artifactDir = '$modelsRoot$sep$artifactSub';
           final versionDirs = await _fileSystem.listDirectory(artifactDir);
 
           for (final versionSub in versionDirs) {
-            final versionDir = '$artifactDir\\$versionSub';
+            final versionDir = '$artifactDir$sep$versionSub';
 
             if (installingPattern.hasMatch(versionSub) ||
                 failedRepairPattern.hasMatch(versionSub)) {

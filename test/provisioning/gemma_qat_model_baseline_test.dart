@@ -60,9 +60,10 @@ void main() {
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('aura_gemma_qat_test_');
 
+      final sep = Platform.pathSeparator;
       pathResolver = ProvisioningPathResolver(
-        appManagedRoot: '${tempDir.path}\\app_managed',
-        bundledRoot: '${tempDir.path}\\bundled',
+        appManagedRoot: '${tempDir.path}${sep}app_managed',
+        bundledRoot: '${tempDir.path}${sep}bundled',
       );
 
       final fileSystem = const LocalProvisioningFileSystem();

@@ -20,7 +20,8 @@ void main() {
 
     test('Scrive in modo sicuro creando ed aggiornando il backup .bak',
         () async {
-      final targetPath = '${tempDir.path}\\test_file.json';
+      final sep = Platform.pathSeparator;
+      final targetPath = '${tempDir.path}${sep}test_file.json';
 
       // Prima scrittura
       await fileSystem.writeStringRecoverably(targetPath, '{"version": 1}');
@@ -42,7 +43,8 @@ void main() {
     test(
         'preserveExistingBackup preserva il file .bak valido esistente senza sovrascriverlo',
         () async {
-      final targetPath = '${tempDir.path}\\rec_file.json';
+      final sep = Platform.pathSeparator;
+      final targetPath = '${tempDir.path}${sep}rec_file.json';
       final backupPath = '$targetPath.bak';
 
       // Pre-crea backup valido e target corrotto
@@ -62,7 +64,8 @@ void main() {
     });
 
     test('deleteFile deleteFileBestEffort e restoreFromBackup', () async {
-      final targetPath = '${tempDir.path}\\del_file.txt';
+      final sep = Platform.pathSeparator;
+      final targetPath = '${tempDir.path}${sep}del_file.txt';
       final backupPath = '$targetPath.bak';
 
       await File(backupPath).writeAsString('backup_content');

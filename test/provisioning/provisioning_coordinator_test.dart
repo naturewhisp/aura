@@ -98,9 +98,10 @@ void main() {
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('aura_coordinator_test_');
 
+      final sep = Platform.pathSeparator;
       pathResolver = ProvisioningPathResolver(
-        appManagedRoot: '${tempDir.path}\\app_managed',
-        bundledRoot: '${tempDir.path}\\bundled',
+        appManagedRoot: '${tempDir.path}${sep}app_managed',
+        bundledRoot: '${tempDir.path}${sep}bundled',
       );
 
       final fileSystem = const LocalProvisioningFileSystem();
@@ -216,8 +217,9 @@ void main() {
       expect(
           descriptor.relativeInstallPath, equals('runtimes/llama-b3500/b3500'));
 
+      final sep = Platform.pathSeparator;
       final installedFile = File(
-        '${tempDir.path}\\app_managed\\runtimes\\llama-b3500\\b3500\\llama-server.exe',
+        '${tempDir.path}${sep}app_managed${sep}runtimes${sep}llama-b3500${sep}b3500${sep}llama-server.exe',
       );
       expect(await installedFile.exists(), isTrue);
     });

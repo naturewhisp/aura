@@ -40,12 +40,15 @@ void main() {
     test(
         'Installa correttamente l artefatto da staging a target final usando un rename atomico isolato',
         () async {
-      final stagingDir = Directory('${tempDir.path}\\staging\\extracted');
+      final sep = Platform.pathSeparator;
+      final stagingDir =
+          Directory('${tempDir.path}${sep}staging${sep}extracted');
       await stagingDir.create(recursive: true);
-      await File('${stagingDir.path}\\llama-server.exe')
+      await File('${stagingDir.path}${sep}llama-server.exe')
           .writeAsString('binary content');
 
-      final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
+      final targetDir =
+          '${tempDir.path}${sep}runtimes${sep}llama-server-b3500${sep}b3500';
       final intermediateDir = '$targetDir.installing-op-install-1';
 
       final res = await installer.installArtifact(
@@ -57,16 +60,18 @@ void main() {
 
       expect(res.installed, isTrue);
       expect(res.alreadyInstalled, isFalse);
-      expect(await File('$targetDir\\llama-server.exe').readAsString(),
+      expect(await File('$targetDir${sep}llama-server.exe').readAsString(),
           equals('binary content'));
     });
 
     test(
         'Lancia ArtifactInstallationException in caso di conflitto con la destinazione finale sul filesystem',
         () async {
-      final targetDir = '${tempDir.path}\\runtimes\\llama-server-b3500\\b3500';
+      final sep = Platform.pathSeparator;
+      final targetDir =
+          '${tempDir.path}${sep}runtimes${sep}llama-server-b3500${sep}b3500';
       await Directory(targetDir).create(recursive: true);
-      await File('$targetDir\\llama-server.exe')
+      await File('$targetDir${sep}llama-server.exe')
           .writeAsString('existing content');
 
       final intermediateDir = '$targetDir.installing-op-install-4';

@@ -76,9 +76,10 @@ void main() {
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('aura_63e_role_test_');
 
+      final sep = Platform.pathSeparator;
       pathResolver = ProvisioningPathResolver(
-        appManagedRoot: '${tempDir.path}\\app_managed',
-        bundledRoot: '${tempDir.path}\\bundled',
+        appManagedRoot: '${tempDir.path}${sep}app_managed',
+        bundledRoot: '${tempDir.path}${sep}bundled',
       );
 
       fileSystem = const LocalProvisioningFileSystem();

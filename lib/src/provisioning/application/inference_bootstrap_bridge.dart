@@ -224,7 +224,7 @@ final class InferenceBootstrapBridge {
             descriptor.relativeInstallPath,
           );
           final entryFileName = descriptor.entryFileName ?? '';
-          final path = '$installDir\\$entryFileName';
+          final path = '$installDir${io.Platform.pathSeparator}$entryFileName';
           final meta = descriptor.metadata;
           final provenance = ManagedModelProvenance(
             artifactId: descriptor.artifactId,

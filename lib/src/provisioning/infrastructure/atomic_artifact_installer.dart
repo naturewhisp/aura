@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import '../domain/catalog_manifest.dart';
 import '../domain/provisioning_cancellation_token.dart';
 import '../domain/provisioning_options.dart';
@@ -82,7 +84,8 @@ final class AtomicArtifactInstaller {
             stagingSourcePath, intermediateInstallPath);
       } else if (await _fileSystem.fileExists(stagingSourcePath)) {
         physicalCopyStarted = true;
-        final targetFilePath = '$intermediateInstallPath\\${artifact.fileName}';
+        final targetFilePath =
+            '$intermediateInstallPath${Platform.pathSeparator}${artifact.fileName}';
         await _fileSystem.copyFile(stagingSourcePath, targetFilePath);
       } else {
         throw const ArtifactInstallationException(

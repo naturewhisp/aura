@@ -387,9 +387,11 @@ void main() {
     setUp(() async {
       tempDir =
           await io.Directory.systemTemp.createTemp('aura_supervisor_test');
-      executableFile = io.File('${tempDir.path}\\llama-server.exe')
+      final sep = io.Platform.pathSeparator;
+      executableFile = io.File('${tempDir.path}${sep}llama-server.exe')
         ..writeAsBytesSync([]);
-      modelFile = io.File('${tempDir.path}\\model.gguf')..writeAsBytesSync([]);
+      modelFile = io.File('${tempDir.path}${sep}model.gguf')
+        ..writeAsBytesSync([]);
     });
 
     tearDown(() async {
@@ -437,7 +439,8 @@ void main() {
     test(
         'Boot header scritto con provenance managed contiene tutti i campi semantici',
         () async {
-      final logFile = io.File('${tempDir.path}\\supervisor.log');
+      final logFile =
+          io.File('${tempDir.path}${io.Platform.pathSeparator}supervisor.log');
       const provenance = ManagedModelProvenance(
         artifactId: 'ministral-3b-q4km',
         repository: 'lmstudio-community/Ministral-3-3B-Instruct-2512-GGUF',
@@ -487,7 +490,8 @@ void main() {
     test(
         'Boot header scritto senza provenance mostra "not available" per istanza esterna',
         () async {
-      final logFile = io.File('${tempDir.path}\\supervisor_ext.log');
+      final logFile = io.File(
+          '${tempDir.path}${io.Platform.pathSeparator}supervisor_ext.log');
 
       final supervisor = LlamaServerProcessSupervisor(
         configuration: _baseConfig(logFilePath: logFile.path),

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
 
@@ -306,7 +307,8 @@ final class SinglePassArtifactIngestionEngine {
     await _fileSystem.deleteDirectoryBestEffort(localTempDir);
     await _fileSystem.createDirectory(localTempDir);
 
-    final placeholderPath = '$localTempDir\\payload.importing';
+    final placeholderPath =
+        '$localTempDir${Platform.pathSeparator}payload.importing';
 
     int bytesRead = 0;
     String calculatedSha256 = '';
@@ -496,7 +498,8 @@ final class SinglePassArtifactIngestionEngine {
       final quarantineDir = _pathResolver.quarantineOperationPath(operationId);
       await _fileSystem.createDirectory(quarantineDir);
 
-      final quarantinePartPath = '$quarantineDir\\corrupted.part';
+      final sep = Platform.pathSeparator;
+      final quarantinePartPath = '$quarantineDir${sep}corrupted.part';
       try {
         await _fileSystem.copyFile(sourceFilePath, quarantinePartPath);
         // Verifica post-condizione cancellazione sorgente
@@ -522,7 +525,7 @@ final class SinglePassArtifactIngestionEngine {
         'quarantinedAtUtc': _clock.nowUtc().toIso8601String(),
       };
 
-      final reportPath = '$quarantineDir\\verification_failure.json';
+      final reportPath = '$quarantineDir${sep}verification_failure.json';
       await _fileSystem.writeStringRecoverably(
         reportPath,
         const JsonEncoder.withIndent('  ').convert(report),

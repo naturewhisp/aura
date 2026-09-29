@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import '../domain/catalog_manifest.dart';
 import '../domain/configured_model_reference.dart';
@@ -204,7 +205,8 @@ final class DefaultModelConfigurationService
       );
     }
 
-    final entryFilePath = '$installDir\\${descriptor.entryFileName ?? ''}';
+    final entryFilePath =
+        '$installDir${Platform.pathSeparator}${descriptor.entryFileName ?? ''}';
     if (!await _fileSystem.fileExists(entryFilePath)) {
       return ModelBindingValidationResult(
         isValid: false,
@@ -309,7 +311,7 @@ final class DefaultModelConfigurationService
     final candidates = <ExternalModelCandidate>[];
 
     for (final entry in entries) {
-      final fullPath = '$searchDir\\$entry';
+      final fullPath = '$searchDir${Platform.pathSeparator}$entry';
       if (entry.toLowerCase().endsWith('.gguf') &&
           await _fileSystem.fileExists(fullPath)) {
         try {

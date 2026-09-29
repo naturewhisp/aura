@@ -11,8 +11,9 @@ void main() {
 
     setUp(() async {
       tempDir = await Directory.systemTemp.createTemp('aura_bridge_test_');
-      dataRootPath = '${tempDir.path}\\app_managed';
-      bundledRootPath = '${tempDir.path}\\bundled';
+      final sep = Platform.pathSeparator;
+      dataRootPath = '${tempDir.path}${sep}app_managed';
+      bundledRootPath = '${tempDir.path}${sep}bundled';
       await Directory(dataRootPath).create(recursive: true);
       await Directory(bundledRootPath).create(recursive: true);
     });
@@ -55,7 +56,8 @@ void main() {
       );
 
       // Crea un file eseguibile finto
-      final fakeExe = File('$dataRootPath\\llama-server.exe');
+      final fakeExe =
+          File('$dataRootPath${Platform.pathSeparator}llama-server.exe');
       await fakeExe.writeAsString('fake binary');
 
       await configRepo.replaceRecord(
@@ -88,13 +90,14 @@ void main() {
     test(
         'resolve restituisce ManagedDualResolution quando runtime e modelli actor/evaluator sono configurati',
         () async {
-      final fakeExe = File('$dataRootPath\\llama-server.exe');
+      final sep = Platform.pathSeparator;
+      final fakeExe = File('$dataRootPath${sep}llama-server.exe');
       await fakeExe.writeAsString('fake binary');
 
-      final fakeActor = File('$dataRootPath\\actor.gguf');
+      final fakeActor = File('$dataRootPath${sep}actor.gguf');
       await fakeActor.writeAsString('fake model actor');
 
-      final fakeEvaluator = File('$dataRootPath\\evaluator.gguf');
+      final fakeEvaluator = File('$dataRootPath${sep}evaluator.gguf');
       await fakeEvaluator.writeAsString('fake model evaluator');
 
       final configRepo = JsonModelConfigurationRepository(
@@ -247,11 +250,12 @@ void main() {
       test(
           'resolve applica parametri CPU-only completi quando il runtime configurato è CPU',
           () async {
-        final fakeExe = File('$dataRootPath\\llama-server.exe');
+        final sep = Platform.pathSeparator;
+        final fakeExe = File('$dataRootPath${sep}llama-server.exe');
         await fakeExe.writeAsString('fake binary');
-        final fakeActor = File('$dataRootPath\\actor.gguf');
+        final fakeActor = File('$dataRootPath${sep}actor.gguf');
         await fakeActor.writeAsString('fake model');
-        final fakeEvaluator = File('$dataRootPath\\evaluator.gguf');
+        final fakeEvaluator = File('$dataRootPath${sep}evaluator.gguf');
         await fakeEvaluator.writeAsString('fake model');
 
         final configRepo = JsonModelConfigurationRepository(

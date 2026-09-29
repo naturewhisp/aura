@@ -20,8 +20,9 @@ void main() {
     });
 
     test('Estrae correttamente un archivio ZIP valido', () async {
-      final zipFile = File('${tempDir.path}\\valid.zip');
-      final targetDir = '${tempDir.path}\\extracted';
+      final sep = Platform.pathSeparator;
+      final zipFile = File('${tempDir.path}${sep}valid.zip');
+      final targetDir = '${tempDir.path}${sep}extracted';
 
       final archive = Archive()
         ..addFile(ArchiveFile('file1.txt', 12, 'hello file 1'.codeUnits))
@@ -37,15 +38,16 @@ void main() {
       );
 
       expect(bytesExtracted, equals(24));
-      expect(await File('$targetDir\\file1.txt').readAsString(),
+      expect(await File('$targetDir${sep}file1.txt').readAsString(),
           equals('hello file 1'));
-      expect(await File('$targetDir\\sub\\file2.txt').readAsString(),
+      expect(await File('$targetDir${sep}sub${sep}file2.txt').readAsString(),
           equals('hello file 2'));
     });
 
     test('Rileva e blocca attacchi Zip Slip (Path Traversal "..")', () async {
-      final zipFile = File('${tempDir.path}\\malicious_slip.zip');
-      final targetDir = '${tempDir.path}\\extracted';
+      final sep = Platform.pathSeparator;
+      final zipFile = File('${tempDir.path}${sep}malicious_slip.zip');
+      final targetDir = '${tempDir.path}${sep}extracted';
 
       final archive = Archive()
         ..addFile(ArchiveFile('../../../evil.exe', 10, 'malicious!'.codeUnits));
@@ -68,8 +70,9 @@ void main() {
     });
 
     test('Rileva e blocca voci ZIP con percorsi assoluti', () async {
-      final zipFile = File('${tempDir.path}\\malicious_abs.zip');
-      final targetDir = '${tempDir.path}\\extracted';
+      final sep = Platform.pathSeparator;
+      final zipFile = File('${tempDir.path}${sep}malicious_abs.zip');
+      final targetDir = '${tempDir.path}${sep}extracted';
 
       final archive = Archive()
         ..addFile(ArchiveFile(
@@ -95,8 +98,9 @@ void main() {
     test(
         'Rileva e blocca Zip Bomb (superamento dimensione estratta consentita)',
         () async {
-      final zipFile = File('${tempDir.path}\\zip_bomb.zip');
-      final targetDir = '${tempDir.path}\\extracted';
+      final sep = Platform.pathSeparator;
+      final zipFile = File('${tempDir.path}${sep}zip_bomb.zip');
+      final targetDir = '${tempDir.path}${sep}extracted';
 
       final hugeContent = List<int>.filled(2 * 1024 * 1024, 65); // 2 MB
       final archive = Archive()

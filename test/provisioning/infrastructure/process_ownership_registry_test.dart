@@ -12,7 +12,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('aura_ownership_test_');
     pathResolver = ProvisioningPathResolver(
       appManagedRoot: tempDir.path,
-      bundledRoot: '${tempDir.path}\\bundled',
+      bundledRoot: '${tempDir.path}${Platform.pathSeparator}bundled',
     );
     registry = ProcessOwnershipRegistry(
       pathResolver: pathResolver,

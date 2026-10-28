@@ -95,6 +95,38 @@ void main(List<String> args) {
     }
   }
 
+  // Controlli di autenticità: un replay prodotto dall'app registra modelli reali,
+  // snapshot di stato completi e risposte già ripulite dai tag dell'agent-loop.
+  if (sessionProv != null) {
+    if (sessionProv.actorModelSha256.toLowerCase() == _emptyInputSha256) {
+      failures.add(
+          'actorModelSha256 coincide con lo SHA-256 di un input vuoto: non identifica un modello reale');
+    }
+    if (sessionProv.evaluatorModelSha256.toLowerCase() == _emptyInputSha256) {
+      failures.add(
+          'evaluatorModelSha256 coincide con lo SHA-256 di un input vuoto: non identifica un modello reale');
+    }
+  }
+  final dialogueTag = RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false);
+  var emptyStateTurns = 0;
+  var unsanitizedTurns = 0;
+  for (final entry in logger.entries) {
+    if (entry.stateBefore.isEmpty || entry.stateAfter.isEmpty) {
+      emptyStateTurns++;
+    }
+    if (dialogueTag.hasMatch(entry.actorResponse)) {
+      unsanitizedTurns++;
+    }
+  }
+  if (emptyStateTurns > 0) {
+    failures.add(
+        '$emptyStateTurns turni privi di snapshot di stato (state_before/state_after vuoti)');
+  }
+  if (unsanitizedTurns > 0) {
+    failures.add(
+        '$unsanitizedTurns risposte dell\'Attore contengono tag <dialogo> non rimossi dall\'app');
+  }
+
   final turnCount = logger.entries.length;
   if (turnCount < minTurns) {
     failures.add(
@@ -207,6 +239,10 @@ void main(List<String> args) {
     exit(1);
   }
 }
+
+/// SHA-256 dell'input vuoto: nessun file GGUF reale può avere questo digest.
+const String _emptyInputSha256 =
+    'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 
 void _printUsage() {
   stdout.writeln('''

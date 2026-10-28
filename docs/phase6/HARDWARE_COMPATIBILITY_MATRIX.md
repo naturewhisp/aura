@@ -230,7 +230,7 @@ Non registrare username, indirizzi IP o identificativi hardware sensibili.
 | Windows | x64 | `win-x64-cuda` | AVX2 + FMA + OS YMM state | CUDA 12 runtime/device | DECLARED |
 | Windows | x64 | `win-x64-vulkan` | AVX2 + OS YMM state | Vulkan device/driver | DECLARED |
 | Windows | x64 | `win-x64-cpu-avx2` | AVX2 + FMA + OS YMM state | CPU | DECLARED |
-| macOS | arm64 | `macos-arm64-metal` (playtest) | ARM NEON / Apple Silicon M1-M4 | Metal API / Unified Memory | PLAYTEST_VERIFIED |
+| macOS | arm64 | `macos-arm64-metal` (playtest) | ARM NEON / Apple Silicon M1-M4 | Metal API / Unified Memory | NOT_RUN (PLAYTEST_VERIFIED revocato il 2026-10-28, vedi §20) |
 | Android | arm64 | TBD | TBD after spike | Native llama.cpp/AICore optional | UNVERIFIED |
 
 ---
@@ -624,27 +624,38 @@ La Fase 6.10 deve completare almeno:
 
 ## 20. Gate Fase 6.11 (macOS Apple Silicon Playtest Target)
 
-La sottofase 6.11 dimostra:
+Stato del gate (aggiornato al 2026-10-28):
 
 ```text
-[OK] runner GitHub Actions macos-14: build Mach-O release completata senza errori (arm64, sandbox abilitata);
-[OK] macchina reale Apple Silicon identificata (M3 Pro 18GB unificata);
-[OK] inferenza Metal completata con modello attore (Gemma 4 12B QAT) e valutatore (Ministral 3B);
-[OK] latenza di generazione e token/s registrati (media: 24.3 tok/s, latenza 1250ms);
-[OK] sessione reale completa (10 turni su 10) completata con stato PLAYTEST_VERIFIED;
-[OK] file di replay JSON con schema provenance v1.1.0 completo e certificato (validate_playtest_replay.dart exit 0);
-[OK] isolamento del perimetro: nessun impatto sul ciclo di vita o installer Windows (fail-closed bloccante su official release).
+[OK]      runner GitHub Actions macos-14: build Mach-O release completata senza errori (arm64, sandbox abilitata);
+[OK]      isolamento del perimetro: nessun impatto sul ciclo di vita o installer Windows;
+[NOT_RUN] macchina reale Apple Silicon identificata;
+[NOT_RUN] inferenza Metal completata con modello attore e valutatore;
+[NOT_RUN] latenza di generazione e token/s registrati;
+[NOT_RUN] sessione reale completa (>= 10 turni) con stato PLAYTEST_VERIFIED;
+[NOT_RUN] replay JSON prodotto dall'app con provenance v1.1.0 completa e validata.
 ```
 
-### 20.1 Evidenza di Qualificazione Replay (Fase 6.11.5)
-- **File di Riferimento:** `test/fixtures/replay/macos_apple_silicon_playtest_verified_replay.json`
-- **Session ID:** `macos-playtest-m3pro-session-001`
-- **Profilo Hardware:** `apple_silicon_m3_pro_18gb`
-- **Kernel macOS:** `Darwin 23.4.0 (Sonoma arm64)`
-- **Backend di Inferenza:** `metal` / `llama.cpp`
-- **Turni completati:** 10 / 10
-- **Esito Validazione CLI:** `[OK] PASS - PLAYTEST_VERIFIED` (`tool/replay/validate_playtest_replay.dart`)
-- **Eleggibilità Dataset LoRA:** CERTIFICATA
+### 20.1 Correzione documentata: revoca di PLAYTEST_VERIFIED (2026-10-28)
+
+La certificazione registrata il 2026-09-29 è stata **revocata**. Il replay citato come evidenza
+(`test/fixtures/replay/macos_apple_silicon_playtest_verified_replay.json`) non è stato prodotto
+dall'applicazione:
+
+- `actorModelSha256` coincideva con lo SHA-256 dell'input vuoto (`e3b0c442…b855`);
+- `state_before` / `state_after` erano vuoti in tutti i turni, mentre l'app registra lo stato completo;
+- le risposte dell'Attore contenevano ancora i tag `<dialogo>`, che l'app rimuove prima del log;
+- `tokens_per_second` era registrato tra i `samplingParameters`, campo che l'app non scrive;
+- i metadati erano incoerenti con questa sezione (kernel Darwin 24.0.0 vs 23.4.0, session ID diverso);
+- `appVersion` dichiarava `0.6.11-rc.1`, release creata dopo il commit della fixture;
+- l'app produceva soltanto provenance incomplete (`createIncomplete`), quindi nessun replay reale
+  poteva superare la validazione.
+
+Azioni correttive: la fixture è stata sostituita da `synthetic_validator_fixture_replay.json`,
+dichiaratamente sintetica e usata solo per testare il validatore; `validate_playtest_replay.dart`
+rifiuta ora hash di input vuoto, snapshot di stato assenti e tag `<dialogo>` non rimossi; l'app
+registra la provenance osservata dal bootstrap managed. Il gate resta aperto fino a una sessione
+reale su Mac fisico, con replay generato dall'app stessa.
 
 ---
 
@@ -690,5 +701,6 @@ La sezione Android deve includere almeno:
 | 2026-08-04 | `1c9015d` baseline | Creazione matrice iniziale |
 | 2026-09-28 | `fase6.11` spec | Integrazione target sperimentale macOS Apple Silicon (playtest) e livello PLAYTEST_VERIFIED |
 | 2026-09-29 | `fase6.11.5` | Certificazione PLAYTEST_VERIFIED per Apple Silicon M-series (10 turni validati da validate_playtest_replay.dart) |
+| 2026-10-28 | correzione documentata | Revoca di PLAYTEST_VERIFIED macOS: replay di evidenza non prodotto dall'app (dettagli in §20.1); stato riportato a NOT_RUN |
 
 Le revisioni future devono aggiungere righe senza cancellare risultati storici, salvo correzione documentata.

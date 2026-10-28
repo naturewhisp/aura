@@ -6,12 +6,79 @@ import 'package:test/test.dart';
 
 void main() {
   group('Playtest Qualification & Replay Validator (Fase 6.11.5)', () {
+    // Fixture SINTETICA costruita a mano per esercitare il ramo positivo del
+    // validatore. Non è un'evidenza di playtest e non deve mai essere citata
+    // come tale nella matrice hardware.
     const fixturePath =
-        'test/fixtures/replay/macos_apple_silicon_playtest_verified_replay.json';
+        'test/fixtures/replay/synthetic_validator_fixture_replay.json';
 
-    test(
-        'la fixture macos_apple_silicon contiene 10 turni e provenance completa',
-        () {
+    Future<ProcessResult> runValidatorOn(Map<String, dynamic> json) async {
+      final tempDir =
+          await Directory.systemTemp.createTemp('aura_playtest_validator_');
+      final tempFile = File('${tempDir.path}${Platform.pathSeparator}r.json');
+      await tempFile.writeAsString(jsonEncode(json));
+      try {
+        return await Process.run(
+          Platform.resolvedExecutable,
+          [
+            'run',
+            'tool/replay/validate_playtest_replay.dart',
+            '--replay',
+            tempFile.path
+          ],
+        );
+      } finally {
+        await tempDir.delete(recursive: true);
+      }
+    }
+
+    Map<String, dynamic> loadFixture() =>
+        jsonDecode(File(fixturePath).readAsStringSync())
+            as Map<String, dynamic>;
+
+    test('CLI rifiuta modelli con SHA-256 dell\'input vuoto', () async {
+      final json = loadFixture();
+      final prov = Map<String, dynamic>.from(json['sessionProvenance'] as Map);
+      prov['actorModelSha256'] =
+          'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+      json['sessionProvenance'] = prov;
+
+      final result = await runValidatorOn(json);
+
+      expect(result.exitCode, equals(1));
+      expect(result.stderr.toString(), contains('input vuoto'));
+    });
+
+    test('CLI rifiuta turni senza snapshot di stato', () async {
+      final json = loadFixture();
+      final entries = (json['entries'] as List)
+          .map((e) => Map<String, dynamic>.from(e as Map)..['state_after'] = {})
+          .toList();
+      json['entries'] = entries;
+
+      final result = await runValidatorOn(json);
+
+      expect(result.exitCode, equals(1));
+      expect(result.stderr.toString(), contains('privi di snapshot di stato'));
+    });
+
+    test('CLI rifiuta risposte con tag <dialogo> non rimossi', () async {
+      final json = loadFixture();
+      final entries = (json['entries'] as List).map((e) {
+        final entry = Map<String, dynamic>.from(e as Map);
+        entry['actor_response'] =
+            '<dialogo>${entry['actor_response']}</dialogo>';
+        return entry;
+      }).toList();
+      json['entries'] = entries;
+
+      final result = await runValidatorOn(json);
+
+      expect(result.exitCode, equals(1));
+      expect(result.stderr.toString(), contains('tag <dialogo>'));
+    });
+
+    test('la fixture sintetica contiene 10 turni e provenance completa', () {
       final file = File(fixturePath);
       expect(file.existsSync(), isTrue);
 
@@ -24,7 +91,7 @@ void main() {
       final prov = logger.sessionProvenance!;
       expect(prov.platform, equals('macos'));
       expect(prov.architecture, equals('arm64'));
-      expect(prov.hardwareClass, equals('apple_silicon_m3_pro_18gb'));
+      expect(prov.hardwareClass, equals('synthetic_fixture_arm64'));
       expect(prov.runtimeAcceleration, equals('metal'));
       expect(prov.datasetSource, equals(DatasetSource.humanPlaytest));
 
@@ -59,7 +126,7 @@ void main() {
       expect(result.stdout.toString(), contains('PASS - PLAYTEST_VERIFIED'));
       expect(result.stdout.toString(),
           contains('Eleggibilita LoRA:      CERTIFICATA'));
-      expect(result.stdout.toString(), contains('apple_silicon_m3_pro_18gb'));
+      expect(result.stdout.toString(), contains('synthetic_fixture_arm64'));
     });
 
     test('CLI rifiuta replay con meno di 10 turni (exit code 1)', () async {

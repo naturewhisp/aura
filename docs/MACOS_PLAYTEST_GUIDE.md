@@ -118,12 +118,12 @@ Uno degli scopi primari del tuo test su Mac è la raccolta di log ad alta precis
    ```
 3. Troverai i file di log delle tue partite salvati nel formato:
    ```text
-   replay_<session_id>_<timestamp>.json
+   play_session_<session_id>.json
    ```
 4. **Verifica Preventiva del Replay (Opzionale ma Raccomandata):**
    * Se disponi dell'SDK Dart o cloni il repository, puoi validare preventivamente che la sessione sia scientificamente qualificata per il dataset con il comando:
      ```bash
-     dart run tool/replay/validate_playtest_replay.dart --replay ~/Library/Application\ Support/AURA/replays/replay_<tuo_file>.json
+     dart run tool/replay/validate_playtest_replay.dart --replay ~/Library/Application\ Support/AURA/replays/play_session_<tuo_file>.json
      ```
    * Il tool verificherà che la sessione contenga almeno 10 turni, che la provenienza hardware risponda ai requisiti (macOS ARM64 Metal) e che non vi siano stati fallback degradati. In caso di esito positivo riporterà il messaggio `[OK] PASS - PLAYTEST_VERIFIED`.
 5. **Come inviarlo:**

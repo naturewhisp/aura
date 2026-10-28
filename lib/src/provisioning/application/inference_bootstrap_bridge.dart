@@ -6,6 +6,7 @@ import '../../agent_runtime/runtime/adapters/managed_llama_server/managed_llama_
 import '../../bootstrap/managed_inference_topology.dart';
 import '../../provisioning/cli/aura_cli_environment.dart';
 import '../../provisioning/cli/local_inference_service_provider.dart';
+import '../../provisioning/domain/catalog_manifest.dart';
 import '../../provisioning/domain/configured_model_reference.dart';
 import '../../provisioning/domain/installation_record.dart';
 import '../../provisioning/domain/runtime_dependency_models.dart';
@@ -28,7 +29,18 @@ final class ManagedDualResolution extends InferenceBootstrapResolution {
   /// Topologia role-aware con configurazioni Actor ed Evaluator.
   final ManagedInferenceTopology topology;
 
-  const ManagedDualResolution({required this.topology});
+  /// Accelerazione effettiva della variante runtime risolta (osservata dal resolver).
+  final RuntimeAcceleration? runtimeAcceleration;
+
+  /// Versione di `llama-server` rilevata dalla probe `--version` in fase di validazione.
+  /// `null` se la probe non ha prodotto una versione riconoscibile.
+  final String? llamaCppBuild;
+
+  const ManagedDualResolution({
+    required this.topology,
+    this.runtimeAcceleration,
+    this.llamaCppBuild,
+  });
 }
 
 /// Risoluzione in modalità external OpenAI-compatible.
@@ -108,6 +120,17 @@ final class InferenceBootstrapBridge {
 
   /// Factory per la costruzione dell'ambiente CLI (override per test).
   final AuraCliEnvironment Function()? _environmentFactory;
+
+  /// Context size esplicito dell'Actor (token).
+  ///
+  /// Senza `--ctx-size`, `llama-server` dimensiona il contesto in base alla VRAM libera
+  /// (osservati valori tra 66k e 262k token su 4 slot), rendendo il valore non
+  /// deterministico e non registrabile nella provenance. La history di gioco è
+  /// limitata a 20 messaggi, quindi 16k token coprono il prompt con ampio margine.
+  static const int actorContextSize = 16384;
+
+  /// Context size esplicito dell'Evaluator (token): input singolo più stato corrente.
+  static const int evaluatorContextSize = 8192;
 
   const InferenceBootstrapBridge({
     LocalInferenceServices? services,
@@ -226,6 +249,16 @@ final class InferenceBootstrapBridge {
           final entryFileName = descriptor.entryFileName ?? '';
           final path = '$installDir${io.Platform.pathSeparator}$entryFileName';
           final meta = descriptor.metadata;
+          // La quantizzazione è attribuita solo se un artefatto di catalogo dichiara
+          // la stessa identità di contenuto (SHA-256): nessun valore presunto.
+          final installedSha = descriptor.sha256.toLowerCase();
+          String? quantization;
+          for (final artifact in CatalogManifest.initialDefault().artifacts) {
+            if (artifact.sha256.toLowerCase() == installedSha) {
+              quantization = artifact.quantization;
+              break;
+            }
+          }
           final provenance = ManagedModelProvenance(
             artifactId: descriptor.artifactId,
             repository: (meta['repository'] as String?) ?? '',
@@ -238,6 +271,7 @@ final class InferenceBootstrapBridge {
             // trascritta dal catalogo nel campo metadata['modelArchitecture'].
             modelArchitecture: (meta['modelArchitecture'] as String?) ??
                 descriptor.architecture,
+            quantization: quantization,
           );
           return (path, provenance);
         }
@@ -285,6 +319,7 @@ final class InferenceBootstrapBridge {
         vendorDirectories: resolvedRuntime.vendorDirectories,
         modelPath: actorPath,
         modelAlias: 'aura.actor.primary',
+        contextSize: actorContextSize,
         gpuLayers: budget.gpuLayers,
         threads: budget.actorThreads,
         batchSize: budget.batchSize,
@@ -302,6 +337,7 @@ final class InferenceBootstrapBridge {
         vendorDirectories: resolvedRuntime.vendorDirectories,
         modelPath: evaluatorPath,
         modelAlias: 'aura.evaluator.primary',
+        contextSize: evaluatorContextSize,
         gpuLayers: budget.gpuLayers,
         threads: budget.evaluatorThreads,
         batchSize: budget.batchSize,
@@ -326,7 +362,11 @@ final class InferenceBootstrapBridge {
         ),
       );
 
-      return ManagedDualResolution(topology: topology);
+      return ManagedDualResolution(
+        topology: topology,
+        runtimeAcceleration: resolvedRuntime.effectiveAcceleration,
+        llamaCppBuild: runtime.detectedVersion,
+      );
     } catch (e) {
       return const InvalidResolution(
         reason: InferenceBootstrapFailureReason.persistedRecordUnreadable,

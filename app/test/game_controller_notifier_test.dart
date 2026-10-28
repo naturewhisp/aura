@@ -1819,6 +1819,26 @@ void _sessionTests() {
           equals('sindrome_tutorial'));
     });
 
+    test(
+        '12b. il tutorial scriptato è escluso dal dataset, la partita libera no',
+        () async {
+      final notifier = makeNotifier();
+
+      await notifier.startTutorial();
+      final tutorialProvenance = notifier.logger.sessionProvenance!;
+      expect(tutorialProvenance.datasetSource, equals(DatasetSource.unknown));
+      expect(
+          notifier.logger.validateProvenance().isLoraTrainingEligible, isFalse);
+
+      await notifier.startNewGame();
+      final gameProvenance = notifier.logger.sessionProvenance!;
+      expect(gameProvenance.datasetSource, equals(DatasetSource.humanPlaytest));
+      // Senza bootstrap managed osservato la provenance resta incompleta (fail-closed).
+      expect(gameProvenance.runtimeBackend, equals('unknown'));
+      expect(notifier.logger.validateProvenance().isScientificallyComplete,
+          isFalse);
+    });
+
     // -------------------------------------------------------------------------
     // Test di compatibilità ed end-to-end con FileSessionRepository reale
     // -------------------------------------------------------------------------

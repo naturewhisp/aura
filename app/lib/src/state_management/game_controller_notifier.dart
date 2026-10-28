@@ -291,16 +291,58 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Logger delle giocate per salvare i replay.
   late ReplayLogger logger;
 
-  ReplayLogger _createLogger(String sessionId) {
+  /// Provenance di runtime osservata durante il bootstrap managed (null altrimenti).
+  ///
+  /// Il bootstrap avviene una sola volta, prima di qualsiasi partita: senza questo
+  /// template ogni logger creato successivamente perderebbe backend, accelerazione,
+  /// build e identità dei modelli effettivamente caricati.
+  SessionProvenanceMetadata? _observedRuntimeProvenance;
+
+  /// Backend di inferenza osservato per i runtime non gestiti ('unknown' prima del bootstrap).
+  String _observedRuntimeBackend = 'unknown';
+
+  ReplayLogger _createLogger(
+    String sessionId, {
+    DatasetSource datasetSource = DatasetSource.humanPlaytest,
+  }) {
     return ReplayLogger(
       sessionId: sessionId,
-      sessionProvenance: SessionProvenanceFactory.createIncomplete(
-        sessionId: sessionId,
-        datasetSource: DatasetSource.humanPlaytest,
-        actorModelId: actorModelId,
-        evaluatorModelId: evaluatorModelId,
-      ),
+      sessionProvenance: _buildSessionProvenance(sessionId, datasetSource),
     );
+  }
+
+  /// Costruisce la provenance di sessione a partire dalle sole osservazioni di runtime.
+  ///
+  /// Se il runtime managed non è stato osservato, la provenance resta
+  /// scientificamente incompleta (politica fail-closed).
+  SessionProvenanceMetadata _buildSessionProvenance(
+    String sessionId,
+    DatasetSource datasetSource,
+  ) {
+    final observed = _observedRuntimeProvenance;
+    if (observed != null) {
+      return observed.copyWith(
+        sessionId: sessionId,
+        datasetSource: datasetSource,
+      );
+    }
+    return SessionProvenanceFactory.createIncomplete(
+      sessionId: sessionId,
+      datasetSource: datasetSource,
+      runtimeBackend: _observedRuntimeBackend,
+      actorModelId: actorModelId,
+      evaluatorModelId: evaluatorModelId,
+    );
+  }
+
+  /// Identificativo osservato del modello caricato: artefatto di catalogo o nome del file GGUF.
+  static String _observedModelId(
+      ManagedLlamaServerConfiguration configuration) {
+    final artifactId = configuration.provenance?.artifactId ?? '';
+    if (artifactId.isNotEmpty) return artifactId;
+    final fileName =
+        configuration.modelPath.split(RegExp(r'[/\\]')).last.trim();
+    return fileName.isNotEmpty ? fileName : 'unknown';
   }
 
   /// Rapporto finale generato dall'IA a fine partita (vittoria/sconfitta).
@@ -573,7 +615,11 @@ class GameControllerNotifier extends ChangeNotifier {
       );
 
       switch (resolution) {
-        case ManagedDualResolution(:final topology):
+        case ManagedDualResolution(
+            :final topology,
+            :final runtimeAcceleration,
+            :final llamaCppBuild,
+          ):
           final actorProvenance = topology.actor.serverConfiguration.provenance;
           final evaluatorProvenance =
               topology.evaluator.serverConfiguration.provenance;
@@ -599,25 +645,35 @@ class GameControllerNotifier extends ChangeNotifier {
             evaluatorModelId: topology.evaluator.modelId,
           );
 
-          final catalog = ModelCatalog.initialDefault();
-          final actorCatalog = catalog.findModel(topology.actor.modelId);
-          final evaluatorCatalog =
-              catalog.findModel(topology.evaluator.modelId);
-          if (logger.sessionProvenance != null) {
-            logger.sessionProvenance = logger.sessionProvenance!.copyWith(
-              runtimeBackend: 'managed_llama_server',
-              actorModelId: topology.actor.modelId,
-              actorModelSha256: actorProvenance?.expectedSha256,
-              actorQuantization: actorCatalog?.quantization,
-              actorContextSize: topology.actor.serverConfiguration.contextSize,
-              evaluatorModelId: topology.evaluator.modelId,
-              evaluatorModelSha256: evaluatorProvenance?.expectedSha256,
-              evaluatorQuantization: evaluatorCatalog?.quantization,
-              evaluatorContextSize:
-                  topology.evaluator.serverConfiguration.contextSize,
-            );
-          }
+          final actorServer = topology.actor.serverConfiguration;
+          final evaluatorServer = topology.evaluator.serverConfiguration;
+          _observedRuntimeProvenance =
+              SessionProvenanceFactory.fromRuntimeObservation(
+            sessionId: gameStateNotifier.value.sessionId,
+            datasetSource: DatasetSource.humanPlaytest,
+            runtimeBackend: 'managed_llama_server',
+            runtimeAcceleration: runtimeAcceleration?.name ?? 'unknown',
+            llamaCppBuild: llamaCppBuild ?? 'unknown',
+            actorModelId: _observedModelId(actorServer),
+            actorModelSha256: actorProvenance?.expectedSha256 ?? '',
+            actorQuantization: actorProvenance?.quantization ?? 'unknown',
+            actorContextSize: actorServer.contextSize ?? 0,
+            evaluatorModelId: _observedModelId(evaluatorServer),
+            evaluatorModelSha256: evaluatorProvenance?.expectedSha256 ?? '',
+            evaluatorQuantization:
+                evaluatorProvenance?.quantization ?? 'unknown',
+            evaluatorContextSize: evaluatorServer.contextSize ?? 0,
+            appVersion: SessionProvenanceFactory.defaultAppVersion,
+          );
+          _observedRuntimeBackend = 'managed_llama_server';
+          logger.sessionProvenance = _buildSessionProvenance(
+            logger.sessionId,
+            logger.sessionProvenance?.datasetSource ??
+                DatasetSource.humanPlaytest,
+          );
         case ExternalResolution(:final endpoint):
+          _observedRuntimeProvenance = null;
+          _observedRuntimeBackend = 'external_http';
           onProgress?.call(
               0.30, 'AURA_INIT> EXTERNAL OPENAI ENDPOINT RESOLVED: $endpoint');
           runtimeConfig = ApplicationRuntimeConfiguration(
@@ -626,6 +682,8 @@ class GameControllerNotifier extends ChangeNotifier {
             baseUri: endpoint,
           );
         case RuleBasedResolution():
+          _observedRuntimeProvenance = null;
+          _observedRuntimeBackend = 'rule_based';
           onProgress?.call(
               0.30, 'AURA_INIT> OFFLINE RULE-BASED ENGINE SELECTED.');
           runtimeConfig = ApplicationRuntimeConfiguration(
@@ -638,6 +696,8 @@ class GameControllerNotifier extends ChangeNotifier {
           if (fallbackPolicy == BootstrapFallbackPolicy.failClosed) {
             throw StateError('Bootstrap fail-closed: $sanitizedMessage');
           }
+          _observedRuntimeProvenance = null;
+          _observedRuntimeBackend = 'rule_based';
           runtimeConfig = ApplicationRuntimeConfiguration(
             runtimeMode: ApplicationRuntimeMode.ruleBased,
             sessionId: gameStateNotifier.value.sessionId,
@@ -676,6 +736,9 @@ class GameControllerNotifier extends ChangeNotifier {
       }
       completer.complete();
     } catch (e) {
+      // Un runtime risolto ma non avviato non è un'osservazione valida.
+      _observedRuntimeProvenance = null;
+      _observedRuntimeBackend = 'unknown';
       if (runtimeConfig?.runtimeMode ==
               ApplicationRuntimeMode.managedLlamaServer ||
           runtimeConfig == null) {
@@ -1352,11 +1415,12 @@ class GameControllerNotifier extends ChangeNotifier {
       if (await replayFile.exists()) {
         final replayContent = await replayFile.readAsString();
         logger = ReplayLogger.fromJson(jsonDecode(replayContent));
-        logger.sessionProvenance ??= SessionProvenanceFactory.createIncomplete(
-          sessionId: state.sessionId,
-          datasetSource: DatasetSource.humanPlaytest,
-          actorModelId: actorModelId,
-          evaluatorModelId: evaluatorModelId,
+        // Una sessione ripresa su un runtime diverso da quello osservato in origine
+        // non è attribuibile a un'unica configurazione: la provenance salvata non
+        // viene mai sovrascritta, solo integrata se assente.
+        logger.sessionProvenance ??= _buildSessionProvenance(
+          state.sessionId,
+          DatasetSource.humanPlaytest,
         );
       } else {
         logger = _createLogger(state.sessionId);
@@ -1415,7 +1479,12 @@ class GameControllerNotifier extends ChangeNotifier {
     final state = tutorialController.createInitialState(sessionId: sessionId);
     gameStateNotifier.value = state;
 
-    logger = _createLogger(state.sessionId);
+    // Il tutorial è scriptato: non è una sessione di gioco umana libera e va
+    // escluso da qualsiasi dataset (fail-closed su DatasetSource.unknown).
+    logger = _createLogger(
+      state.sessionId,
+      datasetSource: DatasetSource.unknown,
+    );
     switchScreen("terminal");
   }
 

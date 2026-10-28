@@ -75,9 +75,16 @@ Invoke-NativeCommand { & "$PSScriptRoot\build_llama_runtimes.ps1" -Version $Vers
 
 # 4. Compilazione pacchetto Flutter Release per Windows
 Write-Host "Compilazione Flutter Windows Release..." -ForegroundColor Yellow
+# Versione e commit sorgente vengono iniettati nel binario per la provenance dei replay
+# (SessionProvenanceFactory.defaultAppVersion / defaultGitCommit): senza di essi ogni
+# sessione registrata risulta scientificamente incompleta.
+$gitCommit = (& git -C $projectRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $gitCommit -notmatch '^[0-9a-f]{40}$') {
+    throw "[FAIL-CLOSED] Impossibile determinare il commit sorgente per la provenance"
+}
 Push-Location "$projectRoot\app"
 try {
-    Invoke-NativeCommand { flutter build windows --release } "Flutter build windows --release"
+    Invoke-NativeCommand { flutter build windows --release "--dart-define=AURA_APP_VERSION=$Version" "--dart-define=AURA_GIT_COMMIT=$gitCommit" } "Flutter build windows --release"
 } finally {
     Pop-Location
 }

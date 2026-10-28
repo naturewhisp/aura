@@ -307,5 +307,151 @@ void main() {
             equals(const Duration(seconds: 90)));
       });
     });
+
+    group('Osservazioni di runtime per la provenance', () {
+      test(
+          'resolve espone accelerazione effettiva, build llama.cpp e context size espliciti',
+          () async {
+        final sep = Platform.pathSeparator;
+        final fakeExe = File('$dataRootPath${sep}llama-server.exe');
+        await fakeExe.writeAsString('fake binary');
+        final fakeActor = File('$dataRootPath${sep}actor.gguf');
+        await fakeActor.writeAsString('fake model');
+        final fakeEvaluator = File('$dataRootPath${sep}evaluator.gguf');
+        await fakeEvaluator.writeAsString('fake model');
+
+        final configRepo = JsonModelConfigurationRepository(
+          storeDirectoryPath: dataRootPath,
+          fileSystem: const LocalProvisioningFileSystem(),
+          lock: FileBasedProvisioningLock(lockDirectory: dataRootPath),
+        );
+
+        await configRepo.replaceRecord(
+          ModelConfigurationRecord(
+            schemaVersion: 1,
+            runtime: LlamaServerConfiguration(
+              executablePath: fakeExe.path,
+              validationStatus: LlamaServerValidationStatus.valid,
+              acceleration: RuntimeAcceleration.cpu,
+              detectedVersion: 'b6543',
+            ),
+            models: ModelRoleConfiguration(
+              actor: ExternalModelReference(absolutePath: fakeActor.path),
+              evaluator:
+                  ExternalModelReference(absolutePath: fakeEvaluator.path),
+            ),
+            externalModelConsent: ExternalModelConsent.now(),
+          ),
+        );
+
+        final bridge = InferenceBootstrapBridge(
+          environmentFactory: () => AuraCliEnvironment(
+            appManagedRoot: dataRootPath,
+            bundledRoot: bundledRootPath,
+          ),
+        );
+
+        final dual = await bridge.resolve() as ManagedDualResolution;
+
+        expect(dual.runtimeAcceleration, equals(RuntimeAcceleration.cpu));
+        expect(dual.llamaCppBuild, equals('b6543'));
+        expect(dual.topology.actor.serverConfiguration.contextSize,
+            equals(InferenceBootstrapBridge.actorContextSize));
+        expect(dual.topology.evaluator.serverConfiguration.contextSize,
+            equals(InferenceBootstrapBridge.evaluatorContextSize));
+        // Modelli esterni: nessuna provenance di catalogo né quantizzazione presunta.
+        expect(dual.topology.actor.serverConfiguration.provenance, isNull);
+      });
+
+      test(
+          'la quantizzazione dei modelli managed è attribuita solo per SHA-256 coincidente col catalogo',
+          () async {
+        final sep = Platform.pathSeparator;
+        final env = AuraCliEnvironment(
+          appManagedRoot: dataRootPath,
+          bundledRoot: bundledRootPath,
+        );
+        final services = LocalInferenceServiceProvider.create(environment: env);
+
+        final fakeExe = File('$dataRootPath${sep}llama-server.exe');
+        await fakeExe.writeAsString('fake binary');
+
+        final catalogActor = CatalogManifest.initialDefault()
+            .artifacts
+            .firstWhere((a) => a.quantization == 'Q4_0');
+        final now = DateTime.now().toUtc().toIso8601String();
+
+        InstalledArtifactDescriptor descriptor(
+          String installationId,
+          String relativePath,
+          String sha256,
+        ) =>
+            InstalledArtifactDescriptor(
+              installationId: installationId,
+              artifactId: installationId,
+              displayName: installationId,
+              version: '1.0.0',
+              buildId: 'b1',
+              platform: 'all',
+              architecture: 'all',
+              relativeInstallPath: relativePath,
+              entryFileName: 'model.gguf',
+              artifactType: CatalogArtifactType.model,
+              sourceKind: CatalogArtifactSourceKind.remoteHttps,
+              sizeBytes: 4,
+              sha256: sha256,
+              status: InstallationStatus.verified,
+              verifiedAt: now,
+              installedAt: now,
+            );
+
+        await services.installationRecordRepository.replaceRecord(
+          InstallationRecord(
+            updatedAt: now,
+            installedArtifacts: [
+              descriptor(
+                  'inst_actor', 'models${sep}actor', catalogActor.sha256),
+              descriptor('inst_eval', 'models${sep}eval', 'a' * 64),
+            ],
+          ),
+        );
+        for (final rel in ['models${sep}actor', 'models${sep}eval']) {
+          final dir = services.pathResolver.resolveAppManagedRelativePath(rel);
+          await Directory(dir).create(recursive: true);
+          await File('$dir${sep}model.gguf').writeAsBytes([1, 2, 3, 4]);
+        }
+
+        final configRepo = JsonModelConfigurationRepository(
+          storeDirectoryPath: dataRootPath,
+          fileSystem: const LocalProvisioningFileSystem(),
+          lock: FileBasedProvisioningLock(lockDirectory: dataRootPath),
+        );
+        await configRepo.replaceRecord(
+          ModelConfigurationRecord(
+            schemaVersion: 1,
+            runtime: LlamaServerConfiguration(
+              executablePath: fakeExe.path,
+              validationStatus: LlamaServerValidationStatus.valid,
+            ),
+            models: ModelRoleConfiguration(
+              actor: ManagedModelReference(installationId: 'inst_actor'),
+              evaluator: ManagedModelReference(installationId: 'inst_eval'),
+            ),
+          ),
+        );
+
+        final dual = await InferenceBootstrapBridge(services: services)
+            .resolve() as ManagedDualResolution;
+
+        final actorProvenance =
+            dual.topology.actor.serverConfiguration.provenance!;
+        expect(actorProvenance.quantization, equals('Q4_0'));
+        expect(actorProvenance.expectedSha256, equals(catalogActor.sha256));
+
+        final evaluatorProvenance =
+            dual.topology.evaluator.serverConfiguration.provenance!;
+        expect(evaluatorProvenance.quantization, isNull);
+      });
+    });
   });
 }

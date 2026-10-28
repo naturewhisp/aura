@@ -69,7 +69,9 @@ jobs:
         shell: bash
         run: |
           cd app
-          flutter build macos --release
+          flutter build macos --release \
+            --dart-define=AURA_APP_VERSION="${{ steps.mac-params.outputs.version }}" \
+            --dart-define=AURA_GIT_COMMIT="${{ github.sha }}"
 
       - name: Validate Mach-O Architecture (Fail-Closed)
         shell: bash

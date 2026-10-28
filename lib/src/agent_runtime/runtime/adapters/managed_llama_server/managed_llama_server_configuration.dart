@@ -318,6 +318,10 @@ final class ManagedModelProvenance {
   /// Architettura GGUF dichiarata nel catalogo (es. `mistral3`, `llama`).
   final String modelArchitecture;
 
+  /// Quantizzazione dichiarata dall'artefatto di catalogo con identità di contenuto
+  /// coincidente (stesso SHA-256). `null` se nessuna dichiarazione corrisponde.
+  final String? quantization;
+
   const ManagedModelProvenance({
     required this.artifactId,
     required this.repository,
@@ -326,5 +330,6 @@ final class ManagedModelProvenance {
     required this.expectedSha256,
     required this.integrityVerified,
     required this.modelArchitecture,
+    this.quantization,
   });
 }

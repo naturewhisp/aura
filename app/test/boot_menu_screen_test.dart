@@ -507,6 +507,47 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
     });
   });
+
+  group('BootMenuScreen - Disconnessione coordinata', () {
+    testWidgets(
+        'DISCONNETTI delega allo spegnimento coordinato invece di terminare il processo',
+        (WidgetTester tester) async {
+      final disconnectCompleter = Completer<void>();
+      var disconnectCalls = 0;
+
+      Future<void> fakeDisconnect() {
+        disconnectCalls++;
+        return disconnectCompleter.future;
+      }
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GameControllerProvider(
+            notifier: notifier,
+            child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
+              notifier: notifier,
+              audioService: FakeBootAudioService(),
+              initialSubScreen: "menu",
+              onDisconnect: fakeDisconnect,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit5);
+      // Avanza la sequenza di lampeggiamento della voce di menu (6 cicli da 60 ms).
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+
+      expect(disconnectCalls, equals(1));
+
+      disconnectCompleter.complete();
+      await tester.pump();
+    });
+  });
 }
 
 class TestFailingBootstrapNotifier extends GameControllerNotifier {

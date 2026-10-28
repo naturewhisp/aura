@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' show AppExitType;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:aura_core/aura_offline.dart';
@@ -36,6 +37,14 @@ class BootMenuScreen extends StatefulWidget {
   /// Sotto-schermata iniziale per il testing ("boot", "settings", ecc.).
   final String initialSubScreen;
 
+  /// Callback di disconnessione che avvia lo spegnimento coordinato dell'applicazione.
+  ///
+  /// Se assente, l'uscita viene richiesta al framework tramite
+  /// `ServicesBinding.exitApplication`, che attraversa comunque `didRequestAppExit`.
+  /// Non deve mai essere sostituita da `exit(0)` diretto: salterebbe il flush delle
+  /// preferenze e l'arresto dei processi `llama-server` gestiti.
+  final Future<void> Function()? onDisconnect;
+
   /// Costruisce una schermata [BootMenuScreen] a partire dal notifier.
   const BootMenuScreen({
     super.key,
@@ -47,6 +56,7 @@ class BootMenuScreen extends StatefulWidget {
     this.inferenceFacade,
     this.services,
     this.initialSubScreen = "boot",
+    this.onDisconnect,
   });
 
   @override
@@ -449,7 +459,21 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         });
         break;
       case 5:
-        exit(0);
+        unawaited(_disconnect());
+    }
+  }
+
+  /// Avvia lo spegnimento coordinato (flush preferenze, arresto runtime, chiusura finestra).
+  Future<void> _disconnect() async {
+    try {
+      final onDisconnect = widget.onDisconnect;
+      if (onDisconnect != null) {
+        await onDisconnect();
+      } else {
+        await ServicesBinding.instance.exitApplication(AppExitType.cancelable);
+      }
+    } catch (_) {
+      debugPrint('[MENU] Richiesta di disconnessione non completata.');
     }
   }
 

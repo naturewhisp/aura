@@ -23,6 +23,9 @@ class AppStartupGate extends StatefulWidget {
   final LlamaServerDependencyService? dependencyService;
   final Future<ModelInitializationResult> Function()? initializeModels;
 
+  /// Callback di disconnessione inoltrato al [BootMenuScreen] (spegnimento coordinato).
+  final Future<void> Function()? onDisconnect;
+
   /// Destinazione forzata per i test unit/widget (opzionale).
   @visibleForTesting
   final StartupDestination? initialStartupDestination;
@@ -34,6 +37,7 @@ class AppStartupGate extends StatefulWidget {
     this.firstRunFacade,
     this.dependencyService,
     this.initializeModels,
+    this.onDisconnect,
     this.initialStartupDestination,
   });
 
@@ -200,6 +204,7 @@ class _AppStartupGateState extends State<AppStartupGate> {
           firstRunFacade: widget.firstRunFacade ?? services.firstRunFacade,
           inferenceFacade: services.inferenceFacade,
           services: services,
+          onDisconnect: widget.onDisconnect,
         );
 
       case StartupDestination.error:

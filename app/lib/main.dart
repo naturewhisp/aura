@@ -232,6 +232,7 @@ class _AuraAppState extends State<AuraApp> with WidgetsBindingObserver {
                           firstRunFacade: widget.firstRunFacade,
                           dependencyService: widget.dependencyService,
                           initializeModels: widget.initializeModels,
+                          onDisconnect: _shutdownCoordinator.requestShutdown,
                           initialStartupDestination:
                               widget.initialStartupDestination,
                         );

@@ -71,3 +71,38 @@ begin
     Result := False;
   end;
 end;
+
+// Disinstallazione selettiva: i dati utente restano di default (risposta predefinita NO,
+// e nessuna rimozione in modalita' silenziosa). Viene rimosso solo cio' che A.U.R.A.
+// gestisce direttamente: lo store dei modelli gestiti e i dati applicativi. I modelli GGUF
+// esterni scelti dall'utente (anche se collocati in %LOCALAPPDATA%\AURA\staging) non
+// vengono mai toccati.
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ManagedStore: String;
+  AppData: String;
+begin
+  if (CurUninstallStep <> usPostUninstall) or UninstallSilent() then
+    Exit;
+
+  ManagedStore := ExpandConstant('{localappdata}\AURA\store');
+  AppData := ExpandConstant('{userappdata}\aura');
+
+  if DirExists(ManagedStore) then
+  begin
+    if MsgBox('Rimuovere anche i modelli scaricati da A.U.R.A. e la configurazione del runtime?' + #13#10 +
+              ManagedStore + #13#10#13#10 +
+              'I modelli GGUF esterni selezionati manualmente non verranno eliminati.',
+              mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      DelTree(ManagedStore, True, True, True);
+  end;
+
+  if DirExists(AppData) then
+  begin
+    if MsgBox('Rimuovere anche salvataggi, replay delle partite, audio e preferenze?' + #13#10 +
+              AppData + #13#10#13#10 +
+              'Scegliendo No potrai ritrovarli reinstallando A.U.R.A.',
+              mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
+      DelTree(AppData, True, True, True);
+  end;
+end;

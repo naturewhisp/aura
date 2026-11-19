@@ -94,5 +94,87 @@ void main() {
         rethrow;
       }
     });
+
+    test(
+        'stesso file per Actor ed Evaluator avvia un solo processo servito a entrambi i ruoli',
+        () async {
+      const sharedServer = ManagedLlamaServerConfiguration(
+        executablePath: 'llama-server.exe',
+        modelPath: 'gemma.gguf',
+        modelAlias: 'aura.actor.primary',
+        contextSize: 24576,
+        parallelSlots: 2,
+      );
+      const topology = ManagedInferenceTopology(
+        actor: ManagedRoleRuntimeConfiguration(
+          role: InferenceModelRole.actor,
+          modelId: 'aura.actor.primary',
+          serverConfiguration: sharedServer,
+        ),
+        evaluator: ManagedRoleRuntimeConfiguration(
+          role: InferenceModelRole.evaluator,
+          modelId: 'aura.evaluator.primary',
+          serverConfiguration: ManagedLlamaServerConfiguration(
+            executablePath: 'llama-server.exe',
+            modelPath: 'gemma.gguf',
+            modelAlias: 'aura.evaluator.primary',
+          ),
+        ),
+      );
+
+      var launches = 0;
+      final launcher = FakeProcessLauncher(
+        processFactory: () {
+          launches++;
+          return FakeManagedProcess();
+        },
+      );
+
+      final result = await DefaultApplicationBootstrap().bootstrap(
+        ApplicationBootstrapRequest(
+          appManagedRoot: r'C:\TestAura\store',
+          bundledRoot: r'C:\TestAura\bundled',
+          configuration: const ApplicationRuntimeConfiguration(
+            runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+            managedInferenceTopology: topology,
+            actorModelId: 'aura.actor.primary',
+            evaluatorModelId: 'aura.evaluator.primary',
+            skipHealthCheck: true,
+          ),
+          customProcessLauncher: launcher,
+          customPortAllocator: const FakePortAllocator(allocatedPort: 30210),
+          customHealthProbe: FakeLlamaServerHealthProbe(
+            isResponsive: true,
+            modelVisible: true,
+          ),
+          customFileSystem: const FakeFileSystem(
+            existingFiles: {'llama-server.exe', 'gemma.gguf'},
+          ),
+          customDelegateFactory: (clientConfig) => ExternalOpenAiRuntime(
+            configuration: clientConfig,
+            client: FakeExternalOpenAiClient(
+              healthy: true,
+              availableModels: const ['aura.actor.primary'],
+            ),
+            bindings: const [
+              ExternalOpenAiModelBinding(
+                logicalModelId: 'aura.actor.primary',
+                serverModelId: 'aura.actor.primary',
+                roles: {ModelRole.actor, ModelRole.evaluator},
+              ),
+            ],
+          ),
+        ),
+      );
+
+      try {
+        expect(launches, equals(1));
+        expect(result.activeBridge, isA<DualModelInferenceBridge>());
+        expect(result.status.diagnostics['sharedModel'], isTrue);
+        expect(result.status.diagnostics['dualProcess'], isFalse);
+      } finally {
+        await result.dispose();
+      }
+    });
   });
 }

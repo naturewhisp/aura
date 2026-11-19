@@ -19,6 +19,9 @@ import '../infrastructure/model_configuration_service.dart';
 import '../infrastructure/process_ownership_registry.dart';
 import '../infrastructure/provisioning_file_system.dart';
 import '../infrastructure/provisioning_lock.dart';
+import '../infrastructure/runtime_manifest_repository.dart';
+import '../infrastructure/bundled_runtime_resolver.dart';
+import '../infrastructure/runtime_bundle_integrity_verifier.dart';
 import '../infrastructure/provisioning_path_resolver.dart';
 import '../infrastructure/winget_dependency_adapter.dart';
 import 'aura_cli_environment.dart';
@@ -35,6 +38,10 @@ final class LocalInferenceServices {
   final ProvisioningPathResolver pathResolver;
   final ProvisioningFileSystem fileSystem;
 
+  /// Verificatore d'integrità del runtime condiviso: rilevamento e bootstrap
+  /// riusano la stessa cache invece di ricalcolare gli hash della variante.
+  final RuntimeBundleIntegrityVerifier? runtimeIntegrityVerifier;
+
   const LocalInferenceServices({
     required this.inferenceFacade,
     required this.settingsFacade,
@@ -44,6 +51,7 @@ final class LocalInferenceServices {
     required this.installationRecordRepository,
     required this.pathResolver,
     required this.fileSystem,
+    this.runtimeIntegrityVerifier,
   });
 }
 
@@ -75,10 +83,17 @@ final class LocalInferenceServiceProvider {
       lock: lock,
     );
 
+    final integrityVerifier = DefaultRuntimeBundleIntegrityVerifier(
+      fileSystem: fileSystem,
+      fingerprintCachePath:
+          '${pathResolver.appManagedRoot}${pathResolver.separator}runtime_integrity_fingerprints.json',
+    );
+
     final dependencyService = DefaultLlamaServerDependencyService(
       configurationRepository: configRepo,
       fileSystem: fileSystem,
       pathResolver: pathResolver,
+      integrityVerifier: integrityVerifier,
     );
 
     final modelService = DefaultModelConfigurationService(
@@ -94,6 +109,15 @@ final class LocalInferenceServiceProvider {
       dependencyService: dependencyService,
       fileSystem: fileSystem,
       pathResolver: pathResolver,
+      runtimeResolver: DefaultBundledRuntimeResolver(
+        manifestRepository: DefaultRuntimeManifestRepository(
+          fileSystem: fileSystem,
+          pathResolver: pathResolver,
+        ),
+        fileSystem: fileSystem,
+        pathResolver: pathResolver,
+        integrityVerifier: integrityVerifier,
+      ),
     );
 
     final processOwnershipRegistry = ProcessOwnershipRegistry(
@@ -187,6 +211,7 @@ final class LocalInferenceServiceProvider {
       installationRecordRepository: installRepo,
       pathResolver: pathResolver,
       fileSystem: fileSystem,
+      runtimeIntegrityVerifier: integrityVerifier,
     );
   }
 }

@@ -80,6 +80,7 @@ export 'src/provisioning/domain/release_version_comparer.dart';
 export 'src/provisioning/domain/configured_model_reference.dart';
 export 'src/provisioning/domain/local_inference_preflight_models.dart';
 export 'src/provisioning/domain/model_configuration_models.dart';
+export 'src/provisioning/domain/hardware_model_advisor.dart';
 export 'src/provisioning/domain/runtime_dependency_models.dart';
 export 'src/provisioning/application/first_run_model_setup_facade.dart';
 export 'src/provisioning/application/inference_bootstrap_bridge.dart';

@@ -146,6 +146,10 @@ final class MemoryProvisioningFileSystem implements ProvisioningFileSystem {
     throw const ProvisioningIoException(operation: 'getFileSize');
   }
 
+  /// Il filesystem in memoria non traccia le date: impronte sempre non disponibili.
+  @override
+  Future<DateTime?> getLastModified(String path) async => null;
+
   @override
   Future<List<String>> listDirectory(String path) async {
     final p = _norm(path);

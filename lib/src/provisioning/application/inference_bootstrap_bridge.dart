@@ -179,6 +179,7 @@ final class InferenceBootstrapBridge {
         ),
         fileSystem: effectiveServices.fileSystem,
         pathResolver: effectiveServices.pathResolver,
+        integrityVerifier: effectiveServices.runtimeIntegrityVerifier,
       );
 
       final resolvedRuntime = await resolver.resolve(runtime);
@@ -349,11 +350,37 @@ final class InferenceBootstrapBridge {
         provenance: evaluatorProvenance,
       );
 
-      final topology = ManagedInferenceTopology(
+      // Stesso file per entrambi i ruoli: il bootstrap avvia un solo processo.
+      // Il contesto deve ospitare entrambi i prompt e due slot mantengono separate
+      // le cache dei prefissi di Actor ed Evaluator (llama-server assegna ogni
+      // richiesta allo slot col prefisso più simile): nessuno stato conversazionale
+      // è condiviso, ogni richiesta porta il proprio prompt completo.
+      final sharedProcessConfig = actorConfig.copyWith(
+        contextSize: actorContextSize + evaluatorContextSize,
+        parallelSlots: 2,
+      );
+
+      final provisionalTopology = ManagedInferenceTopology(
         actor: ManagedRoleRuntimeConfiguration(
           role: InferenceModelRole.actor,
           modelId: 'aura.actor.primary',
           serverConfiguration: actorConfig,
+        ),
+        evaluator: ManagedRoleRuntimeConfiguration(
+          role: InferenceModelRole.evaluator,
+          modelId: 'aura.evaluator.primary',
+          serverConfiguration: evaluatorConfig,
+        ),
+      );
+      final effectiveActorConfig = provisionalTopology.sharesModelFile
+          ? sharedProcessConfig
+          : actorConfig;
+
+      final topology = ManagedInferenceTopology(
+        actor: ManagedRoleRuntimeConfiguration(
+          role: InferenceModelRole.actor,
+          modelId: 'aura.actor.primary',
+          serverConfiguration: effectiveActorConfig,
         ),
         evaluator: ManagedRoleRuntimeConfiguration(
           role: InferenceModelRole.evaluator,

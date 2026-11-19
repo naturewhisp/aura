@@ -299,6 +299,11 @@ final class LlamaServerDetectionResult {
   final RuntimeAcceleration declaredAcceleration;
   final RuntimeAcceleration acceleration;
   final String? gpuDeviceName;
+
+  /// VRAM totale e libera (MiB) riportate da `--list-devices` al momento della probe.
+  /// Dati transitori, mai persistiti; `null` se non disponibili (CPU o output privo di memoria).
+  final int? gpuMemoryTotalMiB;
+  final int? gpuMemoryFreeMiB;
   final String? fallbackReason;
   final List<String> warnings;
 
@@ -311,6 +316,8 @@ final class LlamaServerDetectionResult {
     this.declaredAcceleration = RuntimeAcceleration.cpu,
     this.acceleration = RuntimeAcceleration.cpu,
     this.gpuDeviceName,
+    this.gpuMemoryTotalMiB,
+    this.gpuMemoryFreeMiB,
     this.fallbackReason,
     this.warnings = const [],
   });
@@ -330,6 +337,8 @@ final class LlamaServerDetectionResult {
           declaredAcceleration == other.declaredAcceleration &&
           acceleration == other.acceleration &&
           gpuDeviceName == other.gpuDeviceName &&
+          gpuMemoryTotalMiB == other.gpuMemoryTotalMiB &&
+          gpuMemoryFreeMiB == other.gpuMemoryFreeMiB &&
           fallbackReason == other.fallbackReason;
 
   @override
@@ -342,6 +351,8 @@ final class LlamaServerDetectionResult {
         declaredAcceleration,
         acceleration,
         gpuDeviceName,
+        gpuMemoryTotalMiB,
+        gpuMemoryFreeMiB,
         fallbackReason,
       );
 
@@ -363,6 +374,11 @@ final class LlamaServerValidationResult {
   final RuntimeAcceleration acceleration;
   final String? gpuDeviceName;
 
+  /// VRAM totale e libera (MiB) riportate da `--list-devices` al momento della probe.
+  /// Dati transitori, mai persistiti; `null` se non disponibili (CPU o output privo di memoria).
+  final int? gpuMemoryTotalMiB;
+  final int? gpuMemoryFreeMiB;
+
   const LlamaServerValidationResult({
     required this.status,
     required this.executablePath,
@@ -373,6 +389,8 @@ final class LlamaServerValidationResult {
     this.declaredAcceleration = RuntimeAcceleration.cpu,
     this.acceleration = RuntimeAcceleration.cpu,
     this.gpuDeviceName,
+    this.gpuMemoryTotalMiB,
+    this.gpuMemoryFreeMiB,
   });
 
   bool get isValid => status == LlamaServerValidationStatus.valid;
@@ -388,7 +406,9 @@ final class LlamaServerValidationResult {
           lastValidatedAtUtc == other.lastValidatedAtUtc &&
           errorMessage == other.errorMessage &&
           acceleration == other.acceleration &&
-          gpuDeviceName == other.gpuDeviceName;
+          gpuDeviceName == other.gpuDeviceName &&
+          gpuMemoryTotalMiB == other.gpuMemoryTotalMiB &&
+          gpuMemoryFreeMiB == other.gpuMemoryFreeMiB;
 
   @override
   int get hashCode => Object.hash(
@@ -399,6 +419,8 @@ final class LlamaServerValidationResult {
         errorMessage,
         acceleration,
         gpuDeviceName,
+        gpuMemoryTotalMiB,
+        gpuMemoryFreeMiB,
       );
 
   @override

@@ -22,6 +22,12 @@ abstract class ProvisioningFileSystem {
   /// Ritorna la dimensione in byte di un file.
   Future<int> getFileSize(String path);
 
+  /// Ritorna l'istante dell'ultima modifica del file, o `null` se non determinabile.
+  ///
+  /// Usato solo come componente di un'impronta (dimensione + data) per evitare di
+  /// ricalcolare hash già verificati; `null` impone sempre la verifica completa.
+  Future<DateTime?> getLastModified(String path);
+
   /// Ritorna l'elenco dei nomi di elementi figli in una directory.
   Future<List<String>> listDirectory(String path);
 
@@ -126,6 +132,15 @@ final class LocalProvisioningFileSystem implements ProvisioningFileSystem {
       return await file.length();
     } catch (_) {
       throw const ProvisioningIoException(operation: 'getFileSize');
+    }
+  }
+
+  @override
+  Future<DateTime?> getLastModified(String path) async {
+    try {
+      return (await File(path).lastModified()).toUtc();
+    } catch (_) {
+      return null;
     }
   }
 

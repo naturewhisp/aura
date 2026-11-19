@@ -749,6 +749,18 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       );
     }
 
+    // ---------- MODELLO CONDIVISO ----------
+    // Stesso file GGUF per entrambi i ruoli: un solo processo serve Actor ed
+    // Evaluator (configurazione raccomandata quando la VRAM non basta per due modelli).
+    if (topology.sharesModelFile) {
+      return _completeSharedManagedBootstrap(
+        config: config,
+        topology: topology,
+        sessionId: sessionId,
+        runtime: actorRuntime,
+      );
+    }
+
     // ---------- EVALUATOR ----------
     // Se l'Evaluator fallisce, il runtime Actor viene terminato prima di sollevare l'errore.
     _validateDualRoleConfig(topology.evaluator.serverConfiguration, fileSystem);
@@ -863,6 +875,75 @@ class DefaultApplicationBootstrap implements ApplicationBootstrap {
       diagnostics: {
         'managed': true,
         'dualProcess': true,
+        'actorModelId': topology.actor.modelId,
+        'evaluatorModelId': topology.evaluator.modelId,
+        if (config.sessionId != null) 'sessionId': config.sessionId,
+      },
+    );
+
+    return ApplicationBootstrapResult(
+      controller: controller,
+      activeBridge: dualBridge,
+      runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+      status: status,
+      actorModelId: topology.actor.modelId,
+      evaluatorModelId: topology.evaluator.modelId,
+      onDispose: dispose,
+    );
+  }
+
+  /// Completa il bootstrap quando Actor ed Evaluator condividono il file del modello.
+  ///
+  /// Il modello viene caricato una sola volta e lo stesso handle risponde a
+  /// entrambi i ruoli; il bridge dual-role resta invariato per i consumatori.
+  Future<ApplicationBootstrapResult> _completeSharedManagedBootstrap({
+    required ApplicationRuntimeConfiguration config,
+    required ManagedInferenceTopology topology,
+    required String sessionId,
+    required ManagedLlamaServerRuntime runtime,
+  }) async {
+    _activeEvaluatorRuntime = null;
+
+    final sharedHandle = await runtime.loadModel(
+      ModelLoadRequest(
+        requestId: ModelLoadRequestId('load-shared-$sessionId'),
+        artifact: ResolvedModelArtifact(
+          modelVariantId: topology.actor.modelId,
+          sha256: 'placeholder-sha',
+          format: 'gguf',
+          quantization: 'q4_k_m',
+          architecture: 'llama',
+          compatibility: const ModelRuntimeCompatibility(compatible: true),
+          localArtifactUri:
+              Uri.file(topology.actor.serverConfiguration.modelPath),
+        ),
+        logicalModelId: topology.actor.modelId,
+        roles: const {ModelRole.actor, ModelRole.evaluator},
+      ),
+    );
+
+    final sharedBridge = RuntimeInferenceBridge.fromHandleResolver(
+      runtime: runtime,
+      handleResolver: (_) => sharedHandle,
+    );
+
+    final dualBridge = DualModelInferenceBridge(
+      actorBridge: sharedBridge,
+      evaluatorBridge: sharedBridge,
+      actorModelId: topology.actor.modelId,
+      evaluatorModelId: topology.evaluator.modelId,
+    );
+
+    const controller = GameController();
+    final status = ApplicationRuntimeStatus(
+      runtimeMode: ApplicationRuntimeMode.managedLlamaServer,
+      isHealthy: true,
+      statusDescription:
+          'Runtime managed attivo: un solo modello condiviso da Actor ed Evaluator.',
+      diagnostics: {
+        'managed': true,
+        'dualProcess': false,
+        'sharedModel': true,
         'actorModelId': topology.actor.modelId,
         'evaluatorModelId': topology.evaluator.modelId,
         if (config.sessionId != null) 'sessionId': config.sessionId,

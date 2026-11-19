@@ -308,6 +308,52 @@ void main() {
       });
     });
 
+    test(
+        'stesso file per entrambi i ruoli: processo unico con contesto sommato e 2 slot',
+        () async {
+      final sep = Platform.pathSeparator;
+      final fakeExe = File('$dataRootPath${sep}llama-server.exe');
+      await fakeExe.writeAsString('fake binary');
+      final shared = File('$dataRootPath${sep}gemma.gguf');
+      await shared.writeAsString('fake model');
+
+      final configRepo = JsonModelConfigurationRepository(
+        storeDirectoryPath: dataRootPath,
+        fileSystem: const LocalProvisioningFileSystem(),
+        lock: FileBasedProvisioningLock(lockDirectory: dataRootPath),
+      );
+      await configRepo.replaceRecord(
+        ModelConfigurationRecord(
+          schemaVersion: 1,
+          runtime: LlamaServerConfiguration(
+            executablePath: fakeExe.path,
+            validationStatus: LlamaServerValidationStatus.valid,
+          ),
+          models: ModelRoleConfiguration(
+            actor: ExternalModelReference(absolutePath: shared.path),
+            evaluator: ExternalModelReference(absolutePath: shared.path),
+          ),
+          externalModelConsent: ExternalModelConsent.now(),
+        ),
+      );
+
+      final dual = await InferenceBootstrapBridge(
+        environmentFactory: () => AuraCliEnvironment(
+          appManagedRoot: dataRootPath,
+          bundledRoot: bundledRootPath,
+        ),
+      ).resolve() as ManagedDualResolution;
+
+      expect(dual.topology.sharesModelFile, isTrue);
+      final actorServer = dual.topology.actor.serverConfiguration;
+      expect(
+        actorServer.contextSize,
+        InferenceBootstrapBridge.actorContextSize +
+            InferenceBootstrapBridge.evaluatorContextSize,
+      );
+      expect(actorServer.parallelSlots, 2);
+    });
+
     group('Osservazioni di runtime per la provenance', () {
       test(
           'resolve espone accelerazione effettiva, build llama.cpp e context size espliciti',

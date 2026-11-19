@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io show File;
 
+import 'package:meta/meta.dart';
+
 import '../../agent_runtime/runtime/adapters/managed_llama_server/dart_io_process_launcher.dart';
 import '../../agent_runtime/runtime/adapters/managed_llama_server/llama_runtime_launch_environment_resolver.dart';
 import '../../agent_runtime/runtime/adapters/managed_llama_server/process_launcher.dart';
@@ -209,6 +211,8 @@ final class DefaultLlamaServerDependencyService
                     declaredAcceleration: variant.acceleration,
                     acceleration: validation.acceleration,
                     gpuDeviceName: validation.gpuDeviceName,
+                    gpuMemoryTotalMiB: validation.gpuMemoryTotalMiB,
+                    gpuMemoryFreeMiB: validation.gpuMemoryFreeMiB,
                   );
                 }
               }
@@ -229,6 +233,8 @@ final class DefaultLlamaServerDependencyService
             declaredAcceleration: persistedConfig.acceleration,
             acceleration: validation.acceleration,
             gpuDeviceName: validation.gpuDeviceName,
+            gpuMemoryTotalMiB: validation.gpuMemoryTotalMiB,
+            gpuMemoryFreeMiB: validation.gpuMemoryFreeMiB,
           );
         } else {
           warnings.add(
@@ -349,6 +355,8 @@ final class DefaultLlamaServerDependencyService
                   declaredAcceleration: variant.acceleration,
                   acceleration: validation.acceleration,
                   gpuDeviceName: validation.gpuDeviceName,
+                  gpuMemoryTotalMiB: validation.gpuMemoryTotalMiB,
+                  gpuMemoryFreeMiB: validation.gpuMemoryFreeMiB,
                   warnings: warnings,
                 );
               }
@@ -366,6 +374,8 @@ final class DefaultLlamaServerDependencyService
                 declaredAcceleration: variant.acceleration,
                 acceleration: validation.acceleration,
                 gpuDeviceName: validation.gpuDeviceName,
+                gpuMemoryTotalMiB: validation.gpuMemoryTotalMiB,
+                gpuMemoryFreeMiB: validation.gpuMemoryFreeMiB,
                 warnings: warnings,
               );
             } else {
@@ -599,6 +609,9 @@ final class DefaultLlamaServerDependencyService
         fallbackOutput: versionResult.output,
         isBundled: isBundledRuntime,
       );
+      final gpuMemory = detectedAccel == RuntimeAcceleration.cpu
+          ? null
+          : parseGpuMemory(devicesResult?.output ?? '');
 
       return LlamaServerValidationResult(
         status: LlamaServerValidationStatus.valid,
@@ -608,6 +621,8 @@ final class DefaultLlamaServerDependencyService
         lastValidatedAtUtc: now,
         acceleration: detectedAccel,
         gpuDeviceName: gpuDeviceName,
+        gpuMemoryTotalMiB: gpuMemory?.totalMiB,
+        gpuMemoryFreeMiB: gpuMemory?.freeMiB,
       );
     }
 
@@ -781,6 +796,24 @@ final class DefaultLlamaServerDependencyService
       return RuntimeAcceleration.metal;
     }
     return RuntimeAcceleration.cpu;
+  }
+
+  /// Estrae la VRAM del primo dispositivo GPU dall'output di `--list-devices`.
+  ///
+  /// Formato llama.cpp: `CUDA0: NVIDIA GeForce RTX 3060 (12287 MiB, 11253 MiB free)`;
+  /// alcuni backend (es. Vulkan) riportano solo il totale. Ritorna `null` se
+  /// nessuna riga contiene un valore di memoria riconoscibile.
+  @visibleForTesting
+  static ({int totalMiB, int? freeMiB})? parseGpuMemory(String devicesOutput) {
+    final match = RegExp(
+      r'(?:CUDA|Vulkan|Metal)\d*:[^\(\n\r]*\((\d+)\s*MiB(?:,\s*(\d+)\s*MiB free)?\)',
+      caseSensitive: false,
+    ).firstMatch(devicesOutput);
+    if (match == null) return null;
+    final total = int.tryParse(match.group(1)!);
+    if (total == null || total <= 0) return null;
+    final free = match.group(2) == null ? null : int.tryParse(match.group(2)!);
+    return (totalMiB: total, freeMiB: free);
   }
 
   (RuntimeAcceleration, String?) _detectAccelerationAndDevice({

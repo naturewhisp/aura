@@ -70,6 +70,26 @@ final class ManagedInferenceTopology {
     required this.evaluator,
   });
 
+  /// `true` se Actor ed Evaluator puntano allo stesso file GGUF.
+  ///
+  /// In questo caso il bootstrap avvia un solo processo `llama-server` servito a
+  /// entrambi i ruoli: due processi caricherebbero due copie dello stesso modello,
+  /// raddoppiando la VRAM invece di risparmiarla.
+  bool get sharesModelFile {
+    // Confronto case-insensitive solo per percorsi Windows (lettera di unità o
+    // UNC): su POSIX due file che differiscono per maiuscole sono distinti.
+    String normalize(String path) {
+      final trimmed = path.trim();
+      final isWindowsPath = RegExp(r'^([A-Za-z]:[\\/]|\\\\)').hasMatch(trimmed);
+      return isWindowsPath
+          ? trimmed.replaceAll('/', r'\').toLowerCase()
+          : trimmed;
+    }
+
+    return normalize(actor.serverConfiguration.modelPath) ==
+        normalize(evaluator.serverConfiguration.modelPath);
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||

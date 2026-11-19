@@ -190,7 +190,11 @@ void main() {
         compatibilityEvaluator: const DefaultCatalogCompatibilityEvaluator(),
         validationService: const CatalogValidationService(),
         signatureVerifier: verifier,
-        nowUtc: DateTime.now().toUtc(),
+        // Istante fisso interno alla finestra di validità firmata: l'orologio reale
+        // renderebbe il test dipendente dalla data di esecuzione (scadenza catalogo).
+        nowUtc: DateTime.parse(envelope.signedPayload.issuedAt)
+            .toUtc()
+            .add(const Duration(days: 1)),
         applicationVersion: '1.0.0',
       );
 

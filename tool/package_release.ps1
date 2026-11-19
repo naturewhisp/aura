@@ -145,8 +145,13 @@ This package includes software developed by third parties under open source lice
    License: BSD 3-Clause License
    Copyright (c) 2014 The Flutter Authors.
 
-3. CUDA Runtime Libraries (NVIDIA)
-   Redistributable dynamic link libraries under NVIDIA CUDA EULA.
+3. CUDA Runtime Libraries (NVIDIA CUDA 12.4)
+   Files: cudart64_12.dll, cublas64_12.dll, cublasLt64_12.dll
+   (runtime/bin/win-x64-cuda/vendor/). Obtained unmodified from the official
+   llama.cpp release asset cudart-llama-bin-win-cuda-12.4-x64.zip, pinned by
+   SHA-256 in tool/runtime/llama-runtime-lock.json.
+   Redistributable components under the NVIDIA CUDA Toolkit EULA
+   (https://docs.nvidia.com/cuda/eula/).
 ===============================================================================
 "@
 Set-Content -Path $noticesFile -Value $noticesContent -Encoding UTF8

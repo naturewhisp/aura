@@ -64,6 +64,28 @@ if ($releaseInfo.tag_name -ne $targetTag) {
     throw "[FAIL-CLOSED] Tag upstream inatteso! Atteso: '$targetTag', Ricevuto: '$($releaseInfo.tag_name)'"
 }
 
+# Scarica un asset della release locked e ne verifica dimensione e SHA-256 (fail-closed).
+function Get-VerifiedReleaseAsset([string]$assetName, [string]$expectedSha256, [long]$expectedSize) {
+    $asset = $releaseInfo.assets | Where-Object { $_.name -eq $assetName } | Select-Object -First 1
+    if (-not $asset) {
+        throw "[FAIL-CLOSED] Asset locked '$assetName' non trovato nella release upstream $targetTag"
+    }
+    $zipPath = "$tempDownloadDir\$assetName"
+    Write-Host "Download asset $assetName..." -ForegroundColor Yellow
+    Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath -Headers $headers
+
+    $size = (Get-Item $zipPath).Length
+    if ($expectedSize -gt 0 -and $size -ne $expectedSize) {
+        throw "[FAIL-CLOSED] Dimensione archivio mismatch su ${assetName}! Atteso: $expectedSize bytes, Ricevuto: $size bytes"
+    }
+    $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLower()
+    if ($hash -ne $expectedSha256.Trim().ToLower()) {
+        throw "[FAIL-CLOSED] Checksum mismatch su asset ${assetName}! Atteso lockfile: $expectedSha256, Calcolato: $hash"
+    }
+    Write-Host "  Size ($size bytes) e Checksum SHA-256 ($hash) verificati." -ForegroundColor Green
+    return @{ path = $zipPath; url = $asset.browser_download_url; sha256 = $hash; sizeBytes = $size }
+}
+
 $acquiredMetadata = @()
 
 foreach ($variantLock in $lockJson.variants) {
@@ -171,6 +193,49 @@ foreach ($variantLock in $lockJson.variants) {
             }
         } else {
             throw "[FAIL-CLOSED] Impossibile trovare llama-server.exe nell'archivio $zipFileName"
+        }
+    }
+
+    # Pacchetti vendor ufficiali della stessa release (es. runtime CUDA 12 per la
+    # variante cuda): inclusi nel bundle invece di essere prelevati dalla macchina
+    # di build (Toolkit o LM Studio), cosi' l'esecuzione GPU non dipende da
+    # software di terze parti installato sul PC dell'utente.
+    foreach ($vendorAsset in @($variantLock.vendorAssets)) {
+        if (-not $vendorAsset) { continue }
+        if ($vendorDir -eq "") {
+            throw "[FAIL-CLOSED] vendorAssets dichiarati senza vendorDir per la variante $variantId"
+        }
+        if (-not (Test-Path $vendorDir)) {
+            New-Item -ItemType Directory -Path $vendorDir -Force | Out-Null
+        }
+        $required = @($vendorAsset.requiredFiles)
+        $alreadyPresent = ($required.Count -gt 0) -and (@($required | Where-Object { -not (Test-Path "$vendorDir\$_") }).Count -eq 0)
+
+        if (-not $Force -and $alreadyPresent) {
+            Write-Host "Pacchetto vendor $($vendorAsset.assetName) gia presente in $vendorDir" -ForegroundColor Gray
+            $vendorMeta = @{ sha256 = $vendorAsset.sha256; sizeBytes = [long]$vendorAsset.sizeBytes; url = "NOASSERTION" }
+        } else {
+            $vendorMeta = Get-VerifiedReleaseAsset $vendorAsset.assetName $vendorAsset.sha256 ([long]$vendorAsset.sizeBytes)
+            $vendorExtract = "$tempDownloadDir\vendor_${variantId}_$($vendorAsset.assetName)"
+            if (Test-Path $vendorExtract) { Remove-Item -Path $vendorExtract -Recurse -Force }
+            Expand-Archive -Path $vendorMeta.path -DestinationPath $vendorExtract -Force
+            Get-ChildItem -Path $vendorExtract -Recurse -Filter "*.dll" | ForEach-Object {
+                Copy-Item -Path $_.FullName -Destination "$vendorDir\$($_.Name)" -Force
+                Write-Host "  DLL vendor salvata: $($_.Name)" -ForegroundColor Gray
+            }
+            $missing = @($required | Where-Object { -not (Test-Path "$vendorDir\$_") })
+            if ($missing.Count -gt 0) {
+                throw "[FAIL-CLOSED] Il pacchetto $($vendorAsset.assetName) non contiene: $($missing -join ', ')"
+            }
+        }
+
+        $acquiredMetadata += @{
+            variantId = $variantId
+            assetName = $vendorAsset.assetName
+            assetUrl = $vendorMeta.url
+            sha256 = $vendorMeta.sha256
+            sizeBytes = $vendorMeta.sizeBytes
+            vendor = $true
         }
     }
 }

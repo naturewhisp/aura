@@ -68,6 +68,16 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
 
     final rawPath = env[pathKey] ?? '';
 
+    // Una variante che dichiara le proprie directory vendor (runtime incluso nel
+    // bundle) deve funzionare solo con le librerie che distribuisce: le DLL CUDA
+    // di LM Studio o del CUDA Toolkit della macchina non vengono aggiunte né
+    // ereditate dal PATH. Altrimenti una variante incompleta funzionerebbe solo
+    // sui PC con quel software installato, mascherando il difetto di packaging.
+    // Gli eseguibili esterni scelti dall'utente (senza vendor dichiarati)
+    // mantengono la discovery automatica.
+    final isolateBundledRuntime =
+        vendorDirectories.any((vendor) => vendor.trim().isNotEmpty);
+
     // 2. Separa le voci di PATH esistenti (mantiene .lmstudio se l'eseguibile si trova in LM Studio o se è un percorso vendor CUDA)
     final isLmStudioPath = executablePath.toLowerCase().contains('.lmstudio') ||
         executablePath.toLowerCase().contains('lm-studio');
@@ -78,9 +88,13 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
       if (!isLmStudioPath &&
           (clean.contains('.lmstudio') || clean.contains('lm-studio'))) {
         final isVendor = clean.contains('vendor') || clean.contains('cuda');
-        if (!isVendor) {
+        if (!isVendor || isolateBundledRuntime) {
           return false;
         }
+      }
+      if (isolateBundledRuntime &&
+          clean.contains('nvidia gpu computing toolkit')) {
+        return false;
       }
       return true;
     }).toList();
@@ -112,8 +126,9 @@ final class DefaultLlamaRuntimeLaunchEnvironmentResolver
       }
     }
 
-    // 4. Discovery automatica di directory vendor CUDA su Windows (se presenti sul sistema)
-    if (io.Platform.isWindows) {
+    // 4. Discovery automatica di directory vendor CUDA su Windows (se presenti sul sistema),
+    //    solo per eseguibili esterni privi di vendor dichiarati.
+    if (io.Platform.isWindows && !isolateBundledRuntime) {
       final userProfile = env['USERPROFILE'] ?? env['HOME'] ?? '';
       if (userProfile.isNotEmpty) {
         final lmStudioVendorRoot = io.Directory(

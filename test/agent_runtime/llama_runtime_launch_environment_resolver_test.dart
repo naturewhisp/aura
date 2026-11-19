@@ -6,7 +6,7 @@ void main() {
     const resolver = DefaultLlamaRuntimeLaunchEnvironmentResolver();
 
     test(
-        'preserva l ambiente base di sistema (SystemRoot, TEMP, etc), rimuove binari esterni e preserva vendor CUDA',
+        'variante inclusa: preserva l ambiente base e usa solo i propri vendor, senza DLL CUDA di LM Studio',
         () {
       final baseEnv = {
         'SystemRoot': r'C:\Windows',
@@ -38,16 +38,47 @@ void main() {
       expect(env['CUDA_VISIBLE_DEVICES'], equals('0'));
       expect(env['LLAMA_LOG_LEVEL'], equals('2'));
 
-      // PATH sanitizzato: rimosso binario esterno ma preservato vendor CUDA
+      // PATH sanitizzato: vendor dichiarati della variante, nessuna libreria di LM Studio.
       final newPath = env['PATH']!;
       expect(newPath, contains(r'C:\AURA\runtime\bin\win-x64-cuda\vendor'));
       expect(newPath, contains(r'C:\Windows\System32'));
       expect(newPath, contains(r'C:\Tools'));
       expect(newPath, isNot(contains(r'C:\Users\test\.lmstudio\bin')));
-      expect(
-          newPath,
-          contains(
-              r'C:\Users\test\.lmstudio\extensions\backends\vendor\win-llama-cuda12-vendor-v2'));
+      expect(newPath, isNot(contains('win-llama-cuda12-vendor-v2')));
+    });
+
+    test(
+        'variante inclusa: esclude le librerie del CUDA Toolkit ereditate dal PATH',
+        () {
+      final result = resolver.resolve(
+        executablePath: r'C:\AURA\runtime\bin\win-x64-cuda\llama-server.exe',
+        workingDirectory: r'C:\AURA\runtime\bin\win-x64-cuda',
+        vendorDirectories: [r'C:\AURA\runtime\bin\win-x64-cuda\vendor'],
+        baseEnvironment: {
+          'PATH':
+              r'C:\Windows\System32;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin',
+        },
+      );
+
+      final newPath = result.environmentOverrides['PATH']!;
+      expect(newPath, contains(r'C:\Windows\System32'));
+      expect(newPath, isNot(contains('NVIDIA GPU Computing Toolkit')));
+    });
+
+    test(
+        'eseguibile esterno senza vendor dichiarati: mantiene i vendor CUDA ereditati',
+        () {
+      final result = resolver.resolve(
+        executablePath: r'C:\Tools\llama.cpp\llama-server.exe',
+        workingDirectory: r'C:\Tools\llama.cpp',
+        baseEnvironment: {
+          'PATH':
+              r'C:\Windows\System32;C:\Users\test\.lmstudio\extensions\backends\vendor\win-llama-cuda12-vendor-v2',
+        },
+      );
+
+      final newPath = result.environmentOverrides['PATH']!;
+      expect(newPath, contains('win-llama-cuda12-vendor-v2'));
     });
 
     test(

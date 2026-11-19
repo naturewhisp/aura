@@ -142,28 +142,16 @@ foreach ($v in $variants) {
         Copy-Item -Path "$projectRoot\runtime\bin\$($v.id)\*" -Destination $v.dir -Recurse -Force
     }
 
-    # Se la variante è win-x64-cuda, include le DLL vendor dinamiche CUDA 12 per garantire esecuzione out-of-the-box su macchine pulite
-    if ($v.id -eq "win-x64-cuda" -and -not (Test-Path "$($v.vendorDir)\cublas64_12.dll")) {
-        $cudaCandidates = @()
-        $cudaToolkitRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA"
-        if (Test-Path $cudaToolkitRoot) {
-            Get-ChildItem -Path $cudaToolkitRoot -Directory | ForEach-Object {
-                $binDir = "$($_.FullName)\bin"
-                if (Test-Path "$binDir\cublas64_12.dll") { $cudaCandidates += $binDir }
-            }
-        }
-        $lmVendor = "$env:USERPROFILE\.lmstudio\extensions\backends\vendor"
-        if (Test-Path $lmVendor) {
-            Get-ChildItem -Path $lmVendor -Directory | Where-Object { $_.Name -like "*cuda*" } | ForEach-Object {
-                if (Test-Path "$($_.FullName)\cublas64_12.dll") { $cudaCandidates += $_.FullName }
-            }
-        }
-        if ($cudaCandidates.Count -gt 0) {
-            $chosenVendor = $cudaCandidates[0]
-            Write-Host "Inclusione librerie vendor dinamiche CUDA 12 da $chosenVendor in $($v.vendorDir)..." -ForegroundColor Green
-            Get-ChildItem -Path $chosenVendor -Filter "*.dll" | ForEach-Object {
-                Copy-Item -Path $_.FullName -Destination $v.vendorDir -Force
-            }
+    # La variante CUDA richiede le librerie runtime CUDA 12 nel proprio vendor/:
+    # provengono esclusivamente dal pacchetto ufficiale hash-pinned acquisito da
+    # tool/fetch_llama_binaries.ps1 (vendorAssets del lockfile). Prelevarle dal
+    # PC di build (CUDA Toolkit o LM Studio) rendeva il pacchetto non riproducibile
+    # e, sui runner CI privi di quelle installazioni, privo di accelerazione GPU.
+    if ($v.id -eq "win-x64-cuda" -and -not $AllowPlaceholders) {
+        $requiredCudaLibs = @("cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll")
+        $missingCudaLibs = @($requiredCudaLibs | Where-Object { -not (Test-Path "$($v.vendorDir)\$_") })
+        if ($missingCudaLibs.Count -gt 0) {
+            throw "[FAIL-CLOSED] Librerie CUDA mancanti in $($v.vendorDir): $($missingCudaLibs -join ', '). Eseguire tool/fetch_llama_binaries.ps1 prima dello staging."
         }
     }
 

@@ -1783,6 +1783,8 @@ void _sessionTests() {
       expect(notifier.logger.sessionId, equals('session-with-replay'));
       expect(notifier.logger.entries.length, equals(1));
       expect(notifier.logger.entries.first.userInput, equals('command'));
+      // Replay storico privo di provenance: nessuna retro-attribuzione al runtime corrente.
+      expect(notifier.logger.sessionProvenance, isNull);
     });
 
     test('10. resumeGame con errore di caricamento non propaga', () async {

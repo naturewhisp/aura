@@ -1415,13 +1415,9 @@ class GameControllerNotifier extends ChangeNotifier {
       if (await replayFile.exists()) {
         final replayContent = await replayFile.readAsString();
         logger = ReplayLogger.fromJson(jsonDecode(replayContent));
-        // Una sessione ripresa su un runtime diverso da quello osservato in origine
-        // non è attribuibile a un'unica configurazione: la provenance salvata non
-        // viene mai sovrascritta, solo integrata se assente.
-        logger.sessionProvenance ??= _buildSessionProvenance(
-          state.sessionId,
-          DatasetSource.humanPlaytest,
-        );
+        // La provenance salvata non viene mai sovrascritta né integrata: un replay
+        // storico che ne è privo resta privo (ed escluso dai dataset), perché i suoi
+        // turni precedenti possono essere stati generati da un runtime diverso.
       } else {
         logger = _createLogger(state.sessionId);
       }

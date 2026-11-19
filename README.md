@@ -11,11 +11,11 @@ Il progetto implementa un'architettura agentica a due livelli (Valutatore ed Att
 Il workspace è organizzato come un monorepo Dart/Flutter composto dalle seguenti cartelle:
 
 *   `lib/`: Il core engine deterministico in puro Dart. Contiene i modelli dati (`GameState`, `ActorCue`, `EvaluatorResolution`), gli agenti (`EvaluatorAgent`, `ActorAgent`) e i bridge di inferenza.
-*   `app/`: L'applicazione grafica client sviluppata in **Flutter**. Dispone di un layout desktop split-pane, fragment shader per glitch visivi sincronizzati con la dissonanza, e controlli per regolare il reasoning dei modelli in tempo reale.
+*   `app/`: L'applicazione grafica client sviluppata in **Flutter** (Windows; macOS sperimentale). Dispone di un layout desktop split-pane, fragment shader per glitch visivi sincronizzati con la dissonanza, runtime `llama-server` gestito e wizard di configurazione di runtime e modelli.
 *   `bin/`: Gli eseguibili CLI e gli strumenti di simulazione:
     *   [aura_cli.dart](bin/aura_cli.dart): Un client di gioco colorato in console ad effetto macchina da scrivere.
     *   [run_simulation.dart](bin/run_simulation.dart): Esegue simulazioni batch automatiche o interattive per validare il bilanciamento matematico dei pilastri.
-*   `test/`: Suite di test unitari, di integrazione ed avversari (oltre 50 test passanti) per garantire la non-regressione dell'engine.
+*   `test/`: Suite di test unitari, di integrazione ed avversari del core (oltre 850 test) per garantire la non-regressione dell'engine; `app/test/` contiene i test di widget e notifier dell'app Flutter (oltre 300).
 
 ---
 
@@ -32,7 +32,7 @@ Il workspace è organizzato come un monorepo Dart/Flutter composto dalle seguent
 
 A.U.R.A. utilizza una pipeline CI/CD automatizzata tramite **GitHub Actions**:
 
-- **Continuous Integration (`.github/workflows/ci.yml`)**: Valida ad ogni Pull Request e Push su `main` la formattazione, l'analisi statica, la suite dei test ed effettua la build di verifica.
+- **Continuous Integration (`.github/workflows/ci.yml`)**: Valida ad ogni Pull Request e Push su `main` e `fase6` la formattazione, l'analisi statica, la suite dei test ed effettua la build di verifica. La verifica macOS (`macos-verify.yml`) è on-demand.
 - **Release Pipeline (`.github/workflows/release.yml`)**: Pipeline guidata che acquisisce i runtime deterministici, compila l'eseguibile Windows e l'installer Inno Setup, genera l'SBOM SPDX 2.3, firma i cataloghi, calcola i checksum SHA-256 e crea una **Draft Release** su GitHub per il collaudo manuale.
 - **Workflow di Cleanup (`.github/workflows/cleanup-draft-release.yml`)**: Consente l'eliminazione sicura di candidate Draft Release e dei relativi tag temporanei.
 
@@ -77,5 +77,5 @@ flutter run -d windows
     2. Nessun singolo pilastro deve essere inferiore a $50$.
     3. Il livello di allerta di sistema deve essere inferiore alla tolleranza dinamica: $\text{MaxAlert} = 30 + (\text{MediaPilastri} - 80) \times 2$.
 *   **Pillole di Sconfitta:** Se l'allerta di PANOPTICON raggiunge o supera $100$, la griglia si chiude permanentemente e verrai disconnesso ed espulso.
-*   **Replay Logs:** Tutte le partite reali completate nel client grafico generano un file JSON di telemetria dettagliato salvato in `AppData\Roaming\aura\replays\`. Questi log servono come dati di addestramento ("Gold Standard") per il futuro fine-tuning LoRA.
-*   **Controllo Reasoning (CoT):** Direttamente dal pannello a destra del client grafico, puoi spegnere o accendere il ragionamento del modello (`THINKING MODE`) o forzarlo ad essere estremamente sintetico tramite prompt engineering (`CONCISE THOUGHTS`) per abbattere la latenza di gioco da 70s a meno di 5s.
+*   **Replay Logs:** Tutte le partite reali nel client grafico generano un file JSON di telemetria salvato in `AppData\Roaming\aura\replays\`, con provenance del runtime osservato. Solo le sessioni umane con provenance scientificamente completa (modelli gestiti, SHA-256 e quantizzazione verificati) sono candidabili al futuro fine-tuning LoRA; tutorial e replay storici ne sono esclusi.
+*   **Reasoning disattivato:** i processi `llama-server` gestiti vengono avviati con `--reasoning off`, per mantenere la latenza di un turno nell'ordine di pochi secondi su GPU.

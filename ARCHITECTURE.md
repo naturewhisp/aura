@@ -859,7 +859,7 @@ Stato: **sviluppo implementativo e hardening completati; collaudo multi-macchina
 Riferimento normativo: [HARDWARE_COMPATIBILITY_MATRIX.md](docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md).
 
 La Fase 6.10 consolida la stabilità e le prestazioni su architetture reali attraverso mirati interventi di produzione:
-- **Accelerazione GPU CUDA con Iniezione DLL Vendor**: `LlamaServerProcessSupervisor` e `LlamaServerDependencyService` iniettano automaticamente nel `PATH` di runtime la directory vendor `win-llama-cuda12-vendor-v2` contenente `cudart64_12.dll`, consentendo l'offload completo dei layer su GPU NVIDIA RTX con throughput di oltre 190 tok/s in prompt evaluation.
+- **Accelerazione GPU CUDA con Iniezione DLL Vendor**: `LlamaServerProcessSupervisor` e `LlamaServerDependencyService` antepongono al `PATH` la directory `vendor/` della variante `win-x64-cuda`, che distribuisce le librerie runtime CUDA 12.4 (`cudart64_12.dll`, `cublas64_12.dll`, `cublasLt64_12.dll`) acquisite dal pacchetto ufficiale llama.cpp fissato per SHA-256 (`vendorAssets` del lockfile), consentendo l'offload completo dei layer su GPU NVIDIA RTX senza LM Studio né CUDA Toolkit installati. I runtime inclusi sono isolati dalle librerie CUDA di sistema.
 - **Autorità Esclusiva di `--list-devices` e Rilevamento Fail-Closed**: Per le varianti bundled runtime (`variantId != null`), l'accelerazione GPU viene convalidata unicamente tramite l'esecuzione con successo di `--list-devices`. Qualsiasi errore o mancata presenza di device fisici GPU declassa rigorosamente la configurazione a `RuntimeAcceleration.cpu`, eliminando falsi positivi.
 - **CPU Thread Budgeting Deterministico**: Implementazione in `computeExecutionBudget` della ripartizione su 3 tier (2 core riservati per host $\ge 6$ core; 1 core riservato per host 4–5 core; 1 thread fisso per host $\le 3$ core) per proteggere la reattività della UI Flutter e il thread audio in scenari CPU-only.
 - **De-stuttering I/O tramite Isolate**: Calcolo dell'hash SHA-256 e digest GGUF durante il provisioning delegati ad Isolate Dart dedicati per prevenire micro-lag del frame rate grafico.
@@ -868,7 +868,8 @@ La Fase 6.10 consolida la stabilità e le prestazioni su architetture reali attr
 
 ### 11.15 Fase 6.11 — Cross-Platform Playtest & Dataset Readiness
 
-Stato: **specifica esecutiva approvata; roadmap a 5 sotto-fasi (6.11.1 – 6.11.5) formalizzata**.  
+Stato: **6.11.1 – 6.11.4 completate; 6.11.5 aperta** (G6 / `PLAYTEST_VERIFIED` revocato il 2026-10-28: l'evidenza registrata non era un replay prodotto dall'app, vedi [HARDWARE_COMPATIBILITY_MATRIX.md §20.1](docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md)).  
+Dal 2026-10-28 l'app registra la provenance osservata dal bootstrap managed (`InferenceBootstrapBridge` espone accelerazione effettiva, build `llama.cpp`, quantizzazione verificata per SHA-256 e context size espliciti Actor 16384 / Evaluator 8192); il tutorial scriptato è escluso dal dataset e i replay storici privi di provenance non vengono mai retro-attribuiti.  
 Riferimento normativo: [PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md](docs/phase6/PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md) e [DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md](docs/phase6/DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md).
 
 Prima dell'apertura formale della Fase 7 (Android Edge Client), la Fase 6 viene estesa e chiusa con una sottofase sperimentale macOS Apple Silicon finalizzata a:

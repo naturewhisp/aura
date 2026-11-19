@@ -2630,7 +2630,7 @@ La Fase 5 è completata quando:
 
 ### Stato Corrente di Avanzamento
 
-Lo sviluppo è attualmente arrivato a **Fase 5.2 — Hard Mode Deception Layer** completata e validata tramite test automatici e playtest Hard end-to-end.
+Lo sviluppo è attualmente nella **chiusura della Fase 6 — Cross-Platform Edge Runtime Foundation** (aggiornamento 2026-11-19).
 
 ```text
 Completato / consolidato:
@@ -2641,10 +2641,17 @@ Completato / consolidato:
 - Fase 4: Playable Experience Layer (4.1 - 4.11)
 - Fase 5.1: Panopticon Runtime Hardening
 - Fase 5.2: Hard Mode Deception Layer
-- Branding baseline: icona ufficiale A.U.R.A. versionata e integrata negli asset Windows
+- Fase 6.1 - 6.10: runtime neutrale, llama-server gestito, provisioning firmato,
+  desktop shell, audio, installer, pipeline di release, hardening Windows
+- Fase 6.11.1 - 6.11.4: core POSIX, schema provenance, shell macOS, CI macos-14
+
+Aperto prima della Fase 7:
+- Fase 6.11.5 / G6: playtest reale su Apple Silicon (PLAYTEST_VERIFIED revocato
+  il 2026-10-28, vedi HARDWARE_COMPATIBILITY_MATRIX.md §20.1)
+- collaudo multi-hardware esteso di Fase 6.10
 ```
 
-Il prossimo blocco operativo è la Fase 6. Titolo/metadati prodotto, modalità finestra/fullscreen, persistenza del desktop shell e packaging dei WAV definitivi restano pianificati nella Fase 6 e non sono considerati completati dal solo commit delle icone. Prima dell’implementazione produttiva è obbligatorio un design gate documentale che definisca contratti multipiattaforma, lifecycle dei modelli, packaging Windows, audio asset lifecycle, test real-model opt-in e preparazione Android.
+La provenance dei replay è registrata dall'app a partire dal runtime osservato (backend, accelerazione, build llama.cpp, context size espliciti, SHA-256 e quantizzazione per i soli modelli gestiti). Le sessioni con modelli esterni restano deliberatamente non qualificabili per il dataset LoRA.
 
 ### Fase 0 — Spike Tecnico di Inferenza
 
@@ -4214,7 +4221,7 @@ Stato: **sviluppo implementativo e hardening completati; collaudo multi-macchina
 Riferimento normativo: [docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md](docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md).
 
 Deliverable consolidati ed evidenze di produzione:
-- **Accelerazione Hardware NVIDIA CUDA RTX**: Iniezione dinamica nel `PATH` delle librerie vendor (`win-llama-cuda12-vendor-v2` contenente `cudart64_12.dll`) eseguita in modo trasparente dal supervisor dei processi (`LlamaServerProcessSupervisor`), sbloccando le massime prestazioni di calcolo con oltre 190 tok/s in prompt evaluation.
+- **Accelerazione Hardware NVIDIA CUDA RTX**: Iniezione nel `PATH` delle librerie vendor della variante, eseguita dal supervisor dei processi (`LlamaServerProcessSupervisor`), con oltre 190 tok/s in prompt evaluation. *Correzione 2026-11-19:* fino a questa data le librerie CUDA (`cudart64_12.dll`, cuBLAS) non erano incluse nel pacchetto e venivano prese da LM Studio o dal CUDA Toolkit della macchina; ora provengono dal pacchetto ufficiale llama.cpp `cudart-llama-bin-win-cuda-12.4-x64.zip` fissato per SHA-256 e i runtime inclusi non usano più librerie di sistema.
 - **Fail-Closed Hardware Probing per Runtime Bundled**: Convalida dell'accelerazione hardware demandata unicamente all'esecuzione con esito positivo di `--list-devices`. In caso di errore di esecuzione o assenza di GPU fisiche rilevate, il runtime viene forzato a `RuntimeAcceleration.cpu` evitando falsi positivi GPU su macchine prive di hardware dedicato.
 - **CPU Thread Budgeting Deterministico**: Implementazione della policy a tre scaglioni (`computeExecutionBudget`) per proteggere il thread principale dell'UI Flutter e la macchina a stati audio anche su sistemi a basso numero di core o in scenari CPU-only.
 - **De-stuttering I/O tramite Isolate**: Calcolo dell'hash SHA-256 dei modelli e digest GGUF eseguiti in Isolate Dart separati per eliminare micro-stuttering del frame rate durante il caricamento.

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:aura_core/aura_offline.dart';
 import '../state_management/game_controller_notifier.dart';
+import '../state_management/ui_failure_message.dart';
 import 'boot_menu_screen.dart';
 import 'first_run_model_setup_screen.dart';
 
@@ -49,6 +50,9 @@ class _AppStartupGateState extends State<AppStartupGate> {
   StartupDestination _destination = StartupDestination.loading;
   LocalInferenceServices? _services;
   Object? _startupError;
+
+  /// Esito della valutazione iniziale già eseguita dal gate: il boot non la ripete.
+  FirstRunSetupState? _validatedSetupState;
   bool _showErrorDetails = false;
   int _startupGeneration = 0;
 
@@ -64,11 +68,23 @@ class _AppStartupGateState extends State<AppStartupGate> {
       return;
     }
 
-    if (widget.services != null) {
-      _services = widget.services;
+    _services = widget.services ?? widget.notifier.resolvedInferenceServices;
+
+    // Ritorno dal terminale: runtime già avviato e servizi già risolti, nessuna
+    // nuova ispezione della configurazione né nuova sequenza di boot.
+    if (_services != null && widget.notifier.isBootstrapped) {
+      _destination = StartupDestination.boot;
+      return;
     }
 
     _resolveStartup();
+  }
+
+  /// Servizi effettivi; il fallback (solo senza risoluzione autoritativa) viene creato una volta.
+  LocalInferenceServices _effectiveServices() {
+    return _services ??= LocalInferenceServiceProvider.create(
+      environment: AuraCliEnvironment.fromPlatform(),
+    );
   }
 
   Future<void> _resolveStartup() async {
@@ -125,6 +141,7 @@ class _AppStartupGateState extends State<AppStartupGate> {
         _services = LocalInferenceServiceProvider.create(
           environment: effectiveEnv,
         );
+        widget.notifier.resolvedInferenceServices = _services;
       }
 
       final facade = widget.firstRunFacade ?? _services!.firstRunFacade;
@@ -134,6 +151,7 @@ class _AppStartupGateState extends State<AppStartupGate> {
 
       if (setupState.isReadyForBoot) {
         setState(() {
+          _validatedSetupState = setupState;
           _destination = StartupDestination.boot;
         });
       } else {
@@ -176,10 +194,7 @@ class _AppStartupGateState extends State<AppStartupGate> {
         );
 
       case StartupDestination.onboarding:
-        final services = _services ??
-            LocalInferenceServiceProvider.create(
-              environment: AuraCliEnvironment.fromPlatform(),
-            );
+        final services = _effectiveServices();
         final facade = widget.firstRunFacade ?? services.firstRunFacade;
         return FirstRunModelSetupScreen(
           firstRunFacade: facade,
@@ -191,10 +206,7 @@ class _AppStartupGateState extends State<AppStartupGate> {
         );
 
       case StartupDestination.boot:
-        final services = _services ??
-            LocalInferenceServiceProvider.create(
-              environment: AuraCliEnvironment.fromPlatform(),
-            );
+        final services = _effectiveServices();
         final depService =
             widget.dependencyService ?? services.dependencyService;
         return BootMenuScreen(
@@ -205,6 +217,8 @@ class _AppStartupGateState extends State<AppStartupGate> {
           inferenceFacade: services.inferenceFacade,
           services: services,
           onDisconnect: widget.onDisconnect,
+          initialSubScreen: widget.notifier.isBootstrapped ? "menu" : "boot",
+          startupSetupState: _validatedSetupState,
         );
 
       case StartupDestination.error:
@@ -234,7 +248,7 @@ class _AppStartupGateState extends State<AppStartupGate> {
                     'Si è verificato un errore durante l\'ispezione del runtime. È possibile riprovare la diagnosi o avviare la procedura guidata.',
                     style: TextStyle(
                       fontFamily: 'monospace',
-                      color: Color(0xFF94A3B8),
+                      color: Color(0xFF88CCA0),
                       fontSize: 12,
                     ),
                     textAlign: TextAlign.center,
@@ -244,15 +258,15 @@ class _AppStartupGateState extends State<AppStartupGate> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF1E293B),
+                        color: const Color(0xFF001A08),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFF334155)),
+                        border: Border.all(color: const Color(0xFF005522)),
                       ),
                       child: Text(
-                        'Dettagli Tecnici: $_startupError',
+                        'Dettagli Tecnici: ${uiFailureMessage(_startupError!)}',
                         style: const TextStyle(
                           fontFamily: 'monospace',
-                          color: Color(0xFFEF4444),
+                          color: Color(0xFFFF5555),
                           fontSize: 11,
                         ),
                       ),
@@ -300,7 +314,7 @@ class _AppStartupGateState extends State<AppStartupGate> {
                           : 'MOSTRA DETTAGLI TECNICI',
                       style: const TextStyle(
                         fontFamily: 'monospace',
-                        color: Color(0xFF64748B),
+                        color: Color(0xFF4D9966),
                         fontSize: 11,
                       ),
                     ),

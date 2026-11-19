@@ -252,7 +252,9 @@ class MetricsDashboard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        "LATENZA INFERENZA: ${lastInferenceDuration.toStringAsFixed(2)}s",
+                        // Prima del primo turno (o dopo un ripristino) non c'è
+                        // una misura: "--" invece di uno 0 fuorviante.
+                        "LATENZA INFERENZA: ${lastInferenceDuration > 0 ? '${lastInferenceDuration.toStringAsFixed(2)}s' : '--'}",
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -265,7 +267,7 @@ class MetricsDashboard extends StatelessWidget {
                     const SizedBox(width: 8.0),
                     Expanded(
                       child: Text(
-                        "BANDA: ${lastTokensPerSecond.toStringAsFixed(1)} T/s",
+                        "BANDA: ${lastTokensPerSecond > 0 ? '${lastTokensPerSecond.toStringAsFixed(1)} T/s' : '--'}",
                         textAlign: TextAlign.right,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

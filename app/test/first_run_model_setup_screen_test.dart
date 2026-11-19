@@ -80,6 +80,7 @@ final class FakeFirstRunModelSetupFacade implements FirstRunModelSetupFacade {
   );
   bool failProbe = false;
   bool consentAccepted = false;
+  String? configuredRuntimePath;
 
   @override
   Future<FirstRunSetupState> acceptConsentAndBindActor(
@@ -134,6 +135,7 @@ final class FakeFirstRunModelSetupFacade implements FirstRunModelSetupFacade {
 
   @override
   Future<FirstRunSetupState> configureRuntime(String executablePath) async {
+    configuredRuntimePath = executablePath;
     currentState = const FirstRunSetupState(
       step: FirstRunSetupStep.actorSelection,
     );
@@ -350,5 +352,119 @@ void main() {
 
     expect(find.textContaining('CUDA error'), findsOneWidget);
     expect(find.text('RITENTA CONFIGURAZIONE'), findsOneWidget);
+  });
+
+  testWidgets(
+      'runtime incluso rilevato: un clic lo conferma e mostra il consiglio hardware',
+      (tester) async {
+    final fakeFirstRunFacade = FakeFirstRunModelSetupFacade()
+      ..currentState = const FirstRunSetupState(
+        step: FirstRunSetupStep.runtimeSelection,
+        runtimeDetectionResult: LlamaServerDetectionResult(
+          effectiveCandidate:
+              r'C:\AURA\runtime\bin\win-x64-cuda\llama-server.exe',
+          variantId: 'win-x64-cuda',
+          acceleration: RuntimeAcceleration.cuda,
+          gpuDeviceName: 'NVIDIA GeForce RTX 3060',
+          gpuMemoryTotalMiB: 12287,
+          gpuMemoryFreeMiB: 11253,
+        ),
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FirstRunModelSetupScreen(
+          firstRunFacade: fakeFirstRunFacade,
+          inferenceFacade: FakeLocalInferenceFacade(),
+          onComplete: () {},
+          disableBackgroundAnimation: true,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('recommended_runtime_card')), findsOneWidget);
+    expect(find.textContaining('RTX 3060'), findsOneWidget);
+    // Il form manuale resta nascosto finché non si sceglie la configurazione avanzata.
+    expect(find.byType(TextField), findsNothing);
+
+    final useBundled = find.byKey(const Key('use_bundled_runtime'));
+    await tester.ensureVisible(useBundled);
+    await tester.tap(useBundled);
+    await tester.pump();
+    await tester.pump();
+
+    expect(fakeFirstRunFacade.configuredRuntimePath,
+        r'C:\AURA\runtime\bin\win-x64-cuda\llama-server.exe');
+  });
+
+  testWidgets(
+      'configurazione avanzata mostra il form manuale e permette il ritorno',
+      (tester) async {
+    final fakeFirstRunFacade = FakeFirstRunModelSetupFacade()
+      ..currentState = const FirstRunSetupState(
+        step: FirstRunSetupStep.runtimeSelection,
+        runtimeDetectionResult: LlamaServerDetectionResult(
+          effectiveCandidate: r'C:\AURA\llama-server.exe',
+          acceleration: RuntimeAcceleration.cpu,
+        ),
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FirstRunModelSetupScreen(
+          firstRunFacade: fakeFirstRunFacade,
+          inferenceFacade: FakeLocalInferenceFacade(),
+          onComplete: () {},
+          disableBackgroundAnimation: true,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('Nessuna GPU compatibile'), findsOneWidget);
+    await tester.tap(find.textContaining('Configurazione avanzata'));
+    await tester.pump();
+    expect(find.byType(TextField), findsOneWidget);
+    await tester.tap(find.textContaining('Torna al runtime incluso'));
+    await tester.pump();
+    expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets(
+      'passo Attore con RTX 3060: consiglia un solo modello per entrambi i ruoli',
+      (tester) async {
+    final fakeFirstRunFacade = FakeFirstRunModelSetupFacade()
+      ..currentState = const FirstRunSetupState(
+        step: FirstRunSetupStep.actorSelection,
+        runtimeDetectionResult: LlamaServerDetectionResult(
+          effectiveCandidate: r'C:\AURA\llama-server.exe',
+          acceleration: RuntimeAcceleration.cuda,
+          gpuMemoryTotalMiB: 12287,
+          gpuMemoryFreeMiB: 11253,
+        ),
+      );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: FirstRunModelSetupScreen(
+          firstRunFacade: fakeFirstRunFacade,
+          inferenceFacade: FakeLocalInferenceFacade(),
+          onComplete: () {},
+          disableBackgroundAnimation: true,
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('hardware_advice')), findsOneWidget);
+    expect(find.textContaining('UN SOLO MODELLO PER ENTRAMBI I RUOLI'),
+        findsOneWidget);
+    // Al passo Attore il consiglio è informativo: l'azione compare al passo 3.
+    expect(
+        find.byKey(const Key('use_actor_model_for_evaluator')), findsNothing);
   });
 }

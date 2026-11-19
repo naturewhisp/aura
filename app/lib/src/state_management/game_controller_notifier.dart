@@ -13,6 +13,7 @@ import 'package:aura_app/src/settings/app_settings.dart';
 import 'package:aura_app/src/settings/file_settings_repository.dart';
 import 'package:aura_app/src/settings/settings_repository.dart';
 import 'flutter_asset_config_source.dart';
+import 'ui_failure_message.dart';
 import 'package:aura_app/src/tutorial/tutorial_session_controller.dart';
 
 /// Fasi dell'avanzamento dell'inferenza rappresentate nel carosello di caricamento dell'interfaccia utente.
@@ -209,6 +210,12 @@ class GameControllerNotifier extends ChangeNotifier {
 
   /// Indica se il bootstrap dei modelli è già stato eseguito ed i server sono persistiti attivi.
   bool get isBootstrapped => _isBootstrapped;
+
+  /// Servizi di inferenza locale risolti dallo startup gate (store e root bundled effettivi).
+  ///
+  /// Il notifier sopravvive al cambio di schermata: conservarli qui evita di ricreare
+  /// il provider (con root potenzialmente diverse) ad ogni ritorno al menu.
+  LocalInferenceServices? resolvedInferenceServices;
 
   bool _isStale(int generation) =>
       _disposed || generation != _operationGeneration;
@@ -662,7 +669,10 @@ class GameControllerNotifier extends ChangeNotifier {
             evaluatorModelSha256: evaluatorProvenance?.expectedSha256 ?? '',
             evaluatorQuantization:
                 evaluatorProvenance?.quantization ?? 'unknown',
-            evaluatorContextSize: evaluatorServer.contextSize ?? 0,
+            // Modello condiviso: un solo processo con il contesto dell'Actor.
+            evaluatorContextSize: topology.sharesModelFile
+                ? actorServer.contextSize ?? 0
+                : evaluatorServer.contextSize ?? 0,
             appVersion: SessionProvenanceFactory.defaultAppVersion,
           );
           _observedRuntimeBackend = 'managed_llama_server';
@@ -747,7 +757,8 @@ class GameControllerNotifier extends ChangeNotifier {
         onProgress?.call(1.0, 'AURA_INIT> MODEL CONFIGURATION PRESERVED.');
         onProgress?.call(1.0, 'AURA_INIT> RUNTIME PROCESSES NOT STARTED.');
       }
-      onProgress?.call(1.0, 'AURA_INIT> [WARN] BOOTSTRAP FAILED: $e');
+      onProgress?.call(
+          1.0, 'AURA_INIT> [WARN] BOOTSTRAP FAILED: ${uiFailureMessage(e)}');
       completer.completeError(e);
     } finally {
       _activeManagedBootstrapFuture = null;
@@ -1223,8 +1234,14 @@ class GameControllerNotifier extends ChangeNotifier {
         samplingParameters: const {
           'temperature': 0.7,
         },
-        actualActorModelId: actorModelId,
-        actualEvaluatorModelId: evaluatorRes.actualEvaluator,
+        // Con runtime managed osservato, il turno usa gli stessi identificativi
+        // della provenance di sessione (artefatto o file effettivamente caricato).
+        actualActorModelId:
+            _observedRuntimeProvenance?.actorModelId ?? actorModelId,
+        actualEvaluatorModelId: evaluatorRes.usedRuleFallback
+            ? evaluatorRes.actualEvaluator
+            : (_observedRuntimeProvenance?.evaluatorModelId ??
+                evaluatorRes.actualEvaluator),
         evaluatorExecutionMode: evaluatorRes.executionMode.name,
         usedRuleFallback: evaluatorRes.usedRuleFallback,
         fallbackReason: evaluatorRes.primaryFailureReason,

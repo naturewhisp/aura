@@ -6,12 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:aura_core/aura_offline.dart';
 import '../state_management/game_controller_notifier.dart';
+import '../state_management/ui_failure_message.dart';
 import '../audio/audio_manager.dart';
 import '../audio/boot_audio_service.dart';
 import '../widgets/audio_reactive_background.dart';
+import '../widgets/overwrite_session_dialog.dart';
 import 'first_run_model_setup_screen.dart';
 import 'new_connection_briefing_screen.dart';
 import '../platform/desktop_shell_provider.dart';
+import '../theme/terminal_typography.dart';
 
 /// Schermata iniziale di Boot e Menu Principale dell'applicazione A.U.R.A.
 ///
@@ -45,6 +48,12 @@ class BootMenuScreen extends StatefulWidget {
   /// preferenze e l'arresto dei processi `llama-server` gestiti.
   final Future<void> Function()? onDisconnect;
 
+  /// Esito della valutazione di primo avvio già eseguita dallo startup gate.
+  ///
+  /// Se presente e pronto, la sequenza di boot non ripete né la valutazione né il
+  /// rilevamento del runtime (probe di processo e verifica d'integrità).
+  final FirstRunSetupState? startupSetupState;
+
   /// Costruisce una schermata [BootMenuScreen] a partire dal notifier.
   const BootMenuScreen({
     super.key,
@@ -57,6 +66,7 @@ class BootMenuScreen extends StatefulWidget {
     this.services,
     this.initialSubScreen = "boot",
     this.onDisconnect,
+    this.startupSetupState,
   });
 
   @override
@@ -86,7 +96,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       TextEditingController();
 
   // Campi per la gestione dei replay salvati su disco
-  List<FileSystemEntity> _replayFiles = [];
+  List<({File file, String name, DateTime modified, int sizeBytes})>
+      _replayFiles = [];
   Map<String, dynamic>? _selectedReplayData;
   String _selectedReplayName = "";
 
@@ -98,12 +109,29 @@ class _BootMenuScreenState extends State<BootMenuScreen>
   LlamaServerDetectionResult? _detectionResult;
   LocalInferenceSnapshot? _runtimeSnapshot;
 
+  /// Versione iniettata in build (`--dart-define=AURA_APP_VERSION`); mai un valore presunto.
+  static String get _versionLabel {
+    const version = SessionProvenanceFactory.defaultAppVersion;
+    return version == 'unknown' ? '[BUILD DI SVILUPPO]' : 'v$version';
+  }
+
+  LocalInferenceServices? _fallbackServices;
+
+  /// Servizi risolti dallo startup gate; il fallback senza root autoritative
+  /// viene creato una sola volta e solo se nessun servizio è stato iniettato.
+  LocalInferenceServices _services() {
+    return widget.services ??
+        widget.notifier.resolvedInferenceServices ??
+        (_fallbackServices ??= LocalInferenceServiceProvider.create(
+          environment: AuraCliEnvironment.fromPlatform(),
+        ));
+  }
+
   Future<void> _refreshRuntimeStatus() async {
     try {
-      final detection = await widget.dependencyService.detect();
-      final env = AuraCliEnvironment.fromPlatform();
-      final services = LocalInferenceServiceProvider.create(environment: env);
-      final infFacade = widget.inferenceFacade ?? services.inferenceFacade;
+      final detection = widget.startupSetupState?.runtimeDetectionResult ??
+          await widget.dependencyService.detect();
+      final infFacade = widget.inferenceFacade ?? _services().inferenceFacade;
       final snapshot = await infFacade.getSnapshot();
       if (!mounted) return;
       setState(() {
@@ -121,6 +149,10 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       _bootFuture ??= _runBootSequence();
     } else {
       _bootCompleted = true;
+      // Ritorno diretto al menu: con un checkpoint la scelta naturale è riprenderlo.
+      if (_subScreen == "menu" && widget.notifier.activeSessionExists) {
+        _selectedMenuIndex = 2;
+      }
     }
     _refreshRuntimeStatus();
     _focusNode.requestFocus();
@@ -143,7 +175,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       await Future.delayed(const Duration(milliseconds: 300));
       if (!mounted) return;
 
-      if (widget.firstRunFacade != null) {
+      final validatedByGate = widget.startupSetupState?.isReadyForBoot == true;
+      if (widget.firstRunFacade != null && !validatedByGate) {
         final setupState = await widget.firstRunFacade!.evaluateInitialState();
         if (!setupState.isReadyForBoot) {
           _appendBootLog("AURA_INIT> FIRST-RUN CONFIGURATION REQUIRED.");
@@ -159,7 +192,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
 
       final depService = widget.dependencyService;
 
-      final detection = await depService.detect();
+      final detection = widget.startupSetupState?.runtimeDetectionResult ??
+          await depService.detect();
 
       final accelLabel = switch (detection.acceleration) {
         RuntimeAcceleration.cuda => 'CUDA (NVIDIA GPU ACCELERATED)',
@@ -315,7 +349,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         _appendBootLog("AURA_INIT> MODEL CONFIGURATION PRESERVED.");
         _appendBootLog("AURA_INIT> RUNTIME PROCESSES NOT STARTED.");
       }
-      _appendBootLog("AURA_INIT> [CRITICAL ERROR] Boot fallito: $e");
+      _appendBootLog(
+          "AURA_INIT> [CRITICAL ERROR] Boot fallito: ${uiFailureMessage(e)}");
       setState(() {
         _hasBootError = true;
         _pressEnterVisible = true;
@@ -422,7 +457,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         setState(() {
           _flashingIndex = null;
         });
-        _runOptionAction(index);
+        unawaited(_runOptionAction(index));
       } else {
         setState(() {
           _flashingIndex = _flashingIndex == index ? -1 : index;
@@ -432,12 +467,24 @@ class _BootMenuScreenState extends State<BootMenuScreen>
     });
   }
 
-  void _runOptionAction(int index) {
+  /// Chiede conferma prima di un'azione che elimina il checkpoint attivo.
+  Future<bool> _confirmSessionOverwrite(String actionLabel) async {
+    if (!widget.notifier.activeSessionExists) return true;
+    final confirmed =
+        await OverwriteSessionDialog.show(context, actionLabel: actionLabel);
+    if (mounted) _focusNode.requestFocus();
+    return confirmed;
+  }
+
+  Future<void> _runOptionAction(int index) async {
     switch (index) {
       case 0:
+        if (!await _confirmSessionOverwrite('IL TUTORIAL')) return;
         widget.notifier.startTutorial();
         break;
       case 1:
+        if (!await _confirmSessionOverwrite('UNA NUOVA CONNESSIONE')) return;
+        if (!mounted) return;
         setState(() {
           _subScreen = "briefing";
         });
@@ -505,13 +552,24 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       final baseDir = widget.notifier.appDataPath;
       final replaysDir = Directory("$baseDir/replays");
       if (replaysDir.existsSync()) {
+        // Una sola stat per file al caricamento: la build della lista non
+        // deve più interrogare il disco per data e dimensione ad ogni frame.
+        final replays = replaysDir
+            .listSync()
+            .whereType<File>()
+            .where((file) => file.path.endsWith(".json"))
+            .map((file) {
+          final stat = file.statSync();
+          return (
+            file: file,
+            name: file.path.split(RegExp(r'[/\\]')).last,
+            modified: stat.modified,
+            sizeBytes: stat.size,
+          );
+        }).toList()
+          ..sort((a, b) => b.modified.compareTo(a.modified));
         setState(() {
-          _replayFiles = replaysDir
-              .listSync()
-              .where((entity) => entity.path.endsWith(".json"))
-              .toList()
-            ..sort((a, b) =>
-                b.statSync().modified.compareTo(a.statSync().modified));
+          _replayFiles = replays;
         });
       } else {
         setState(() {
@@ -630,11 +688,10 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       case "settings":
         return _buildSettingsScreen();
       case "onboarding":
-        final env = AuraCliEnvironment.fromPlatform();
-        final services = LocalInferenceServiceProvider.create(environment: env);
+        final services = _services();
         return FirstRunModelSetupScreen(
-          firstRunFacade: services.firstRunFacade,
-          inferenceFacade: services.inferenceFacade,
+          firstRunFacade: widget.firstRunFacade ?? services.firstRunFacade,
+          inferenceFacade: widget.inferenceFacade ?? services.inferenceFacade,
           forceReconfigure: true,
           onComplete: () {
             setState(() {
@@ -654,12 +711,12 @@ class _BootMenuScreenState extends State<BootMenuScreen>
 
   // 1. BOOT SEQUENCE SCREEN
   Widget _buildBootScreen() {
-    const asciiLogo = "███████╗  ██╗   ██╗  ██████╗   ██████╗ \n"
-        "██╔════╝  ██║   ██║  ██╔══██╗  ██╔══██╗\n"
-        "███████╗  ██║   ██║  ██████╔╝  ███████║\n"
-        "╚════██║  ██║   ██║  ██╔══██╗  ██╔══██║\n"
-        "███████║  ╚██████╔╝  ██║  ██║  ██║  ██║\n"
-        "╚══════╝   ╚═════╝   ╚═╝  ╚═╝  ╚═╝  ╚═╝";
+    const asciiLogo = " █████╗   ██╗   ██╗  ██████╗    █████╗ \n"
+        "██╔══██╗  ██║   ██║  ██╔══██╗  ██╔══██╗\n"
+        "███████║  ██║   ██║  ██████╔╝  ███████║\n"
+        "██╔══██║  ██║   ██║  ██╔══██╗  ██╔══██║\n"
+        "██║  ██║  ╚██████╔╝  ██║  ██║  ██║  ██║\n"
+        "╚═╝  ╚═╝   ╚═════╝   ╚═╝  ╚═╝  ╚═╝  ╚═╝";
 
     return GestureDetector(
       onTap: _pressEnterVisible ? _proceedToMainMenu : null,
@@ -700,9 +757,13 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                 children: [
                   Text(
                     asciiLogo,
-                    textAlign: TextAlign.center,
+                    // Allineamento a sinistra: le righe hanno larghezza identica e
+                    // il centraggio per riga sposterebbe i glifi di disegno.
+                    textAlign: TextAlign.left,
+                    softWrap: false,
                     style: TextStyle(
                       fontFamily: 'monospace',
+                      fontFamilyFallback: kTerminalFontFallback,
                       color: Color(0xFF00FF66),
                       fontWeight: FontWeight.bold,
                       fontSize: 12.0,
@@ -784,7 +845,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header
-        _buildBorderHeader("A.U.R.A. INTERFACCIA DI CONTROLLO v0.1.0"),
+        _buildBorderHeader("A.U.R.A. INTERFACCIA DI CONTROLLO $_versionLabel"),
         const SizedBox(height: 16.0),
 
         const Text(
@@ -843,7 +904,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                   4,
                   "4",
                   "CONFIGURA CANALE",
-                  "Seleziona i modelli neurali e le impostazioni del CoT",
+                  "Runtime, modelli neurali, profilo, audio e grafica",
                   () => _executeOption(4),
                 ),
                 const SizedBox(height: 12.0),
@@ -932,12 +993,12 @@ class _BootMenuScreenState extends State<BootMenuScreen>
               : ListView.builder(
                   itemCount: _replayFiles.length,
                   itemBuilder: (context, index) {
-                    final entity = _replayFiles[index];
-                    final file = File(entity.path);
-                    final name = file.path.split(RegExp(r'[/\\]')).last;
-                    final lastModified = file.lastModifiedSync();
+                    final replay = _replayFiles[index];
+                    final file = replay.file;
+                    final name = replay.name;
+                    final lastModified = replay.modified;
                     final kbSize =
-                        (file.lengthSync() / 1024.0).toStringAsFixed(1);
+                        (replay.sizeBytes / 1024.0).toStringAsFixed(1);
 
                     return Container(
                       margin: const EdgeInsets.only(bottom: 12.0),
@@ -1217,7 +1278,8 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                             'VULKAN (GPU ACCELERATED)',
                           RuntimeAcceleration.metal =>
                             'METAL (APPLE SILICON GPU ACCELERATED)',
-                          RuntimeAcceleration.cpu => 'CPU (AVX2 FALLBACK)',
+                          RuntimeAcceleration.cpu =>
+                            'CPU (NESSUNA ACCELERAZIONE GPU)',
                           null => 'Rilevamento in corso...',
                         };
                         final execPath = _detectionResult?.effectiveCandidate ??
@@ -1347,7 +1409,9 @@ class _BootMenuScreenState extends State<BootMenuScreen>
       descColor = const Color(0xFF009944);
     } else if (isSelected && isEnabled) {
       // Selected (focused by arrow keys or mouse hover)
-      backgroundColor = const Color(0x2600FF66); // 15% opacity green
+      // Verde scuro opaco: uno sfondo traslucido lascerebbe passare l'elica
+      // animata sotto il testo della voce selezionata.
+      backgroundColor = const Color(0xFF032A12);
       borderColor = const Color(0xFF00FF66);
       textColor = const Color(0xFF00FF66);
       descColor = const Color(0xFF00FF66);

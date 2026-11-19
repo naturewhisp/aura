@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:aura_core/aura_offline.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import '../state_management/ui_failure_message.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/audio_reactive_background.dart';
 
@@ -47,6 +48,9 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
   ModelActivationRole? _pendingConsentRole;
 
   bool _isDownloading = false;
+
+  /// Mostra il form manuale anche quando è disponibile il runtime incluso.
+  bool _showAdvancedRuntime = false;
   DownloadProgress? _downloadProgress;
   String? _downloadingArtifactId;
   DefaultProvisioningCancellationToken? _downloadCancellationToken;
@@ -142,8 +146,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
           e.toString().toLowerCase().contains('annulla');
 
       if (!isCancelled) {
-        setState(
-            () => _errorMessage = 'Errore durante il download del modello: $e');
+        setState(() => _errorMessage =
+            'Errore durante il download del modello: ${uiFailureMessage(e)}');
       }
     } finally {
       if (mounted) {
@@ -201,15 +205,15 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       margin: const EdgeInsets.only(top: 8, bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B),
+        color: const Color(0xFF001A08),
         border: Border.all(
           color: isSelected
-              ? const Color(0xFF00FFC8)
+              ? const Color(0xFF00FF66)
               : (isRecommended
-                  ? const Color(0xFFF59E0B)
+                  ? const Color(0xFFFFB000)
                   : (isInstalled
-                      ? const Color(0xFF10B981)
-                      : const Color(0xFF334155))),
+                      ? const Color(0xFF00CC55)
+                      : const Color(0xFF005522))),
           width: (isSelected || isRecommended) ? 1.5 : 1.0,
         ),
         borderRadius: BorderRadius.circular(8),
@@ -226,10 +230,10 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                         ? Icons.check_circle
                         : Icons.cloud_download_outlined),
                 color: isRecommended
-                    ? const Color(0xFFF59E0B)
+                    ? const Color(0xFFFFB000)
                     : (isInstalled
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFF00FFC8)),
+                        ? const Color(0xFF00CC55)
+                        : const Color(0xFF00FF66)),
                 size: 20,
               ),
               const SizedBox(width: 8),
@@ -249,13 +253,13 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF78350F),
+                    color: const Color(0xFF3D2A00),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: const Text(
-                    '🌟 RACCOMANDATO',
+                    '★ RACCOMANDATO',
                     style: TextStyle(
-                      color: Color(0xFFFBBF24),
+                      color: Color(0xFFFFB000),
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
                     ),
@@ -266,16 +270,16 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: isInstalled
-                      ? const Color(0xFF065F46)
-                      : const Color(0xFF334155),
+                      ? const Color(0xFF003D1A)
+                      : const Color(0xFF005522),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
                   isInstalled ? '✓ GIÀ PRESENTE' : '$sizeGb GB',
                   style: TextStyle(
                     color: isInstalled
-                        ? const Color(0xFF34D399)
-                        : const Color(0xFF94A3B8),
+                        ? const Color(0xFF66FF99)
+                        : const Color(0xFF88CCA0),
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
                   ),
@@ -288,7 +292,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             isRecommended
                 ? 'Modello consigliato per ${role == ModelActivationRole.actor ? "PANOPTICON (Actor)" : "Valutatore (Evaluator)"}.'
                 : 'Modello del catalogo ufficiale A.U.R.A.',
-            style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+            style: const TextStyle(color: Color(0xFF88CCA0), fontSize: 12),
           ),
           const SizedBox(height: 10),
           if (isCurrentlyDownloading) ...[
@@ -296,11 +300,11 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
                 value: _downloadProgress?.fraction ?? 0.0,
-                backgroundColor: const Color(0xFF0F172A),
+                backgroundColor: const Color(0xFF000A02),
                 valueColor: AlwaysStoppedAnimation<Color>(
                   (_downloadProgress?.isIngesting ?? false)
-                      ? const Color(0xFF10B981)
-                      : const Color(0xFF00FFC8),
+                      ? const Color(0xFF00CC55)
+                      : const Color(0xFF00FF66),
                 ),
                 minHeight: 8,
               ),
@@ -312,14 +316,14 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                 Expanded(
                   child: Text(
                     (_downloadProgress?.isIngesting ?? false)
-                        ? '⚡ Ingestione & Verifica SHA-256: ${_downloadProgress?.percentage ?? 0}% '
+                        ? 'Ingestione & Verifica SHA-256: ${_downloadProgress?.percentage ?? 0}% '
                             '(${((_downloadProgress?.downloadedBytes ?? 0) / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB / $sizeGb GB)'
                         : '${_downloadProgress?.percentage ?? 0}% '
                             '(${((_downloadProgress?.downloadedBytes ?? 0) / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB / $sizeGb GB)',
                     style: TextStyle(
                       color: (_downloadProgress?.isIngesting ?? false)
-                          ? const Color(0xFF34D399)
-                          : const Color(0xFF00FFC8),
+                          ? const Color(0xFF66FF99)
+                          : const Color(0xFF00FF66),
                       fontSize: 12,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.bold,
@@ -340,7 +344,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                             ? '$speedMb MB/s • ${formatEta(eta)}'
                             : 'Calcolo velocità ed ETA...',
                         style: const TextStyle(
-                          color: Color(0xFF94A3B8),
+                          color: Color(0xFF88CCA0),
                           fontSize: 12,
                           fontFamily: 'monospace',
                         ),
@@ -355,7 +359,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               child: OutlinedButton.icon(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFFFCA5A5),
-                  side: const BorderSide(color: Color(0xFFEF4444)),
+                  side: const BorderSide(color: Color(0xFFFF5555)),
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
@@ -373,8 +377,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               child: isSelected
                   ? ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF065F46),
-                        foregroundColor: const Color(0xFF34D399),
+                        backgroundColor: const Color(0xFF003D1A),
+                        foregroundColor: const Color(0xFF66FF99),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                       onPressed: null,
@@ -383,8 +387,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                     )
                   : OutlinedButton.icon(
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF00FFC8),
-                        side: const BorderSide(color: Color(0xFF00FFC8)),
+                        foregroundColor: const Color(0xFF00FF66),
+                        side: const BorderSide(color: Color(0xFF00FF66)),
                         padding: const EdgeInsets.symmetric(vertical: 10),
                       ),
                       onPressed: _isLoading || _isDownloading
@@ -400,7 +404,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                               });
                             },
                       icon: const Icon(Icons.touch_app, size: 18),
-                      label: const Text('🔘 SELEZIONA QUESTO MODELLO'),
+                      label: const Text('> SELEZIONA QUESTO MODELLO'),
                     ),
             ),
           ] else ...[
@@ -409,8 +413,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isRecommended
-                      ? const Color(0xFF059669)
-                      : const Color(0xFF334155),
+                      ? const Color(0xFF00AA44)
+                      : const Color(0xFF005522),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
@@ -418,7 +422,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                     ? null
                     : () => _startCatalogDownload(artifact, role),
                 icon: const Icon(Icons.download, size: 18),
-                label: Text('📥 SCARICA ED INSTALLA ($sizeGb GB)'),
+                label: Text('SCARICA ED INSTALLA ($sizeGb GB)'),
               ),
             ),
           ],
@@ -460,7 +464,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Errore inizializzazione setup: $e');
+      setState(() => _errorMessage =
+          'Errore inizializzazione setup: ${uiFailureMessage(e)}');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -476,7 +481,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Impossibile aprire il browser: $e');
+      setState(() => _errorMessage =
+          'Impossibile aprire il browser: ${uiFailureMessage(e)}');
     }
   }
 
@@ -494,8 +500,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(
-          () => _errorMessage = 'Impossibile aprire il selettore di file: $e');
+      setState(() => _errorMessage =
+          'Impossibile aprire il selettore di file: ${uiFailureMessage(e)}');
     }
   }
 
@@ -516,8 +522,126 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-      setState(
-          () => _errorMessage = 'Impossibile aprire il selettore di file: $e');
+      setState(() => _errorMessage =
+          'Impossibile aprire il selettore di file: ${uiFailureMessage(e)}');
+    }
+  }
+
+  /// Raccomandazione hardware calcolata sulla VRAM libera rilevata dalla probe.
+  ///
+  /// Le dimensioni sono quelle dei modelli predefiniti del catalogo: per modelli
+  /// esterni la stima resta indicativa.
+  HardwareModelRecommendation? _hardwareRecommendation() {
+    final detection = _state?.runtimeDetectionResult;
+    if (detection == null) return null;
+    final artifacts = CatalogManifest.initialDefault().artifacts;
+    CatalogArtifact? byRole(String role) {
+      for (final a in artifacts) {
+        if (a.metadata['role'] == role) return a;
+      }
+      return null;
+    }
+
+    final actor = byRole('actor');
+    final evaluator = byRole('evaluator');
+    if (actor == null || evaluator == null) return null;
+    return HardwareModelAdvisor.recommend(
+      acceleration: detection.acceleration,
+      gpuFreeMiB: detection.gpuMemoryFreeMiB,
+      actorModelBytes: actor.sizeBytes,
+      evaluatorModelBytes: evaluator.sizeBytes,
+    );
+  }
+
+  Widget _buildHardwareAdvice({required bool showSharedAction}) {
+    final recommendation = _hardwareRecommendation();
+    if (recommendation == null) return const SizedBox.shrink();
+    final shared =
+        recommendation.topology == RecommendedModelTopology.sharedActorModel;
+    final accent = shared ? const Color(0xFFFFB000) : const Color(0xFF00FF66);
+    return Container(
+      key: const Key('hardware_advice'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF001A08),
+        border: Border.all(color: accent),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            shared
+                ? 'CONSIGLIO HARDWARE: UN SOLO MODELLO PER ENTRAMBI I RUOLI'
+                : 'CONSIGLIO HARDWARE: DUE MODELLI DISTINTI',
+            style: TextStyle(
+              color: accent,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            recommendation.rationale,
+            style: const TextStyle(color: Color(0xFFB8F5CC), fontSize: 12),
+          ),
+          if (recommendation.exceedsAvailableMemory)
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Text(
+                'Anche con un solo modello la VRAM libera è al limite: chiudi '
+                'altre applicazioni che usano la GPU prima di giocare.',
+                style: TextStyle(color: Color(0xFFFFB000), fontSize: 12),
+              ),
+            ),
+          if (showSharedAction) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              key: const Key('use_actor_model_for_evaluator'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: accent,
+                side: BorderSide(color: accent),
+              ),
+              onPressed: _isLoading ? null : _useActorModelForEvaluator,
+              icon: const Icon(Icons.merge_type, size: 16),
+              label: const Text('USA LO STESSO MODELLO DELL\'ATTORE'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Assegna al Valutatore lo stesso modello già scelto per l'Attore.
+  ///
+  /// Il bootstrap riconosce il file condiviso e avvia un solo processo
+  /// `llama-server`, dimezzando la VRAM dei pesi rispetto a due processi.
+  Future<void> _useActorModelForEvaluator() async {
+    try {
+      final snapshot = await widget.inferenceFacade.getSnapshot();
+      final actorRef = snapshot.modelConfiguration.actor;
+      if (!mounted) return;
+      if (actorRef is ManagedModelReference) {
+        setState(() {
+          _evaluatorMode = OnboardingModelMode.managed;
+          _selectedEvaluatorManagedId = actorRef.installationId;
+        });
+      } else if (actorRef is ExternalModelReference) {
+        setState(() {
+          _evaluatorMode = OnboardingModelMode.external;
+          _inputController.text = actorRef.absolutePath;
+        });
+      } else {
+        setState(() => _errorMessage =
+            'Configura prima il modello dell\'Attore (passaggio 2).');
+        return;
+      }
+      await _submitEvaluator();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _errorMessage =
+          'Impossibile riusare il modello dell\'Attore: ${uiFailureMessage(e)}');
     }
   }
 
@@ -596,7 +720,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Errore configurazione runtime: $e');
+      setState(() => _errorMessage =
+          'Errore configurazione runtime: ${uiFailureMessage(e)}');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -651,7 +776,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Errore selezione modello Actor: $e');
+      setState(() => _errorMessage =
+          'Errore selezione modello Actor: ${uiFailureMessage(e)}');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -706,7 +832,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Errore selezione modello Evaluator: $e');
+      setState(() => _errorMessage =
+          'Errore selezione modello Evaluator: ${uiFailureMessage(e)}');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -740,7 +867,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Errore accettazione consenso: $e');
+      setState(() => _errorMessage =
+          'Errore accettazione consenso: ${uiFailureMessage(e)}');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -761,7 +889,8 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       setState(() => _state = newState);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _errorMessage = 'Errore esecuzione probe finale: $e');
+      setState(() => _errorMessage =
+          'Errore esecuzione probe finale: ${uiFailureMessage(e)}');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -785,13 +914,13 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       decoration: BoxDecoration(
         color: const Color(0x33EF4444),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFEF4444)),
+        border: Border.all(color: const Color(0xFFFF5555)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(Icons.warning_amber_rounded,
-              color: Color(0xFFEF4444), size: 20),
+              color: Color(0xFFFF5555), size: 20),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -813,11 +942,81 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     );
   }
 
+  /// Scheda del runtime incluso rilevato e già validato dal provisioning.
+  Widget _buildRecommendedRuntimeCard(LlamaServerDetectionResult detection) {
+    final accelLabel = switch (detection.acceleration) {
+      RuntimeAcceleration.cuda => 'GPU NVIDIA (CUDA)',
+      RuntimeAcceleration.vulkan => 'GPU (VULKAN)',
+      RuntimeAcceleration.metal => 'GPU APPLE (METAL)',
+      RuntimeAcceleration.cpu => 'SOLO CPU',
+    };
+    final gpuName = detection.gpuDeviceName;
+    return Container(
+      key: const Key('recommended_runtime_card'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF001A08),
+        border: Border.all(color: const Color(0xFF00FF66)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.bolt, color: Color(0xFF00FF66), size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'RUNTIME INCLUSO RILEVATO E VERIFICATO',
+                  style: TextStyle(
+                    color: Color(0xFF00FF66),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Text(
+                '★ RACCOMANDATO',
+                style: TextStyle(
+                  color: Color(0xFFFFB000),
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Accelerazione: $accelLabel'
+            '${gpuName != null && gpuName.isNotEmpty ? ' - $gpuName' : ''}',
+            style: const TextStyle(color: Color(0xFFB8F5CC), fontSize: 12),
+          ),
+          if (detection.acceleration == RuntimeAcceleration.cpu)
+            const Padding(
+              padding: EdgeInsets.only(top: 4),
+              child: Text(
+                'Nessuna GPU compatibile rilevata: il gioco funziona, ma ogni '
+                'risposta richiederà più tempo.',
+                style: TextStyle(color: Color(0xFFFFB000), fontSize: 12),
+              ),
+            ),
+          const SizedBox(height: 4),
+          const Text(
+            'Non serve installare altro: A.U.R.A. avvierà e chiuderà questo '
+            'runtime automaticamente.',
+            style: TextStyle(color: Color(0xFF88CCA0), fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildStepContent() {
     final currentState = _state;
     if (currentState == null || _isLoading) {
       return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF00FFC8)),
+        child: CircularProgressIndicator(color: Color(0xFF00FF66)),
       );
     }
 
@@ -829,9 +1028,10 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         );
 
       case FirstRunSetupStep.runtimeSelection:
-        final detected =
-            currentState.runtimeDetectionResult?.effectiveCandidate;
+        final detection = currentState.runtimeDetectionResult;
+        final detected = detection?.effectiveCandidate;
         final activeError = _errorMessage ?? currentState.errorMessage;
+        final showRecommended = detected != null && !_showAdvancedRuntime;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -841,139 +1041,114 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             const Text(
               'PASSAGGIO 1: SELEZIONE RUNTIME LLAMA-SERVER',
               style: TextStyle(
-                color: Color(0xFF00FFC8),
+                color: Color(0xFF00FF66),
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Specificare il percorso dell\'eseguibile llama-server.',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: Color(0xFF38BDF8)),
-                foregroundColor: const Color(0xFF38BDF8),
-              ),
-              icon: const Icon(Icons.open_in_new, size: 16),
-              label: const Text(
-                '🌐 SCARICA LLAMA-SERVER (OFFICIAL GITHUB RELEASES)',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-              ),
-              onPressed: _openLlamaReleases,
-            ),
-            if (detected != null) ...[
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: const Color(0xFF334155)),
+            if (showRecommended) ...[
+              // Runtime incluso e già verificato: un solo clic di conferma
+              // (la persistenza resta subordinata alla scelta esplicita).
+              _buildRecommendedRuntimeCard(detection!),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                key: const Key('use_bundled_runtime'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00FF66),
+                  foregroundColor: Colors.black,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.bolt, color: Color(0xFF00FFC8), size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Runtime Bundled: $detected',
-                        style: const TextStyle(
-                          color: Color(0xFF10B981),
-                          fontSize: 12,
-                          fontFamily: 'monospace',
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF047857),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        '★ RACCOMANDATO',
-                        style: TextStyle(
-                          color: Color(0xFFA7F3D0),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color:
-                            currentState.runtimeDetectionResult?.acceleration ==
-                                    RuntimeAcceleration.cuda
-                                ? const Color(0xFF065F46)
-                                : currentState.runtimeDetectionResult
-                                            ?.acceleration ==
-                                        RuntimeAcceleration.vulkan
-                                    ? const Color(0xFF1E3A8A)
-                                    : const Color(0xFF334155),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        currentState.runtimeDetectionResult?.variantId != null
-                            ? 'VARIANTE: ${currentState.runtimeDetectionResult!.variantId!.toUpperCase()}'
-                            : 'ACCEL: ${currentState.runtimeDetectionResult?.acceleration.name.toUpperCase()}',
-                        style: const TextStyle(
-                          color: Color(0xFF00FFC8),
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
+                onPressed: _isLoading
+                    ? null
+                    : () {
+                        _inputController.clear();
+                        _submitRuntime();
+                      },
+                icon: const Icon(Icons.check, size: 18),
+                label: const Text(
+                  'USA IL RUNTIME INCLUSO  (AVANTI >)',
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _isLoading
+                    ? null
+                    : () => setState(() => _showAdvancedRuntime = true),
+                child: const Text(
+                  'Configurazione avanzata: usa un altro eseguibile llama-server',
+                  style: TextStyle(color: Color(0xFF88CCA0), fontSize: 12),
+                ),
+              ),
+            ] else ...[
+              const Text(
+                'Specificare il percorso dell\'eseguibile llama-server.',
+                style: TextStyle(color: Color(0xFF88CCA0), fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: Color(0xFF00FF66)),
+                  foregroundColor: const Color(0xFF00FF66),
+                ),
+                icon: const Icon(Icons.open_in_new, size: 16),
+                label: const Text(
+                  'SCARICA LLAMA-SERVER (OFFICIAL GITHUB RELEASES)',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                onPressed: _openLlamaReleases,
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _inputController,
+                      enabled: !_isLoading,
+                      style: const TextStyle(
+                          color: Colors.white, fontFamily: 'monospace'),
+                      decoration: InputDecoration(
+                        filled: true,
+                        fillColor: const Color(0xFF001A08),
+                        border: const OutlineInputBorder(),
+                        hintText: detected ??
+                            'Percorso dell\'eseguibile llama-server.exe',
+                        hintStyle: const TextStyle(color: Color(0xFF4D9966)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF005522),
+                      foregroundColor: const Color(0xFF00FF66),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
+                    ),
+                    onPressed: _isLoading ? null : _pickFileForRuntime,
+                    icon: const Icon(Icons.folder_open, size: 20),
+                    label: const Text('SFOGLIA...'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _isLoading ? null : _submitRuntime,
+                child: const Text('CONFERMA RUNTIME  (AVANTI >)'),
+              ),
+              if (detected != null)
+                TextButton(
+                  onPressed: _isLoading
+                      ? null
+                      : () => setState(() => _showAdvancedRuntime = false),
+                  child: const Text(
+                    '< Torna al runtime incluso raccomandato',
+                    style: TextStyle(color: Color(0xFF88CCA0), fontSize: 12),
+                  ),
+                ),
             ],
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _inputController,
-                    enabled: !_isLoading,
-                    style: const TextStyle(
-                        color: Colors.white, fontFamily: 'monospace'),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: const Color(0xFF1E293B),
-                      border: const OutlineInputBorder(),
-                      hintText: detected ??
-                          'Percorso dell\'eseguibile llama-server.exe',
-                      hintStyle: const TextStyle(color: Color(0xFF64748B)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF334155),
-                    foregroundColor: const Color(0xFF00FFC8),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
-                  ),
-                  onPressed: _isLoading ? null : _pickFileForRuntime,
-                  icon: const Icon(Icons.folder_open, size: 20),
-                  label: const Text('SFOGLIA...'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _submitRuntime,
-              child: const Text('CONFERMA RUNTIME  (AVANTI >)'),
-            ),
           ],
         );
 
@@ -987,12 +1162,13 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             const Text(
               'PASSAGGIO 2: MODELLO ACTOR (PANOPTICON)',
               style: TextStyle(
-                color: Color(0xFF00FFC8),
+                color: Color(0xFF00FF66),
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
               ),
             ),
             const SizedBox(height: 8),
+            _buildHardwareAdvice(showSharedAction: false),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -1032,11 +1208,11 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                   onChanged: (v) => setState(() => _selectedActorManagedId = v),
                   decoration: const InputDecoration(
                     filled: true,
-                    fillColor: Color(0xFF1E293B),
+                    fillColor: Color(0xFF001A08),
                     border: OutlineInputBorder(),
                     hintText: 'Seleziona modello gestito Actor...',
                   ),
-                  dropdownColor: const Color(0xFF1E293B),
+                  dropdownColor: const Color(0xFF001A08),
                 ),
               ...catalogArtifacts.map((artifact) => _buildOfficialCatalogCard(
                   artifact, ModelActivationRole.actor)),
@@ -1051,18 +1227,18 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                           color: Colors.white, fontFamily: 'monospace'),
                       decoration: const InputDecoration(
                         filled: true,
-                        fillColor: Color(0xFF1E293B),
+                        fillColor: Color(0xFF001A08),
                         border: OutlineInputBorder(),
                         hintText: r'C:\Models\actor.gguf',
-                        hintStyle: TextStyle(color: Color(0xFF64748B)),
+                        hintStyle: TextStyle(color: Color(0xFF4D9966)),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF334155),
-                      foregroundColor: const Color(0xFF00FFC8),
+                      backgroundColor: const Color(0xFF005522),
+                      foregroundColor: const Color(0xFF00FF66),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 16),
                     ),
@@ -1092,12 +1268,13 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             const Text(
               'PASSAGGIO 3: MODELLO EVALUATOR (VALUTATORE)',
               style: TextStyle(
-                color: Color(0xFF00FFC8),
+                color: Color(0xFF00FF66),
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
               ),
             ),
             const SizedBox(height: 8),
+            _buildHardwareAdvice(showSharedAction: true),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -1138,11 +1315,11 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                       setState(() => _selectedEvaluatorManagedId = v),
                   decoration: const InputDecoration(
                     filled: true,
-                    fillColor: Color(0xFF1E293B),
+                    fillColor: Color(0xFF001A08),
                     border: OutlineInputBorder(),
                     hintText: 'Seleziona modello gestito Evaluator...',
                   ),
-                  dropdownColor: const Color(0xFF1E293B),
+                  dropdownColor: const Color(0xFF001A08),
                 ),
               ...catalogArtifacts.map((artifact) => _buildOfficialCatalogCard(
                   artifact, ModelActivationRole.evaluator)),
@@ -1157,18 +1334,18 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                           color: Colors.white, fontFamily: 'monospace'),
                       decoration: const InputDecoration(
                         filled: true,
-                        fillColor: Color(0xFF1E293B),
+                        fillColor: Color(0xFF001A08),
                         border: OutlineInputBorder(),
                         hintText: r'C:\Models\evaluator.gguf',
-                        hintStyle: TextStyle(color: Color(0xFF64748B)),
+                        hintStyle: TextStyle(color: Color(0xFF4D9966)),
                       ),
                     ),
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF334155),
-                      foregroundColor: const Color(0xFF00FFC8),
+                      backgroundColor: const Color(0xFF005522),
+                      foregroundColor: const Color(0xFF00FF66),
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 16),
                     ),
@@ -1197,13 +1374,13 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             const Row(
               children: [
                 Icon(Icons.warning_amber_rounded,
-                    color: Color(0xFFF59E0B), size: 32),
+                    color: Color(0xFFFFB000), size: 32),
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     'CONSENSO INFORMATO RICHIESTO',
                     style: TextStyle(
-                      color: Color(0xFFF59E0B),
+                      color: Color(0xFFFFB000),
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
                     ),
@@ -1214,20 +1391,20 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             const SizedBox(height: 12),
             Text(
               'L\'utilizzo del modello esterno GGUF per il ruolo "${_pendingConsentRole?.name.toUpperCase()}" richiede la presa visione ed il consenso dell\'utente.',
-              style: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
+              style: const TextStyle(color: Color(0xFFB8F5CC), fontSize: 13),
             ),
             if (_pendingConsentReference != null) ...[
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1E293B),
+                  color: const Color(0xFF001A08),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: SelectableText(
                   _pendingConsentReference!.absolutePath,
                   style: const TextStyle(
-                    color: Color(0xFF00FFC8),
+                    color: Color(0xFF00FF66),
                     fontFamily: 'monospace',
                     fontSize: 12,
                   ),
@@ -1241,7 +1418,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               children: [
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFF59E0B),
+                    backgroundColor: const Color(0xFFFFB000),
                     foregroundColor: Colors.black,
                   ),
                   onPressed: _isLoading ? null : _acceptConsentAndRetryPending,
@@ -1264,28 +1441,28 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_isLoading) ...[
-              const CircularProgressIndicator(color: Color(0xFF00FFC8)),
+              const CircularProgressIndicator(color: Color(0xFF00FF66)),
               const SizedBox(height: 16),
               const Text(
                 'Verifica probe in corso...',
                 style: TextStyle(
-                  color: Color(0xFF00FFC8),
+                  color: Color(0xFF00FF66),
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 8),
               const Text(
                 'Rilevamento allocazione VRAM e compatibilità hardware...',
-                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                style: TextStyle(color: Color(0xFF88CCA0), fontSize: 13),
                 textAlign: TextAlign.center,
               ),
             ] else ...[
-              const Icon(Icons.speed, color: Color(0xFF00FFC8), size: 48),
+              const Icon(Icons.speed, color: Color(0xFF00FF66), size: 48),
               const SizedBox(height: 16),
               const Text(
                 'VERIFICA FINALE RUNTIME',
                 style: TextStyle(
-                  color: Color(0xFF00FFC8),
+                  color: Color(0xFF00FF66),
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                 ),
@@ -1293,13 +1470,13 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               const SizedBox(height: 8),
               const Text(
                 'Configurazione completata. Avvia la verifica probe per testare il caricamento del runtime e convalidare l\'accelerazione hardware.',
-                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                style: TextStyle(color: Color(0xFF88CCA0), fontSize: 13),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF047857),
+                  backgroundColor: const Color(0xFF003D1A),
                   foregroundColor: Colors.white,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
@@ -1320,12 +1497,12 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.check_circle_outline,
-                color: Color(0xFF10B981), size: 48),
+                color: Color(0xFF00CC55), size: 48),
             const SizedBox(height: 12),
             const Text(
               'CONFIGURAZIONE INFERENZA COMPLETA',
               style: TextStyle(
-                color: Color(0xFF10B981),
+                color: Color(0xFF00CC55),
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
               ),
@@ -1338,14 +1515,14 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               children: [
                 OutlinedButton.icon(
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFF00FFC8)),
+                    side: const BorderSide(color: Color(0xFF00FF66)),
                   ),
                   icon: const Icon(Icons.settings_backup_restore,
-                      color: Color(0xFF00FFC8), size: 18),
+                      color: Color(0xFF00FF66), size: 18),
                   label: const Text(
                     'RICONFIGURA DA CAPO',
                     style: TextStyle(
-                      color: Color(0xFF00FFC8),
+                      color: Color(0xFF00FF66),
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -1359,7 +1536,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF10B981),
+                    backgroundColor: const Color(0xFF00CC55),
                     foregroundColor: Colors.black,
                   ),
                   onPressed: widget.onComplete,
@@ -1377,7 +1554,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, color: Color(0xFFEF4444), size: 48),
+            const Icon(Icons.error_outline, color: Color(0xFFFF5555), size: 48),
             const SizedBox(height: 12),
             Text(
               currentState.errorMessage ?? 'Fallimento della verifica probe.',

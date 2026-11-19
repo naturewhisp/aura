@@ -548,6 +548,85 @@ void main() {
       await tester.pump();
     });
   });
+
+  group('BootMenuScreen - Conferma sovrascrittura sessione', () {
+    Future<void> openNewConnection(
+      WidgetTester tester,
+      GameControllerNotifier sessionNotifier,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: GameControllerProvider(
+            notifier: sessionNotifier,
+            child: BootMenuScreen(
+              dependencyService: const FakeLlamaServerDependencyService(),
+              notifier: sessionNotifier,
+              audioService: FakeBootAudioService(),
+              initialSubScreen: "menu",
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.sendKeyEvent(LogicalKeyboardKey.digit1);
+      for (var i = 0; i < 8; i++) {
+        await tester.pump(const Duration(milliseconds: 60));
+      }
+    }
+
+    testWidgets('con sessione salvata chiede conferma e ANNULLA resta nel menu',
+        (WidgetTester tester) async {
+      final sessionNotifier = _NotifierWithSavedSession(
+        bridge: MockInferenceBridge(),
+        initialState: testState,
+      );
+
+      await openNewConnection(tester, sessionNotifier);
+
+      expect(find.text('SOVRASCRIVERE LA SESSIONE SALVATA?'), findsOneWidget);
+
+      await tester.tap(find.text('ANNULLA'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.text('SOVRASCRIVERE LA SESSIONE SALVATA?'), findsNothing);
+      expect(find.textContaining('NUOVA CONNESSIONE'), findsWidgets);
+      expect(find.textContaining('BRIEFING DI CONNESSIONE'), findsNothing);
+    });
+
+    testWidgets('con sessione salvata SOVRASCRIVI apre il briefing',
+        (WidgetTester tester) async {
+      final sessionNotifier = _NotifierWithSavedSession(
+        bridge: MockInferenceBridge(),
+        initialState: testState,
+      );
+
+      await openNewConnection(tester, sessionNotifier);
+      await tester.tap(find.text('SOVRASCRIVI'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(find.textContaining('BRIEFING DI CONNESSIONE'), findsOneWidget);
+    });
+
+    testWidgets('senza sessione salvata non mostra il dialogo',
+        (WidgetTester tester) async {
+      await openNewConnection(tester, notifier);
+
+      expect(find.text('SOVRASCRIVERE LA SESSIONE SALVATA?'), findsNothing);
+      expect(find.textContaining('BRIEFING DI CONNESSIONE'), findsOneWidget);
+    });
+  });
+}
+
+class _NotifierWithSavedSession extends GameControllerNotifier {
+  _NotifierWithSavedSession({
+    required super.bridge,
+    required super.initialState,
+  });
+
+  @override
+  bool get activeSessionExists => true;
 }
 
 class TestFailingBootstrapNotifier extends GameControllerNotifier {

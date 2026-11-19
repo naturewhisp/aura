@@ -223,7 +223,11 @@ class _TerminalScreenState extends State<TerminalScreen>
         setState(() {
           if (_lockoutCountdown > 0) {
             _lockoutCountdown--;
-            AudioManager().playAlert();
+            // Allarme solo negli ultimi secondi: quindici bip consecutivi
+            // risultano più fastidiosi che drammatici.
+            if (_lockoutCountdown <= 3) {
+              AudioManager().playAlert();
+            }
           } else {
             _lockoutTimer?.cancel();
             _lockoutTimer = null;
@@ -253,6 +257,11 @@ class _TerminalScreenState extends State<TerminalScreen>
         final dissonance = state.metrics.dissonancePillar;
         final outcome = widget.notifier.controller.checkOutcome(state);
         final isGameOver = outcome != GameOutcome.ongoing;
+        final calmEffects = !widget.notifier.shaderEnabled ||
+            (DesktopShellProvider.maybeOf(context)
+                    ?.state
+                    .reduceGraphicEffects ??
+                false);
 
         // Calcola la media dei pilastri per l'opacità dello sfondo e del Matrix Rain
         final avgPillars = (state.metrics.imperativePillar +
@@ -333,7 +342,7 @@ class _TerminalScreenState extends State<TerminalScreen>
                               child: LayoutBuilder(
                                 builder: (context, constraints) {
                                   final isDesktop = constraints.maxWidth >= 700;
-                                  final Widget terminalBody =
+                                  final Widget rawTerminalBody =
                                       _victorySequenceActive
                                           ? _buildHexScroller()
                                           : CLIHistoryView(
@@ -345,6 +354,15 @@ class _TerminalScreenState extends State<TerminalScreen>
                                               loadingLogs:
                                                   widget.notifier.loadingLogs,
                                             );
+                                  // Velo di leggibilità solo sulla colonna del
+                                  // testo: dashboard e margini restano trasparenti
+                                  // e mostrano gli effetti di avvicinamento alla vittoria.
+                                  final Widget terminalBody = ColoredBox(
+                                    color: Colors.black.withValues(
+                                      alpha: chatScrimAlpha(bgAlpha),
+                                    ),
+                                    child: rawTerminalBody,
+                                  );
 
                                   if (isDesktop) {
                                     return Row(
@@ -502,8 +520,11 @@ class _TerminalScreenState extends State<TerminalScreen>
                   child: AnimatedBuilder(
                     animation: _vignetteController,
                     builder: (context, child) {
-                      final double opacity =
-                          0.05 + (_vignetteController.value * 0.20);
+                      // Con effetti ridotti la vignetta resta come segnale
+                      // statico di allerta, senza pulsare.
+                      final double opacity = calmEffects
+                          ? 0.15
+                          : 0.05 + (_vignetteController.value * 0.20);
                       return Container(
                         decoration: BoxDecoration(
                           border: Border.all(
@@ -528,7 +549,9 @@ class _TerminalScreenState extends State<TerminalScreen>
               // 2. CRT Scan Grid & Flicker Overlay (covers everything)
               Positioned.fill(
                 child: CrtGridOverlay(
-                  flicker: !widget.notifier.isGridStable,
+                  // Il flicker casuale è un effetto fotosensibile: segue anche
+                  // il toggle shader di accessibilità, non solo la shell.
+                  flicker: !widget.notifier.isGridStable && !calmEffects,
                 ),
               ),
             ],
@@ -1180,4 +1203,18 @@ class _BlinkingTextState extends State<_BlinkingText>
       child: Text(widget.text, style: widget.style),
     );
   }
+}
+
+/// Opacità minima complessiva dello sfondo dietro il testo della chat.
+const double kChatMinimumBackdropOpacity = 0.85;
+
+/// Opacità del velo da sovrapporre alla colonna della chat dato lo sfondo
+/// globale [backgroundAlpha], affinché l'opacità composta non scenda sotto
+/// [kChatMinimumBackdropOpacity]. Composizione di due strati neri:
+/// `1 - (1 - background) * (1 - scrim)`.
+double chatScrimAlpha(double backgroundAlpha) {
+  if (backgroundAlpha >= kChatMinimumBackdropOpacity) return 0.0;
+  final scrim =
+      1.0 - (1.0 - kChatMinimumBackdropOpacity) / (1.0 - backgroundAlpha);
+  return scrim.clamp(0.0, 1.0).toDouble();
 }

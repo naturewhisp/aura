@@ -366,7 +366,7 @@ class _LocalInferenceSettingsWidgetState
       children: [
         Text(
           'Modello $roleName:',
-          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+          style: const TextStyle(color: Color(0xFF88CCA0), fontSize: 13),
         ),
         const SizedBox(height: 6),
         Wrap(
@@ -413,12 +413,12 @@ class _LocalInferenceSettingsWidgetState
             onChanged: _isLoading ? null : onManagedChanged,
             decoration: const InputDecoration(
               filled: true,
-              fillColor: Color(0xFF1E293B),
+              fillColor: Color(0xFF001A08),
               border: OutlineInputBorder(),
               hintText: 'Seleziona un modello gestito...',
-              hintStyle: TextStyle(color: Color(0xFF64748B)),
+              hintStyle: TextStyle(color: Color(0xFF4D9966)),
             ),
-            dropdownColor: const Color(0xFF1E293B),
+            dropdownColor: const Color(0xFF001A08),
           )
         else
           TextField(
@@ -431,10 +431,10 @@ class _LocalInferenceSettingsWidgetState
             ),
             decoration: InputDecoration(
               filled: true,
-              fillColor: const Color(0xFF1E293B),
+              fillColor: const Color(0xFF001A08),
               border: const OutlineInputBorder(),
               hintText: 'C:\\Models\\$roleName.gguf',
-              hintStyle: const TextStyle(color: Color(0xFF64748B)),
+              hintStyle: const TextStyle(color: Color(0xFF4D9966)),
             ),
           ),
         const SizedBox(height: 8),
@@ -448,8 +448,8 @@ class _LocalInferenceSettingsWidgetState
             ),
             OutlinedButton(
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFEF4444),
-                side: const BorderSide(color: Color(0xFFEF4444)),
+                foregroundColor: const Color(0xFFFF5555),
+                side: const BorderSide(color: Color(0xFFFF5555)),
               ),
               onPressed: _isLoading ? null : onClear,
               child: const Text('RIMUOVI'),
@@ -467,11 +467,11 @@ class _LocalInferenceSettingsWidgetState
 
     return SingleChildScrollView(
       child: Card(
-        color: const Color(0xFF0F172A),
+        color: const Color(0xFF000A02),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
           side: BorderSide(
-            color: isReady ? const Color(0xFF10B981) : const Color(0xFF334155),
+            color: isReady ? const Color(0xFF00CC55) : const Color(0xFF005522),
           ),
         ),
         child: Padding(
@@ -496,13 +496,13 @@ class _LocalInferenceSettingsWidgetState
                   ),
                   Chip(
                     backgroundColor: isReady
-                        ? const Color(0xFF064E3B)
+                        ? const Color(0xFF003D1A)
                         : const Color(0xFF7F1D1D),
                     label: Text(
                       isReady ? 'PRONTO' : 'NON PRONTO',
                       style: TextStyle(
                         color: isReady
-                            ? const Color(0xFF34D399)
+                            ? const Color(0xFF66FF99)
                             : const Color(0xFFFCA5A5),
                         fontWeight: FontWeight.bold,
                         fontSize: 11,
@@ -517,13 +517,13 @@ class _LocalInferenceSettingsWidgetState
                   width: double.infinity,
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
+                    color: const Color(0xFF001A08),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     _statusMessage!,
                     style:
-                        const TextStyle(color: Color(0xFFF59E0B), fontSize: 12),
+                        const TextStyle(color: Color(0xFFFFB000), fontSize: 12),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -532,7 +532,7 @@ class _LocalInferenceSettingsWidgetState
               // Runtime executable section
               const Text(
                 'Percorso Eseguibile llama-server:',
-                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                style: TextStyle(color: Color(0xFF88CCA0), fontSize: 13),
               ),
               const SizedBox(height: 4),
               TextField(
@@ -545,10 +545,10 @@ class _LocalInferenceSettingsWidgetState
                 ),
                 decoration: const InputDecoration(
                   filled: true,
-                  fillColor: Color(0xFF1E293B),
+                  fillColor: Color(0xFF001A08),
                   border: OutlineInputBorder(),
                   hintText: r'C:\llama.cpp\llama-server.exe',
-                  hintStyle: TextStyle(color: Color(0xFF64748B)),
+                  hintStyle: TextStyle(color: Color(0xFF4D9966)),
                 ),
               ),
               const SizedBox(height: 8),
@@ -562,8 +562,8 @@ class _LocalInferenceSettingsWidgetState
                   ),
                   OutlinedButton(
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFFEF4444),
-                      side: const BorderSide(color: Color(0xFFEF4444)),
+                      foregroundColor: const Color(0xFFFF5555),
+                      side: const BorderSide(color: Color(0xFFFF5555)),
                     ),
                     onPressed: _isLoading ? null : _clearRuntime,
                     child: const Text('RIMUOVI RUNTIME'),
@@ -623,9 +623,9 @@ class _LocalInferenceSettingsWidgetState
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
+                    color: const Color(0xFF001A08),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFF00FFC8)),
+                    border: Border.all(color: const Color(0xFF00FF66)),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -633,7 +633,7 @@ class _LocalInferenceSettingsWidgetState
                       const Text(
                         'Comando WinGet Consigliato:',
                         style: TextStyle(
-                          color: Color(0xFF00FFC8),
+                          color: Color(0xFF00FF66),
                           fontWeight: FontWeight.bold,
                           fontSize: 12,
                         ),

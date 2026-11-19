@@ -31,14 +31,14 @@ class ExternalModelConsentDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF000A02),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: Color(0xFFF59E0B), width: 1.5),
+        side: const BorderSide(color: Color(0xFFFFB000), width: 1.5),
       ),
       title: const Row(
         children: [
-          Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 28),
+          Icon(Icons.warning_amber_rounded, color: Color(0xFFFFB000), size: 28),
           SizedBox(width: 10),
           Text(
             'Consenso Modello Esterno',
@@ -57,19 +57,19 @@ class ExternalModelConsentDialog extends StatelessWidget {
           children: [
             const Text(
               'Stai per configurare un modello GGUF fornito autonomamente dall\'utente:',
-              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+              style: TextStyle(color: Color(0xFF88CCA0), fontSize: 14),
             ),
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
+                color: const Color(0xFF001A08),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: SelectableText(
                 modelPath,
                 style: const TextStyle(
-                  color: Color(0xFF00FFC8),
+                  color: Color(0xFF00FF66),
                   fontFamily: 'monospace',
                   fontSize: 12,
                 ),
@@ -90,7 +90,7 @@ class ExternalModelConsentDialog extends StatelessWidget {
               '• Assicurati che il file provenga da una fonte fidata.\n'
               '• A.U.R.A. non garantisce il rispetto delle direttive di allerta su modelli non certificati.',
               style: TextStyle(
-                  color: Color(0xFFCBD5E1), fontSize: 13, height: 1.4),
+                  color: Color(0xFFB8F5CC), fontSize: 13, height: 1.4),
             ),
           ],
         ),
@@ -100,12 +100,12 @@ class ExternalModelConsentDialog extends StatelessWidget {
           onPressed: onCancel,
           child: const Text(
             'ANNULLA',
-            style: TextStyle(color: Color(0xFF94A3B8)),
+            style: TextStyle(color: Color(0xFF88CCA0)),
           ),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFFF59E0B),
+            backgroundColor: const Color(0xFFFFB000),
             foregroundColor: Colors.black,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(6),

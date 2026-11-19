@@ -12,6 +12,7 @@ import 'src/platform/desktop_window_controller_factory.dart';
 import 'src/screens/terminal_screen.dart';
 import 'src/screens/app_startup_gate.dart';
 import 'src/audio/audio_manager.dart';
+import 'src/theme/terminal_typography.dart';
 
 /// Punto di ingresso principale dell'applicazione Flutter per A.U.R.A.
 void main() {
@@ -208,6 +209,7 @@ class _AuraAppState extends State<AuraApp> with WidgetsBindingObserver {
                     scaffoldBackgroundColor: Colors.black,
                     primaryColor: const Color(0xFF00FF66),
                     fontFamily: 'monospace',
+                    fontFamilyFallback: kTerminalFontFallback,
                     textTheme: const TextTheme(
                       bodyLarge: TextStyle(
                           color: Color(0xFF00FF66), fontFamily: 'monospace'),

@@ -170,8 +170,36 @@ class _CLIHistoryViewState extends State<CLIHistoryView> {
     }
   }
 
+  /// Stato vuoto guidato: prima del primo turno il terminale spiega cosa fare.
+  Widget _buildEmptyState() {
+    return const Padding(
+      padding: EdgeInsets.only(top: 8.0),
+      child: Text(
+        "CANALE APERTO CON PANOPTICON.\n\n"
+        "Scrivi liberamente il tuo messaggio e premi INVIO.\n"
+        "Persuadi, argomenta, metti alla prova la sua logica: "
+        "ogni frase sposta i pilastri della griglia.\n\n"
+        "Digita /menu per salvare e tornare al menu principale.",
+        style: TextStyle(
+          fontFamily: 'monospace',
+          color: Color(0xFF4D9966),
+          fontSize: 13.0,
+          height: 1.5,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (widget.history.isEmpty && !widget.isLoading) {
+      return Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.all(16.0),
+        alignment: Alignment.topLeft,
+        child: _buildEmptyState(),
+      );
+    }
     return Container(
       color: Colors.transparent,
       padding: const EdgeInsets.all(16.0),

@@ -413,9 +413,10 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isRecommended
-                      ? const Color(0xFF00AA44)
-                      : const Color(0xFF005522),
-                  foregroundColor: Colors.white,
+                      ? const Color(0xFF00FF66)
+                      : const Color(0xFF003D1A),
+                  foregroundColor:
+                      isRecommended ? Colors.black : const Color(0xFF00FF66),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
                 onPressed: _isLoading || _isDownloading
@@ -912,7 +913,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0x33EF4444),
+        color: const Color(0x33FF5555),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFFF5555)),
       ),
@@ -1011,6 +1012,13 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
       ),
     );
   }
+
+  /// Stile dei pulsanti di avanzamento: testo scuro su verde per il contrasto.
+  static final ButtonStyle _primaryButtonStyle = ElevatedButton.styleFrom(
+    backgroundColor: const Color(0xFF00FF66),
+    foregroundColor: Colors.black,
+    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+  );
 
   Widget _buildStepContent() {
     final currentState = _state;
@@ -1135,6 +1143,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
+                style: _primaryButtonStyle,
                 onPressed: _isLoading ? null : _submitRuntime,
                 child: const Text('CONFERMA RUNTIME  (AVANTI >)'),
               ),
@@ -1177,10 +1186,10 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                   segments: const [
                     ButtonSegment(
                         value: OnboardingModelMode.managed,
-                        label: Text('MANAGED')),
+                        label: Text('CATALOGO')),
                     ButtonSegment(
                         value: OnboardingModelMode.external,
-                        label: Text('EXTERNAL')),
+                        label: Text('FILE LOCALE')),
                   ],
                   selected: {_actorMode},
                   onSelectionChanged: _isLoading || _isDownloading
@@ -1252,6 +1261,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
             const SizedBox(height: 16),
             ElevatedButton(
+              style: _primaryButtonStyle,
               onPressed: _isLoading || _isDownloading ? null : _submitActor,
               child: const Text('CONFERMA MODELLO ACTOR  (AVANTI >)'),
             ),
@@ -1283,10 +1293,10 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                   segments: const [
                     ButtonSegment(
                         value: OnboardingModelMode.managed,
-                        label: Text('MANAGED')),
+                        label: Text('CATALOGO')),
                     ButtonSegment(
                         value: OnboardingModelMode.external,
-                        label: Text('EXTERNAL')),
+                        label: Text('FILE LOCALE')),
                   ],
                   selected: {_evaluatorMode},
                   onSelectionChanged: _isLoading || _isDownloading
@@ -1360,6 +1370,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               ),
             const SizedBox(height: 16),
             ElevatedButton(
+              style: _primaryButtonStyle,
               onPressed: _isLoading || _isDownloading ? null : _submitEvaluator,
               child: const Text('CONFERMA MODELLO EVALUATOR  (AVANTI >)'),
             ),
@@ -1528,8 +1539,9 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
                   ),
                   onPressed: () {
                     setState(() {
-                      _state = const FirstRunSetupState(
+                      _state = FirstRunSetupState(
                         step: FirstRunSetupStep.runtimeSelection,
+                        runtimeDetectionResult: _state?.runtimeDetectionResult,
                       );
                     });
                   },
@@ -1563,6 +1575,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             ),
             const SizedBox(height: 20),
             ElevatedButton(
+              style: _primaryButtonStyle,
               onPressed: _isLoading ? null : _initSetup,
               child: const Text('RITENTA CONFIGURAZIONE'),
             ),
@@ -1576,8 +1589,19 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: const Color(0xCC0F172A),
+        backgroundColor: const Color(0xFF000A02),
+        surfaceTintColor: Colors.transparent,
         elevation: 0,
+        // Riconfigurazione dalle impostazioni: si può uscire senza completare.
+        leading: widget.forceReconfigure
+            ? IconButton(
+                key: const Key('wizard_exit'),
+                tooltip: 'Torna alle impostazioni',
+                icon: const Icon(Icons.arrow_back, color: Color(0xFF00FF66)),
+                onPressed:
+                    _isLoading || _isDownloading ? null : widget.onComplete,
+              )
+            : null,
         title: const Text('A.U.R.A. — Configurazione Iniziale'),
       ),
       body: Stack(
@@ -1589,7 +1613,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
             ),
           // Overlay di velatura Cyberpunk
           const Positioned.fill(
-            child: ColoredBox(color: Color(0x99020617)),
+            child: ColoredBox(color: Color(0x99000000)),
           ),
           // Finestra dei controlli con vetro sfumato (Glassmorphism)
           Center(
@@ -1598,14 +1622,12 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 600),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
                   child: BackdropFilter(
                     filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                     child: Container(
                       decoration: BoxDecoration(
-                        color: const Color(0xDC0F172A),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: const Color(0x3300FFC8)),
+                        color: const Color(0xE6000A02),
+                        border: Border.all(color: const Color(0xFF005522)),
                         boxShadow: const [
                           BoxShadow(
                             color: Color(0x30000000),

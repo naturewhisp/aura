@@ -292,7 +292,7 @@ void main() {
     await tester.pump();
 
     // Seleziona Managed
-    final managedBtn = find.text('MANAGED').first;
+    final managedBtn = find.text('CATALOGO').first;
     await tester.ensureVisible(managedBtn);
     await tester.tap(managedBtn);
     await tester.pump();

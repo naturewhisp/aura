@@ -115,6 +115,9 @@ class _BootMenuScreenState extends State<BootMenuScreen>
     return version == 'unknown' ? '[BUILD DI SVILUPPO]' : 'v$version';
   }
 
+  /// Il wizard può aver cambiato runtime o modelli mentre i server sono attivi.
+  bool _restartRequiredNotice = false;
+
   LocalInferenceServices? _fallbackServices;
 
   /// Servizi risolti dallo startup gate; il fallback senza root autoritative
@@ -696,7 +699,9 @@ class _BootMenuScreenState extends State<BootMenuScreen>
           onComplete: () {
             setState(() {
               _subScreen = "settings";
+              _restartRequiredNotice = widget.notifier.isBootstrapped;
             });
+            _refreshRuntimeStatus();
           },
         );
       case "briefing":
@@ -921,6 +926,27 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         ),
 
         const SizedBox(height: 16.0),
+
+        if (widget.notifier.runtimeIntegrityWarning != null)
+          Container(
+            key: const Key('runtime_integrity_warning'),
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12.0),
+            padding: const EdgeInsets.all(12.0),
+            decoration: BoxDecoration(
+              border: Border.all(color: const Color(0xFFFF5555), width: 1.5),
+              color: const Color(0xFF1A0000),
+            ),
+            child: Text(
+              widget.notifier.runtimeIntegrityWarning!,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                color: Color(0xFFFF5555),
+                fontSize: 13.0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
 
         // Footer profile status
         Container(
@@ -1184,6 +1210,20 @@ class _BootMenuScreenState extends State<BootMenuScreen>
             _buildRetroLinkButton("< SALVA & INDIETRO", _backToMainMenu),
           ],
         ),
+        if (_restartRequiredNotice)
+          const Padding(
+            padding: EdgeInsets.only(top: 12.0),
+            child: Text(
+              "Le modifiche a runtime e modelli si applicano al prossimo avvio di A.U.R.A.",
+              key: Key('restart_required_notice'),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                color: Color(0xFFFFB000),
+                fontSize: 12.0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
         const SizedBox(height: 24.0),
 
         // Settings items

@@ -363,6 +363,8 @@ final class DefaultFirstRunModelSetupFacade
             catalogId: 'aura-official-catalog',
             catalogVersion: '1.0.0',
             catalogRevision: 1,
+            // Date formali del catalogo bootstrap incluso nell'app: la scadenza
+            // vale solo per i cataloghi remoti firmati e non blocca il download.
             issuedAt: '2026-07-22T00:00:00Z',
             expiresAt: '2027-07-22T00:00:00Z',
             manifest: CatalogManifest.initialDefault(),

@@ -581,6 +581,31 @@ class GameControllerNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Avviso mostrato se il controllo d'integrità in background trova il runtime alterato.
+  String? runtimeIntegrityWarning;
+
+  /// Ricalcola in background gli hash del runtime accettato tramite impronte.
+  ///
+  /// Non interrompe la partita: segnala il problema e, avendo invalidato le
+  /// impronte, lascia che il prossimo avvio rifiuti la variante (fail-closed).
+  @visibleForTesting
+  Future<void> runBackgroundIntegrityCheck(
+    RuntimeBundleIntegrityVerifier verifier,
+  ) async {
+    bool compromised;
+    try {
+      final results = await verifier.reverifyTrustedVariants();
+      compromised = results.any((result) => !result.isValid);
+    } catch (_) {
+      compromised = true;
+    }
+    if (_disposed || !compromised) return;
+    runtimeIntegrityWarning =
+        'IL RUNTIME DI INFERENZA RISULTA ALTERATO O DANNEGGIATO. '
+        'REINSTALLARE A.U.R.A.: AL PROSSIMO AVVIO NON VERRÀ UTILIZZATO.';
+    notifyListeners();
+  }
+
   Future<void>? _activeManagedBootstrapFuture;
 
   /// Esegue il bootstrap asincrono delle dipendenze di inferenza e aggiorna i supervisor dei modelli.
@@ -741,6 +766,12 @@ class GameControllerNotifier extends ChangeNotifier {
       );
 
       updateBootstrapResult(result);
+      final verifier = services?.runtimeIntegrityVerifier;
+      if (verifier != null &&
+          runtimeConfig.runtimeMode ==
+              ApplicationRuntimeMode.managedLlamaServer) {
+        unawaited(runBackgroundIntegrityCheck(verifier));
+      }
       if (runtimeConfig.runtimeMode == ApplicationRuntimeMode.ruleBased) {
         onProgress?.call(1.0,
             'AURA_INIT> OFFLINE RULE-BASED ENGINE ACTIVE (DEGRADED MODE).');

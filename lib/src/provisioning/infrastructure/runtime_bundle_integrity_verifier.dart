@@ -32,6 +32,14 @@ abstract interface class RuntimeBundleIntegrityVerifier {
     required RuntimeVariantDescriptor variant,
     required String runtimeRootPath,
   });
+
+  /// Ricalcola lo SHA-256 delle varianti accettate in questo processo grazie a
+  /// impronte salvate, ignorando ogni cache.
+  ///
+  /// Da eseguire in background dopo l'avvio: copre le manomissioni che
+  /// conservano dimensione e data di modifica. Le varianti non valide perdono
+  /// le impronte, quindi il prossimo avvio le rifiuta con la verifica completa.
+  Future<List<RuntimeVariantIntegrityResult>> reverifyTrustedVariants();
 }
 
 /// Implementazione predefinita del verificatore d'integrità della variante di runtime.
@@ -51,6 +59,10 @@ final class DefaultRuntimeBundleIntegrityVerifier
   final Map<String, RuntimeVariantIntegrityResult> _verifiedCache = {};
   Map<String, _FileFingerprint>? _fingerprints;
 
+  /// Varianti accettate (anche solo in parte) tramite impronte in questo processo.
+  final Map<String, ({RuntimeVariantDescriptor variant, String rootPath})>
+      _fingerprintTrusted = {};
+
   DefaultRuntimeBundleIntegrityVerifier({
     required ProvisioningFileSystem fileSystem,
     String? fingerprintCachePath,
@@ -68,7 +80,34 @@ final class DefaultRuntimeBundleIntegrityVerifier
       return cached;
     }
 
-    final fingerprints = await _loadFingerprints();
+    return _verify(
+      variant: variant,
+      runtimeRootPath: runtimeRootPath,
+      fingerprints: await _loadFingerprints(),
+    );
+  }
+
+  @override
+  Future<List<RuntimeVariantIntegrityResult>> reverifyTrustedVariants() async {
+    final results = <RuntimeVariantIntegrityResult>[];
+    for (final trusted in _fingerprintTrusted.values.toList()) {
+      results.add(await _verify(
+        variant: trusted.variant,
+        runtimeRootPath: trusted.rootPath,
+        fingerprints: const {},
+      ));
+    }
+    return results;
+  }
+
+  /// Verifica la variante fidandosi delle sole [fingerprints] fornite.
+  Future<RuntimeVariantIntegrityResult> _verify({
+    required RuntimeVariantDescriptor variant,
+    required String runtimeRootPath,
+    required Map<String, _FileFingerprint> fingerprints,
+  }) async {
+    final cacheKey = '$runtimeRootPath#${variant.id}';
+    var usedFingerprints = false;
     final verifiedNow = <String, _FileFingerprint>{};
     final missing = <String>[];
     final corrupted = <String>[];
@@ -105,6 +144,7 @@ final class DefaultRuntimeBundleIntegrityVerifier
               sha256: expectedHash,
             )) {
           verifiedNow[absoluteFilePath] = known;
+          usedFingerprints = true;
           continue;
         }
 
@@ -149,8 +189,15 @@ final class DefaultRuntimeBundleIntegrityVerifier
 
     if (isValid) {
       _verifiedCache[cacheKey] = result;
+      if (usedFingerprints) {
+        _fingerprintTrusted[cacheKey] =
+            (variant: variant, rootPath: runtimeRootPath);
+      } else {
+        _fingerprintTrusted.remove(cacheKey);
+      }
       await _storeFingerprints(verifiedNow);
     } else {
+      _verifiedCache.remove(cacheKey);
       // Una variante non valida non deve lasciare impronte riutilizzabili.
       await _forgetFingerprints(variant, runtimeRootPath);
     }

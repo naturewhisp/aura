@@ -87,5 +87,36 @@ void main() {
 
       expect(result.isValid, isTrue);
     });
+
+    test(
+        'manomissione con stessa dimensione e data: sfugge al controllo rapido, '
+        'non al ricalcolo in background, e blocca il prossimo avvio', () async {
+      final exe = File(
+          '$runtimeRoot${Platform.pathSeparator}bin${Platform.pathSeparator}llama-server.exe');
+      await newVerifier()
+          .verifyVariant(variant: variant, runtimeRootPath: runtimeRoot);
+      final modified = await exe.lastModified();
+      await exe.writeAsBytes(List<int>.from(payload)..[0] ^= 0xFF);
+      await exe.setLastModified(modified);
+
+      final verifier = newVerifier();
+      final quick = await verifier.verifyVariant(
+          variant: variant, runtimeRootPath: runtimeRoot);
+      expect(quick.isValid, isTrue);
+
+      final deep = await verifier.reverifyTrustedVariants();
+      expect(deep.single.isValid, isFalse);
+
+      final nextStart = await newVerifier()
+          .verifyVariant(variant: variant, runtimeRootPath: runtimeRoot);
+      expect(nextStart.isValid, isFalse);
+    });
+
+    test('dopo una verifica completa non resta nulla da ricalcolare', () async {
+      final verifier = newVerifier();
+      await verifier.verifyVariant(
+          variant: variant, runtimeRootPath: runtimeRoot);
+      expect(await verifier.reverifyTrustedVariants(), isEmpty);
+    });
   });
 }

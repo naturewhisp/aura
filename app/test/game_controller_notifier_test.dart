@@ -2,6 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:aura_core/aura_offline.dart'
+    show
+        RuntimeBundleIntegrityVerifier,
+        RuntimeVariantDescriptor,
+        RuntimeVariantIntegrityResult;
 import 'package:aura_core/aura_testing.dart';
 import 'package:aura_app/src/session/active_session.dart';
 import 'package:aura_app/src/session/file_session_repository.dart';
@@ -1821,6 +1826,20 @@ void _sessionTests() {
           equals('sindrome_tutorial'));
     });
 
+    test('12c. integrità in background: avvisa solo se il runtime è alterato',
+        () async {
+      final intact = makeNotifier();
+      await intact.runBackgroundIntegrityCheck(_FakeVerifier(isValid: true));
+      expect(intact.runtimeIntegrityWarning, isNull);
+
+      final altered = makeNotifier();
+      var notified = 0;
+      altered.addListener(() => notified++);
+      await altered.runBackgroundIntegrityCheck(_FakeVerifier(isValid: false));
+      expect(altered.runtimeIntegrityWarning, contains('ALTERATO'));
+      expect(notified, greaterThan(0));
+    });
+
     test(
         '12b. tutorial non classificato, partita di build di sviluppo mai playtest umano',
         () async {
@@ -2400,4 +2419,26 @@ class ControllableInferenceBridge implements InferenceBridge {
   Future<List<String>> discoverModels() async {
     return const ["mistralai/ministral-3-3b", "qwen/qwen3.5-9b"];
   }
+}
+
+class _FakeVerifier implements RuntimeBundleIntegrityVerifier {
+  final bool isValid;
+  _FakeVerifier({required this.isValid});
+
+  @override
+  Future<List<RuntimeVariantIntegrityResult>> reverifyTrustedVariants() async =>
+      [
+        RuntimeVariantIntegrityResult(
+          isValid: isValid,
+          variantId: 'win-x64-cuda',
+          rootPath: 'runtime',
+        ),
+      ];
+
+  @override
+  Future<RuntimeVariantIntegrityResult> verifyVariant({
+    required RuntimeVariantDescriptor variant,
+    required String runtimeRootPath,
+  }) =>
+      throw UnimplementedError();
 }

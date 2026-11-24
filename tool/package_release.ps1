@@ -82,9 +82,15 @@ $gitCommit = (& git -C $projectRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0 -or $gitCommit -notmatch '^[0-9a-f]{40}$') {
     throw "[FAIL-CLOSED] Impossibile determinare il commit sorgente per la provenance"
 }
+# Le proprieta' dell'eseguibile Windows richiedono una versione numerica x.y.z:
+# il suffisso di prerelease resta in AURA_APP_VERSION.
+$numericVersion = ($Version -split '-', 2)[0]
+if ($numericVersion -notmatch '^\d+\.\d+\.\d+$') {
+    throw "[FAIL-CLOSED] Versione non valida per le proprieta' dell'eseguibile: $Version"
+}
 Push-Location "$projectRoot\app"
 try {
-    Invoke-NativeCommand { flutter build windows --release "--dart-define=AURA_APP_VERSION=$Version" "--dart-define=AURA_GIT_COMMIT=$gitCommit" "--dart-define=AURA_DATASET_SOURCE=human_playtest" } "Flutter build windows --release"
+    Invoke-NativeCommand { flutter build windows --release "--build-name=$numericVersion" "--dart-define=AURA_APP_VERSION=$Version" "--dart-define=AURA_GIT_COMMIT=$gitCommit" "--dart-define=AURA_DATASET_SOURCE=human_playtest" } "Flutter build windows --release"
 } finally {
     Pop-Location
 }

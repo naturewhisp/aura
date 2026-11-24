@@ -1,6 +1,6 @@
 name: aura_app
 description: Interfaccia utente Flutter per il terminale A.U.R.A.
-version: 0.1.0
+version: 0.6.12
 publish_to: 'none'
 
 environment:

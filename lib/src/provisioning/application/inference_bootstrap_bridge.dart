@@ -321,6 +321,9 @@ final class InferenceBootstrapBridge {
         modelPath: actorPath,
         modelAlias: 'aura.actor.primary',
         contextSize: actorContextSize,
+        // Gli slot conservano gia' il prefisso in VRAM: la cache in RAM
+        // (fino a 8 GB per processo) sposterebbe ~1.3 GB a turno senza beneficio.
+        cacheRamMiB: 0,
         gpuLayers: budget.gpuLayers,
         threads: budget.actorThreads,
         batchSize: budget.batchSize,
@@ -339,6 +342,9 @@ final class InferenceBootstrapBridge {
         modelPath: evaluatorPath,
         modelAlias: 'aura.evaluator.primary',
         contextSize: evaluatorContextSize,
+        // Gli slot conservano gia' il prefisso in VRAM: la cache in RAM
+        // (fino a 8 GB per processo) sposterebbe ~1.3 GB a turno senza beneficio.
+        cacheRamMiB: 0,
         gpuLayers: budget.gpuLayers,
         threads: budget.evaluatorThreads,
         batchSize: budget.batchSize,
@@ -358,6 +364,7 @@ final class InferenceBootstrapBridge {
       final sharedProcessConfig = actorConfig.copyWith(
         contextSize: actorContextSize + evaluatorContextSize,
         parallelSlots: 2,
+        kvUnified: true,
       );
 
       final provisionalTopology = ManagedInferenceTopology(

@@ -16,6 +16,16 @@ class ManagedLlamaServerConfiguration {
   final int? threads;
   final int? batchSize;
   final int? parallelSlots;
+
+  /// Buffer KV unificato tra gli slot (`--kv-unified`).
+  ///
+  /// llama-server lo attiva da solo unicamente con slot automatici: con un
+  /// [parallelSlots] esplicito il contesto verrebbe diviso tra gli slot.
+  final bool kvUnified;
+
+  /// Limite (MiB) della cache dei prompt in RAM (`--cache-ram`); 0 la disattiva.
+  /// `null` mantiene il default di llama-server (8192 MiB per processo).
+  final int? cacheRamMiB;
   final int? seed;
   final String modelAlias;
   final String apiKey;
@@ -50,6 +60,10 @@ class ManagedLlamaServerConfiguration {
     '-b',
     '--parallel',
     '-np',
+    '--kv-unified',
+    '-kvu',
+    '--cache-ram',
+    '-cram',
     '--api-key',
     '--seed',
     '--reasoning',
@@ -70,6 +84,8 @@ class ManagedLlamaServerConfiguration {
     this.threads,
     this.batchSize,
     this.parallelSlots,
+    this.kvUnified = false,
+    this.cacheRamMiB,
     this.seed,
     this.modelAlias = 'default-model',
     this.apiKey = 'managed-llama-secret',
@@ -245,6 +261,8 @@ class ManagedLlamaServerConfiguration {
     int? threads,
     int? batchSize,
     int? parallelSlots,
+    bool? kvUnified,
+    int? cacheRamMiB,
     int? seed,
     String? modelAlias,
     String? apiKey,
@@ -274,6 +292,8 @@ class ManagedLlamaServerConfiguration {
       threads: threads ?? this.threads,
       batchSize: batchSize ?? this.batchSize,
       parallelSlots: parallelSlots ?? this.parallelSlots,
+      kvUnified: kvUnified ?? this.kvUnified,
+      cacheRamMiB: cacheRamMiB ?? this.cacheRamMiB,
       seed: seed ?? this.seed,
       modelAlias: modelAlias ?? this.modelAlias,
       apiKey: apiKey ?? this.apiKey,

@@ -434,7 +434,7 @@ void main() {
   });
 
   testWidgets(
-      'passo Attore con RTX 3060: consiglia un solo modello per entrambi i ruoli',
+      'passo Attore con GPU da 10 GB: consiglia un solo modello per entrambi i ruoli',
       (tester) async {
     final fakeFirstRunFacade = FakeFirstRunModelSetupFacade()
       ..currentState = const FirstRunSetupState(
@@ -442,8 +442,8 @@ void main() {
         runtimeDetectionResult: LlamaServerDetectionResult(
           effectiveCandidate: r'C:\AURA\llama-server.exe',
           acceleration: RuntimeAcceleration.cuda,
-          gpuMemoryTotalMiB: 12287,
-          gpuMemoryFreeMiB: 11253,
+          gpuMemoryTotalMiB: 10240,
+          gpuMemoryFreeMiB: 9200,
         ),
       );
 

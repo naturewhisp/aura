@@ -40,6 +40,14 @@ class LlamaServerCommandBuilder {
       args.addAll(['--parallel', configuration.parallelSlots.toString()]);
     }
 
+    if (configuration.kvUnified) {
+      args.add('--kv-unified');
+    }
+
+    if (configuration.cacheRamMiB != null) {
+      args.addAll(['--cache-ram', configuration.cacheRamMiB.toString()]);
+    }
+
     if (configuration.seed != null) {
       args.addAll(['--seed', configuration.seed.toString()]);
     }

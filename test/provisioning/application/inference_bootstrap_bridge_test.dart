@@ -352,6 +352,13 @@ void main() {
             InferenceBootstrapBridge.evaluatorContextSize,
       );
       expect(actorServer.parallelSlots, 2);
+      expect(actorServer.kvUnified, isTrue);
+      final args = const LlamaServerCommandBuilder().build(
+        configuration: actorServer,
+        allocatedPort: 30300,
+      );
+      expect(args, containsAllInOrder(['--parallel', '2', '--kv-unified']));
+      expect(args, containsAllInOrder(['--cache-ram', '0']));
     });
 
     group('Osservazioni di runtime per la provenance', () {

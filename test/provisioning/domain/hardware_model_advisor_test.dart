@@ -7,53 +7,43 @@ void main() {
   const ministralBytes = 2146498240; // Ministral 3B Q4_K_M
 
   group('HardwareModelAdvisor', () {
-    test('RTX 3060 12 GB con VRAM libera misurata consiglia il modello unico',
-        () {
-      // Valore riportato da `--list-devices` sulla macchina di collaudo:
-      // CUDA0: NVIDIA GeForce RTX 3060 (12287 MiB, 11253 MiB free).
-      final rec = HardwareModelAdvisor.recommend(
-        acceleration: RuntimeAcceleration.cuda,
-        gpuFreeMiB: 11253,
-        actorModelBytes: gemmaBytes,
-        evaluatorModelBytes: ministralBytes,
-      );
+    HardwareModelRecommendation forTotal(int? totalMiB) =>
+        HardwareModelAdvisor.recommend(
+          acceleration: RuntimeAcceleration.cuda,
+          gpuTotalMiB: totalMiB,
+          actorModelBytes: gemmaBytes,
+          evaluatorModelBytes: ministralBytes,
+        );
 
+    test('RTX 3060 12 GB: due modelli, come misurato sulla scheda', () {
+      final rec = forTotal(12287);
+      expect(rec.topology, RecommendedModelTopology.separateModels);
+      // Le stime coprono le misure congiunte senza eccedere oltre 300 MiB.
+      expect(rec.estimatedSeparateMiB, inInclusiveRange(10734, 11034));
+      expect(rec.estimatedSharedMiB, inInclusiveRange(8105, 8405));
+    });
+
+    test('GPU da 10 GB: solo il modello unico entra in VRAM', () {
+      final rec = forTotal(10240);
       expect(rec.topology, RecommendedModelTopology.sharedActorModel);
       expect(rec.exceedsAvailableMemory, isFalse);
-      // Coerente con le misure: due processi ~10.7 GB, condiviso ~8.3 GB.
-      expect(rec.estimatedSeparateMiB, greaterThanOrEqualTo(10747));
-      expect(rec.estimatedSharedMiB, greaterThanOrEqualTo(8253));
     });
 
-    test('GPU da 24 GB consiglia due modelli distinti', () {
-      final rec = HardwareModelAdvisor.recommend(
-        acceleration: RuntimeAcceleration.cuda,
-        gpuFreeMiB: 22000,
-        actorModelBytes: gemmaBytes,
-        evaluatorModelBytes: ministralBytes,
-      );
-
-      expect(rec.topology, RecommendedModelTopology.separateModels);
-      expect(rec.isEstimateUnavailable, isFalse);
-    });
-
-    test('GPU da 8 GB segnala che anche il modello unico è al limite', () {
-      final rec = HardwareModelAdvisor.recommend(
-        acceleration: RuntimeAcceleration.vulkan,
-        gpuFreeMiB: 7000,
-        actorModelBytes: gemmaBytes,
-        evaluatorModelBytes: ministralBytes,
-      );
-
+    test('GPU da 8 GB: segnala che nemmeno il modello unico entra', () {
+      final rec = forTotal(8192);
       expect(rec.topology, RecommendedModelTopology.sharedActorModel);
       expect(rec.exceedsAvailableMemory, isTrue);
+    });
+
+    test('GPU da 24 GB: due modelli', () {
+      expect(forTotal(24576).topology, RecommendedModelTopology.separateModels);
     });
 
     test('senza GPU resta su due modelli e dichiara la stima non disponibile',
         () {
       final rec = HardwareModelAdvisor.recommend(
         acceleration: RuntimeAcceleration.cpu,
-        gpuFreeMiB: null,
+        gpuTotalMiB: null,
         actorModelBytes: gemmaBytes,
         evaluatorModelBytes: ministralBytes,
       );
@@ -65,7 +55,7 @@ void main() {
     test('VRAM non rilevata non produce una raccomandazione presunta', () {
       final rec = HardwareModelAdvisor.recommend(
         acceleration: RuntimeAcceleration.cuda,
-        gpuFreeMiB: null,
+        gpuTotalMiB: null,
         actorModelBytes: gemmaBytes,
         evaluatorModelBytes: ministralBytes,
       );

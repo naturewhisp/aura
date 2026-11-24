@@ -42,86 +42,78 @@ final class HardwareModelRecommendation {
 
 /// Stima la VRAM necessaria e consiglia se usare due modelli o uno condiviso.
 ///
-/// Le stime sono tarate su misure reali (`nvidia-smi`, RTX 3060, llama.cpp b10256,
-/// `-ngl 99`, novembre 2026):
-/// - Ministral 3B Q4_K_M (2047 MiB su disco), contesto 8k: +3092 MiB;
-/// - Gemma 4 12B Q4_0 (6653 MiB su disco), contesto 16k: +7655 MiB;
-/// - Gemma 4 12B Q4_0, contesto 24k su 2 slot (modello condiviso): +8253 MiB.
+/// Misure congiunte (RTX 3060 12 GB, llama.cpp b10256, `-ngl 99`, 2026-11-24,
+/// partendo da circa 1 GB occupato dal desktop):
+/// - Gemma 4 12B 16k + Ministral 3B 8k, due processi: +10734 MiB;
+/// - Gemma 4 12B 24k, un processo, 2 slot unificati: +8105 MiB.
 ///
-/// Due processi sullo stesso file NON condividono la VRAM (+3086 MiB misurati per
-/// il secondo processo): il risparmio si ottiene solo con un processo unico.
+/// Due modelli sono anche più veloci: il Valutatore dedicato genera a circa
+/// 115 t/s contro 38 t/s di Gemma, e a parità di messaggi i turni condivisi
+/// sono risultati più lenti del 20-40%. Il modello unico è quindi consigliato
+/// solo quando due modelli non entrano nella VRAM.
+///
+/// Si usa la VRAM TOTALE: su Windows quella "libera" di `--list-devices` ignora
+/// le altre applicazioni, che il driver sfratta quando serve.
 abstract final class HardwareModelAdvisor {
-  /// Overhead per processo (KV cache, buffer di calcolo, contesto CUDA) al
-  /// contesto di gioco, arrotondato per eccesso dalle misure.
+  /// Overhead per processo (KV cache, buffer di calcolo, contesto CUDA).
   static const int perProcessOverheadMiB = 1100;
 
   /// Overhead del processo condiviso (contesto Actor + Evaluator su 2 slot).
-  static const int sharedProcessOverheadMiB = 1700;
+  static const int sharedProcessOverheadMiB = 1500;
 
-  /// Margine lasciato libero per desktop, driver e picchi di allocazione.
-  static const int safetyMarginMiB = 512;
+  /// VRAM che resta comunque al desktop e al driver.
+  static const int desktopReserveMiB = 1024;
 
   static HardwareModelRecommendation recommend({
     required RuntimeAcceleration acceleration,
-    required int? gpuFreeMiB,
+    required int? gpuTotalMiB,
     required int actorModelBytes,
     required int evaluatorModelBytes,
   }) {
     final actorMiB = _toMiB(actorModelBytes);
-    final evaluatorMiB = _toMiB(evaluatorModelBytes);
     final separate = actorMiB +
-        evaluatorMiB +
+        _toMiB(evaluatorModelBytes) +
         2 * perProcessOverheadMiB; // due processi, due copie dei buffer
     final shared = actorMiB + sharedProcessOverheadMiB;
 
-    if (acceleration == RuntimeAcceleration.cpu) {
+    if (acceleration == RuntimeAcceleration.cpu || gpuTotalMiB == null) {
       return HardwareModelRecommendation(
         topology: RecommendedModelTopology.separateModels,
-        rationale:
-            'Nessuna GPU compatibile: i modelli girano in RAM di sistema, '
-            'dove due processi condividono le pagine dello stesso file. Restano '
-            'consigliati due modelli distinti, ma ogni turno richiederà più tempo.',
+        rationale: acceleration == RuntimeAcceleration.cpu
+            ? 'Nessuna GPU compatibile: i modelli girano in RAM di sistema e '
+                'ogni turno richiede più tempo. Il Valutatore dedicato, più '
+                'leggero, resta la scelta più rapida.'
+            : 'VRAM della GPU non rilevata: configurazione standard con due '
+                'modelli distinti.',
         isEstimateUnavailable: true,
         estimatedSeparateMiB: separate,
         estimatedSharedMiB: shared,
       );
     }
 
-    if (gpuFreeMiB == null) {
-      return HardwareModelRecommendation(
-        topology: RecommendedModelTopology.separateModels,
-        rationale: 'VRAM disponibile non rilevata: configurazione standard con '
-            'due modelli distinti. Se il gioco risulta lento, prova un solo '
-            'modello per entrambi i ruoli.',
-        isEstimateUnavailable: true,
-        estimatedSeparateMiB: separate,
-        estimatedSharedMiB: shared,
-      );
-    }
-
-    final available = gpuFreeMiB - safetyMarginMiB;
+    final available = gpuTotalMiB - desktopReserveMiB;
     if (separate <= available) {
       return HardwareModelRecommendation(
         topology: RecommendedModelTopology.separateModels,
-        rationale: 'VRAM sufficiente per due modelli distinti '
-            '(stima ${_gb(separate)} su ${_gb(gpuFreeMiB)} liberi): '
-            'Attore e Valutatore specializzati, la scelta migliore.',
+        rationale: 'Due modelli distinti (circa ${_gb(separate)}) entrano nei '
+            '${_gb(gpuTotalMiB)} della GPU: il Valutatore dedicato è più '
+            'rapido. Con altre app che usano la GPU potrebbe rallentare.',
         estimatedSeparateMiB: separate,
         estimatedSharedMiB: shared,
-        availableMiB: gpuFreeMiB,
+        availableMiB: available,
       );
     }
 
     return HardwareModelRecommendation(
       topology: RecommendedModelTopology.sharedActorModel,
-      rationale: 'Due modelli richiederebbero circa ${_gb(separate)} di VRAM, '
-          'ma ne sono liberi ${_gb(gpuFreeMiB)}: il driver sposterebbe parte dei '
-          'pesi in RAM, rallentando ogni turno. Usare il modello dell\'Attore '
-          'anche come Valutatore richiede circa ${_gb(shared)} su un solo processo.',
+      rationale: 'Due modelli (circa ${_gb(separate)}) non entrano nei '
+          '${_gb(gpuTotalMiB)} della GPU. Un solo modello per entrambi i ruoli '
+          'richiede circa ${_gb(shared)}: la valutazione è più lenta, ma '
+          'si evita di spostare i pesi in RAM.',
       exceedsAvailableMemory: shared > available,
       estimatedSeparateMiB: separate,
       estimatedSharedMiB: shared,
-      availableMiB: gpuFreeMiB,
+      availableMiB: available,
     );
   }
 

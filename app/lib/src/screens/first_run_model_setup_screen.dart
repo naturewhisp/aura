@@ -527,7 +527,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     }
   }
 
-  /// Raccomandazione hardware calcolata sulla VRAM libera rilevata dalla probe.
+  /// Raccomandazione hardware calcolata sulla VRAM totale rilevata dalla probe.
   ///
   /// Le dimensioni sono quelle dei modelli predefiniti del catalogo: per modelli
   /// esterni la stima resta indicativa.
@@ -547,7 +547,7 @@ class _FirstRunModelSetupScreenState extends State<FirstRunModelSetupScreen> {
     if (actor == null || evaluator == null) return null;
     return HardwareModelAdvisor.recommend(
       acceleration: detection.acceleration,
-      gpuFreeMiB: detection.gpuMemoryFreeMiB,
+      gpuTotalMiB: detection.gpuMemoryTotalMiB,
       actorModelBytes: actor.sizeBytes,
       evaluatorModelBytes: evaluator.sizeBytes,
     );

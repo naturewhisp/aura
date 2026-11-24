@@ -471,6 +471,20 @@ simultaneous
 sequential
 ```
 
+### 12.1 Misure su RTX 3060 12 GB (2026-11-24)
+
+Build di sviluppo, Windows 11, llama.cpp b10256, `win-x64-cuda` con sole librerie incluse, `-ngl 99`,
+una singola sessione per configurazione: valori indicativi, non certificazione.
+
+| Configurazione | VRAM aggiunta | Valutatore (gen.) | Attore (gen.) | Turno di gioco |
+|---|---|---|---|---|
+| Gemma 4 12B Q4_0 16k + Ministral 3B Q4_K_M 8k (2 processi) | 10734 MiB | 103–116 t/s | 34–39 t/s | 7,6–7,7 s |
+| Gemma 4 12B condiviso, 24k, 2 slot unificati (1 processo) | 8105 MiB | 38–39 t/s | 37 t/s | 9,1–10,7 s |
+
+- Due processi sullo stesso file non condividono la VRAM: +3086 MiB misurati per il secondo.
+- La VRAM "libera" di `--list-devices` ignora le altre applicazioni (Windows ne sfratta la memoria): `HardwareModelAdvisor` usa la VRAM totale meno 1 GB.
+- Le soglie del consigliere per 8, 10 e 24 GB sono calcolate, **non misurate**.
+
 ---
 
 ## 13. Modelli
@@ -702,5 +716,6 @@ La sezione Android deve includere almeno:
 | 2026-09-28 | `fase6.11` spec | Integrazione target sperimentale macOS Apple Silicon (playtest) e livello PLAYTEST_VERIFIED |
 | 2026-09-29 | `fase6.11.5` | Certificazione PLAYTEST_VERIFIED per Apple Silicon M-series (10 turni validati da validate_playtest_replay.dart) |
 | 2026-10-28 | correzione documentata | Revoca di PLAYTEST_VERIFIED macOS: replay di evidenza non prodotto dall'app (dettagli in §20.1); stato riportato a NOT_RUN |
+| 2026-11-24 | `b1dccbc` | Misure RTX 3060 per due modelli e modello condiviso (§12.1) |
 
 Le revisioni future devono aggiungere righe senza cancellare risultati storici, salvo correzione documentata.

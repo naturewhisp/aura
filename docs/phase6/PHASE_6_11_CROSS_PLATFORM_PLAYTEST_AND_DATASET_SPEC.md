@@ -429,17 +429,17 @@ flowchart TD
   * **6.11.3F — Windows Authoritative Gate:** Convalida statica e dinamica (`dart analyze`, `dart test`, `flutter analyze`, `flutter test`, `flutter build windows --release`) sul runner Windows CI. Nessuna build macOS né workflow permanente macOS viene introdotto in questa sottofase (demandati alla 6.11.4).
 * **Test di Verifica:** `desktop_window_controller_factory_test.dart` per factory, controller NoOp e controller macOS con fake bindings; test di regressione su widget e shell.
 * **Exit Milestone e Checklist di Uscita Finale (Gate Autorevole Windows):**
-  - [ ] `app/lib/main.dart` non conosce né importa `WindowsDesktopWindowController`
-  - [ ] `DesktopWindowControllerFactory` coperta deterministicamente per Windows, macOS e other
-  - [ ] `NoOpDesktopWindowController` completamente testato
-  - [ ] `MacOSDesktopWindowController` coperto tramite fake native bindings su Windows runner
-  - [ ] Shutdown coordinato Windows + macOS modellato e testato
-  - [ ] `app/macos/` versionato nel repository
-  - [ ] `app/.metadata` aggiornato con la piattaforma macOS registrata
-  - [ ] `com.apple.security.network.client` presente in DebugProfile e Release entitlements
-  - [ ] `com.apple.security.network.server` presente solo in DebugProfile e categoricamente assente in Release
-  - [ ] Nessuna CI macOS permanente ancora introdotta
-  - [ ] **GitHub Actions `windows-latest` (`ci.yml`) completamente verde** (format, analyze, test core, test app, build windows)
+  - [x] `app/lib/main.dart` non conosce né importa `WindowsDesktopWindowController`
+  - [x] `DesktopWindowControllerFactory` coperta deterministicamente per Windows, macOS e other
+  - [x] `NoOpDesktopWindowController` completamente testato
+  - [x] `MacOSDesktopWindowController` coperto tramite fake native bindings su Windows runner
+  - [ ] Shutdown coordinato Windows + macOS modellato e testato *(verifica 2026-11-24: coperti single-flight e tolleranza agli errori; manca un test specifico del ramo macOS)*
+  - [x] `app/macos/` versionato nel repository
+  - [x] `app/.metadata` aggiornato con la piattaforma macOS registrata
+  - [x] `com.apple.security.network.client` presente in DebugProfile e Release entitlements
+  - [x] `com.apple.security.network.server` presente solo in DebugProfile e categoricamente assente in Release
+  - [x] Nessuna CI macOS permanente ancora introdotta *(soddisfatta alla chiusura della sottofase; `macos-verify.yml` on-demand è stato introdotto nella 6.11.4)*
+  - [x] **GitHub Actions `windows-latest` (`ci.yml`) completamente verde** (format, analyze, test core, test app, build windows)
 
 ### 6.11.4: CI Automation & On-Demand Verification
 * **Obiettivo:** Configurare la build pipeline on-demand su runner GitHub Actions Apple Silicon (`macos-14`) ed eliminare ogni duplicazione di controlli CI tramite una **Composite Action condivisa**.
@@ -491,3 +491,4 @@ La Fase 6.11 si considererà conclusa con successo quando saranno soddisfatti tu
 | 2026-09-28 | Revisione 2 | Scomposizione della Fase 6.11 in 5 sotto-fasi operative sequenziali (6.11.1 – 6.11.5) |
 | 2026-09-29 | Revisione 3 | Completamento sotto-fasi 6.11.1–6.11.5, validazione criteri G1–G7 e certificazione PLAYTEST_VERIFIED |
 | 2026-10-28 | Revisione 4 | Revoca di G6 / PLAYTEST_VERIFIED (evidenza non prodotta dall'app), cablaggio della provenance osservata nell'app, tutorial escluso dal dataset, validatore con controlli di autenticità |
+| 2026-11-24 | Revisione 5 | Checklist 6.11.3 verificata voce per voce; origine dataset dichiarata in build (`AURA_DATASET_SOURCE`): solo i pacchetti di rilascio dichiarano `human_playtest`, le altre build `developer_evaluation` |

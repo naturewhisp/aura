@@ -84,7 +84,7 @@ if ($LASTEXITCODE -ne 0 -or $gitCommit -notmatch '^[0-9a-f]{40}$') {
 }
 Push-Location "$projectRoot\app"
 try {
-    Invoke-NativeCommand { flutter build windows --release "--dart-define=AURA_APP_VERSION=$Version" "--dart-define=AURA_GIT_COMMIT=$gitCommit" } "Flutter build windows --release"
+    Invoke-NativeCommand { flutter build windows --release "--dart-define=AURA_APP_VERSION=$Version" "--dart-define=AURA_GIT_COMMIT=$gitCommit" "--dart-define=AURA_DATASET_SOURCE=human_playtest" } "Flutter build windows --release"
 } finally {
     Pop-Location
 }

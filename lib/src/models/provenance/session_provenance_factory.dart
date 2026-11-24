@@ -22,6 +22,17 @@ abstract final class SessionProvenanceFactory {
     defaultValue: 'unknown',
   );
 
+  /// Origine delle sessioni dichiarata in build (`--dart-define=AURA_DATASET_SOURCE=...`).
+  ///
+  /// Solo i pacchetti di rilascio dichiarano `human_playtest`: build di sviluppo,
+  /// collaudi e sessioni automatizzate non devono mai risultare playtest umani.
+  static DatasetSource get defaultDatasetSource => DatasetSource.fromString(
+        const String.fromEnvironment(
+          'AURA_DATASET_SOURCE',
+          defaultValue: 'developer_evaluation',
+        ),
+      );
+
   /// Rileva l'architettura della CPU host in modo normalizzato.
   static String detectArchitecture() {
     final version = io.Platform.version.toLowerCase();

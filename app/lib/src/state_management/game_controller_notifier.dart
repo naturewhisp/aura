@@ -310,11 +310,14 @@ class GameControllerNotifier extends ChangeNotifier {
 
   ReplayLogger _createLogger(
     String sessionId, {
-    DatasetSource datasetSource = DatasetSource.humanPlaytest,
+    DatasetSource? datasetSource,
   }) {
     return ReplayLogger(
       sessionId: sessionId,
-      sessionProvenance: _buildSessionProvenance(sessionId, datasetSource),
+      sessionProvenance: _buildSessionProvenance(
+        sessionId,
+        datasetSource ?? SessionProvenanceFactory.defaultDatasetSource,
+      ),
     );
   }
 
@@ -657,7 +660,7 @@ class GameControllerNotifier extends ChangeNotifier {
           _observedRuntimeProvenance =
               SessionProvenanceFactory.fromRuntimeObservation(
             sessionId: gameStateNotifier.value.sessionId,
-            datasetSource: DatasetSource.humanPlaytest,
+            datasetSource: SessionProvenanceFactory.defaultDatasetSource,
             runtimeBackend: 'managed_llama_server',
             runtimeAcceleration: runtimeAcceleration?.name ?? 'unknown',
             llamaCppBuild: llamaCppBuild ?? 'unknown',
@@ -679,7 +682,7 @@ class GameControllerNotifier extends ChangeNotifier {
           logger.sessionProvenance = _buildSessionProvenance(
             logger.sessionId,
             logger.sessionProvenance?.datasetSource ??
-                DatasetSource.humanPlaytest,
+                SessionProvenanceFactory.defaultDatasetSource,
           );
         case ExternalResolution(:final endpoint):
           _observedRuntimeProvenance = null;

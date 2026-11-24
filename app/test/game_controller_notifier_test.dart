@@ -1822,7 +1822,7 @@ void _sessionTests() {
     });
 
     test(
-        '12b. il tutorial scriptato è escluso dal dataset, la partita libera no',
+        '12b. tutorial non classificato, partita di build di sviluppo mai playtest umano',
         () async {
       final notifier = makeNotifier();
 
@@ -1834,7 +1834,8 @@ void _sessionTests() {
 
       await notifier.startNewGame();
       final gameProvenance = notifier.logger.sessionProvenance!;
-      expect(gameProvenance.datasetSource, equals(DatasetSource.humanPlaytest));
+      expect(gameProvenance.datasetSource,
+          equals(DatasetSource.developerEvaluation));
       // Senza bootstrap managed osservato la provenance resta incompleta (fail-closed).
       expect(gameProvenance.runtimeBackend, equals('unknown'));
       expect(notifier.logger.validateProvenance().isScientificallyComplete,
@@ -1887,7 +1888,7 @@ void _sessionTests() {
 
       expect(notifier.logger.sessionProvenance, isNotNull);
       expect(notifier.logger.sessionProvenance!.datasetSource,
-          equals(DatasetSource.humanPlaytest));
+          equals(DatasetSource.developerEvaluation));
       expect(notifier.logger.sessionProvenance!.sessionId,
           equals(notifier.gameStateNotifier.value.sessionId));
 
@@ -1916,7 +1917,7 @@ void _sessionTests() {
           jsonDecode(savedReplay.readAsStringSync()) as Map<String, dynamic>;
       expect(jsonMap['sessionProvenance'], isNotNull);
       expect(jsonMap['sessionProvenance']['datasetSource'],
-          equals('human_playtest'));
+          equals('developer_evaluation'));
       expect(jsonMap['entries'][0]['generationProvenance'], isNotNull);
 
       // In assenza di un backend reale con modelli GGUF hash-verificati, la provenance
@@ -1945,6 +1946,13 @@ void _sessionTests() {
         evaluatorQuantization: 'Q4_K_M',
         evaluatorContextSize: 4096,
       );
+      // Metadati completi non bastano: una build di sviluppo non è un playtest umano.
+      expect(notifier.logger.validateProvenance().isScientificallyComplete,
+          isTrue);
+      expect(
+          notifier.logger.validateProvenance().isLoraTrainingEligible, isFalse);
+      notifier.logger.sessionProvenance = notifier.logger.sessionProvenance!
+          .copyWith(datasetSource: DatasetSource.humanPlaytest);
       final enrichedVal = notifier.logger.validateProvenance();
       expect(enrichedVal.isStructurallyValid, isTrue);
       expect(enrichedVal.isScientificallyComplete, isTrue);

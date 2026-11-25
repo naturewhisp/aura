@@ -890,6 +890,4 @@ Prima dell'apertura formale della Fase 7 (Android Edge Client), la Fase 6 viene 
 
 Tutte le sottofasi della Fase 6 (da 6.0 a 6.10) sono interamente implementate, testate e consolidate a livello architetturale e funzionale. Con l'approvazione delle specifiche della **Fase 6.11**, il collaudo multi-hardware Windows di 6.10 prosegue in parallelo all'esecuzione ordinata dei 5 step incrementali (6.11.1–6.11.5). Al soddisfacimento degli exit criteria della 6.11 e alla registrazione delle evidenze nella matrice hardware, la Fase 6 verrà formalmente dichiarata conclusa, aprendo i battenti della **Fase 7 (Android Edge Client)** su una fondazione nativamente e comprovatamente platform-neutral.
 
-
-
-
+> **Proposta fuori dalla Fase 6:** la voce sintetica delle identità è descritta nell'[analisi preliminare](docs/TTS_VOICE_FEASIBILITY.md). Nessun componente è implementato o approvato.

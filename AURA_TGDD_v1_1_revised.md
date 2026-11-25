@@ -4435,6 +4435,8 @@ Obiettivi:
 - telemetria opt-in e rating;
 - build release pubblica Windows e Android secondo readiness.
 
+> **Proposta in valutazione, non approvata:** voce sintetica delle identità. Vedi l'[analisi preliminare](docs/TTS_VOICE_FEASIBILITY.md); l'ingresso in roadmap dipende dall'esito dello spike.
+
 ### Fase 10 — Pipeline di Fine-Tuning Continuo (Post-Rilascio)
 
 Durata stimata: continuativa, con cicli controllati.

@@ -561,3 +561,22 @@ revisione dell'utente prima della successiva; nessuna tranche anticipa il conten
   primo audio previsto.
 - Sincronizzazione **parola per parola**: rinviata. Richiede di riesportare il modello per ottenere le durate dei
   fonemi.
+
+### 12.2 V1 completata (2026-11-26)
+
+Modulo `lib/src/speech/` di `aura_core`, esportato da `package:aura_core/aura_core.dart`; nessuna dipendenza nuova,
+nessun collegamento ancora con il gioco.
+
+| Componente | Ruolo |
+|---|---|
+| `SpeechTextNormalizer`, `ItalianNumberWords` | Tolgono tag e formattazione; scrivono in lettere numeri, orari, percentuali e decimali; leggono le sigle note |
+| `SpeechSegmenter`, `SpeechSpan` | Dividono il **testo mostrato** in frasi e ne restituiscono le posizioni, per la sincronizzazione della V3; primo blocco diviso alla prima virgola utile |
+| `ItalianPhonemizer` | Fonetica italiana dello spike, con lessico e regole incorporati |
+| `SpeechTextPlanner`, `SpeechChunk` | Uniscono i tre passaggi: per ogni blocco, testo mostrato, testo pronunciato e fonemi |
+
+- I test confrontano la fonetica con 1.600 trascrizioni registrate dal prototipo (`test/fixtures/speech_phonemes_it.json`):
+  tutte identiche. Le parole di WikiPron sono state escluse dalla fixture.
+- Errori trovati scrivendo i test e corretti: «dodici», «tredici», «quattordici», «sedici» e «venti» uscivano con vocale
+  aperta, «sette» chiusa, «virgola» con l'accento sbagliato, «uno» numerale atono e la «s» di «ventisei» sonora.
+  Le correzioni non sono state ascoltate.
+- Il testo da pianificare deve essere già privo dei tag dell'agent-loop, come quello mostrato a schermo.

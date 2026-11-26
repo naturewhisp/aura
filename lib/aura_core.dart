@@ -44,6 +44,12 @@ export 'src/desktop_shell/window_geometry_validator.dart';
 export 'src/desktop_shell/window_preferences_repository.dart';
 export 'src/desktop_shell/window_geometry_persistence_coordinator.dart';
 
+// Voce sintetica: testo, divisione in blocchi e fonetica (tranche V1)
+export 'src/speech/italian_phonemizer.dart';
+export 'src/speech/speech_segmenter.dart';
+export 'src/speech/speech_text_normalizer.dart';
+export 'src/speech/speech_text_planner.dart';
+
 // Audio Domain Contracts (Phase 6.7)
 export 'src/audio/audio_manifest.dart';
 export 'src/audio/wav_header_verifier.dart';

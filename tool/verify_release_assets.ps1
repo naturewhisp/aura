@@ -96,6 +96,13 @@ if ([string]::IsNullOrWhiteSpace($relManifest.sourceCommit)) {
 if (-not $relManifest.signedCatalogs) {
     throw "[FAIL-CLOSED] release-manifest.json dichiara signedCatalogs: false"
 }
+# La versione e il tag dichiarati devono coincidere con il rilascio verificato.
+if ($relManifest.appVersion -ne $Version) {
+    throw "[FAIL-CLOSED] release-manifest.json dichiara appVersion '$($relManifest.appVersion)' invece di '$Version'"
+}
+if ($relManifest.tag -ne "v$Version") {
+    throw "[FAIL-CLOSED] release-manifest.json dichiara tag '$($relManifest.tag)' invece di 'v$Version'"
+}
 
 if ($ReleaseKind -eq "official") {
     if ($relManifest.macosCandidateFile) {

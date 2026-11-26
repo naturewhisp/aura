@@ -547,7 +547,7 @@ revisione dell'utente prima della successiva; nessuna tranche anticipa il conten
 |---|---|---|
 | **V1 — Testo e fonetica** | In `aura_core`: pulizia del testo (tag `<dialogo>`, numeri in lettere, sigle), divisione in frasi, fonetica italiana e lessico portati dallo spike, con test di regressione | Nessuno |
 | **V2 — Motore di sintesi** | Contratto `SpeechEngine`, motore silenzioso di ripiego e motore Kokoro tramite ONNX Runtime (FFI); file messi a mano in una cartella di sviluppo; prova da riga di comando | ONNX Runtime da fonte ufficiale, previo consenso |
-| **V3 — Voce nel gioco** | Profilo voce accanto all'identità; regolazioni da `ActorCue`; catena di effetti; canale voce con abbassamento della musica combinato al focus; interruzione a ogni nuovo turno; nessuna voce al ripristino; **opzione voce on/off** (spenta per impostazione predefinita) e **sincronizzazione del testo** | Nessuno |
+| **V3 — Voce nel gioco** (divisa in V3a, V3b, V3c) | Profilo voce accanto all'identità; regolazioni da `ActorCue`; catena di effetti; canale voce con abbassamento della musica combinato al focus; interruzione a ogni nuovo turno; nessuna voce al ripristino; **opzione voce on/off** (spenta per impostazione predefinita) e **sincronizzazione del testo** | Nessuno |
 | **V4 — Distribuzione** | Modello e libreria scaricabili dal catalogo firmato, verifica di hash e licenze; misura con il gioco attivo | Nessuno in più |
 
 ### 12.1 Opzioni e sincronizzazione (V3)
@@ -617,3 +617,28 @@ Limiti noti, da affrontare nella V3:
 - Se il primo blocco è lungo e senza virgole, il primo audio arriva tardi (fino a 1,8 s).
 - I puntini di sospensione dividono la frase in due blocchi: introducono una pausa, oggi non valutata all'ascolto.
 - I campioni della V2 (`.local/speech/v2`) non sono ancora stati ascoltati.
+
+### 12.4 V3 divisa in tre sotto-tranche
+
+| Sotto-tranche | Contenuto |
+|---|---|
+| **V3a** | Nel core, senza interfaccia: profilo voce per identità, regia dallo stato di gioco, catena di effetti in Dart |
+| **V3b** | Nell'app: ciclo di vita del motore, riproduzione, abbassamento della musica combinato al focus, interruzioni, nessuna voce al ripristino, opzione «Voce» |
+| **V3c** | Sincronizzazione del testo frase per frase |
+
+### 12.5 V3a completata (2026-11-26)
+
+| Componente | Ruolo |
+|---|---|
+| `VoiceProfile`, `VoiceEffectSettings`, `VoiceAlertRule` | Profilo voce di un'identità, validato in modo rigoroso (chiavi ammesse, intervalli, nome del file voce senza percorsi) |
+| `VoiceDirector`, `VoiceDirection` | Velocità e pausa tra i blocchi dall'allerta; effetti dal profilo |
+| `VoiceEffectChain` | Passa-alto, passa-basso, compressore, eco e guadagno in Dart, senza dipendenze native |
+| `app/assets/config/panopticon_voice.json` | Profilo di PANOPTICON: voce `im_nicola`, effetti approvati in §11.8, voce un po' più rapida e pause più brevi da allerta 70 |
+
+- **Decisione di game design:** la regia usa **solo l'allerta**, che il giocatore vede già nello sfondo. Pilastri e
+  inganni fanno parte del modello di gioco nascosto e la voce non deve rivelarli (§5); un test lo verifica.
+- **Equivalenza con gli effetti approvati:** sulle tre battute della V2, la catena in Dart e quella ffmpeg ascoltata in
+  §11.8 hanno correlazione 0,99 sull'onda e 0,998 sullo spettro, volume entro 0,2 dB e bande entro 0,35 dB; i picchi
+  dei transienti sono un po' più alti in Dart (0,39 contro 0,30). Elaborazione: 31 ms per 12 s di voce.
+- Le regole di allerta (velocità 1,06, pause 0,6) sono una proposta, non ancora ascoltata. Campioni con effetti in
+  `.local/speech/fx/` (`dart_*.wav` e i corrispondenti `ffmpeg_*.wav`).

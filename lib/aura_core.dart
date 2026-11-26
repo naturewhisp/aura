@@ -51,6 +51,8 @@ export 'src/speech/speech_text_normalizer.dart';
 export 'src/speech/speech_text_planner.dart';
 export 'src/speech/speech_engine.dart';
 export 'src/speech/wav_encoder.dart';
+export 'src/speech/voice_profile.dart';
+export 'src/speech/voice_effect_chain.dart';
 
 // Audio Domain Contracts (Phase 6.7)
 export 'src/audio/audio_manifest.dart';

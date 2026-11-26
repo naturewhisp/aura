@@ -1,0 +1,20 @@
+{
+  "identity_id": "panopticon",
+  "voice_file": "im_nicola.bin",
+  "base_speed": 1.0,
+  "sentence_pause_ms": 300,
+  "alert_rules": [
+    { "min_alert": 70, "speed_factor": 1.06, "pause_factor": 0.6 }
+  ],
+  "effects": {
+    "highpass_hz": 140,
+    "lowpass_hz": 6500,
+    "compressor_threshold_db": -20,
+    "compressor_ratio": 3,
+    "echo_delays_ms": [45, 90],
+    "echo_decays": [0.18, 0.10],
+    "echo_input_gain": 0.8,
+    "echo_output_gain": 0.7,
+    "output_gain": 1.3
+  }
+}

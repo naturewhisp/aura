@@ -580,3 +580,40 @@ nessun collegamento ancora con il gioco.
   aperta, «sette» chiusa, «virgola» con l'accento sbagliato, «uno» numerale atono e la «s» di «ventisei» sonora.
   Le correzioni non sono state ascoltate.
 - Il testo da pianificare deve essere già privo dei tag dell'agent-loop, come quello mostrato a schermo.
+
+### 12.3 V2 completata (2026-11-26)
+
+| Componente | Entrypoint | Ruolo |
+|---|---|---|
+| `SpeechEngine`, `SpeechAudio`, `SpeechVoiceRequest`, `SpeechEngineException` | `aura_core` | Contratto del motore, audio prodotto, velocità, errori tipizzati con messaggi senza percorsi |
+| `SilentSpeechEngine` | `aura_core` | Ripiego silenzioso per voce spenta o non disponibile |
+| `encodePcm16Wav` | `aura_core` | Scrittura WAV PCM 16 bit |
+| `KokoroTokenizer`, `KokoroVoiceStyle` | `aura_offline` | Simboli del modello (vocabolario Apache-2.0 incorporato) e stili della voce |
+| `KokoroOnnxSpeechEngine`, `KokoroEngineFiles` | `aura_offline` | Kokoro con ONNX Runtime via FFI, in un **isolate dedicato**: la sintesi non blocca l'interfaccia |
+
+Nuova dipendenza: `ffi` (pacchetto del team Dart). Nessun file del motore nel repository.
+
+**ONNX Runtime 1.32.0** dal pacchetto NuGet ufficiale `microsoft.ml.onnxruntime.1.32.0.nupkg` (184.391.411 byte,
+SHA-512 uguale a quello pubblicato da NuGet). `onnxruntime.dll` win-x64: firma Authenticode valida di Microsoft
+Corporation, SHA-256 `348c3d29d6995eee37e3451825eaddb7ea7400be3afda6ca2286b12bc775f042`, licenza MIT. I 19 indici della
+tabella `OrtApi` usati sono stati **verificati sull'intestazione ufficiale** del pacchetto, non più ricavati da memoria.
+Il repository GitHub di ONNX Runtime risultava irraggiungibile da questa macchina.
+
+Verifiche:
+
+- Test standard (senza codice nativo): contratto, motore silenzioso, WAV, tokenizzatore (copertura di tutti i simboli
+  della fonetica italiana), stili, file mancanti o non validi, rilascio single-flight.
+- Runner opt-in `tool/tests/speech_native_runner.dart` (`AURA_TEST_RUNTIME_POLICY=nativeSmoke`): 13 verifiche superate
+  sul motore reale, tra cui richieste concorrenti, effetto della velocità, blocco troppo lungo e libreria assente.
+- Strumento `tool/speech/aura_speak.dart`: sintetizza battute in WAV. File di sviluppo in `.local/speech/`, escluso da Git.
+
+Prestazioni con lo strumento compilato, 4 thread, 20 battute nuove: primo audio mediano 0,85 s, 90° percentile
+1,65 s, 4,0× il tempo reale. L'eseguibile dello spike, rieseguito nelle stesse condizioni, dà gli stessi valori
+(contro 0,54 s e 6,2× misurati nello spike): la differenza viene dal carico della macchina, con altri programmi
+attivi, non dal codice. Cambiare la DLL (pip o NuGet) non cambia nulla.
+
+Limiti noti, da affrontare nella V3:
+
+- Se il primo blocco è lungo e senza virgole, il primo audio arriva tardi (fino a 1,8 s).
+- I puntini di sospensione dividono la frase in due blocchi: introducono una pausa, oggi non valutata all'ascolto.
+- I campioni della V2 (`.local/speech/v2`) non sono ancora stati ascoltati.

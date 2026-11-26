@@ -49,6 +49,8 @@ export 'src/speech/italian_phonemizer.dart';
 export 'src/speech/speech_segmenter.dart';
 export 'src/speech/speech_text_normalizer.dart';
 export 'src/speech/speech_text_planner.dart';
+export 'src/speech/speech_engine.dart';
+export 'src/speech/wav_encoder.dart';
 
 // Audio Domain Contracts (Phase 6.7)
 export 'src/audio/audio_manifest.dart';

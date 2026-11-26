@@ -2,6 +2,10 @@ library aura_offline;
 
 export 'aura_core.dart';
 
+// Voce sintetica: motore Kokoro con ONNX Runtime (tranche V2)
+export 'src/speech/kokoro/kokoro_tokenizer.dart';
+export 'src/speech/kokoro/kokoro_onnx_speech_engine.dart';
+
 // Concrete Agents & Registries
 export 'src/agent_runtime/agent_card.dart';
 export 'src/agent_runtime/message_envelope.dart';

@@ -59,7 +59,8 @@ void main() {
           .forEach((w, p) => expect(phonemizer.transcribe(w), p, reason: w));
     });
 
-    test('terze persone in -dono e iato dopo i prefissi (segnalati all'ascolto)', () {
+    test('terze persone in -dono e iato dopo i prefissi (segnalati in gioco)',
+        () {
       expect(phonemizer.transcribe('coincidono'), 'koinʧˈidono');
       expect(phonemizer.transcribe('decidono'), 'deʧˈidono');
       expect(phonemizer.transcribe('coinvolto'), 'koinvˈɔlto');

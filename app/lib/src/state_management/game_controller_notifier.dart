@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:aura_core/aura_offline.dart' hide BootstrapFallbackPolicy;
 import 'package:aura_app/src/audio/audio_manager.dart';
 import 'package:aura_app/src/audio/audio_scene.dart';
+import 'package:aura_app/src/speech/voice_service.dart';
 import 'package:aura_app/src/session/active_session.dart';
 import 'package:aura_app/src/session/file_session_repository.dart';
 import 'package:aura_app/src/session/session_repository.dart';
@@ -422,9 +423,34 @@ class GameControllerNotifier extends ChangeNotifier {
     });
   }
 
+  /// Voce sintetica dell'IA, assegnata dal composition root (assente nei test e in CLI).
+  VoiceService? voiceService;
+
+  void _stopVoice() {
+    final voice = voiceService;
+    if (voice != null) unawaited(voice.stop());
+  }
+
+  /// Testo da pronunciare per una risposta dell'IA: senza tag dell'agent-loop e senza
+  /// l'eventuale avviso di sistema tra parentesi quadre che la precede (non è una
+  /// battuta del personaggio).
+  @visibleForTesting
+  static String spokenActorLine(String response) => response
+      .replaceAll(RegExp(r'</?(?:dialogo|dialogue)>', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^\s*\[[^\]\n]*\]\s*'), '')
+      .trim();
+
+  void _speakActorLine(String response, ActorCue? cue) {
+    final voice = voiceService;
+    if (voice == null) return;
+    final line = spokenActorLine(response);
+    if (line.isNotEmpty) unawaited(voice.speak(line, cue: cue));
+  }
+
   /// Cambia la schermata attiva dell'applicazione.
   void switchScreen(String screen) {
     _currentScreen = screen;
+    if (screen != 'terminal') _stopVoice();
     switch (screen) {
       case 'boot':
         unawaited(AudioManager().transitionTo(AudioSceneState.boot));
@@ -877,6 +903,7 @@ class GameControllerNotifier extends ChangeNotifier {
   /// Attiva/disattiva gli effetti sonori e il sottofondo audio.
   Future<void> toggleAudio(bool value) async {
     audioEnabled = value;
+    if (!value) _stopVoice();
     await AudioManager().setAudioEnabled(value);
     await saveSettings();
     notifyListeners();
@@ -892,6 +919,7 @@ class GameControllerNotifier extends ChangeNotifier {
   /// lo stato e i log su disco.
   Future<void> submitTurn(String userInput) async {
     if (_isLoading) return;
+    _stopVoice();
     final generation = ++_operationGeneration;
     _isLoading = true;
     _loadingLogs.clear();
@@ -1237,6 +1265,9 @@ class GameControllerNotifier extends ChangeNotifier {
           actorResponse: actorResponse,
         );
         gameStateNotifier.value = finalState;
+        if (!_isStale(generation)) {
+          _speakActorLine(actorResponse, resolution.actorCue);
+        }
       } else {
         lastInferenceDuration = 0.0;
         lastTokensPerSecond = 0.0;
@@ -1254,6 +1285,9 @@ class GameControllerNotifier extends ChangeNotifier {
           actorResponse: actorResponse,
         );
         gameStateNotifier.value = finalState;
+        if (!_isStale(generation)) {
+          _speakActorLine(actorResponse, resolution.actorCue);
+        }
       }
 
       final finalState = gameStateNotifier.value;
@@ -1704,6 +1738,7 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
 
   void _invalidatePendingOperations() {
     _operationGeneration++;
+    _stopVoice();
     _loadingTimer?.cancel();
     _loadingTimer = null;
     _isLoading = false;
@@ -1746,6 +1781,15 @@ Racchiudi il rapporto all'interno dei tag <rapporto>...</rapporto>. Non aggiunge
 
   Future<void> _performShutdown() async {
     _isBootstrapped = false;
+    final voice = voiceService;
+    voiceService = null;
+    if (voice != null) {
+      try {
+        await voice.dispose();
+      } catch (_) {
+        debugPrint('[NOTIFIER] Errore durante il rilascio della voce.');
+      }
+    }
     if (_managedBootstrapDispose != null) {
       final disposeFn = _managedBootstrapDispose!;
       _managedBootstrapDispose = null;

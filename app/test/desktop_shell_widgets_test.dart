@@ -9,6 +9,17 @@ import 'package:aura_app/src/state_management/desktop_shell_controller.dart';
 import 'package:aura_app/src/state_management/application_shutdown_coordinator.dart';
 import 'package:aura_app/src/screens/boot_menu_screen.dart';
 import 'package:aura_app/src/platform/desktop_shell_provider.dart';
+import 'package:aura_app/src/speech/voice_service.dart';
+
+class _NoPlayback implements VoicePlaybackBackend {
+  int stops = 0;
+  @override
+  Future<void> play(Uint8List wav) async {}
+  @override
+  Future<void> stop() async => stops++;
+  @override
+  Future<void> dispose() async {}
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -182,6 +193,82 @@ void main() {
   });
 
   group('Desktop Shell Widgets & DISPLAY Section', () {
+    Future<GameControllerNotifier> pumpSettings(
+        WidgetTester tester, VoiceService? voice) async {
+      final notifier = GameControllerNotifier(
+        bridge: MockInferenceBridge(),
+        initialState: GameState.initial(
+          sessionId: 'test-voice-settings',
+          aiIdentityId: 'panopticon',
+          targetObjectiveId: 'containment_grid_override',
+        ),
+      )..voiceService = voice;
+      await tester.pumpWidget(
+        GameControllerProvider(
+          notifier: notifier,
+          child: DesktopShellProvider(
+            controller: shellController,
+            child: MaterialApp(
+              home: BootMenuScreen(
+                notifier: notifier,
+                dependencyService: const FakeLlamaServerDependencyService(),
+                initialSubScreen: 'settings',
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      return notifier;
+    }
+
+    testWidgets('opzione Voce non disponibile senza i file del motore',
+        (WidgetTester tester) async {
+      await pumpSettings(tester, null);
+      final box = find.byKey(const Key('checkbox_voice_enabled'));
+      await tester.ensureVisible(box);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.widget<Checkbox>(box).onChanged, isNull);
+      expect(tester.widget<Checkbox>(box).value, isFalse);
+      expect(find.textContaining('[NON DISPONIBILE]'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 350));
+    });
+
+    testWidgets(
+        'attivare la Voce con audio generale spento lo riaccende; spegnerla interrompe',
+        (WidgetTester tester) async {
+      final playback = _NoPlayback();
+      final voice = VoiceService(
+        engine: SilentSpeechEngine(),
+        playback: playback,
+        profile: VoiceProfile(identityId: 'panopticon', voiceFile: 'v.bin'),
+        isAllowed: () => true,
+        setDucked: (_) async {},
+      );
+      final notifier = await pumpSettings(tester, voice);
+      final box = find.byKey(const Key('checkbox_voice_enabled'));
+      await tester.ensureVisible(box);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(shellController.state.voiceEnabled, isFalse);
+
+      await tester.runAsync(() => notifier.toggleAudio(false));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(find.textContaining('[MUTED]'), findsWidgets);
+
+      await tester.tap(box);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(shellController.state.voiceEnabled, isTrue);
+      expect(notifier.audioEnabled, isTrue);
+
+      final before = playback.stops;
+      await tester.tap(box);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(shellController.state.voiceEnabled, isFalse);
+      expect(playback.stops, greaterThan(before));
+      await tester.pump(const Duration(milliseconds: 350));
+    });
+
     testWidgets(
         'Renders DISPLAY section in BootMenuScreen Settings and updates startupMode',
         (WidgetTester tester) async {

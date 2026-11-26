@@ -8,6 +8,8 @@ import 'package:aura_core/aura_offline.dart';
 import '../state_management/game_controller_notifier.dart';
 import '../state_management/ui_failure_message.dart';
 import '../audio/audio_manager.dart';
+import '../speech/voice_service.dart';
+import '../state_management/desktop_shell_controller.dart';
 import '../audio/boot_audio_service.dart';
 import '../widgets/audio_reactive_background.dart';
 import '../widgets/overwrite_session_dialog.dart';
@@ -647,6 +649,70 @@ class _BootMenuScreenState extends State<BootMenuScreen>
         _backToMainMenu();
       }
     }
+  }
+
+  /// Stato usato quando l'app non ha creato alcuna voce (test, CLI).
+  static final ValueNotifier<VoiceStatus> _voiceUnavailable =
+      ValueNotifier(VoiceStatus.unavailable);
+
+  /// Riga dell'opzione «Voce»: richiede i file del motore e rispetta l'audio generale.
+  Widget _buildVoiceOption(
+      DesktopShellState state, DesktopShellController shellController) {
+    final voice = widget.notifier.voiceService;
+    return ValueListenableBuilder<VoiceStatus>(
+      valueListenable: voice?.status ?? _voiceUnavailable,
+      builder: (context, status, _) {
+        final available = status != VoiceStatus.unavailable;
+        const label = TextStyle(
+          fontFamily: 'monospace',
+          color: Color(0xFF00FF66),
+          fontSize: 11.0,
+        );
+        const badge = TextStyle(
+          fontFamily: 'monospace',
+          color: Color(0xFFFFB000),
+          fontSize: 10.0,
+          fontWeight: FontWeight.bold,
+        );
+        return Row(
+          children: [
+            Checkbox(
+              key: const Key('checkbox_voice_enabled'),
+              value: available && state.voiceEnabled,
+              activeColor: const Color(0xFF00FF66),
+              checkColor: Colors.black,
+              onChanged: !available
+                  ? null
+                  : (val) {
+                      if (val == null) return;
+                      shellController.setVoiceEnabled(val);
+                      if (!val) unawaited(voice?.stop());
+                      if (val && !widget.notifier.audioEnabled) {
+                        setState(() {
+                          unawaited(widget.notifier.toggleAudio(true));
+                        });
+                      }
+                    },
+            ),
+            Expanded(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                        text: "Voce di PANOPTICON (sperimentale)",
+                        style: label),
+                    if (!available)
+                      const TextSpan(text: " [NON DISPONIBILE]", style: badge)
+                    else if (!widget.notifier.audioEnabled)
+                      const TextSpan(text: " [MUTED]", style: badge),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -2165,6 +2231,7 @@ class _BootMenuScreenState extends State<BootMenuScreen>
                           ),
                         ],
                       ),
+                      _buildVoiceOption(state, shellController),
                       const SizedBox(height: 16.0),
                       const Text(
                         "--- GRAFICA & PRESTAZIONI ---",

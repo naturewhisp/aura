@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +13,7 @@ import 'src/platform/desktop_window_controller_factory.dart';
 import 'src/screens/terminal_screen.dart';
 import 'src/screens/app_startup_gate.dart';
 import 'src/audio/audio_manager.dart';
+import 'src/speech/voice_bootstrap.dart';
 import 'src/theme/terminal_typography.dart';
 
 /// Punto di ingresso principale dell'applicazione Flutter per A.U.R.A.
@@ -98,6 +100,24 @@ class _AuraAppState extends State<AuraApp> with WidgetsBindingObserver {
     _initDesktopShell();
   }
 
+  /// Crea la voce dell'IA dopo la shell, perché l'opzione «Voce» è una sua preferenza.
+  /// Nei test non viene creata: richiede plugin audio e file nativi.
+  Future<void> _initVoice() async {
+    if (Platform.environment.containsKey('FLUTTER_TEST') ||
+        widget.notifier.voiceService != null) {
+      return;
+    }
+    final voice = await createDesktopVoiceService(
+      isAllowed: () =>
+          widget.notifier.audioEnabled && _shellController.state.voiceEnabled,
+    );
+    if (!mounted || widget.notifier.isShutdown) {
+      await voice?.dispose();
+      return;
+    }
+    widget.notifier.voiceService = voice;
+  }
+
   void _initDesktopShell() {
     _windowController = widget.desktopWindowController ??
         DesktopWindowControllerFactory.create();
@@ -131,13 +151,17 @@ class _AuraAppState extends State<AuraApp> with WidgetsBindingObserver {
       unawaited(_shutdownCoordinator.requestShutdown());
     });
 
-    _prefsRepo.load().then((prefs) {
-      _persistenceCoordinator.updatePreferences(prefs);
-      return _shellController.initialize();
-    }).catchError((e) {
-      debugPrint(
-          '[SHELL] Errore durante l\'inizializzazione della shell desktop: $e');
-    });
+    _prefsRepo
+        .load()
+        .then((prefs) {
+          _persistenceCoordinator.updatePreferences(prefs);
+          return _shellController.initialize();
+        })
+        .then((_) => _initVoice())
+        .catchError((e) {
+          debugPrint(
+              '[SHELL] Errore durante l\'inizializzazione della shell desktop: $e');
+        });
 
     _shellController.addListener(_onShellStateChanged);
   }

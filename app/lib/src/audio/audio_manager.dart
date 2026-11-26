@@ -259,7 +259,7 @@ class AudioManager {
         await _machine.suspendAudio();
       }
 
-      if (_focusDucked) {
+      if (_isDucked) {
         await _machine.setDucked(true);
       }
 
@@ -403,7 +403,7 @@ class AudioManager {
       await _machine.suspendAudio();
     }
 
-    if (_focusDucked) {
+    if (_isDucked) {
       await _machine.setDucked(true);
     }
 
@@ -418,6 +418,13 @@ class AudioManager {
   }
 
   bool _focusDucked = false;
+
+  /// Attenuazione richiesta dalla voce sintetica mentre parla.
+  bool _voiceDucked = false;
+
+  /// La musica è attenuata se la finestra non ha il focus **oppure** se la voce parla:
+  /// le due cause si combinano e la fine di una non annulla l'altra.
+  bool get _isDucked => _focusDucked || _voiceDucked;
 
   /// Abilita o disabilita dinamicamente l'audio globale.
   Future<void> setAudioEnabled(bool enabled) async {
@@ -459,10 +466,25 @@ class AudioManager {
   Future<void> setFocusDucked(bool ducked) async {
     if (_disposed) return;
     if (_focusDucked == ducked) return;
+    final before = _isDucked;
     _focusDucked = ducked;
-    if (!_playersCreated) return;
-    await _machine.setDucked(_focusDucked);
+    if (!_playersCreated || before == _isDucked) return;
+    await _machine.setDucked(_isDucked);
   }
+
+  /// Applica o rimuove l'attenuazione della musica mentre la voce sintetica parla.
+  Future<void> setVoiceDucked(bool ducked) async {
+    if (_disposed) return;
+    if (_voiceDucked == ducked) return;
+    final before = _isDucked;
+    _voiceDucked = ducked;
+    if (!_playersCreated || before == _isDucked) return;
+    await _machine.setDucked(_isDucked);
+  }
+
+  /// Vero se la musica è attualmente attenuata (per focus o per voce).
+  @visibleForTesting
+  bool get isDucked => _isDucked;
 
   /// Avvia la transizione verso uno stato della scena musicale.
   Future<void> transitionTo(AudioSceneState nextState,
@@ -566,6 +588,7 @@ class AudioManager {
     _musicEnabled = true;
     _sfxEnabled = true;
     _focusDucked = false;
+    _voiceDucked = false;
     _playersCreated = false;
     _sfxPlayersCreated = false;
     _disposed = false;

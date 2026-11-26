@@ -53,6 +53,17 @@ void main() {
       expect(restored.reduceGraphicEffects, isTrue);
     });
 
+    test('voiceEnabled è spenta per impostazione predefinita e si conserva',
+        () {
+      expect(const WindowPreferences().voiceEnabled, isFalse);
+      expect(WindowPreferences.fromJson(const {}).voiceEnabled, isFalse);
+      const on = WindowPreferences(voiceEnabled: true);
+      final restored = WindowPreferences.fromJson(on.toJson());
+      expect(restored.voiceEnabled, isTrue);
+      expect(restored, equals(on));
+      expect(on == const WindowPreferences(), isFalse);
+    });
+
     test('WindowPreferences falls back safely on corrupted or unknown enums',
         () {
       final badJson = {

@@ -16,6 +16,7 @@ final class DesktopShellState {
   final bool reduceAnimationsOnUnfocus;
   final bool musicEnabled;
   final bool sfxEnabled;
+  final bool voiceEnabled;
   final bool reduceGraphicEffects;
 
   const DesktopShellState({
@@ -29,6 +30,7 @@ final class DesktopShellState {
     this.reduceAnimationsOnUnfocus = true,
     this.musicEnabled = true,
     this.sfxEnabled = true,
+    this.voiceEnabled = false,
     this.reduceGraphicEffects = false,
   });
 
@@ -43,6 +45,7 @@ final class DesktopShellState {
     bool? reduceAnimationsOnUnfocus,
     bool? musicEnabled,
     bool? sfxEnabled,
+    bool? voiceEnabled,
     bool? reduceGraphicEffects,
   }) {
     return DesktopShellState(
@@ -58,6 +61,7 @@ final class DesktopShellState {
           reduceAnimationsOnUnfocus ?? this.reduceAnimationsOnUnfocus,
       musicEnabled: musicEnabled ?? this.musicEnabled,
       sfxEnabled: sfxEnabled ?? this.sfxEnabled,
+      voiceEnabled: voiceEnabled ?? this.voiceEnabled,
       reduceGraphicEffects: reduceGraphicEffects ?? this.reduceGraphicEffects,
     );
   }
@@ -77,6 +81,7 @@ final class DesktopShellState {
           reduceAnimationsOnUnfocus == other.reduceAnimationsOnUnfocus &&
           musicEnabled == other.musicEnabled &&
           sfxEnabled == other.sfxEnabled &&
+          voiceEnabled == other.voiceEnabled &&
           reduceGraphicEffects == other.reduceGraphicEffects;
 
   @override
@@ -91,6 +96,7 @@ final class DesktopShellState {
         reduceAnimationsOnUnfocus,
         musicEnabled,
         sfxEnabled,
+        voiceEnabled,
         reduceGraphicEffects,
       );
 }
@@ -148,6 +154,7 @@ class DesktopShellController extends ChangeNotifier {
       reduceAnimationsOnUnfocus: prefs.reduceAnimationsOnUnfocus,
       musicEnabled: prefs.musicEnabled,
       sfxEnabled: prefs.sfxEnabled,
+      voiceEnabled: prefs.voiceEnabled,
       reduceGraphicEffects: prefs.reduceGraphicEffects,
     );
 
@@ -370,6 +377,16 @@ class DesktopShellController extends ChangeNotifier {
       persistenceCoordinator.currentPreferences.copyWith(sfxEnabled: enable),
     );
     AudioManager().setSfxEnabled(enable);
+    notifyListeners();
+  }
+
+  /// Attiva o disattiva la voce sintetica dell'IA (spenta per impostazione predefinita).
+  void setVoiceEnabled(bool enable) {
+    if (_state.voiceEnabled == enable) return;
+    _state = _state.copyWith(voiceEnabled: enable);
+    persistenceCoordinator.updatePreferences(
+      persistenceCoordinator.currentPreferences.copyWith(voiceEnabled: enable),
+    );
     notifyListeners();
   }
 

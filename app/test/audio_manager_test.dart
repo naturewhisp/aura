@@ -684,6 +684,39 @@ void main() {
           closeTo(profile.volume, 0.001));
     });
 
+    test('focus e voce si combinano: la fine di uno non annulla l\'altro',
+        () async {
+      final manager = AudioManager();
+      await manager.initialize('test_dir',
+          audioEnabled: true, musicEnabled: true);
+      await manager.setFocusDucked(true);
+      await manager.setVoiceDucked(true);
+      await manager.setVoiceDucked(false);
+      expect(manager.machine.isDucked, isTrue, reason: 'resta il focus perso');
+      await manager.setFocusDucked(false);
+      expect(manager.machine.isDucked, isFalse);
+      await manager.setVoiceDucked(true);
+      expect(manager.machine.isDucked, isTrue);
+      await manager.setFocusDucked(true);
+      await manager.setFocusDucked(false);
+      expect(manager.machine.isDucked, isTrue, reason: 'resta la voce');
+      await manager.setVoiceDucked(false);
+      expect(manager.machine.isDucked, isFalse);
+    });
+
+    test(
+        'setVoiceDucked prima di initialize viene applicato e azzerato dal reset',
+        () async {
+      final manager = AudioManager();
+      await manager.setVoiceDucked(true);
+      expect(manager.isDucked, isTrue);
+      await manager.initialize('test_dir',
+          audioEnabled: true, musicEnabled: true);
+      expect(manager.machine.isDucked, isTrue);
+      manager.resetForTesting();
+      expect(manager.isDucked, isFalse);
+    });
+
     test('transizione durante focusDucked attivo mantiene il volume attenuato',
         () async {
       final manager = AudioManager();

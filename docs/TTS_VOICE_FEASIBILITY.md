@@ -642,3 +642,29 @@ Limiti noti, da affrontare nella V3:
   dei transienti sono un po' più alti in Dart (0,39 contro 0,30). Elaborazione: 31 ms per 12 s di voce.
 - Le regole di allerta (velocità 1,06, pause 0,6) sono una proposta, non ancora ascoltata. Campioni con effetti in
   `.local/speech/fx/` (`dart_*.wav` e i corrispondenti `ffmpeg_*.wav`).
+
+### 12.6 V3b completata (2026-11-26)
+
+| Componente | Ruolo |
+|---|---|
+| `WindowPreferences.voiceEnabled`, `DesktopShellController.setVoiceEnabled` | Preferenza «Voce», **spenta** per impostazione predefinita, salvata come musica ed effetti |
+| `AudioManager.setVoiceDucked` | Abbassamento della musica combinato: attivo se la finestra non ha il focus **oppure** se la voce parla |
+| `VoiceService` (`app/lib/src/speech/`) | Pianifica, sintetizza con anticipo il blocco successivo, applica gli effetti, riproduce; ogni battuta interrompe la precedente; qualsiasi errore rende la voce muta senza toccare il gioco |
+| `VoiceAssetLocation`, `createDesktopVoiceService` | File del motore in `speech/` accanto all'eseguibile (`model.onnx`, `onnxruntime.dll`, `voices/<voce>.bin`) o in `AURA_SPEECH_DIR`; se mancano, la voce è «non disponibile» |
+| Opzione nelle impostazioni | «Voce di PANOPTICON (sperimentale)» con `[MUTED]` ad audio generale spento e `[NON DISPONIBILE]` senza file; attivarla riaccende l'audio generale |
+
+Comportamento nel gioco: parla dopo ogni risposta dell'Attore, escluso l'avviso di sistema tra parentesi quadre che
+può precederla; si interrompe all'invio di un nuovo turno, a nuova partita, tutorial, ripristino, uscita dal terminale,
+audio generale spento e chiusura dell'app. **Al ripristino di una partita non parla.** Le battute del tutorial non
+vengono pronunciate.
+
+Verifiche:
+
+- 18 nuovi test dell'app (servizio voce con motore e riproduzione finti, abbassamento combinato, impostazioni, testo
+  pronunciato) e un test della preferenza nel core.
+- **Prova nella build di sviluppo** con il computer use: opzione disponibile, attivata e salvata; al ripristino nessun
+  file audio generato; dopo un turno reale (Gemma e Ministral su CUDA) tre blocchi sintetizzati e riprodotti in
+  sequenza, ciascuno avviato al termine del precedente; chiusura dalla finestra senza processi residui.
+- Non verificato: ascolto in gioco (l'audio non è udibile dall'agente), interruzione con un nuovo turno nella build
+  reale (coperta dai test), effetto delle regole di allerta.
+- I file del motore sono stati copiati a mano nella build; il loro inserimento nell'installer è la V4.

@@ -15,6 +15,7 @@ final class WindowPreferences {
   final bool reduceAnimationsOnUnfocus;
   final bool musicEnabled;
   final bool sfxEnabled;
+  final bool voiceEnabled;
   final bool reduceGraphicEffects;
 
   const WindowPreferences({
@@ -26,6 +27,7 @@ final class WindowPreferences {
     this.reduceAnimationsOnUnfocus = true,
     this.musicEnabled = true,
     this.sfxEnabled = true,
+    this.voiceEnabled = false,
     this.reduceGraphicEffects = false,
   });
 
@@ -39,6 +41,7 @@ final class WindowPreferences {
         'reduceAnimationsOnUnfocus': reduceAnimationsOnUnfocus,
         'musicEnabled': musicEnabled,
         'sfxEnabled': sfxEnabled,
+        'voiceEnabled': voiceEnabled,
         'reduceGraphicEffects': reduceGraphicEffects,
       };
 
@@ -79,6 +82,7 @@ final class WindowPreferences {
           json['reduceAnimationsOnUnfocus'] as bool? ?? true,
       musicEnabled: json['musicEnabled'] as bool? ?? true,
       sfxEnabled: json['sfxEnabled'] as bool? ?? true,
+      voiceEnabled: json['voiceEnabled'] as bool? ?? false,
       reduceGraphicEffects: json['reduceGraphicEffects'] as bool? ?? false,
     );
   }
@@ -92,6 +96,7 @@ final class WindowPreferences {
     bool? reduceAnimationsOnUnfocus,
     bool? musicEnabled,
     bool? sfxEnabled,
+    bool? voiceEnabled,
     bool? reduceGraphicEffects,
   }) {
     return WindowPreferences(
@@ -105,6 +110,7 @@ final class WindowPreferences {
           reduceAnimationsOnUnfocus ?? this.reduceAnimationsOnUnfocus,
       musicEnabled: musicEnabled ?? this.musicEnabled,
       sfxEnabled: sfxEnabled ?? this.sfxEnabled,
+      voiceEnabled: voiceEnabled ?? this.voiceEnabled,
       reduceGraphicEffects: reduceGraphicEffects ?? this.reduceGraphicEffects,
     );
   }
@@ -122,6 +128,7 @@ final class WindowPreferences {
           reduceAnimationsOnUnfocus == other.reduceAnimationsOnUnfocus &&
           musicEnabled == other.musicEnabled &&
           sfxEnabled == other.sfxEnabled &&
+          voiceEnabled == other.voiceEnabled &&
           reduceGraphicEffects == other.reduceGraphicEffects;
 
   @override
@@ -134,6 +141,7 @@ final class WindowPreferences {
         reduceAnimationsOnUnfocus,
         musicEnabled,
         sfxEnabled,
+        voiceEnabled,
         reduceGraphicEffects,
       );
 }

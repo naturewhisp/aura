@@ -2646,9 +2646,12 @@ Completato / consolidato:
 - Fase 6.11.1 - 6.11.4: core POSIX, schema provenance, shell macOS, CI macos-14
 
 Aperto prima della Fase 7:
+- collaudo multi-hardware esteso di Fase 6.10
+
+Rinviato a tempo indeterminato (2026-11-26, nessun hardware Apple Silicon,
+progetto sperimentale non commerciale):
 - Fase 6.11.5 / G6: playtest reale su Apple Silicon (PLAYTEST_VERIFIED revocato
   il 2026-10-28, vedi HARDWARE_COMPATIBILITY_MATRIX.md §20.1)
-- collaudo multi-hardware esteso di Fase 6.10
 ```
 
 La provenance dei replay è registrata dall'app a partire dal runtime osservato (backend, accelerazione, build llama.cpp, context size espliciti, SHA-256 e quantizzazione per i soli modelli gestiti). Le sessioni con modelli esterni restano deliberatamente non qualificabili per il dataset LoRA.

@@ -230,7 +230,7 @@ Non registrare username, indirizzi IP o identificativi hardware sensibili.
 | Windows | x64 | `win-x64-cuda` | AVX2 + FMA + OS YMM state | CUDA 12 runtime/device | DECLARED |
 | Windows | x64 | `win-x64-vulkan` | AVX2 + OS YMM state | Vulkan device/driver | DECLARED |
 | Windows | x64 | `win-x64-cpu-avx2` | AVX2 + FMA + OS YMM state | CPU | DECLARED |
-| macOS | arm64 | `macos-arm64-metal` (playtest) | ARM NEON / Apple Silicon M1-M4 | Metal API / Unified Memory | NOT_RUN (PLAYTEST_VERIFIED revocato il 2026-10-28, vedi §20) |
+| macOS | arm64 | `macos-arm64-metal` (playtest) | ARM NEON / Apple Silicon M1-M4 | Metal API / Unified Memory | NOT_RUN (PLAYTEST_VERIFIED revocato il 2026-10-28, vedi §20; rinviato a tempo indeterminato il 2026-11-26) |
 | Android | arm64 | TBD | TBD after spike | Native llama.cpp/AICore optional | UNVERIFIED |
 
 ---
@@ -717,5 +717,6 @@ La sezione Android deve includere almeno:
 | 2026-09-29 | `fase6.11.5` | Certificazione PLAYTEST_VERIFIED per Apple Silicon M-series (10 turni validati da validate_playtest_replay.dart) |
 | 2026-10-28 | correzione documentata | Revoca di PLAYTEST_VERIFIED macOS: replay di evidenza non prodotto dall'app (dettagli in §20.1); stato riportato a NOT_RUN |
 | 2026-11-24 | `b1dccbc` | Misure RTX 3060 per due modelli e modello condiviso (§12.1) |
+| 2026-11-26 | decisione | Playtest macOS rinviato a tempo indeterminato: nessun hardware Apple Silicon disponibile, progetto sperimentale non commerciale |
 
 Le revisioni future devono aggiungere righe senza cancellare risultati storici, salvo correzione documentata.

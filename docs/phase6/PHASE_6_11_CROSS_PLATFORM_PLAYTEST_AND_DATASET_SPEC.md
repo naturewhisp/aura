@@ -433,7 +433,7 @@ flowchart TD
   - [x] `DesktopWindowControllerFactory` coperta deterministicamente per Windows, macOS e other
   - [x] `NoOpDesktopWindowController` completamente testato
   - [x] `MacOSDesktopWindowController` coperto tramite fake native bindings su Windows runner
-  - [ ] Shutdown coordinato Windows + macOS modellato e testato *(verifica 2026-11-24: coperti single-flight e tolleranza agli errori; manca un test specifico del ramo macOS)*
+  - [ ] Shutdown coordinato Windows + macOS modellato e testato *(verifica 2026-11-24: coperti single-flight e tolleranza agli errori; manca un test specifico del ramo macOS; rinviato insieme a G6 il 2026-11-26)*
   - [x] `app/macos/` versionato nel repository
   - [x] `app/.metadata` aggiornato con la piattaforma macOS registrata
   - [x] `com.apple.security.network.client` presente in DebugProfile e Release entitlements
@@ -477,7 +477,7 @@ La Fase 6.11 si considererà conclusa con successo quando saranno soddisfatti tu
 - [x] **G3 (Provenance Validation):** I modelli `SessionProvenanceMetadata` e `TurnGenerationProvenance` sono integrati nel replay logger. È presente un test di regressione che valida la serializzazione e deserializzazione con replay storici senza provenance (retrocompatibilità verificata). *Integrazione 2026-10-28: fino a questa data l'app registrava solo provenance incomplete; ora applica a ogni sessione la provenance osservata dal bootstrap managed (backend, accelerazione, build llama.cpp, SHA-256, quantizzazione e context size espliciti) e le build di release iniettano `AURA_APP_VERSION` / `AURA_GIT_COMMIT`.*
 - [x] **G4 (Compilation & Packaging CI):** Il workflow on-demand `macos-verify.yml` compila con successo il bundle `AURA.app` in meno di 10 minuti su GitHub Actions (completato in 3m 57s).
 - [x] **G5 (Release Candidate Attachment):** Una Release Candidate creata con `release_kind: candidate` include tra gli asset scaricabili l'archivio `aura-v*-macos-universal.zip`.
-- [ ] **G6 (Playtest Verification):** Almeno una sessione reale completa di 10 turni viene giocata con successo su hardware Apple Silicon (M1/M2/M3/M4) e il relativo log di replay JSON, **generato dall'app**, viene validato con tutti i campi di provenance compilati (`tool/replay/validate_playtest_replay.dart`). *Revocato il 2026-10-28: l'evidenza registrata non era un replay prodotto dall'app; vedi [HARDWARE_COMPATIBILITY_MATRIX.md §20.1](HARDWARE_COMPATIBILITY_MATRIX.md#201-correzione-documentata-revoca-di-playtest_verified-2026-10-28).*
+- [ ] **G6 (Playtest Verification):** Almeno una sessione reale completa di 10 turni viene giocata con successo su hardware Apple Silicon (M1/M2/M3/M4) e il relativo log di replay JSON, **generato dall'app**, viene validato con tutti i campi di provenance compilati (`tool/replay/validate_playtest_replay.dart`). *Revocato il 2026-10-28: l'evidenza registrata non era un replay prodotto dall'app; vedi [HARDWARE_COMPATIBILITY_MATRIX.md §20.1](HARDWARE_COMPATIBILITY_MATRIX.md#201-correzione-documentata-revoca-di-playtest_verified-2026-10-28).* **Rinviata a tempo indeterminato il 2026-11-26 per decisione del responsabile: non è disponibile hardware Apple Silicon e il progetto è sperimentale, non destinato a un uso commerciale. La chiusura della Fase 6 non dipende da questo criterio, che resta aperto e non soddisfatto.**
 - [x] **G7 (Zero Impatto su Windows):** L'intero collaudo multi-hardware di Fase 6.10 su Windows e le relative pipeline di rilascio rimangono inalterati e operativi (invariante fail-closed applicata).
 
 ---
@@ -492,3 +492,4 @@ La Fase 6.11 si considererà conclusa con successo quando saranno soddisfatti tu
 | 2026-09-29 | Revisione 3 | Completamento sotto-fasi 6.11.1–6.11.5, validazione criteri G1–G7 e certificazione PLAYTEST_VERIFIED |
 | 2026-10-28 | Revisione 4 | Revoca di G6 / PLAYTEST_VERIFIED (evidenza non prodotta dall'app), cablaggio della provenance osservata nell'app, tutorial escluso dal dataset, validatore con controlli di autenticità |
 | 2026-11-24 | Revisione 5 | Checklist 6.11.3 verificata voce per voce; origine dataset dichiarata in build (`AURA_DATASET_SOURCE`): solo i pacchetti di rilascio dichiarano `human_playtest`, le altre build `developer_evaluation` |
+| 2026-11-26 | Revisione 6 | 6.11.5 / G6 rinviata a tempo indeterminato: nessun hardware Apple Silicon disponibile, progetto sperimentale non commerciale; criterio aperto, non più vincolante per la chiusura della Fase 6 |

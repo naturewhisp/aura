@@ -868,7 +868,7 @@ La Fase 6.10 consolida la stabilità e le prestazioni su architetture reali attr
 
 ### 11.15 Fase 6.11 — Cross-Platform Playtest & Dataset Readiness
 
-Stato: **6.11.1 – 6.11.4 completate; 6.11.5 aperta** (G6 / `PLAYTEST_VERIFIED` revocato il 2026-10-28: l'evidenza registrata non era un replay prodotto dall'app, vedi [HARDWARE_COMPATIBILITY_MATRIX.md §20.1](docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md)).  
+Stato: **6.11.1 – 6.11.4 completate; 6.11.5 rinviata a tempo indeterminato il 2026-11-26** (nessun hardware Apple Silicon disponibile; progetto sperimentale non commerciale; G6 / `PLAYTEST_VERIFIED` revocato il 2026-10-28: l'evidenza registrata non era un replay prodotto dall'app, vedi [HARDWARE_COMPATIBILITY_MATRIX.md §20.1](docs/phase6/HARDWARE_COMPATIBILITY_MATRIX.md)).  
 Dal 2026-10-28 l'app registra la provenance osservata dal bootstrap managed (`InferenceBootstrapBridge` espone accelerazione effettiva, build `llama.cpp`, quantizzazione verificata per SHA-256 e context size espliciti Actor 16384 / Evaluator 8192); il tutorial scriptato è escluso dal dataset e i replay storici privi di provenance non vengono mai retro-attribuiti. Con lo stesso file per entrambi i ruoli il bootstrap avvia un solo processo (contesto 24576 unificato, 2 slot); l'origine del dataset è dichiarata in build (`AURA_DATASET_SOURCE`) e l'integrità del runtime accettato tramite impronte viene ricalcolata in background dopo l'avvio.  
 Riferimento normativo: [PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md](docs/phase6/PHASE_6_11_CROSS_PLATFORM_PLAYTEST_AND_DATASET_SPEC.md) e [DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md](docs/phase6/DATASET_PROVENANCE_AND_REPLAY_SCHEMA_SPEC.md).
 
@@ -888,6 +888,6 @@ Prima dell'apertura formale della Fase 7 (Android Edge Client), la Fase 6 viene 
 
 ### 11.16 Stato di Avanzamento e Transizione verso la Fase 7
 
-Tutte le sottofasi della Fase 6 (da 6.0 a 6.10) sono interamente implementate, testate e consolidate a livello architetturale e funzionale. Con l'approvazione delle specifiche della **Fase 6.11**, il collaudo multi-hardware Windows di 6.10 prosegue in parallelo all'esecuzione ordinata dei 5 step incrementali (6.11.1–6.11.5). Al soddisfacimento degli exit criteria della 6.11 e alla registrazione delle evidenze nella matrice hardware, la Fase 6 verrà formalmente dichiarata conclusa, aprendo i battenti della **Fase 7 (Android Edge Client)** su una fondazione nativamente e comprovatamente platform-neutral.
+Tutte le sottofasi della Fase 6 (da 6.0 a 6.10) sono interamente implementate, testate e consolidate a livello architetturale e funzionale. Con l'approvazione delle specifiche della **Fase 6.11**, il collaudo multi-hardware Windows di 6.10 prosegue in parallelo all'esecuzione ordinata dei 5 step incrementali (6.11.1–6.11.5). Al soddisfacimento degli exit criteria della 6.11 e alla registrazione delle evidenze nella matrice hardware, la Fase 6 verrà formalmente dichiarata conclusa (la 6.11.5 è rinviata e non ne condiziona la chiusura), aprendo i battenti della **Fase 7 (Android Edge Client)** su una fondazione nativamente e comprovatamente platform-neutral.
 
 > **Proposta fuori dalla Fase 6:** la voce sintetica delle identità è descritta nell'[analisi preliminare](docs/TTS_VOICE_FEASIBILITY.md). Nessun componente è implementato o approvato.

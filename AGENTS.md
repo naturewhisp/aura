@@ -392,7 +392,7 @@ Se desideri estendere o modificare l'architettura agentica:
         *   L'omissione di un branch attivo azzera l'esecuzione automatica dei controlli, invalidando la chiusura procedurale delle sottofasi sotto l'autorità autorevole di test.
     *   **Architettura CI Cross-Platform (Job Separati vs Matrix Unica):**
         *   Quando i target CI non condividono la medesima rilevanza semantica o lo stesso carico di lavoro (es. Windows = regressione continua e packaging; macOS = compatibilità), è vietato compattarli in una singola `strategy.matrix`.
-        *   Adottare **job separati** per runner differenti (`windows-latest`, `macos-14`), riutilizzando i passaggi comuni (`dart`, `flutter`, format, analyze) tramite **composite actions / reusable workflows** e mantenendo rigorosamente separati i controlli di build nativa, il packaging e i rilasci.
+        *   Adottare **job separati** per runner differenti (`windows-latest`, `macos-15`), riutilizzando i passaggi comuni (`dart`, `flutter`, format, analyze) tramite **composite actions / reusable workflows** e mantenendo rigorosamente separati i controlli di build nativa, il packaging e i rilasci.
     *   **Rigore Scientifico e "Zero Presumed Metadata" nei Contratti di Provenance:**
         *   *Divieto Assoluto di Default Presunti:* Nei contratti dati e nelle factory di telemetria/replay (`SessionProvenanceMetadata`, `SessionProvenanceFactory`, `TurnGenerationProvenance`), è tassativamente vietato iniettare valori di fallback "plausibili" o assiomatici per dati che rappresentano osservazioni empiriche del runtime (es. commit SHA, versione app, backend, accelerazione, build di llama.cpp, quantizzazioni, context size o parametri di sampling non inviati all'LLM come `top_p`).
         *   *Politica Fail-Closed:* Se un dato non è stato direttamente osservato o registrato dal runtime, deve assumere categoricamente il valore sentinella fail-closed (`'unknown'`, `0`, `''`). Una provenance creata a bootstrap senza runtime managed reale è strutturalmente valida per la serializzazione (`isStructurallyValid == true`), ma deve risultare scientificamente incompleta (`isScientificallyComplete == false`).
@@ -409,8 +409,8 @@ Se desideri estendere o modificare l'architettura agentica:
     *   **Semantica di Provenance nei Replay (Server Gestito vs Server Esterno):**
         *   Nel tracciamento della provenance dei replay di sessione (`SessionProvenanceMetadata`), il campo `runtimeBackend` deve essere valorizzato come `external_http` ogni qualvolta il backend di inferenza (es. LM Studio o llama-server) sia avviato autonomamente dall'utente/tester e A.U.R.A. si connetta all'endpoint via HTTP.
         *   Il valore `managed_llama_server` è riservato rigorosamente alle esecuzioni in cui A.U.R.A. supervisiona, avvia e gestisce direttamente il ciclo di vita del processo locale.
-    *   **Governance On-Demand per Runner macOS (`macos-14`):**
-        *   I runner macOS Apple Silicon (`macos-14`) comportano moltiplicatori di costo e quote di consumo elevate.
+    *   **Governance On-Demand per Runner macOS (`macos-15`):**
+        *   I runner macOS Apple Silicon (`macos-15`; `macos-14` non è più supportato da GitHub dal novembre 2026) comportano moltiplicatori di costo e quote di consumo elevate.
         *   I workflow di verifica completa Darwin (`macos-verify.yml`) devono essere configurati come **on-demand** tramite trigger `workflow_dispatch`, escludendo l'esecuzione automatica ad ogni singolo push su branch di sviluppo.
         *   Eventuali trigger automatici devono essere limitati a pull request con filtri path stringenti (`paths: ['app/macos/**', '.github/workflows/macos-verify.yml']`).
     *   **Hardening Semantico degli Entitlements e Minimo Privilegio su macOS:**

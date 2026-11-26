@@ -4438,7 +4438,7 @@ Obiettivi:
 - telemetria opt-in e rating;
 - build release pubblica Windows e Android secondo readiness.
 
-> **Proposta in valutazione, non approvata:** voce sintetica delle identità. Vedi l'[analisi preliminare](docs/TTS_VOICE_FEASIBILITY.md); l'ingresso in roadmap dipende dall'esito dello spike.
+> **Voce sintetica delle identità:** spike concluso con esito positivo; piano in quattro tranche (V1–V4) con opzione on/off e sincronizzazione del testo frase per frase, approvato il 2026-11-26. Vedi l'[analisi e il piano](docs/TTS_VOICE_FEASIBILITY.md#12-piano-di-implementazione).
 
 ### Fase 10 — Pipeline di Fine-Tuning Continuo (Post-Rilascio)
 

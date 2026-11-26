@@ -537,3 +537,27 @@ Con Gemma e Ministral in generazione continua (4 thread, 100 battute): Gemma 41,
 - **Non provato**: dentro l'app Flutter, con il gioco e gli shader attivi, su Android e con LLM su CPU. Gli shader usano la GPU;
   il gioco in sé non è stato misurato.
 - Campioni prodotti dall'eseguibile, mai ascoltati: `spike/tts/native/ascolto`.
+
+## 12. Piano di implementazione
+
+Piano proposto e approvato dall'utente il 2026-11-26, dopo lo spike. Ogni tranche si chiude con analisi senza diagnostiche, test, commit e
+revisione dell'utente prima della successiva; nessuna tranche anticipa il contenuto delle altre.
+
+| Tranche | Contenuto | Download |
+|---|---|---|
+| **V1 — Testo e fonetica** | In `aura_core`: pulizia del testo (tag `<dialogo>`, numeri in lettere, sigle), divisione in frasi, fonetica italiana e lessico portati dallo spike, con test di regressione | Nessuno |
+| **V2 — Motore di sintesi** | Contratto `SpeechEngine`, motore silenzioso di ripiego e motore Kokoro tramite ONNX Runtime (FFI); file messi a mano in una cartella di sviluppo; prova da riga di comando | ONNX Runtime da fonte ufficiale, previo consenso |
+| **V3 — Voce nel gioco** | Profilo voce accanto all'identità; regolazioni da `ActorCue`; catena di effetti; canale voce con abbassamento della musica combinato al focus; interruzione a ogni nuovo turno; nessuna voce al ripristino; **opzione voce on/off** (spenta per impostazione predefinita) e **sincronizzazione del testo** | Nessuno |
+| **V4 — Distribuzione** | Modello e libreria scaricabili dal catalogo firmato, verifica di hash e licenze; misura con il gioco attivo | Nessuno in più |
+
+### 12.1 Opzioni e sincronizzazione (V3)
+
+- Opzione «Voce» nella sezione audio delle impostazioni. Rispetta l'audio generale come musica ed effetti: con l'audio
+  generale spento la voce tace e mostra `[MUTED]`.
+- **Sincronizzazione frase per frase**: ogni frase compare quando inizia il suo audio e scorre alla velocità della voce,
+  calcolata dalla durata dell'audio sintetizzato. Non richiede i tempi delle singole parole, che il modello ONNX non
+  restituisce.
+- Con voce spenta o non disponibile il testo scorre come oggi; un errore della voce non ritarda mai il testo oltre il
+  primo audio previsto.
+- Sincronizzazione **parola per parola**: rinviata. Richiede di riesportare il modello per ottenere le durate dei
+  fonemi.

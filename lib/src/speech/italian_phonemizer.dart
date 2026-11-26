@@ -110,6 +110,15 @@ class ItalianPhonemizer {
     return o;
   }
 
+  static final _hiatusPrefix = RegExp(r'^(co|re|de|pre)[iu].');
+
+  /// Vero se il segmento [k] è la «i» o la «u» che segue un prefisso
+  /// (co-, re-, de-, pre-): «co-in-ci-do-no», non «coin-».
+  static bool _isPrefixHiatus(String w, int k) {
+    final m = _hiatusPrefix.firstMatch(w);
+    return m != null && w.length > 4 && k == m.group(1)!.length;
+  }
+
   List<_Seg> _nuclei(String w) {
     final o = _rules(w);
     final r = <_Seg>[];
@@ -123,7 +132,8 @@ class ItalianPhonemizer {
           (s == 'i' || s == 'u') &&
           prev != null &&
           prev.n &&
-          'aeoɛɔ'.contains(prev.s)) {
+          'aeoɛɔ'.contains(prev.s) &&
+          !_isPrefixHiatus(w, k)) {
         s = s == 'i' ? 'j' : 'w';
         n = false;
       }

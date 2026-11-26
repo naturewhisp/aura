@@ -59,6 +59,16 @@ void main() {
           .forEach((w, p) => expect(phonemizer.transcribe(w), p, reason: w));
     });
 
+    test('terze persone in -dono e iato dopo i prefissi (segnalati all'ascolto)', () {
+      expect(phonemizer.transcribe('coincidono'), 'koinʧˈidono');
+      expect(phonemizer.transcribe('decidono'), 'deʧˈidono');
+      expect(phonemizer.transcribe('coinvolto'), 'koinvˈɔlto');
+      expect(phonemizer.transcribe('reintegro'), startsWith('rein'));
+      expect(phonemizer.transcribe('dono'), 'dˈɔno');
+      expect(phonemizer.transcribe('poi'), 'pˈɔj');
+      expect(phonemizer.transcribe('coi'), 'kˈɔj');
+    });
+
     test('parole atone e punteggiatura preservata', () {
       expect(phonemizer.transcribe('non'), 'non');
       expect(phonemizer.transcribe("Perché insisti?"), endsWith('?'));

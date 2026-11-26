@@ -11,7 +11,7 @@ const Map<String, String> _patterns = {
   'PIANE_ICO':
       r'(nemic|(?:^|in)amic|^antic|fatic|formic|radic|matric|felic|attric|trice|tric[ie]|mendic|vescic|intric)(o|a|he|hi|i|e)$',
   'PIANE_ONO':
-      r'(abbandono|perdono|frastuono|suono|tono|sono|dono|trono|buono|icono)$',
+      r'^(abbandono|perdono|frastuono|suono|tono|sono|dono|trono|buono|icono|condono)$',
   'SDR':
       r'(abil[ei]|ibil[ei]|[^i]ic[oai]|iche|ich[ei]|evol[ei]|[ei]sim[oaie]|issim[oaie]|[iu]din[ei]|aggin[ei]|[gmr]in[ei]x|metr[oi]|[aeioc]col[oiae]|[cdglmnprtvz]id[oaie]|[dmrgcb]ul[oaie]|[ltnms]im[oaie]|ònom[oi]|ologh?[oi]|ebbero|[aei]ssero|[aei]rono|[a-z]tudin[ei])$',
   'O_CHIUSE':

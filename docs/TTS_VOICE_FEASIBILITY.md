@@ -668,3 +668,13 @@ Verifiche:
 - Non verificato: ascolto in gioco (l'audio non è udibile dall'agente), interruzione con un nuovo turno nella build
   reale (coperta dai test), effetto delle regole di allerta.
 - I file del motore sono stati copiati a mano nella build; il loro inserimento nell'installer è la V4.
+
+### 12.7 Primo ascolto in gioco
+
+L'utente ha sentito la voce nella build di sviluppo:
+
+- «coincidono» pronunciato con l'accento sulla penultima. Due errori della fonetica, corretti: la lista delle parole
+  piane in «-ono» non era ancorata a inizio parola («coinci**dono**» coincideva con «dono»), e «co-in», «re-in»,
+  «de-in», «pre-i» venivano trattati come dittonghi. Sette trascrizioni della fixture cambiano di conseguenza, tutte
+  correzioni («coinvolto», «reindirizzamento», «decidono»).
+- Il testo scorre più veloce del parlato: atteso, è la sincronizzazione della V3c.
